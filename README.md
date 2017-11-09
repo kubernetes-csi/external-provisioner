@@ -1,5 +1,8 @@
-# external-provisioner-csi
+# Kubernetes CSI - FLEX Volume Plugin
 
-I'm doing the DEV work for CSI ext. provisioner here: https://github.com/csi-volumes/kubernetes-csi
+This is an example CSI plugin for Kubernetes which uses the FLEX volume type.  It's under heavy development, so at this time README.md is notes for the developers coding.  Once complete this will change to something user friendly.
 
-I'll move it when it approaches stable & we decide where it should live (probably https://github.com/kubernetes-incubator/external-storage)..  
+
+
+
+
