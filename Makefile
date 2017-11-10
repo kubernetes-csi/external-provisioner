@@ -33,6 +33,10 @@ clean:
 	rm -rf _output
 .PHONY: clean
 
+format:
+	 gofmt -w -s ./
+.PHONY: format
+
 deps:
 	dep ensure -update
 .PHONY: deps
@@ -41,7 +45,11 @@ quick-container:
 	docker build -t kubernetes-csi:latest .
 .PHONY: quick-container
 
-all build: deps
+provisioner:
 	mkdir -p _output
-	go build -o _output/flex-provisioner ./cmd/flex-provisioner/ 
+	go build -o _output/flex-provisioner ./cmd/flex-provisioner/
+.PHONY: provisioner
+
+all build: deps provisioner
+
 .PHONY: all build
