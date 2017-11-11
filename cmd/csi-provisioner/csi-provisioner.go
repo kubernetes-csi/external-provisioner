@@ -29,16 +29,19 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"os"
+	"time"
+	"strconv"
+	"math/rand"
 )
 
 var (
 	provisioner = flag.String("provisioner", "k8s.io/default", "Name of the provisioner. The provisioner will only provision volumes for claims that request a StorageClass with a provisioner field set equal to this name.")
 	master      = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
 	kubeconfig  = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
-	execCommand = flag.String("execCommand", "./flex-debug.sh/flexprov/flexprov", "The FlEX command/shell.")
+	csiEndpoint = flag.String("CSI-Endpoint", "/tmp/csi.sock", "The gRPC endpoint for Target CSI Volume")
 )
 
-type flexProvisioner struct {
+type csiProvisioner struct {
 	client      kubernetes.Interface
 	execCommand string
 	identity    string
@@ -60,11 +63,19 @@ func init() {
 		kubeconfig = &kubeconfigEnv
 	}
 
-	glog.Infof("FLEX Provisioner %s specified", *provisioner)
-	if execCommand == nil {
-		glog.Fatalf("Invalid flags specified: must provide provisioner exec command.")
-	}
+	glog.Infof("CSI Provisioner %s specified", *provisioner)
 
+
+
+	if csiEndpoint == nil {
+		csiEndpointEnv := os.Getenv("CSI_ENDPOINT")
+		if csiEndpointEnv != "" {
+			csiEndpoint = &csiEndpointEnv;
+		} else {
+			glog.Fatalf("No CSI Volume Endpoint defined.. Can be provided via flag (--CSI-Endpoint) or by setting the environment variable CSI_ENDPOINT..")
+
+		}
+	}
 	var config *rest.Config
 	var err error
 
@@ -93,13 +104,17 @@ func init() {
 		glog.Fatalf("Error getting server version: %v", err)
 	}
 
+	// Generate a unique ID for this provisioner
+	timeStamp:=time.Now().UnixNano() / int64(time.Millisecond)
+	identity:= strconv.FormatInt(timeStamp,10) + "-" + strconv.Itoa(rand.Intn(10000)) + "-" + *provisioner;
+
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	flexProvisioner := NewFlexProvisioner(clientset, *execCommand, "something")
+	csiProvisioner := NewCSIProvisioner(clientset, *csiEndpoint, identity)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		*provisioner,
-		flexProvisioner,
+		csiProvisioner,
 		serverVersion.GitVersion,
 	)
 
@@ -107,13 +122,13 @@ func init() {
 
 
 
-func NewFlexProvisioner(client kubernetes.Interface, execCommand string, identity string) controller.Provisioner {
-	return newFlexProvisionerInternal(client, execCommand, identity)
+func NewCSIProvisioner(client kubernetes.Interface, execCommand string, identity string) controller.Provisioner {
+	return newCSIProvisionerInternal(client, execCommand, identity)
 }
 
-func newFlexProvisionerInternal(client kubernetes.Interface, execCommand string, identity string) *flexProvisioner {
+func newCSIProvisionerInternal(client kubernetes.Interface, execCommand string, identity string) *csiProvisioner {
 
-	provisioner := &flexProvisioner{
+	provisioner := &csiProvisioner{
 		client:      client,
 		execCommand: execCommand,
 		identity:    identity,
@@ -122,17 +137,17 @@ func newFlexProvisionerInternal(client kubernetes.Interface, execCommand string,
 	return provisioner
 }
 
-func (p *flexProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
+func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
 	glog.Infof("Provisioner %s Provision(..) called..", *provisioner)
 	return nil, nil
 }
 
-func (p *flexProvisioner) Delete(volume *v1.PersistentVolume) error {
+func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	glog.Infof("Provisioner %s Delete(..) called..", *provisioner)
 	return nil
 }
 
-var _ controller.Provisioner = &flexProvisioner{}
+var _ controller.Provisioner = &csiProvisioner{}
 
 func main() {
 
