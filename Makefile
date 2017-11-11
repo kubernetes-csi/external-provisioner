@@ -47,9 +47,9 @@ quick-container:
 
 provisioner:
 	mkdir -p _output
-	go build -o _output/flex-provisioner ./cmd/flex-provisioner/
+	go build -o _output/csi-provisioner ./cmd/csi-provisioner/
 .PHONY: provisioner
 
-all build: deps provisioner
+all build: provisioner
 
 .PHONY: all build
