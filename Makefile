@@ -47,7 +47,7 @@ quick-container:
 
 provisioner:
 	mkdir -p _output
-	go build -o _output/csi-provisioner ./cmd/csi-provisioner/
+	go build -i -o _output/csi-provisioner ./cmd/csi-provisioner/
 .PHONY: provisioner
 
 all build: provisioner
