@@ -35,10 +35,11 @@ import (
 )
 
 var (
-	provisioner = flag.String("provisioner", "k8s.io/default", "Name of the provisioner. The provisioner will only provision volumes for claims that request a StorageClass with a provisioner field set equal to this name.")
-	master      = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
-	kubeconfig  = flag.String("kubeconfig", "/var/run/kubernetes/admin.kubeconfig", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
-	csiEndpoint = flag.String("CSI-Endpoint", "unix://tmp/csi.sock", "The gRPC endpoint for Target CSI Volume")
+	provisioner       = flag.String("provisioner", "k8s.io/default", "Name of the provisioner. The provisioner will only provision volumes for claims that request a StorageClass with a provisioner field set equal to this name.")
+	master            = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
+	kubeconfig        = flag.String("kubeconfig", "/var/run/kubernetes/admin.kubeconfig", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
+	csiEndpoint       = flag.String("csiendpoint", "/tmp/csi.sock", "The gRPC endpoint for Target CSI Volume")
+	connectionTimeout = flag.Duration("connection-timeout", 10*time.Second, "Timeout for waiting for CSI driver socket.")
 
 	provisionController *controller.ProvisionController
 )
@@ -56,16 +57,6 @@ func init() {
 	if kubeconfigEnv != "" {
 		glog.Infof("Found KUBECONFIG environment variable set, using that..")
 		kubeconfig = &kubeconfigEnv
-	}
-
-	if csiEndpoint == nil {
-		csiEndpointEnv := os.Getenv("CSI_ENDPOINT")
-		if csiEndpointEnv != "" {
-			csiEndpoint = &csiEndpointEnv
-		} else {
-			glog.Fatalf("No CSI Volume Endpoint defined.. Can be provided via flag (--CSI-Endpoint) or by setting the environment variable CSI_ENDPOINT..")
-
-		}
 	}
 
 	if *master != "" || *kubeconfig != "" {
@@ -99,7 +90,7 @@ func init() {
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *csiEndpoint, identity)
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *csiEndpoint, *connectionTimeout, identity)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		*provisioner,
