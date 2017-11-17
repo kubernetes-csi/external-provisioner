@@ -31,7 +31,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -194,12 +195,12 @@ func RunRollingUpdate(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args
 	mapper, typer := f.Object()
 
 	if len(filename) != 0 {
-		schema, err := f.Validator(cmdutil.GetFlagBool(cmd, "validate"), cmdutil.GetFlagBool(cmd, "openapi-validation"), cmdutil.GetFlagString(cmd, "schema-cache-dir"))
+		schema, err := f.Validator(cmdutil.GetFlagBool(cmd, "validate"))
 		if err != nil {
 			return err
 		}
 
-		request := f.NewBuilder(true).
+		request := f.NewBuilder().
 			Schema(schema).
 			NamespaceParam(cmdNamespace).DefaultNamespace().
 			FilenameParam(enforceNamespace, &resource.FilenameOptions{Recursive: false, Filenames: []string{filename}}).
@@ -211,14 +212,14 @@ func RunRollingUpdate(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args
 		var ok bool
 		// Handle filename input from stdin. The resource builder always returns an api.List
 		// when creating resource(s) from a stream.
-		if list, ok := obj.(*api.List); ok {
+		if list, ok := obj.(*v1.List); ok {
 			if len(list.Items) > 1 {
 				return cmdutil.UsageErrorf(cmd, "%s specifies multiple items", filename)
 			}
 			if len(list.Items) == 0 {
 				return cmdutil.UsageErrorf(cmd, "please make sure %s exists and is not empty", filename)
 			}
-			obj = list.Items[0]
+			obj = list.Items[0].Object
 		}
 		newRc, ok = obj.(*api.ReplicationController)
 		if !ok {
@@ -239,7 +240,7 @@ func RunRollingUpdate(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args
 	// than the old rc. This selector is the hash of the rc, with a suffix to provide uniqueness for
 	// same-image updates.
 	if len(image) != 0 {
-		codec := api.Codecs.LegacyCodec(v1.SchemeGroupVersion)
+		codec := legacyscheme.Codecs.LegacyCodec(v1.SchemeGroupVersion)
 		keepOldName = len(args) == 1
 		newName := findNewName(args, oldRc)
 		if newRc, err = kubectl.LoadExistingNextReplicationController(coreClient, cmdNamespace, newName); err != nil {

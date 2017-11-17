@@ -33,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/kubernetes/pkg/api"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/proxy"
 	utilproxy "k8s.io/kubernetes/pkg/proxy/util"
 	"k8s.io/kubernetes/pkg/util/async"
@@ -226,6 +226,10 @@ func TestDeleteEndpointConnections(t *testing.T) {
 			endpoint:        "10.240.0.5:80",
 			servicePortName: svc2,
 		},
+		{
+			endpoint:        "[fd00:1::5]:8080",
+			servicePortName: svc2,
+		},
 	}
 
 	expectCommandExecCount := 0
@@ -235,7 +239,7 @@ func TestDeleteEndpointConnections(t *testing.T) {
 		svcInfo := fakeProxier.serviceMap[testCases[i].servicePortName]
 		if svcInfo.protocol == api.ProtocolUDP {
 			svcIp := svcInfo.clusterIP.String()
-			endpointIp := strings.Split(testCases[i].endpoint, ":")[0]
+			endpointIp := utilproxy.IPPart(testCases[i].endpoint)
 			expectCommand := fmt.Sprintf("conntrack -D --orig-dst %s --dst-nat %s -p udp", svcIp, endpointIp)
 			execCommand := strings.Join(fcmd.CombinedOutputLog[expectCommandExecCount], " ")
 			if expectCommand != execCommand {
@@ -319,6 +323,15 @@ func NewFakeProxier(ipt utiliptables.Interface) *Proxier {
 	}
 	p.syncRunner = async.NewBoundedFrequencyRunner("test-sync-runner", p.syncProxyRules, 0, time.Minute, 1)
 	return p
+}
+
+func hasSessionAffinityRule(rules []iptablestest.Rule) bool {
+	for _, r := range rules {
+		if _, ok := r[iptablestest.Recent]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func hasJump(rules []iptablestest.Rule, destChain, destIP string, destPort int) bool {
@@ -765,6 +778,7 @@ func TestOnlyLocalLoadBalancing(t *testing.T) {
 		NamespacedName: makeNSN("ns1", "svc1"),
 		Port:           "p80",
 	}
+	svcSessionAffinityTimeout := int32(10800)
 
 	makeServiceMap(fp,
 		makeTestService(svcPortName.Namespace, svcPortName.Name, func(svc *api.Service) {
@@ -780,6 +794,10 @@ func TestOnlyLocalLoadBalancing(t *testing.T) {
 				IP: svcLBIP,
 			}}
 			svc.Spec.ExternalTrafficPolicy = api.ServiceExternalTrafficPolicyTypeLocal
+			svc.Spec.SessionAffinity = api.ServiceAffinityClientIP
+			svc.Spec.SessionAffinityConfig = &api.SessionAffinityConfig{
+				ClientIP: &api.ClientIPConfig{TimeoutSeconds: &svcSessionAffinityTimeout},
+			}
 		}),
 	)
 
@@ -833,6 +851,9 @@ func TestOnlyLocalLoadBalancing(t *testing.T) {
 	}
 	if !hasJump(lbRules, localEpChain, "", 0) {
 		errorf(fmt.Sprintf("Didn't find jump from lb chain %v to local ep %v", lbChain, epStrNonLocal), lbRules, t)
+	}
+	if !hasSessionAffinityRule(lbRules) {
+		errorf(fmt.Sprintf("Didn't find session affinity rule from lb chain %v", lbChain), lbRules, t)
 	}
 }
 
@@ -1046,7 +1067,7 @@ func TestBuildServiceMapAddRemove(t *testing.T) {
 	// the not-deleted service, because one of it's ServicePorts was deleted.
 	expectedStaleUDPServices := []string{"172.16.55.10", "172.16.55.4", "172.16.55.11", "172.16.55.12"}
 	if len(result.staleServices) != len(expectedStaleUDPServices) {
-		t.Errorf("expected stale UDP services length %d, got %v", len(expectedStaleUDPServices), result.staleServices.List())
+		t.Errorf("expected stale UDP services length %d, got %v", len(expectedStaleUDPServices), result.staleServices.UnsortedList())
 	}
 	for _, ip := range expectedStaleUDPServices {
 		if !result.staleServices.Has(ip) {
@@ -1162,7 +1183,7 @@ func TestBuildServiceMapServiceUpdate(t *testing.T) {
 		t.Errorf("expected healthcheck ports length 1, got %v", result.hcServices)
 	}
 	if len(result.staleServices) != 0 {
-		t.Errorf("expected stale UDP services length 0, got %v", result.staleServices.List())
+		t.Errorf("expected stale UDP services length 0, got %v", result.staleServices.UnsortedList())
 	}
 
 	// No change; make sure the service map stays the same and there are
@@ -1176,7 +1197,7 @@ func TestBuildServiceMapServiceUpdate(t *testing.T) {
 		t.Errorf("expected healthcheck ports length 1, got %v", result.hcServices)
 	}
 	if len(result.staleServices) != 0 {
-		t.Errorf("expected stale UDP services length 0, got %v", result.staleServices.List())
+		t.Errorf("expected stale UDP services length 0, got %v", result.staleServices.UnsortedList())
 	}
 
 	// And back to ClusterIP
@@ -1260,6 +1281,14 @@ func Test_getLocalIPs(t *testing.T) {
 			{Namespace: "ns2", Name: "ep2"}: sets.NewString("2.2.2.2", "2.2.2.22", "2.2.2.3"),
 			{Namespace: "ns4", Name: "ep4"}: sets.NewString("4.4.4.4", "4.4.4.6"),
 		},
+	}, {
+		// Case[5]: named port local and bad endpoints IP
+		endpointsMap: map[proxy.ServicePortName][]*endpointsInfo{
+			makeServicePortName("ns1", "ep1", "p11"): {
+				{endpoint: "bad ip:11", isLocal: true},
+			},
+		},
+		expected: map[types.NamespacedName]sets.String{},
 	}}
 
 	for tci, tc := range testCases {

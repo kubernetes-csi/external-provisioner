@@ -24,6 +24,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	admissionregistrationv1alpha1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1alpha1"
 	fakeadmissionregistrationv1alpha1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1alpha1/fake"
+	appsv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
+	fakeappsv1 "k8s.io/client-go/kubernetes/typed/apps/v1/fake"
 	appsv1beta1 "k8s.io/client-go/kubernetes/typed/apps/v1beta1"
 	fakeappsv1beta1 "k8s.io/client-go/kubernetes/typed/apps/v1beta1/fake"
 	appsv1beta2 "k8s.io/client-go/kubernetes/typed/apps/v1beta2"
@@ -68,6 +70,8 @@ import (
 	fakesettingsv1alpha1 "k8s.io/client-go/kubernetes/typed/settings/v1alpha1/fake"
 	storagev1 "k8s.io/client-go/kubernetes/typed/storage/v1"
 	fakestoragev1 "k8s.io/client-go/kubernetes/typed/storage/v1/fake"
+	storagev1alpha1 "k8s.io/client-go/kubernetes/typed/storage/v1alpha1"
+	fakestoragev1alpha1 "k8s.io/client-go/kubernetes/typed/storage/v1alpha1/fake"
 	storagev1beta1 "k8s.io/client-go/kubernetes/typed/storage/v1beta1"
 	fakestoragev1beta1 "k8s.io/client-go/kubernetes/typed/storage/v1beta1/fake"
 	"k8s.io/client-go/testing"
@@ -126,9 +130,14 @@ func (c *Clientset) AppsV1beta2() appsv1beta2.AppsV1beta2Interface {
 	return &fakeappsv1beta2.FakeAppsV1beta2{Fake: &c.Fake}
 }
 
-// Apps retrieves the AppsV1beta2Client
-func (c *Clientset) Apps() appsv1beta2.AppsV1beta2Interface {
-	return &fakeappsv1beta2.FakeAppsV1beta2{Fake: &c.Fake}
+// AppsV1 retrieves the AppsV1Client
+func (c *Clientset) AppsV1() appsv1.AppsV1Interface {
+	return &fakeappsv1.FakeAppsV1{Fake: &c.Fake}
+}
+
+// Apps retrieves the AppsV1Client
+func (c *Clientset) Apps() appsv1.AppsV1Interface {
+	return &fakeappsv1.FakeAppsV1{Fake: &c.Fake}
 }
 
 // AuthenticationV1 retrieves the AuthenticationV1Client
@@ -284,6 +293,11 @@ func (c *Clientset) SettingsV1alpha1() settingsv1alpha1.SettingsV1alpha1Interfac
 // Settings retrieves the SettingsV1alpha1Client
 func (c *Clientset) Settings() settingsv1alpha1.SettingsV1alpha1Interface {
 	return &fakesettingsv1alpha1.FakeSettingsV1alpha1{Fake: &c.Fake}
+}
+
+// StorageV1alpha1 retrieves the StorageV1alpha1Client
+func (c *Clientset) StorageV1alpha1() storagev1alpha1.StorageV1alpha1Interface {
+	return &fakestoragev1alpha1.FakeStorageV1alpha1{Fake: &c.Fake}
 }
 
 // StorageV1beta1 retrieves the StorageV1beta1Client

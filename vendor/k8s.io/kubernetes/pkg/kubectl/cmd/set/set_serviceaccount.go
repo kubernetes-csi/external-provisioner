@@ -23,11 +23,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
@@ -61,14 +61,15 @@ type serviceAccountConfig struct {
 	out                    io.Writer
 	err                    io.Writer
 	dryRun                 bool
+	cmd                    *cobra.Command
 	shortOutput            bool
 	all                    bool
 	record                 bool
 	output                 string
 	changeCause            string
 	local                  bool
-	saPrint                func(obj runtime.Object) error
-	updatePodSpecForObject func(runtime.Object, func(*api.PodSpec) error) (bool, error)
+	PrintObject            func(cmd *cobra.Command, isLocal bool, mapper meta.RESTMapper, obj runtime.Object, out io.Writer) error
+	updatePodSpecForObject func(runtime.Object, func(*v1.PodSpec) error) (bool, error)
 	infos                  []*resource.Info
 	serviceAccountName     string
 }
@@ -96,7 +97,7 @@ func NewCmdServiceAccount(f cmdutil.Factory, out, err io.Writer) *cobra.Command 
 	usage := "identifying the resource to get from a server."
 	cmdutil.AddFilenameOptionFlags(cmd, &saConfig.fileNameOptions, usage)
 	cmd.Flags().BoolVar(&saConfig.all, "all", false, "Select all resources, including uninitialized ones, in the namespace of the specified resource types")
-	cmd.Flags().BoolVar(&saConfig.local, "local", false, "If true, set image will NOT contact api-server but run locally.")
+	cmd.Flags().BoolVar(&saConfig.local, "local", false, "If true, set serviceaccount will NOT contact api-server but run locally.")
 	cmdutil.AddRecordFlag(cmd)
 	cmdutil.AddDryRunFlag(cmd)
 	cmdutil.AddIncludeUninitializedFlag(cmd)
@@ -113,9 +114,9 @@ func (saConfig *serviceAccountConfig) Complete(f cmdutil.Factory, cmd *cobra.Com
 	saConfig.dryRun = cmdutil.GetDryRunFlag(cmd)
 	saConfig.output = cmdutil.GetFlagString(cmd, "output")
 	saConfig.updatePodSpecForObject = f.UpdatePodSpecForObject
-	saConfig.saPrint = func(obj runtime.Object) error {
-		return f.PrintObject(cmd, saConfig.local, saConfig.mapper, obj, saConfig.out)
-	}
+	saConfig.PrintObject = f.PrintObject
+	saConfig.cmd = cmd
+
 	cmdNamespace, enforceNamespace, err := f.DefaultNamespace()
 	if err != nil {
 		return err
@@ -126,7 +127,7 @@ func (saConfig *serviceAccountConfig) Complete(f cmdutil.Factory, cmd *cobra.Com
 	saConfig.serviceAccountName = args[len(args)-1]
 	resources := args[:len(args)-1]
 	includeUninitialized := cmdutil.ShouldIncludeUninitialized(cmd, false)
-	builder := f.NewBuilder(!saConfig.local).ContinueOnError().
+	builder := f.NewBuilder().ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
 		FilenameParam(enforceNamespace, &saConfig.fileNameOptions).
 		IncludeUninitialized(includeUninitialized).
@@ -134,6 +135,8 @@ func (saConfig *serviceAccountConfig) Complete(f cmdutil.Factory, cmd *cobra.Com
 	if !saConfig.local {
 		builder.ResourceTypeOrNameArgs(saConfig.all, resources...).
 			Latest()
+	} else {
+		builder = builder.Local(f.ClientForMapping)
 	}
 	saConfig.infos, err = builder.Do().Infos()
 	if err != nil {
@@ -146,11 +149,11 @@ func (saConfig *serviceAccountConfig) Complete(f cmdutil.Factory, cmd *cobra.Com
 func (saConfig *serviceAccountConfig) Run() error {
 	patchErrs := []error{}
 	patchFn := func(info *resource.Info) ([]byte, error) {
-		saConfig.updatePodSpecForObject(info.Object, func(podSpec *api.PodSpec) error {
+		saConfig.updatePodSpecForObject(info.VersionedObject, func(podSpec *v1.PodSpec) error {
 			podSpec.ServiceAccountName = saConfig.serviceAccountName
 			return nil
 		})
-		return runtime.Encode(saConfig.encoder, info.Object)
+		return runtime.Encode(saConfig.encoder, info.VersionedObject)
 	}
 	patches := CalculatePatches(saConfig.infos, saConfig.encoder, patchFn)
 	for _, patch := range patches {
@@ -160,7 +163,9 @@ func (saConfig *serviceAccountConfig) Run() error {
 			continue
 		}
 		if saConfig.local || saConfig.dryRun {
-			saConfig.saPrint(patch.Info.Object)
+			if err := saConfig.PrintObject(saConfig.cmd, saConfig.local, saConfig.mapper, patch.Info.VersionedObject, saConfig.out); err != nil {
+				return err
+			}
 			continue
 		}
 		patched, err := resource.NewHelper(info.Client, info.Mapping).Patch(info.Namespace, info.Name, types.StrategicMergePatchType, patch.Patch)
@@ -177,7 +182,14 @@ func (saConfig *serviceAccountConfig) Run() error {
 			}
 		}
 		if len(saConfig.output) > 0 {
-			saConfig.saPrint(patched)
+			versionedObject, err := patch.Info.Mapping.ConvertToVersion(patched, patch.Info.Mapping.GroupVersionKind.GroupVersion())
+			if err != nil {
+				return err
+			}
+			if err := saConfig.PrintObject(saConfig.cmd, saConfig.local, saConfig.mapper, versionedObject, saConfig.out); err != nil {
+				return err
+			}
+			continue
 		}
 		cmdutil.PrintSuccess(saConfig.mapper, saConfig.shortOutput, saConfig.out, info.Mapping.Resource, info.Name, saConfig.dryRun, "serviceaccount updated")
 	}

@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,12 +37,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/kubernetes/pkg/api"
+	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
+	"k8s.io/kubernetes/pkg/kubectl/scheme"
 	"k8s.io/kubernetes/pkg/kubectl/util/i18n"
 )
 
@@ -188,7 +188,7 @@ func parsePruneResources(mapper meta.RESTMapper, gvks []string) ([]pruneResource
 }
 
 func RunApply(f cmdutil.Factory, cmd *cobra.Command, out, errOut io.Writer, options *ApplyOptions) error {
-	schema, err := f.Validator(cmdutil.GetFlagBool(cmd, "validate"), cmdutil.GetFlagBool(cmd, "openapi-validation"), cmdutil.GetFlagString(cmd, "schema-cache-dir"))
+	schema, err := f.Validator(cmdutil.GetFlagBool(cmd, "validate"))
 	if err != nil {
 		return err
 	}
@@ -210,21 +210,15 @@ func RunApply(f cmdutil.Factory, cmd *cobra.Command, out, errOut io.Writer, opti
 		}
 	}
 
-	builder, err := f.NewUnstructuredBuilder(true)
-	if err != nil {
-		return err
-	}
-
 	// include the uninitialized objects by default if --prune is true
 	// unless explicitly set --include-uninitialized=false
 	includeUninitialized := cmdutil.ShouldIncludeUninitialized(cmd, options.Prune)
-
-	r := builder.
+	r := f.NewUnstructuredBuilder().
 		Schema(schema).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
 		FilenameParam(enforceNamespace, &options.FilenameOptions).
-		SelectorParam(options.Selector).
+		LabelSelectorParam(options.Selector).
 		IncludeUninitialized(includeUninitialized).
 		Flatten().
 		Do()
@@ -298,7 +292,7 @@ func RunApply(f cmdutil.Factory, cmd *cobra.Command, out, errOut io.Writer, opti
 
 			count++
 			if len(output) > 0 && !shortOutput {
-				return cmdutil.PrintResourceInfoForCommand(cmd, info, f, out)
+				return f.PrintResourceInfoForCommand(cmd, info, out)
 			}
 			cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, dryRun, "created")
 			return nil
@@ -341,10 +335,16 @@ func RunApply(f cmdutil.Factory, cmd *cobra.Command, out, errOut io.Writer, opti
 			} else {
 				visitedUids.Insert(string(uid))
 			}
+
+			if string(patchBytes) == "{}" {
+				count++
+				cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, false, "unchanged")
+				return nil
+			}
 		}
 		count++
 		if len(output) > 0 && !shortOutput {
-			return cmdutil.PrintResourceInfoForCommand(cmd, info, f, out)
+			return f.PrintResourceInfoForCommand(cmd, info, out)
 		}
 		cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, dryRun, "configured")
 		return nil
@@ -361,17 +361,13 @@ func RunApply(f cmdutil.Factory, cmd *cobra.Command, out, errOut io.Writer, opti
 		return nil
 	}
 
-	selector, err := labels.Parse(options.Selector)
-	if err != nil {
-		return err
-	}
 	p := pruner{
 		mapper:        mapper,
 		clientFunc:    f.UnstructuredClientForMapping,
 		clientsetFunc: f.ClientSet,
 
-		selector:    selector,
-		visitedUids: visitedUids,
+		labelSelector: options.Selector,
+		visitedUids:   visitedUids,
 
 		cascade:     options.Cascade,
 		dryRun:      dryRun,
@@ -456,8 +452,9 @@ type pruner struct {
 	clientFunc    resource.ClientMapperFunc
 	clientsetFunc func() (internalclientset.Interface, error)
 
-	visitedUids sets.String
-	selector    labels.Selector
+	visitedUids   sets.String
+	labelSelector string
+	fieldSelector string
 
 	cascade     bool
 	dryRun      bool
@@ -472,7 +469,16 @@ func (p *pruner) prune(namespace string, mapping *meta.RESTMapping, shortOutput,
 		return err
 	}
 
-	objList, err := resource.NewHelper(c, mapping).List(namespace, mapping.GroupVersionKind.Version, p.selector, false, includeUninitialized)
+	objList, err := resource.NewHelper(c, mapping).List(
+		namespace,
+		mapping.GroupVersionKind.Version,
+		false,
+		&metav1.ListOptions{
+			LabelSelector:        p.labelSelector,
+			FieldSelector:        p.fieldSelector,
+			IncludeUninitialized: includeUninitialized,
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -590,7 +596,7 @@ func (p *patcher) patchSimple(obj runtime.Object, modified []byte, source, names
 
 	// Create the versioned struct from the type defined in the restmapping
 	// (which is the API version we'll be submitting the patch to)
-	versionedObject, err := api.Scheme.New(p.mapping.GroupVersionKind)
+	versionedObject, err := scheme.Scheme.New(p.mapping.GroupVersionKind)
 	var patchType types.PatchType
 	var patch []byte
 	createPatchErrFormat := "creating patch with:\noriginal:\n%s\nmodified:\n%s\ncurrent:\n%s\nfor:"
@@ -616,6 +622,10 @@ func (p *patcher) patchSimple(obj runtime.Object, modified []byte, source, names
 		if err != nil {
 			return nil, nil, cmdutil.AddSourceToErr(fmt.Sprintf(createPatchErrFormat, original, modified, current), source, err)
 		}
+	}
+
+	if string(patch) == "{}" {
+		return patch, obj, nil
 	}
 
 	patchedObj, err := p.helper.Patch(namespace, name, patchType, patch)

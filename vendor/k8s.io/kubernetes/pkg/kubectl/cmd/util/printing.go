@@ -24,7 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/kubernetes/pkg/kubectl"
-	"k8s.io/kubernetes/pkg/kubectl/resource"
+	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	"k8s.io/kubernetes/pkg/printers"
 	printersinternal "k8s.io/kubernetes/pkg/printers/internalversion"
 
@@ -137,24 +137,6 @@ func PrinterForCommand(cmd *cobra.Command, outputOpts *printers.OutputOptions, m
 	return maybeWrapSortingPrinter(cmd, printer), nil
 }
 
-// PrintResourceInfoForCommand receives a *cobra.Command and a *resource.Info and
-// attempts to print an info object based on the specified output format. If the
-// object passed is non-generic, it attempts to print the object using a HumanReadablePrinter.
-// Requires that printer flags have been added to cmd (see AddPrinterFlags).
-func PrintResourceInfoForCommand(cmd *cobra.Command, info *resource.Info, f Factory, out io.Writer) error {
-	printer, err := f.PrinterForCommand(cmd, false, nil, printers.PrintOptions{})
-	if err != nil {
-		return err
-	}
-	if !printer.IsGeneric() {
-		printer, err = f.PrinterForMapping(cmd, false, nil, nil, false)
-		if err != nil {
-			return err
-		}
-	}
-	return printer.PrintObj(info.Object, out)
-}
-
 // extractOutputOptions parses printer specific commandline args and returns
 // printers.OutputsOptions object.
 func extractOutputOptions(cmd *cobra.Command) *printers.OutputOptions {
@@ -215,4 +197,54 @@ func maybeWrapSortingPrinter(cmd *cobra.Command, printer printers.ResourcePrinte
 		}
 	}
 	return printer
+}
+
+// ValidResourceTypeList returns a multi-line string containing the valid resources. May
+// be called before the factory is initialized.
+// TODO: This function implementation should be replaced with a real implementation from the
+//   discovery service.
+func ValidResourceTypeList(f ClientAccessFactory) string {
+	// TODO: Should attempt to use the cached discovery list or fallback to a static list
+	// that is calculated from code compiled into the factory.
+	return templates.LongDesc(`Valid resource types include:
+	
+			* all
+			* certificatesigningrequests (aka 'csr')
+			* clusterrolebindings
+			* clusterroles
+			* componentstatuses (aka 'cs')
+			* configmaps (aka 'cm')
+			* controllerrevisions
+			* cronjobs
+			* customresourcedefinition (aka 'crd')
+			* daemonsets (aka 'ds')
+			* deployments (aka 'deploy')
+			* endpoints (aka 'ep')
+			* events (aka 'ev')
+			* horizontalpodautoscalers (aka 'hpa')
+			* ingresses (aka 'ing')
+			* jobs
+			* limitranges (aka 'limits')
+			* namespaces (aka 'ns')
+			* networkpolicies (aka 'netpol')
+			* nodes (aka 'no')
+			* persistentvolumeclaims (aka 'pvc')
+			* persistentvolumes (aka 'pv')
+			* poddisruptionbudgets (aka 'pdb')
+			* podpreset
+			* pods (aka 'po')
+			* podsecuritypolicies (aka 'psp')
+			* podtemplates
+			* replicasets (aka 'rs')
+			* replicationcontrollers (aka 'rc')
+			* resourcequotas (aka 'quota')
+			* rolebindings
+			* roles
+			* secrets
+			* serviceaccounts (aka 'sa')
+			* services (aka 'svc')
+			* statefulsets (aka 'sts')
+			* storageclasses (aka 'sc')
+	
+	`)
 }
