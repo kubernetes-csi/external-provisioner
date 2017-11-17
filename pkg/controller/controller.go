@@ -40,11 +40,12 @@ import (
 )
 
 type csiProvisioner struct {
-	client    kubernetes.Interface
-	csiClient csi.ControllerClient
-	timeout   time.Duration
-	identity  string
-	config    *rest.Config
+	client     kubernetes.Interface
+	csiClient  csi.ControllerClient
+	driverName string
+	timeout    time.Duration
+	identity   string
+	config     *rest.Config
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -65,6 +66,7 @@ var (
 )
 
 // from external-attacher/pkg/connection
+//TODO consolidate ane librarize
 func logGRPC(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	glog.V(5).Infof("GRPC call: %s", method)
 	glog.V(5).Infof("GRPC request: %+v", req)
@@ -106,18 +108,80 @@ func connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
 	}
 }
 
+func getDriverName(conn *grpc.ClientConn, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	client := csi.NewIdentityClient(conn)
+
+	req := csi.GetPluginInfoRequest{
+		Version: &csiVersion,
+	}
+
+	rsp, err := client.GetPluginInfo(ctx, &req)
+	if err != nil {
+		return "", err
+	}
+	name := rsp.GetName()
+	if name == "" {
+		return "", fmt.Errorf("name is empty")
+	}
+	return name, nil
+}
+
+func supportsControllerCreateVolume(conn *grpc.ClientConn, timeout time.Duration) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	client := csi.NewControllerClient(conn)
+	req := csi.ControllerGetCapabilitiesRequest{
+		Version: &csiVersion,
+	}
+
+	rsp, err := client.ControllerGetCapabilities(ctx, &req)
+	if err != nil {
+		return false, err
+	}
+	caps := rsp.GetCapabilities()
+	for _, cap := range caps {
+		if cap == nil {
+			continue
+		}
+		rpc := cap.GetRpc()
+		if rpc == nil {
+			continue
+		}
+		if rpc.GetType() == csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connectionTimeout time.Duration, identity string) controller.Provisioner {
 	grpcClient, err := connect(csiEndpoint, connectionTimeout)
 	if err != nil || grpcClient == nil {
 		glog.Fatalf("failed to connect to csi endpoint :%v", err)
 	}
+	ok, err := supportsControllerCreateVolume(grpcClient, connectionTimeout)
+	if err != nil {
+		glog.Fatalf("failed to get support info :%v", err)
+	}
+	if !ok {
+		glog.Fatalf("no create/delete volume support detected")
+	}
+	driver, err := getDriverName(grpcClient, connectionTimeout)
+	if err != nil {
+		glog.Fatalf("failed to get driver info :%v", err)
+	}
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
-		client:    client,
-		csiClient: csiClient,
-		timeout:   connectionTimeout,
-		identity:  identity,
+		client:     client,
+		driverName: driver,
+		csiClient:  csiClient,
+		timeout:    connectionTimeout,
+		identity:   identity,
 	}
 	return provisioner
 }
@@ -169,7 +233,13 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 				v1.ResourceName(v1.ResourceStorage): options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
 			},
 			// TODO wait for CSI VolumeSource API
-			PersistentVolumeSource: v1.PersistentVolumeSource{},
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					//TODO use a unique volume handle
+					Driver:       p.driverName,
+					VolumeHandle: rep.VolumeInfo.Id,
+				},
+			},
 		},
 	}
 
