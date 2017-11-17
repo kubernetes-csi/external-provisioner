@@ -129,6 +129,11 @@ const ServiceAnnotationLoadBalancerCertificate = "service.beta.kubernetes.io/aws
 // listeners. Defaults to '*' (all).
 const ServiceAnnotationLoadBalancerSSLPorts = "service.beta.kubernetes.io/aws-load-balancer-ssl-ports"
 
+// ServiceAnnotationLoadBalancerSSLNegotiationPolicy is the annotation used on
+// the service to specify a SSL negotiation settings for the HTTPS/SSL listeners
+// of your load balancer. Defaults to AWS's default
+const ServiceAnnotationLoadBalancerSSLNegotiationPolicy = "service.beta.kubernetes.io/aws-load-balancer-ssl-negotiation-policy"
+
 // ServiceAnnotationLoadBalancerBEProtocol is the annotation used on the service
 // to specify the protocol spoken by the backend (pod) behind a listener.
 // If `http` (default) or `https`, an HTTPS listener that terminates the
@@ -259,6 +264,8 @@ type ELB interface {
 	DeregisterInstancesFromLoadBalancer(*elb.DeregisterInstancesFromLoadBalancerInput) (*elb.DeregisterInstancesFromLoadBalancerOutput, error)
 	CreateLoadBalancerPolicy(*elb.CreateLoadBalancerPolicyInput) (*elb.CreateLoadBalancerPolicyOutput, error)
 	SetLoadBalancerPoliciesForBackendServer(*elb.SetLoadBalancerPoliciesForBackendServerInput) (*elb.SetLoadBalancerPoliciesForBackendServerOutput, error)
+	SetLoadBalancerPoliciesOfListener(input *elb.SetLoadBalancerPoliciesOfListenerInput) (*elb.SetLoadBalancerPoliciesOfListenerOutput, error)
+	DescribeLoadBalancerPolicies(input *elb.DescribeLoadBalancerPoliciesInput) (*elb.DescribeLoadBalancerPoliciesOutput, error)
 
 	DetachLoadBalancerFromSubnets(*elb.DetachLoadBalancerFromSubnetsInput) (*elb.DetachLoadBalancerFromSubnetsOutput, error)
 	AttachLoadBalancerToSubnets(*elb.AttachLoadBalancerToSubnetsInput) (*elb.AttachLoadBalancerToSubnetsOutput, error)
@@ -618,7 +625,7 @@ func newEc2Filter(name string, values ...string) *ec2.Filter {
 
 // AddSSHKeyToAllInstances is currently not implemented.
 func (c *Cloud) AddSSHKeyToAllInstances(user string, keyData []byte) error {
-	return errors.New("unimplemented")
+	return cloudprovider.NotImplemented
 }
 
 // CurrentNodeName returns the name of the current node
@@ -1039,7 +1046,7 @@ func (c *Cloud) NodeAddresses(name types.NodeName) ([]v1.NodeAddress, error) {
 		if err != nil || len(internalDNS) == 0 {
 			//TODO: It would be nice to be able to determine the reason for the failure,
 			// but the AWS client masks all failures with the same error description.
-			glog.V(2).Info("Could not determine private DNS from AWS metadata.")
+			glog.V(4).Info("Could not determine private DNS from AWS metadata.")
 		} else {
 			addresses = append(addresses, v1.NodeAddress{Type: v1.NodeInternalDNS, Address: internalDNS})
 		}
@@ -1048,7 +1055,7 @@ func (c *Cloud) NodeAddresses(name types.NodeName) ([]v1.NodeAddress, error) {
 		if err != nil || len(externalDNS) == 0 {
 			//TODO: It would be nice to be able to determine the reason for the failure,
 			// but the AWS client masks all failures with the same error description.
-			glog.V(2).Info("Could not determine public DNS from AWS metadata.")
+			glog.V(4).Info("Could not determine public DNS from AWS metadata.")
 		} else {
 			addresses = append(addresses, v1.NodeAddress{Type: v1.NodeExternalDNS, Address: externalDNS})
 		}
@@ -1152,7 +1159,33 @@ func (c *Cloud) ExternalID(nodeName types.NodeName) (string, error) {
 // InstanceExistsByProviderID returns true if the instance with the given provider id still exists and is running.
 // If false is returned with no error, the instance will be immediately deleted by the cloud controller manager.
 func (c *Cloud) InstanceExistsByProviderID(providerID string) (bool, error) {
-	return false, errors.New("unimplemented")
+	instanceID, err := kubernetesInstanceID(providerID).mapToAWSInstanceID()
+	if err != nil {
+		return false, err
+	}
+
+	request := &ec2.DescribeInstancesInput{
+		InstanceIds: []*string{instanceID.awsString()},
+	}
+
+	instances, err := c.ec2.DescribeInstances(request)
+	if err != nil {
+		return false, err
+	}
+	if len(instances) == 0 {
+		return false, nil
+	}
+	if len(instances) > 1 {
+		return false, fmt.Errorf("multiple instances found for instance: %s", instanceID)
+	}
+
+	state := instances[0].State.Name
+	if *state != "running" {
+		glog.Warningf("the instance %s is not running", instanceID)
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // InstanceID returns the cloud provider ID of the node with the specified nodeName.
@@ -1690,6 +1723,15 @@ func (c *Cloud) AttachDisk(diskName KubernetesVolumeID, nodeName types.NodeName,
 	ec2Device := "/dev/xvd" + string(mountDevice)
 
 	if !alreadyAttached {
+		available, err := c.checkIfAvailable(disk, "attaching", awsInstance.awsID)
+		if err != nil {
+			glog.Error(err)
+		}
+
+		if !available {
+			attachEnded = true
+			return "", err
+		}
 		request := &ec2.AttachVolumeInput{
 			Device:     aws.String(ec2Device),
 			InstanceId: aws.String(awsInstance.awsID),
@@ -1922,7 +1964,57 @@ func (c *Cloud) DeleteDisk(volumeName KubernetesVolumeID) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	available, err := c.checkIfAvailable(awsDisk, "deleting", "")
+	if err != nil {
+		glog.Error(err)
+	}
+
+	if !available {
+		return false, err
+	}
+
 	return awsDisk.deleteVolume()
+}
+
+func (c *Cloud) checkIfAvailable(disk *awsDisk, opName string, instance string) (bool, error) {
+	info, err := disk.describeVolume()
+
+	if err != nil {
+		glog.Errorf("Error describing volume %q: %q", disk.awsID, err)
+		// if for some reason we can not describe volume we will return error
+		return false, err
+	}
+
+	volumeState := aws.StringValue(info.State)
+	opError := fmt.Sprintf("Error %s EBS volume %q", opName, disk.awsID)
+	if len(instance) != 0 {
+		opError = fmt.Sprintf("%q to instance %q", opError, instance)
+	}
+
+	// Only available volumes can be attached or deleted
+	if volumeState != "available" {
+		// Volume is attached somewhere else and we can not attach it here
+		if len(info.Attachments) > 0 {
+			attachment := info.Attachments[0]
+			instanceId := aws.StringValue(attachment.InstanceId)
+			attachedInstance, ierr := c.getInstanceByID(instanceId)
+			attachErr := fmt.Sprintf("%s since volume is currently attached to %q", opError, instanceId)
+			if ierr != nil {
+				glog.Error(attachErr)
+				return false, errors.New(attachErr)
+			}
+			devicePath := aws.StringValue(attachment.Device)
+			nodeName := mapInstanceToNodeName(attachedInstance)
+
+			danglingErr := volumeutil.NewDanglingError(attachErr, nodeName, devicePath)
+			return false, danglingErr
+		}
+
+		attachErr := fmt.Errorf("%s since volume is in %q state", opError, volumeState)
+		return false, attachErr
+	}
+
+	return true, nil
 }
 
 func (c *Cloud) GetLabelsForVolume(pv *v1.PersistentVolume) (map[string]string, error) {
@@ -2782,8 +2874,8 @@ func buildListener(port v1.ServicePort, annotations map[string]string, sslPorts 
 // EnsureLoadBalancer implements LoadBalancer.EnsureLoadBalancer
 func (c *Cloud) EnsureLoadBalancer(clusterName string, apiService *v1.Service, nodes []*v1.Node) (*v1.LoadBalancerStatus, error) {
 	annotations := apiService.Annotations
-	glog.V(2).Infof("EnsureLoadBalancer(%v, %v, %v, %v, %v, %v, %v, %v)",
-		clusterName, apiService.Namespace, apiService.Name, c.region, apiService.Spec.LoadBalancerIP, apiService.Spec.Ports, nodes, annotations)
+	glog.V(2).Infof("EnsureLoadBalancer(%v, %v, %v, %v, %v, %v, %v)",
+		clusterName, apiService.Namespace, apiService.Name, c.region, apiService.Spec.LoadBalancerIP, apiService.Spec.Ports, annotations)
 
 	if apiService.Spec.SessionAffinity != v1.ServiceAffinityNone {
 		// ELB supports sticky sessions, but only when configured for HTTP/HTTPS
@@ -3014,6 +3106,20 @@ func (c *Cloud) EnsureLoadBalancer(clusterName string, apiService *v1.Service, n
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if sslPolicyName, ok := annotations[ServiceAnnotationLoadBalancerSSLNegotiationPolicy]; ok {
+		err := c.ensureSSLNegotiationPolicy(loadBalancer, sslPolicyName)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, port := range c.getLoadBalancerTLSPorts(loadBalancer) {
+			err := c.setSSLNegotiationPolicy(loadBalancerName, sslPolicyName, port)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if path, healthCheckNodePort := service.GetServiceHealthCheckPathPort(apiService); path != "" {
@@ -3405,6 +3511,19 @@ func (c *Cloud) UpdateLoadBalancer(clusterName string, service *v1.Service, node
 
 	if lb == nil {
 		return fmt.Errorf("Load balancer not found")
+	}
+
+	if sslPolicyName, ok := service.Annotations[ServiceAnnotationLoadBalancerSSLNegotiationPolicy]; ok {
+		err := c.ensureSSLNegotiationPolicy(lb, sslPolicyName)
+		if err != nil {
+			return err
+		}
+		for _, port := range c.getLoadBalancerTLSPorts(lb) {
+			err := c.setSSLNegotiationPolicy(loadBalancerName, sslPolicyName, port)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	err = c.ensureLoadBalancerInstances(aws.StringValue(lb.LoadBalancerName), lb.Instances, instances)

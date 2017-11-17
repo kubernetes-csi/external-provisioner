@@ -33,8 +33,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/kubernetes/pkg/api"
-	apivalidation "k8s.io/kubernetes/pkg/api/validation"
+	api "k8s.io/kubernetes/pkg/apis/core"
+	apivalidation "k8s.io/kubernetes/pkg/apis/core/validation"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/security/apparmor"
 	"k8s.io/kubernetes/pkg/security/podsecuritypolicy/seccomp"
@@ -325,9 +325,7 @@ func ValidateDeploymentStatus(status *extensions.DeploymentStatus, fldPath *fiel
 	if status.AvailableReplicas > status.Replicas {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("availableReplicas"), status.AvailableReplicas, msg))
 	}
-	// TODO: ReadyReplicas is introduced in 1.6 and this check breaks the Deployment controller when pre-1.6 clusters get upgraded.
-	// 		 Remove the comparison to zero once we stop supporting upgrades from 1.5.
-	if status.ReadyReplicas > 0 && status.AvailableReplicas > status.ReadyReplicas {
+	if status.AvailableReplicas > status.ReadyReplicas {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("availableReplicas"), status.AvailableReplicas, "cannot be greater than readyReplicas"))
 	}
 	return allErrs
@@ -353,7 +351,7 @@ func ValidateDeploymentStatusUpdate(update, old *extensions.Deployment) field.Er
 	return allErrs
 }
 
-// TODO: Move in "k8s.io/kubernetes/pkg/api/validation"
+// TODO: Move in "k8s.io/kubernetes/pkg/apis/core/validation"
 func isDecremented(update, old *int32) bool {
 	if update == nil && old != nil {
 		return true
@@ -519,17 +517,6 @@ func validateIngressBackend(backend *extensions.IngressBackend, fldPath *field.P
 		}
 	}
 	allErrs = append(allErrs, apivalidation.ValidatePortNumOrName(backend.ServicePort, fldPath.Child("servicePort"))...)
-	return allErrs
-}
-
-func ValidateScale(scale *extensions.Scale) field.ErrorList {
-	allErrs := field.ErrorList{}
-	allErrs = append(allErrs, apivalidation.ValidateObjectMeta(&scale.ObjectMeta, true, apivalidation.NameIsDNSSubdomain, field.NewPath("metadata"))...)
-
-	if scale.Spec.Replicas < 0 {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec", "replicas"), scale.Spec.Replicas, "must be greater than or equal to 0"))
-	}
-
 	return allErrs
 }
 

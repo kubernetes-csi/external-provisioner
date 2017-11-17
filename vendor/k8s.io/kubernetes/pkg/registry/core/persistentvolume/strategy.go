@@ -27,8 +27,9 @@ import (
 	"k8s.io/apiserver/pkg/registry/generic"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/validation"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/apis/core/validation"
 	volumevalidation "k8s.io/kubernetes/pkg/volume/validation"
 )
 
@@ -40,7 +41,7 @@ type persistentvolumeStrategy struct {
 
 // Strategy is the default logic that applies when creating and updating PersistentVolume
 // objects via the REST API.
-var Strategy = persistentvolumeStrategy{api.Scheme, names.SimpleNameGenerator}
+var Strategy = persistentvolumeStrategy{legacyscheme.Scheme, names.SimpleNameGenerator}
 
 func (persistentvolumeStrategy) NamespaceScoped() bool {
 	return false

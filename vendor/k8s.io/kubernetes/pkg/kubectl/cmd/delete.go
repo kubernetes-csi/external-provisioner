@@ -175,18 +175,13 @@ func (o *DeleteOptions) Complete(f cmdutil.Factory, out, errOut io.Writer, args 
 		return err
 	}
 
-	builder, err := f.NewUnstructuredBuilder(true)
-	if err != nil {
-		return err
-	}
-
 	o.Mapper = mapper
 	includeUninitialized := cmdutil.ShouldIncludeUninitialized(cmd, false)
-	r := builder.
+	r := f.NewUnstructuredBuilder().
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
 		FilenameParam(enforceNamespace, &o.FilenameOptions).
-		SelectorParam(o.Selector).
+		LabelSelectorParam(o.Selector).
 		IncludeUninitialized(includeUninitialized).
 		SelectAllParam(o.DeleteAll).
 		ResourceTypeOrNameArgs(false, args...).RequireObject(false).
