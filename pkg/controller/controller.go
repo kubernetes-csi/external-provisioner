@@ -18,15 +18,18 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/pborman/uuid"
 
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -56,6 +59,9 @@ var (
 	accessMode = &csi.VolumeCapability_AccessMode{
 		Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 	}
+	// Each provisioner have a identify string to distinguish with others. This
+	// identify string will be added in PV annoations under this key.
+	provisionerIDAnn = "csiProvisionerIdentity"
 )
 
 // from external-attacher/pkg/connection
@@ -117,9 +123,16 @@ func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connecti
 }
 
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
-	glog.Infof("Provisioner %s Provision(..) called..")
+	if options.PVC.Spec.Selector != nil {
+		return nil, fmt.Errorf("claim Selector is not supported")
+	}
+	// create random share name
+	share := fmt.Sprintf("kubernetes-dynamic-pvc-%s", uuid.NewUUID())
+	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+	volSizeBytes := capacity.Value()
+
 	req := csi.CreateVolumeRequest{
-		Name:    "mypv",
+		Name:    share,
 		Version: &csiVersion,
 		VolumeCapabilities: []*csi.VolumeCapability{
 			&csi.VolumeCapability{
@@ -127,22 +140,46 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			},
 		},
 		CapacityRange: &csi.CapacityRange{
-			RequiredBytes: 100,
-			LimitBytes:    100,
+			RequiredBytes: uint64(volSizeBytes),
+			LimitBytes:    uint64(volSizeBytes),
 		},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
-	_, err := p.csiClient.CreateVolume(ctx, &req)
+	rep, err := p.csiClient.CreateVolume(ctx, &req)
 	if err != nil {
 		return nil, err
 	}
+	if rep.VolumeInfo != nil {
+		glog.V(3).Infof("create volume rep: %+v", *rep.VolumeInfo)
+	}
 
-	return nil, nil
+	pv := &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: share,
+			Annotations: map[string]string{
+				provisionerIDAnn: p.identity,
+			},
+		},
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
+			AccessModes:                   options.PVC.Spec.AccessModes,
+			Capacity: v1.ResourceList{
+				v1.ResourceName(v1.ResourceStorage): options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
+			},
+			// TODO wait for CSI VolumeSource API
+			PersistentVolumeSource: v1.PersistentVolumeSource{},
+		},
+	}
+
+	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
+
+	return pv, nil
 }
 
 func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	glog.Infof("Provisioner %s Delete(..) called..")
+	// TODO wait for CSI VolumeSource API to get volume id
 	return nil
 }
