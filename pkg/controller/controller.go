@@ -60,8 +60,8 @@ var (
 	accessMode = &csi.VolumeCapability_AccessMode{
 		Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 	}
-	accessType = &csi.VolumeCapability_Block{
-		Block: &csi.VolumeCapability_BlockVolume{},
+	accessType = &csi.VolumeCapability_Mount{
+		Mount: &csi.VolumeCapability_MountVolume{},
 	}
 	// Each provisioner have a identify string to distinguish with others. This
 	// identify string will be added in PV annoations under this key.
