@@ -36,8 +36,13 @@ _output/csi-provisioner -kubeconfig /var/run/kubernetes/admin.kubeconfig -alsolo
 ```bash
 kubectl create -f examples/sc.yaml
 kubectl create -f example/pvc1.yaml
+kubectl describe pv
 ```
 
+### Delete PVC
+```bash
+kubectl delete -f example/pvc1.yaml
+```
 
 
 
