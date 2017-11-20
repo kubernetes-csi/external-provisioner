@@ -60,6 +60,9 @@ var (
 	accessMode = &csi.VolumeCapability_AccessMode{
 		Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 	}
+	accessType = &csi.VolumeCapability_Block{
+		Block: &csi.VolumeCapability_BlockVolume{},
+	}
 	// Each provisioner have a identify string to distinguish with others. This
 	// identify string will be added in PV annoations under this key.
 	provisionerIDAnn = "csiProvisionerIdentity"
@@ -200,6 +203,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		Version: &csiVersion,
 		VolumeCapabilities: []*csi.VolumeCapability{
 			&csi.VolumeCapability{
+				AccessType: accessType,
 				AccessMode: accessMode,
 			},
 		},
