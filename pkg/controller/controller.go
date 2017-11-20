@@ -239,9 +239,8 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
-					//TODO use a unique volume handle
 					Driver:       p.driverName,
-					VolumeHandle: rep.VolumeInfo.Id,
+					VolumeHandle: p.volumeIdToHandle(rep.VolumeInfo.Id),
 				},
 			},
 		},
@@ -253,7 +252,33 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 }
 
 func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
-	glog.Infof("Provisioner %s Delete(..) called..")
-	// TODO wait for CSI VolumeSource API to get volume id
-	return nil
+	if volume == nil || volume.Spec.CSI == nil {
+		return fmt.Errorf("invalid CSI PV")
+	}
+	ann, ok := volume.Annotations[provisionerIDAnn]
+	if !ok {
+		return fmt.Errorf("identity annotation not found on PV")
+	}
+	if ann != p.identity {
+		return &controller.IgnoredError{Reason: "identity annotation on PV does not match ours"}
+	}
+	volumeId := p.volumeHandleToId(volume.Spec.CSI.VolumeHandle)
+	req := csi.DeleteVolumeRequest{
+		Version:  &csiVersion,
+		VolumeId: volumeId,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
+	defer cancel()
+
+	_, err := p.csiClient.DeleteVolume(ctx, &req)
+	return err
+}
+
+//TODO use a unique volume handle from and to Id
+func (p *csiProvisioner) volumeIdToHandle(id string) string {
+	return id
+}
+
+func (p *csiProvisioner) volumeHandleToId(handle string) string {
+	return handle
 }
