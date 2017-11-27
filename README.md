@@ -17,12 +17,12 @@ Run a local kubernetes cluster built from latest master code
 
 ## Run Storage Provider
 
-### Use Flex drivers
+### Use HostPath drivers
 
 Go to drivers and run:
 
 ```bash
-_output/flexadapter --drivername mydriver --driverpath ./flexadapter/examples/simple-nfs-flexdriver/nfs --endpoint unix://tmp/csi.sock --nodeid foobar
+_output/hostpath --drivername mydriver  --endpoint unix://tmp/csi.sock --nodeid foobar -v=5
 ```
 
 ### Start external provisioner
@@ -31,12 +31,12 @@ _output/flexadapter --drivername mydriver --driverpath ./flexadapter/examples/si
 _output/csi-provisioner -kubeconfig /var/run/kubernetes/admin.kubeconfig -alsologtostderr -provisioner csi-flex
 ```
 
-### Create Storage class and PVC
+### Create Storage class, PVC, and Pod
 
 ```bash
 kubectl create -f examples/sc.yaml
-kubectl create -f example/pvc1.yaml
-kubectl describe pv
+kubectl create -f example/pvc2.yaml
+kubectl create -f example/pod.yaml
 ```
 
 ### Delete PVC
