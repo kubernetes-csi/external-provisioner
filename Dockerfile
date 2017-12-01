@@ -1,9 +1,8 @@
-# Copyright 2015 bradley childs, All rights reserved.
+# Copyright 2017 Kubernetes, All rights reserved.
 #
 
 FROM centos:7
-MAINTAINER bradley childs, bchilds@gmail.com
-# AWS CLI build deps
+MAINTAINER sig-storage, bchilds@redhat.com
 RUN yum update -y
 
 # Provisioner build deps

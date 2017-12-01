@@ -42,7 +42,7 @@ deps:
 .PHONY: deps
 
 quick-container:
-	docker build -t kubernetes-csi:latest .
+	docker build -t kube-csi-provision:latest .
 .PHONY: quick-container
 
 provisioner:
