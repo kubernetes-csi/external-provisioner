@@ -16,5 +16,5 @@ COPY ./examples/flex-debug.sh /opt/csi-provisioner/
 COPY ./_output/csi-provisioner /opt/csi-provisioner/
 
 
-ENTRYPOINT ["/opt/csi-flex/flex-provision"]
+ENTRYPOINT ["/opt/csi-provisioner/csi-provisioner"]
 
