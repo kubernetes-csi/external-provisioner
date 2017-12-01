@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+IMAGE = k8scsi/csi-provision
+
 VERSION :=
 TAG := $(shell git describe --abbrev=0 --tags HEAD 2>/dev/null)
 COMMIT := $(shell git rev-parse HEAD)
@@ -42,8 +44,12 @@ deps:
 .PHONY: deps
 
 quick-container:
-	docker build -t kube-csi-provision:latest .
+	docker build -t $(IMAGE):$(VERSION) .
 .PHONY: quick-container
+
+push-container:
+	docker push $(IMAGE):$(VERSION)
+.PHONY: push-container
 
 provisioner:
 	mkdir -p _output
