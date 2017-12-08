@@ -198,9 +198,11 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 
+	// Create a CSI CreateVolumeRequest
 	req := csi.CreateVolumeRequest{
-		Name:    share,
-		Version: &csiVersion,
+		Name:       share,
+		Version:    &csiVersion,
+		Parameters: options.Parameters,
 		VolumeCapabilities: []*csi.VolumeCapability{
 			&csi.VolumeCapability{
 				AccessType: accessType,
