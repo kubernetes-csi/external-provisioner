@@ -3,7 +3,6 @@
 
 FROM centos:7
 MAINTAINER sig-storage, bchilds@redhat.com
-RUN yum update -y
 
 # Provisioner build deps
 
