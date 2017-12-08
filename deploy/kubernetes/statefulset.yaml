@@ -19,7 +19,7 @@ metadata:
   name: external-provisioner-runner
 rules:
   - apiGroups: [""]
-    resources: ["persistentvolumes"]
+    resources: ["persistentvolumesclaims"]
     verbs: ["get", "list", "watch", "update"]
     
 ---
