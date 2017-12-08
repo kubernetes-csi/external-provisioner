@@ -35,10 +35,10 @@ import (
 )
 
 var (
-	provisioner       = flag.String("provisioner", "k8s.io/flex", "Name of the provisioner. The provisioner will only provision volumes for claims that request a StorageClass with a provisioner field set equal to this name.")
+	provisioner       = flag.String("provisioner", "", "Name of the provisioner. The provisioner will only provision volumes for claims that request a StorageClass with a provisioner field set equal to this name.")
 	master            = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
-	kubeconfig        = flag.String("kubeconfig", "/var/run/kubernetes/admin.kubeconfig", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
-	csiEndpoint       = flag.String("csi-address", "/tmp/csi.sock", "The gRPC endpoint for Target CSI Volume")
+	kubeconfig        = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
+	csiEndpoint       = flag.String("csi-address", "", "The gRPC endpoint for Target CSI Volume")
 	connectionTimeout = flag.Duration("connection-timeout", 10*time.Second, "Timeout for waiting for CSI driver socket.")
 
 	provisionController *controller.ProvisionController
