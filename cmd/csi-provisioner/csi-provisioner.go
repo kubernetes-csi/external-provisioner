@@ -73,9 +73,6 @@ func init() {
 	if err != nil {
 		glog.Fatalf("Failed to create client: %v", err)
 	}
-	if err != nil {
-		glog.Fatalf("Failed to create client: %v", err)
-	}
 
 	// The controller needs to know what the server version is because out-of-tree
 	// provisioners aren't officially supported until 1.5
