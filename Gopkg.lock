@@ -17,7 +17,7 @@
   branch = "master"
   name = "github.com/container-storage-interface/spec"
   packages = ["lib/go/csi"]
-  revision = "28cea9f679367fee3d01bd25ae54933864cb8017"
+  revision = "9e88e4bfabeca1b8e4810555815f112159292ada"
 
 [[projects]]
   name = "github.com/davecgh/go-spew"
