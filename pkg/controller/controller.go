@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/json"
 	"net"
 	"strings"
 	"time"
@@ -37,6 +38,10 @@ import (
 	"google.golang.org/grpc/connectivity"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+)
+
+const (
+	volumeAttributesAnnotation = "csi.volume.kubernetes.io/volume-attributes"
 )
 
 type csiProvisioner struct {
@@ -204,7 +209,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		Version:    &csiVersion,
 		Parameters: options.Parameters,
 		VolumeCapabilities: []*csi.VolumeCapability{
-			&csi.VolumeCapability{
+			{
 				AccessType: accessType,
 				AccessMode: accessMode,
 			},
@@ -225,12 +230,17 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		glog.V(3).Infof("create volume rep: %+v", *rep.VolumeInfo)
 	}
 
+	annotations := map[string]string{provisionerIDAnn: p.identity}
+	attributesString, err := json.Marshal(rep.VolumeInfo.Attributes)
+	if err != nil {
+		glog.V(2).Infof("fail parsing volume attributes: %+v", rep.VolumeInfo.Attributes)
+	} else {
+		annotations[volumeAttributesAnnotation] = string(attributesString)
+	}
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: share,
-			Annotations: map[string]string{
-				provisionerIDAnn: p.identity,
-			},
+			Name:        share,
+			Annotations: annotations,
 		},
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
