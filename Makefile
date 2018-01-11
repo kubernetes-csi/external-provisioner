@@ -31,8 +31,7 @@ container: build quick-container
 .PHONY: container
 
 clean:
-	rm -f external-provisioner
-	rm -rf _output
+	rm -rf bin
 .PHONY: clean
 
 format:
@@ -52,8 +51,9 @@ push-container:
 .PHONY: push-container
 
 provisioner:
-	mkdir -p _output
-	go build -i -o _output/csi-provisioner ./cmd/csi-provisioner/
+	mkdir -p bin
+	go install github.com/kubernetes-csi/external-provisioner/cmd/csi-provisioner
+	cp ${GOPATH}/bin/csi-provisioner bin/csi-provisioner
 .PHONY: provisioner
 
 all build: provisioner
