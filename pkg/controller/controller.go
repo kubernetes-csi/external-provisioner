@@ -29,19 +29,20 @@ import (
 
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
-
 	"github.com/container-storage-interface/spec/lib/go/csi"
 )
 
 const (
-	volumeAttributesAnnotation = "csi.volume.kubernetes.io/volume-attributes"
+	volumeAttributesAnnotation        = "csi.volume.kubernetes.io/volume-attributes"
+	userCredentialNameAnnotation      = "csi.volume.kubernetes.io/user-credential-name"
+	userCredentialNamespaceAnnotation = "csi.volume.kubernetes.io/user-credential-namespace"
 )
 
 type csiProvisioner struct {
@@ -169,7 +170,7 @@ func supportsControllerCreateVolume(conn *grpc.ClientConn, timeout time.Duration
 func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connectionTimeout time.Duration, identity string) controller.Provisioner {
 	grpcClient, err := connect(csiEndpoint, connectionTimeout)
 	if err != nil || grpcClient == nil {
-		glog.Fatalf("failed to connect to csi endpoint :%v", err)
+		glog.Fatalf("failed to connect to csi endpoint %s :%v", csiEndpoint, err)
 	}
 	ok, err := supportsControllerCreateVolume(grpcClient, connectionTimeout)
 	if err != nil {
@@ -203,11 +204,37 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 
+	userCreds := make(map[string]string)
+	// if the storage class has user credentials, get them
+	className := options.PVC.Spec.StorageClassName
+	credName, credNamespace := "", ""
+	if className != nil && len(*className) > 0 {
+		class, err := p.client.StorageV1().StorageClasses().Get(*className, metav1.GetOptions{})
+		if err == nil {
+			var found bool
+			if credName, found = class.Annotations[userCredentialNameAnnotation]; found {
+				credNamespace = ""
+				if ns, found := class.Annotations[userCredentialNamespaceAnnotation]; found {
+					credNamespace = ns
+				}
+				secret, err := p.client.CoreV1().Secrets(credNamespace).Get(credName, metav1.GetOptions{})
+				if err != nil {
+					return nil, fmt.Errorf("cannot get secret from class %q, secret %s/%s, err %v", className, credNamespace, credName, err)
+				}
+				for name, data := range secret.Data {
+					userCreds[name] = string(data)
+				}
+
+			}
+		}
+	}
+
 	// Create a CSI CreateVolumeRequest
 	req := csi.CreateVolumeRequest{
-		Name:       share,
-		Version:    &csiVersion,
-		Parameters: options.Parameters,
+		Name:            share,
+		Version:         &csiVersion,
+		Parameters:      options.Parameters,
+		UserCredentials: userCreds,
 		VolumeCapabilities: []*csi.VolumeCapability{
 			{
 				AccessType: accessType,
@@ -237,6 +264,14 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	} else {
 		annotations[volumeAttributesAnnotation] = string(attributesString)
 	}
+	glog.V(4).Infof("add cred to PV annotation: cred name %s namespace %s", credName, credNamespace)
+	if len(credName) > 0 {
+		annotations[userCredentialNameAnnotation] = credName
+	}
+	if len(credNamespace) > 0 {
+		annotations[userCredentialNamespaceAnnotation] = credNamespace
+	}
+
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        share,
@@ -274,10 +309,27 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	if ann != p.identity {
 		return &controller.IgnoredError{Reason: "identity annotation on PV does not match ours"}
 	}
+	userCreds := make(map[string]string)
+	// if the PV has user credentials annotations, get them
+	if credName, found := volume.Annotations[userCredentialNameAnnotation]; found {
+		credNamespace := ""
+		if ns, found := volume.Annotations[userCredentialNamespaceAnnotation]; found {
+			credNamespace = ns
+		}
+		secret, err := p.client.CoreV1().Secrets(credNamespace).Get(credName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("cannot get secret %s/%s, err %v", credNamespace, credName, err)
+		}
+		for name, data := range secret.Data {
+			userCreds[name] = string(data)
+		}
+	}
+
 	volumeId := p.volumeHandleToId(volume.Spec.CSI.VolumeHandle)
 	req := csi.DeleteVolumeRequest{
-		Version:  &csiVersion,
-		VolumeId: volumeId,
+		Version:         &csiVersion,
+		VolumeId:        volumeId,
+		UserCredentials: userCreds,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
