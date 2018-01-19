@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	jsonv2 "encoding/json"
 	"fmt"
 	"k8s.io/apimachinery/pkg/util/json"
 	"net"
@@ -29,13 +30,12 @@ import (
 
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 )
@@ -194,6 +194,35 @@ func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connecti
 	return provisioner
 }
 
+func printIndentedJson(data interface{}) string {
+	var indentedJSON []byte
+
+	indentedJSON, err := jsonv2.MarshalIndent(data, "", "\t")
+	if err != nil {
+		return fmt.Sprintf("JSON parse error: %v", err)
+	}
+	return string(indentedJSON)
+}
+
+func parseStorageClassSecret(secretName string, namespace string, c kubernetes.Interface) (string, error) {
+	if c == nil {
+		return "", fmt.Errorf("Cannot get kube client")
+	}
+	secrets, err := c.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	secret := ""
+	for k, v := range secrets.Data {
+		if k == secretName {
+			return string(v), nil
+		}
+		secret = string(v)
+	}
+
+	return secret, nil
+}
+
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
 	if options.PVC.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim Selector is not supported")
@@ -202,6 +231,28 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	share := fmt.Sprintf("kubernetes-dynamic-pvc-%s", uuid.NewUUID())
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
+
+	userCredentials := map[string]string{}
+	storageClassName := options.PVC.Spec.StorageClassName
+	fmt.Printf("><SB> provisioner was called for storage class: %s\n", *storageClassName)
+	storageClass, err := p.client.StorageV1().StorageClasses().Get(*storageClassName, metav1.GetOptions{})
+	if err != nil {
+		glog.Warningf("failed to retrieve information about the storage class: %s with error: %v", storageClassName, err)
+	} else {
+		if storageClass.SecretRefs != nil {
+			// Now we can extract user names and corresponding keys
+			for user, secret := range storageClass.SecretRefs {
+				key, err := parseStorageClassSecret(secret.Name, secret.Namespace, p.client)
+				if err != nil {
+					glog.Warningf("failed to retrieve secret: %s/%s with error: %v", secret.Name, secret.Namespace, err)
+					continue
+				}
+				userCredentials[user] = key
+				fmt.Printf("><SB> Extracted user name: %s secret name: %s secret namespace: %s key: %s \n", user, secret.Name, secret.Namespace, key)
+			}
+		}
+	}
+	fmt.Printf("><SB> Storage class content: %s\n", printIndentedJson(storageClass))
 
 	// Create a CSI CreateVolumeRequest
 	req := csi.CreateVolumeRequest{
@@ -218,6 +269,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			RequiredBytes: uint64(volSizeBytes),
 			LimitBytes:    uint64(volSizeBytes),
 		},
+		UserCredentials: userCredentials,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
