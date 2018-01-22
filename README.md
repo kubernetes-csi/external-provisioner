@@ -22,7 +22,7 @@ Run a local kubernetes cluster built from latest master code
 Go to drivers and run:
 
 ```bash
-_output/hostpath --drivername mydriver  --endpoint unix://tmp/csi.sock --nodeid foobar -v=5
+_output/hostpathplugin --drivername mydriver  --endpoint unix://tmp/csi.sock --nodeid foobar -v=5
 ```
 
 ### Start external provisioner
