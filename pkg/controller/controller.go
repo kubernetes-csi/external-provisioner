@@ -220,6 +220,13 @@ func getKeyFromSecret(secretName string, secretNamespace string, action string, 
 			return string(v), nil
 		}
 	}
+	// For backward compatibility need to check for a default key
+	for k, v := range secrets.Data {
+		if k == "default" {
+			return string(v), nil
+		}
+	}
+
 	return "", fmt.Errorf("failed to find action: %s in secret: %s/%s ", action, secretName, secretNamespace)
 }
 
