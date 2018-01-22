@@ -204,23 +204,23 @@ func printIndentedJson(data interface{}) string {
 	return string(indentedJSON)
 }
 
-func parseStorageClassSecret(secretName string, namespace string, c kubernetes.Interface) (string, error) {
-	if c == nil {
+// getKeyFromSecret returns a key for a specific action passed as a parameter,
+// if specified action is not found, then error is returned.
+func getKeyFromSecret(secretName string, secretNamespace string, action string, client kubernetes.Interface) (string, error) {
+	if client == nil {
 		return "", fmt.Errorf("Cannot get kube client")
 	}
-	secrets, err := c.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	secrets, err := client.CoreV1().Secrets(secretNamespace).Get(secretName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
-	secret := ""
 	for k, v := range secrets.Data {
-		if k == secretName {
+		// key must match value in action variable
+		if k == action {
 			return string(v), nil
 		}
-		secret = string(v)
 	}
-
-	return secret, nil
+	return "", fmt.Errorf("failed to find action: %s in secret: %s/%s ", action, secretName, secretNamespace)
 }
 
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
@@ -241,8 +241,10 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	} else {
 		if storageClass.SecretRefs != nil {
 			// Now we can extract user names and corresponding keys
+			// When PVC spec will carry UserID field, then the following loop will not be needed
+			// as PVC's UserID will be used as a key to get corresponding Secret object
 			for user, secret := range storageClass.SecretRefs {
-				key, err := parseStorageClassSecret(secret.Name, secret.Namespace, p.client)
+				key, err := getKeyFromSecret(secret.Name, secret.Namespace, "create", p.client)
 				if err != nil {
 					glog.Warningf("failed to retrieve secret: %s/%s with error: %v", secret.Name, secret.Namespace, err)
 					continue
@@ -252,7 +254,6 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			}
 		}
 	}
-	fmt.Printf("><SB> Storage class content: %s\n", printIndentedJson(storageClass))
 
 	// Create a CSI CreateVolumeRequest
 	req := csi.CreateVolumeRequest{
