@@ -12,7 +12,6 @@ go_library(
         "actual_state_of_world.go",
         "desired_state_of_world.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/controller/volume/attachdetach/cache",
     deps = [
         "//pkg/volume:go_default_library",
         "//pkg/volume/util/operationexecutor:go_default_library",
@@ -30,7 +29,6 @@ go_test(
         "actual_state_of_world_test.go",
         "desired_state_of_world_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/controller/volume/attachdetach/cache",
     library = ":go_default_library",
     deps = [
         "//pkg/controller/volume/attachdetach/testing:go_default_library",

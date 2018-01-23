@@ -19,8 +19,6 @@ limitations under the License.
 package dockershim
 
 import (
-	"fmt"
-
 	"github.com/blang/semver"
 	dockertypes "github.com/docker/docker/api/types"
 	"github.com/golang/glog"
@@ -48,8 +46,4 @@ func (ds *dockerService) updateCreateConfig(
 func (ds *dockerService) determinePodIPBySandboxID(uid string) string {
 	glog.Warningf("determinePodIPBySandboxID is unsupported in this build")
 	return ""
-}
-
-func getNetworkNamespace(c *dockertypes.ContainerJSON) (string, error) {
-	return "", fmt.Errorf("unsupported platform")
 }

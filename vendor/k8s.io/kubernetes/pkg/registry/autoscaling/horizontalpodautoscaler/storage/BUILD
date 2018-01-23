@@ -9,12 +9,10 @@ load(
 go_test(
     name = "go_default_test",
     srcs = ["storage_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/registry/autoscaling/horizontalpodautoscaler/storage",
     library = ":go_default_library",
     deps = [
-        "//pkg/api/legacyscheme:go_default_library",
+        "//pkg/api:go_default_library",
         "//pkg/apis/autoscaling:go_default_library",
-        "//pkg/apis/core:go_default_library",
         "//pkg/registry/registrytest:go_default_library",
         "//vendor/k8s.io/api/autoscaling/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
@@ -22,7 +20,6 @@ go_test(
         "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/registry/generic:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/registry/generic/testing:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/storage/etcd/testing:go_default_library",
     ],
 )
@@ -30,8 +27,8 @@ go_test(
 go_library(
     name = "go_default_library",
     srcs = ["storage.go"],
-    importpath = "k8s.io/kubernetes/pkg/registry/autoscaling/horizontalpodautoscaler/storage",
     deps = [
+        "//pkg/api:go_default_library",
         "//pkg/apis/autoscaling:go_default_library",
         "//pkg/registry/autoscaling/horizontalpodautoscaler:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",

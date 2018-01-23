@@ -17,6 +17,7 @@ limitations under the License.
 package fake
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
@@ -190,7 +191,7 @@ func (f *FakeCloud) EnsureLoadBalancerDeleted(clusterName string, service *v1.Se
 }
 
 func (f *FakeCloud) AddSSHKeyToAllInstances(user string, keyData []byte) error {
-	return cloudprovider.NotImplemented
+	return errors.New("unimplemented")
 }
 
 // Implementation of Instances.CurrentNodeName

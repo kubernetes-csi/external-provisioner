@@ -12,7 +12,6 @@ go_library(
         "cephfs.go",
         "doc.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/volume/cephfs",
     deps = [
         "//pkg/util/mount:go_default_library",
         "//pkg/util/strings:go_default_library",
@@ -28,7 +27,6 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = ["cephfs_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/volume/cephfs",
     library = ":go_default_library",
     deps = [
         "//pkg/util/mount:go_default_library",

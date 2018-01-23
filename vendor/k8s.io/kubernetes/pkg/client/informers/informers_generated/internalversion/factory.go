@@ -19,7 +19,6 @@ limitations under the License.
 package internalversion
 
 import (
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
@@ -44,11 +43,9 @@ import (
 )
 
 type sharedInformerFactory struct {
-	client           internalclientset.Interface
-	namespace        string
-	tweakListOptions internalinterfaces.TweakListOptionsFunc
-	lock             sync.Mutex
-	defaultResync    time.Duration
+	client        internalclientset.Interface
+	lock          sync.Mutex
+	defaultResync time.Duration
 
 	informers map[reflect.Type]cache.SharedIndexInformer
 	// startedInformers is used for tracking which informers have been started.
@@ -58,17 +55,8 @@ type sharedInformerFactory struct {
 
 // NewSharedInformerFactory constructs a new instance of sharedInformerFactory
 func NewSharedInformerFactory(client internalclientset.Interface, defaultResync time.Duration) SharedInformerFactory {
-	return NewFilteredSharedInformerFactory(client, defaultResync, v1.NamespaceAll, nil)
-}
-
-// NewFilteredSharedInformerFactory constructs a new instance of sharedInformerFactory.
-// Listers obtained via this SharedInformerFactory will be subject to the same filters
-// as specified here.
-func NewFilteredSharedInformerFactory(client internalclientset.Interface, defaultResync time.Duration, namespace string, tweakListOptions internalinterfaces.TweakListOptionsFunc) SharedInformerFactory {
 	return &sharedInformerFactory{
 		client:           client,
-		namespace:        namespace,
-		tweakListOptions: tweakListOptions,
 		defaultResync:    defaultResync,
 		informers:        make(map[reflect.Type]cache.SharedIndexInformer),
 		startedInformers: make(map[reflect.Type]bool),
@@ -150,53 +138,53 @@ type SharedInformerFactory interface {
 }
 
 func (f *sharedInformerFactory) Admissionregistration() admissionregistration.Interface {
-	return admissionregistration.New(f, f.namespace, f.tweakListOptions)
+	return admissionregistration.New(f)
 }
 
 func (f *sharedInformerFactory) Apps() apps.Interface {
-	return apps.New(f, f.namespace, f.tweakListOptions)
+	return apps.New(f)
 }
 
 func (f *sharedInformerFactory) Autoscaling() autoscaling.Interface {
-	return autoscaling.New(f, f.namespace, f.tweakListOptions)
+	return autoscaling.New(f)
 }
 
 func (f *sharedInformerFactory) Batch() batch.Interface {
-	return batch.New(f, f.namespace, f.tweakListOptions)
+	return batch.New(f)
 }
 
 func (f *sharedInformerFactory) Certificates() certificates.Interface {
-	return certificates.New(f, f.namespace, f.tweakListOptions)
+	return certificates.New(f)
 }
 
 func (f *sharedInformerFactory) Core() core.Interface {
-	return core.New(f, f.namespace, f.tweakListOptions)
+	return core.New(f)
 }
 
 func (f *sharedInformerFactory) Extensions() extensions.Interface {
-	return extensions.New(f, f.namespace, f.tweakListOptions)
+	return extensions.New(f)
 }
 
 func (f *sharedInformerFactory) Networking() networking.Interface {
-	return networking.New(f, f.namespace, f.tweakListOptions)
+	return networking.New(f)
 }
 
 func (f *sharedInformerFactory) Policy() policy.Interface {
-	return policy.New(f, f.namespace, f.tweakListOptions)
+	return policy.New(f)
 }
 
 func (f *sharedInformerFactory) Rbac() rbac.Interface {
-	return rbac.New(f, f.namespace, f.tweakListOptions)
+	return rbac.New(f)
 }
 
 func (f *sharedInformerFactory) Scheduling() scheduling.Interface {
-	return scheduling.New(f, f.namespace, f.tweakListOptions)
+	return scheduling.New(f)
 }
 
 func (f *sharedInformerFactory) Settings() settings.Interface {
-	return settings.New(f, f.namespace, f.tweakListOptions)
+	return settings.New(f)
 }
 
 func (f *sharedInformerFactory) Storage() storage.Interface {
-	return storage.New(f, f.namespace, f.tweakListOptions)
+	return storage.New(f)
 }

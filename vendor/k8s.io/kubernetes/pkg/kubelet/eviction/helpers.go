@@ -26,13 +26,14 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	v1qos "k8s.io/kubernetes/pkg/api/v1/helper/qos"
 	"k8s.io/kubernetes/pkg/features"
 	statsapi "k8s.io/kubernetes/pkg/kubelet/apis/stats/v1alpha1"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
 	"k8s.io/kubernetes/pkg/kubelet/server/stats"
-	schedulerutils "k8s.io/kubernetes/plugin/pkg/scheduler/util"
 )
 
 const (
@@ -100,7 +101,7 @@ func validSignal(signal evictionapi.Signal) bool {
 }
 
 // ParseThresholdConfig parses the flags for thresholds.
-func ParseThresholdConfig(allocatableConfig []string, evictionHard, evictionSoft, evictionSoftGracePeriod, evictionMinimumReclaim map[string]string) ([]evictionapi.Threshold, error) {
+func ParseThresholdConfig(allocatableConfig []string, evictionHard, evictionSoft, evictionSoftGracePeriod, evictionMinimumReclaim string) ([]evictionapi.Threshold, error) {
 	results := []evictionapi.Threshold{}
 	allocatableThresholds := getAllocatableThreshold(allocatableConfig)
 	results = append(results, allocatableThresholds...)
@@ -144,34 +145,60 @@ func ParseThresholdConfig(allocatableConfig []string, evictionHard, evictionSoft
 }
 
 // parseThresholdStatements parses the input statements into a list of Threshold objects.
-func parseThresholdStatements(statements map[string]string) ([]evictionapi.Threshold, error) {
-	if len(statements) == 0 {
+func parseThresholdStatements(expr string) ([]evictionapi.Threshold, error) {
+	if len(expr) == 0 {
 		return nil, nil
 	}
 	results := []evictionapi.Threshold{}
-	for signal, val := range statements {
-		result, err := parseThresholdStatement(evictionapi.Signal(signal), val)
+	statements := strings.Split(expr, ",")
+	signalsFound := sets.NewString()
+	for _, statement := range statements {
+		result, err := parseThresholdStatement(statement)
 		if err != nil {
 			return nil, err
 		}
+		if signalsFound.Has(string(result.Signal)) {
+			return nil, fmt.Errorf("found duplicate eviction threshold for signal %v", result.Signal)
+		}
+		signalsFound.Insert(string(result.Signal))
 		results = append(results, result)
 	}
 	return results, nil
 }
 
 // parseThresholdStatement parses a threshold statement.
-func parseThresholdStatement(signal evictionapi.Signal, val string) (evictionapi.Threshold, error) {
+func parseThresholdStatement(statement string) (evictionapi.Threshold, error) {
+	tokens2Operator := map[string]evictionapi.ThresholdOperator{
+		"<": evictionapi.OpLessThan,
+	}
+	var (
+		operator evictionapi.ThresholdOperator
+		parts    []string
+	)
+	for token := range tokens2Operator {
+		parts = strings.Split(statement, token)
+		// if we got a token, we know this was the operator...
+		if len(parts) > 1 {
+			operator = tokens2Operator[token]
+			break
+		}
+	}
+	if len(operator) == 0 || len(parts) != 2 {
+		return evictionapi.Threshold{}, fmt.Errorf("invalid eviction threshold syntax %v, expected <signal><operator><value>", statement)
+	}
+	signal := evictionapi.Signal(parts[0])
 	if !validSignal(signal) {
 		return evictionapi.Threshold{}, fmt.Errorf(unsupportedEvictionSignal, signal)
 	}
-	operator := evictionapi.OpForSignal[signal]
-	if strings.HasSuffix(val, "%") {
-		percentage, err := parsePercentage(val)
+
+	quantityValue := parts[1]
+	if strings.HasSuffix(quantityValue, "%") {
+		percentage, err := parsePercentage(quantityValue)
 		if err != nil {
 			return evictionapi.Threshold{}, err
 		}
 		if percentage <= 0 {
-			return evictionapi.Threshold{}, fmt.Errorf("eviction percentage threshold %v must be positive: %s", signal, val)
+			return evictionapi.Threshold{}, fmt.Errorf("eviction percentage threshold %v must be positive: %s", signal, quantityValue)
 		}
 		return evictionapi.Threshold{
 			Signal:   signal,
@@ -181,7 +208,7 @@ func parseThresholdStatement(signal evictionapi.Signal, val string) (evictionapi
 			},
 		}, nil
 	}
-	quantity, err := resource.ParseQuantity(val)
+	quantity, err := resource.ParseQuantity(quantityValue)
 	if err != nil {
 		return evictionapi.Threshold{}, err
 	}
@@ -238,22 +265,33 @@ func parsePercentage(input string) (float32, error) {
 }
 
 // parseGracePeriods parses the grace period statements
-func parseGracePeriods(statements map[string]string) (map[evictionapi.Signal]time.Duration, error) {
-	if len(statements) == 0 {
+func parseGracePeriods(expr string) (map[evictionapi.Signal]time.Duration, error) {
+	if len(expr) == 0 {
 		return nil, nil
 	}
 	results := map[evictionapi.Signal]time.Duration{}
-	for signal, val := range statements {
-		signal := evictionapi.Signal(signal)
+	statements := strings.Split(expr, ",")
+	for _, statement := range statements {
+		parts := strings.Split(statement, "=")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid eviction grace period syntax %v, expected <signal>=<duration>", statement)
+		}
+		signal := evictionapi.Signal(parts[0])
 		if !validSignal(signal) {
 			return nil, fmt.Errorf(unsupportedEvictionSignal, signal)
 		}
-		gracePeriod, err := time.ParseDuration(val)
+
+		gracePeriod, err := time.ParseDuration(parts[1])
 		if err != nil {
 			return nil, err
 		}
 		if gracePeriod < 0 {
-			return nil, fmt.Errorf("invalid eviction grace period specified: %v, must be a positive value", val)
+			return nil, fmt.Errorf("invalid eviction grace period specified: %v, must be a positive value", parts[1])
+		}
+
+		// check against duplicate statements
+		if _, found := results[signal]; found {
+			return nil, fmt.Errorf("duplicate eviction grace period specified for %v", signal)
 		}
 		results[signal] = gracePeriod
 	}
@@ -261,35 +299,50 @@ func parseGracePeriods(statements map[string]string) (map[evictionapi.Signal]tim
 }
 
 // parseMinimumReclaims parses the minimum reclaim statements
-func parseMinimumReclaims(statements map[string]string) (map[evictionapi.Signal]evictionapi.ThresholdValue, error) {
-	if len(statements) == 0 {
+func parseMinimumReclaims(expr string) (map[evictionapi.Signal]evictionapi.ThresholdValue, error) {
+	if len(expr) == 0 {
 		return nil, nil
 	}
 	results := map[evictionapi.Signal]evictionapi.ThresholdValue{}
-	for signal, val := range statements {
-		signal := evictionapi.Signal(signal)
+	statements := strings.Split(expr, ",")
+	for _, statement := range statements {
+		parts := strings.Split(statement, "=")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid eviction minimum reclaim syntax: %v, expected <signal>=<value>", statement)
+		}
+		signal := evictionapi.Signal(parts[0])
 		if !validSignal(signal) {
 			return nil, fmt.Errorf(unsupportedEvictionSignal, signal)
 		}
-		if strings.HasSuffix(val, "%") {
-			percentage, err := parsePercentage(val)
+
+		quantityValue := parts[1]
+		if strings.HasSuffix(quantityValue, "%") {
+			percentage, err := parsePercentage(quantityValue)
 			if err != nil {
 				return nil, err
 			}
 			if percentage <= 0 {
-				return nil, fmt.Errorf("eviction percentage minimum reclaim %v must be positive: %s", signal, val)
+				return nil, fmt.Errorf("eviction percentage minimum reclaim %v must be positive: %s", signal, quantityValue)
+			}
+			// check against duplicate statements
+			if _, found := results[signal]; found {
+				return nil, fmt.Errorf("duplicate eviction minimum reclaim specified for %v", signal)
 			}
 			results[signal] = evictionapi.ThresholdValue{
 				Percentage: percentage,
 			}
 			continue
 		}
-		quantity, err := resource.ParseQuantity(val)
-		if err != nil {
-			return nil, err
+		// check against duplicate statements
+		if _, found := results[signal]; found {
+			return nil, fmt.Errorf("duplicate eviction minimum reclaim specified for %v", signal)
 		}
+		quantity, err := resource.ParseQuantity(parts[1])
 		if quantity.Sign() < 0 {
 			return nil, fmt.Errorf("negative eviction minimum reclaim specified for %v", signal)
+		}
+		if err != nil {
+			return nil, err
 		}
 		results[signal] = evictionapi.ThresholdValue{
 			Quantity: &quantity,
@@ -431,7 +484,7 @@ func localEphemeralVolumeNames(pod *v1.Pod) []string {
 	return result
 }
 
-// podLocalEphemeralStorageUsage aggregates pod local ephemeral storage usage and inode consumption for the specified stats to measure.
+// podLocalEphemeralStorageUsage  aggregates pod local ephemeral storage usage and inode consumption for the specified stats to measure.
 func podLocalEphemeralStorageUsage(podStats statsapi.PodStats, pod *v1.Pod, statsToMeasure []fsStatsType) (v1.ResourceList, error) {
 	disk := resource.Quantity{Format: resource.BinarySI}
 	inodes := resource.Quantity{Format: resource.BinarySI}
@@ -535,59 +588,27 @@ func (ms *multiSorter) Less(i, j int) bool {
 	return ms.cmp[k](p1, p2) < 0
 }
 
-// priority compares pods by Priority, if priority is enabled.
-func priority(p1, p2 *v1.Pod) int {
-	if !utilfeature.DefaultFeatureGate.Enabled(features.PodPriority) {
-		// If priority is not enabled, all pods are equal.
+// qosComparator compares pods by QoS (BestEffort < Burstable < Guaranteed)
+func qosComparator(p1, p2 *v1.Pod) int {
+	qosP1 := v1qos.GetPodQOS(p1)
+	qosP2 := v1qos.GetPodQOS(p2)
+	// its a tie
+	if qosP1 == qosP2 {
 		return 0
 	}
-	priority1 := schedulerutils.GetPodPriority(p1)
-	priority2 := schedulerutils.GetPodPriority(p2)
-	if priority1 == priority2 {
-		return 0
+	// if p1 is best effort, we know p2 is burstable or guaranteed
+	if qosP1 == v1.PodQOSBestEffort {
+		return -1
 	}
-	if priority1 > priority2 {
-		return 1
-	}
-	return -1
-}
-
-// exceedMemoryRequests compares whether or not pods' memory usage exceeds their requests
-func exceedMemoryRequests(stats statsFunc) cmpFunc {
-	return func(p1, p2 *v1.Pod) int {
-		p1Stats, found := stats(p1)
-		// if we have no usage stats for p1, we want p2 first
-		if !found {
-			return -1
-		}
-		// if we have no usage stats for p2, but p1 has usage, we want p1 first.
-		p2Stats, found := stats(p2)
-		if !found {
-			return 1
-		}
-		// if we cant get usage for p1 measured, we want p2 first
-		p1Usage, err := podMemoryUsage(p1Stats)
-		if err != nil {
-			return -1
-		}
-		// if we cant get usage for p2 measured, we want p1 first
-		p2Usage, err := podMemoryUsage(p2Stats)
-		if err != nil {
-			return 1
-		}
-		p1Memory := p1Usage[v1.ResourceMemory]
-		p2Memory := p2Usage[v1.ResourceMemory]
-		p1ExceedsRequests := p1Memory.Cmp(podMemoryRequest(p1)) == 1
-		p2ExceedsRequests := p2Memory.Cmp(podMemoryRequest(p2)) == 1
-		if p1ExceedsRequests == p2ExceedsRequests {
-			return 0
-		}
-		if p1ExceedsRequests && !p2ExceedsRequests {
-			// if p1 exceeds its requests, but p2 does not, then we want p2 first
+	// we know p1 and p2 are not besteffort, so if p1 is burstable, p2 must be guaranteed
+	if qosP1 == v1.PodQOSBurstable {
+		if qosP2 == v1.PodQOSGuaranteed {
 			return -1
 		}
 		return 1
 	}
+	// ok, p1 must be guaranteed.
+	return 1
 }
 
 // memory compares pods by largest consumer of memory relative to request.
@@ -679,16 +700,14 @@ func disk(stats statsFunc, fsStatsToMeasure []fsStatsType, diskResource v1.Resou
 }
 
 // rankMemoryPressure orders the input pods for eviction in response to memory pressure.
-// It ranks by whether or not the pod's usage exceeds its requests, then by priority, and
-// finally by memory usage above requests.
 func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
-	orderedBy(exceedMemoryRequests(stats), priority, memory(stats)).Sort(pods)
+	orderedBy(qosComparator, memory(stats)).Sort(pods)
 }
 
 // rankDiskPressureFunc returns a rankFunc that measures the specified fs stats.
 func rankDiskPressureFunc(fsStatsToMeasure []fsStatsType, diskResource v1.ResourceName) rankFunc {
 	return func(pods []*v1.Pod, stats statsFunc) {
-		orderedBy(priority, disk(stats, fsStatsToMeasure, diskResource)).Sort(pods)
+		orderedBy(qosComparator, disk(stats, fsStatsToMeasure, diskResource)).Sort(pods)
 	}
 }
 

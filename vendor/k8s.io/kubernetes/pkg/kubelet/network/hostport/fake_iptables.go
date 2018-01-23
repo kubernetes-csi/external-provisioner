@@ -22,7 +22,6 @@ import (
 	"net"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/util/sets"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 )
 
@@ -37,18 +36,12 @@ type fakeTable struct {
 }
 
 type fakeIPTables struct {
-	tables        map[string]*fakeTable
-	builtinChains map[string]sets.String
+	tables map[string]*fakeTable
 }
 
 func NewFakeIPTables() *fakeIPTables {
 	return &fakeIPTables{
 		tables: make(map[string]*fakeTable, 0),
-		builtinChains: map[string]sets.String{
-			string(utiliptables.TableFilter): sets.NewString("INPUT", "FORWARD", "OUTPUT"),
-			string(utiliptables.TableNAT):    sets.NewString("PREROUTING", "INPUT", "OUTPUT", "POSTROUTING"),
-			string(utiliptables.TableMangle): sets.NewString("PREROUTING", "INPUT", "FORWARD", "OUTPUT", "POSTROUTING"),
-		},
 	}
 }
 
@@ -253,7 +246,6 @@ func (f *fakeIPTables) SaveInto(tableName utiliptables.Table, buffer *bytes.Buff
 }
 
 func (f *fakeIPTables) restore(restoreTableName utiliptables.Table, data []byte, flush utiliptables.FlushFlag) error {
-	allLines := string(data)
 	buf := bytes.NewBuffer(data)
 	var tableName utiliptables.Table
 	for {
@@ -282,13 +274,6 @@ func (f *fakeIPTables) restore(restoreTableName utiliptables.Table, data []byte,
 					}
 				}
 				_, _ = f.ensureChain(tableName, chainName)
-				// The --noflush option for iptables-restore doesn't work for user-defined chains, only builtin chains.
-				// We should flush user-defined chains if the chain is not to be deleted
-				if !f.isBuiltinChain(tableName, chainName) && !strings.Contains(allLines, "-X "+string(chainName)) {
-					if err := f.FlushChain(tableName, chainName); err != nil {
-						return err
-					}
-				}
 			} else if strings.HasPrefix(line, "-A") {
 				parts := strings.Split(line, " ")
 				if len(parts) < 3 {
@@ -343,11 +328,4 @@ func (f *fakeIPTables) AddReloadFunc(reloadFunc func()) {
 }
 
 func (f *fakeIPTables) Destroy() {
-}
-
-func (f *fakeIPTables) isBuiltinChain(tableName utiliptables.Table, chainName utiliptables.Chain) bool {
-	if builtinChains, ok := f.builtinChains[string(tableName)]; ok && builtinChains.Has(string(chainName)) {
-		return true
-	}
-	return false
 }

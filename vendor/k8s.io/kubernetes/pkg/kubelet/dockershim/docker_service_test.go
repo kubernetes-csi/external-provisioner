@@ -50,6 +50,7 @@ func newTestDockerService() (*dockerService, *libdocker.FakeDockerClient, *clock
 		client:            c,
 		os:                &containertest.FakeOS{},
 		network:           pm,
+		legacyCleanup:     legacyCleanupFlag{done: 1},
 		checkpointHandler: NewTestPersistentCheckpointHandler(),
 		networkReady:      make(map[string]bool),
 	}, c, fakeClock

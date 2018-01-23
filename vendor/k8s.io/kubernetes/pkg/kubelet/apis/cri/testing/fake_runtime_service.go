@@ -26,7 +26,7 @@ import (
 )
 
 var (
-	FakeVersion = "0.1.0"
+	version = "0.1.0"
 
 	FakeRuntimeName  = "fakeRuntime"
 	FakePodSandboxIP = "192.168.192.168"
@@ -117,10 +117,10 @@ func (r *FakeRuntimeService) Version(apiVersion string) (*runtimeapi.VersionResp
 	r.Called = append(r.Called, "Version")
 
 	return &runtimeapi.VersionResponse{
-		Version:           FakeVersion,
+		Version:           version,
 		RuntimeName:       FakeRuntimeName,
-		RuntimeVersion:    FakeVersion,
-		RuntimeApiVersion: FakeVersion,
+		RuntimeVersion:    version,
+		RuntimeApiVersion: version,
 	}, nil
 }
 

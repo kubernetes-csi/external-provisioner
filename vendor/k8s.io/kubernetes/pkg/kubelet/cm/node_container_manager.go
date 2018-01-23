@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/kubernetes/pkg/api"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet/events"
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
@@ -54,7 +55,7 @@ func (cm *containerManagerImpl) createNodeAllocatableCgroups() error {
 	return nil
 }
 
-// enforceNodeAllocatableCgroups enforce Node Allocatable Cgroup settings.
+// Enforce Node Allocatable Cgroup settings.
 func (cm *containerManagerImpl) enforceNodeAllocatableCgroups() error {
 	nc := cm.NodeConfig.NodeAllocatableConfig
 
@@ -138,7 +139,7 @@ func enforceExistingCgroup(cgroupManager CgroupManager, cName string, rl v1.Reso
 	return nil
 }
 
-// getCgroupConfig returns a ResourceConfig object that can be used to create or update cgroups via CgroupManager interface.
+// Returns a ResourceConfig object that can be used to create or update cgroups via CgroupManager interface.
 func getCgroupConfig(rl v1.ResourceList) *ResourceConfig {
 	// TODO(vishh): Set CPU Quota if necessary.
 	if rl == nil {
@@ -185,7 +186,7 @@ func (cm *containerManagerImpl) getNodeAllocatableAbsolute() v1.ResourceList {
 
 }
 
-// GetNodeAllocatableReservation returns amount of compute or storage resource that have to be reserved on this node from scheduling.
+// GetNodeAllocatable returns amount of compute or storage resource that have to be reserved on this node from scheduling.
 func (cm *containerManagerImpl) GetNodeAllocatableReservation() v1.ResourceList {
 	evictionReservation := hardEvictionReservation(cm.HardEvictionThresholds, cm.capacity)
 	result := make(v1.ResourceList)
@@ -237,7 +238,16 @@ func (cm *containerManagerImpl) validateNodeAllocatable() error {
 	var errors []string
 	nar := cm.GetNodeAllocatableReservation()
 	for k, v := range nar {
-		value := cm.capacity[k].DeepCopy()
+		capacityClone, err := api.Scheme.DeepCopy(cm.capacity[k])
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("DeepCopy capacity error"))
+		}
+		value, ok := capacityClone.(resource.Quantity)
+		if !ok {
+			return fmt.Errorf(
+				"failed to cast object %#v to Quantity",
+				capacityClone)
+		}
 		value.Sub(v)
 
 		if value.Sign() < 0 {

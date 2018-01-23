@@ -21,7 +21,6 @@ import (
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	rest "k8s.io/client-go/rest"
-	autoscaling "k8s.io/kubernetes/pkg/apis/autoscaling"
 	extensions "k8s.io/kubernetes/pkg/apis/extensions"
 	scheme "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/scheme"
 )
@@ -43,8 +42,8 @@ type DeploymentInterface interface {
 	List(opts v1.ListOptions) (*extensions.DeploymentList, error)
 	Watch(opts v1.ListOptions) (watch.Interface, error)
 	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *extensions.Deployment, err error)
-	GetScale(deploymentName string, options v1.GetOptions) (*autoscaling.Scale, error)
-	UpdateScale(deploymentName string, scale *autoscaling.Scale) (*autoscaling.Scale, error)
+	GetScale(deploymentName string, options v1.GetOptions) (*extensions.Scale, error)
+	UpdateScale(deploymentName string, scale *extensions.Scale) (*extensions.Scale, error)
 
 	DeploymentExpansion
 }
@@ -175,9 +174,9 @@ func (c *deployments) Patch(name string, pt types.PatchType, data []byte, subres
 	return
 }
 
-// GetScale takes name of the deployment, and returns the corresponding autoscaling.Scale object, and an error if there is any.
-func (c *deployments) GetScale(deploymentName string, options v1.GetOptions) (result *autoscaling.Scale, err error) {
-	result = &autoscaling.Scale{}
+// GetScale takes name of the deployment, and returns the corresponding extensions.Scale object, and an error if there is any.
+func (c *deployments) GetScale(deploymentName string, options v1.GetOptions) (result *extensions.Scale, err error) {
+	result = &extensions.Scale{}
 	err = c.client.Get().
 		Namespace(c.ns).
 		Resource("deployments").
@@ -190,8 +189,8 @@ func (c *deployments) GetScale(deploymentName string, options v1.GetOptions) (re
 }
 
 // UpdateScale takes the top resource name and the representation of a scale and updates it. Returns the server's representation of the scale, and an error, if there is any.
-func (c *deployments) UpdateScale(deploymentName string, scale *autoscaling.Scale) (result *autoscaling.Scale, err error) {
-	result = &autoscaling.Scale{}
+func (c *deployments) UpdateScale(deploymentName string, scale *extensions.Scale) (result *extensions.Scale, err error) {
+	result = &extensions.Scale{}
 	err = c.client.Put().
 		Namespace(c.ns).
 		Resource("deployments").

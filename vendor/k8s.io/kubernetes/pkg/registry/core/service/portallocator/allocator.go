@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/util/net"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/registry/core/service/allocator"
 
 	"github.com/golang/glog"

@@ -33,7 +33,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/status"
-	"path"
 )
 
 // ActivePodsFunc is a function that returns a list of pods to reconcile.
@@ -44,9 +43,6 @@ type runtimeService interface {
 }
 
 type policyName string
-
-// CPUManagerStateFileName is the name file name where cpu manager stores it's state
-const CPUManagerStateFileName = "cpu_manager_state"
 
 // Manager interface provides methods for Kubelet to manage pod cpus.
 type Manager interface {
@@ -103,16 +99,13 @@ func NewManager(
 	reconcilePeriod time.Duration,
 	machineInfo *cadvisorapi.MachineInfo,
 	nodeAllocatableReservation v1.ResourceList,
-	stateFileDirecory string,
 ) (Manager, error) {
 	var policy Policy
-	var stateHandle state.State
 
 	switch policyName(cpuPolicyName) {
 
 	case PolicyNone:
 		policy = NewNonePolicy()
-		stateHandle = state.NewMemoryState()
 
 	case PolicyStatic:
 		topo, err := topology.Discover(machineInfo)
@@ -141,18 +134,16 @@ func NewManager(
 		reservedCPUsFloat := float64(reservedCPUs.MilliValue()) / 1000
 		numReservedCPUs := int(math.Ceil(reservedCPUsFloat))
 		policy = NewStaticPolicy(topo, numReservedCPUs)
-		stateHandle = state.NewFileState(path.Join(stateFileDirecory, CPUManagerStateFileName), policy.Name())
 
 	default:
 		glog.Errorf("[cpumanager] Unknown policy \"%s\", falling back to default policy \"%s\"", cpuPolicyName, PolicyNone)
 		policy = NewNonePolicy()
-		stateHandle = state.NewMemoryState()
 	}
 
 	manager := &manager{
 		policy:                     policy,
 		reconcilePeriod:            reconcilePeriod,
-		state:                      stateHandle,
+		state:                      state.NewMemoryState(),
 		machineInfo:                machineInfo,
 		nodeAllocatableReservation: nodeAllocatableReservation,
 	}
@@ -185,16 +176,11 @@ func (m *manager) AddContainer(p *v1.Pod, c *v1.Container, containerID string) e
 	cpus := m.state.GetCPUSetOrDefault(containerID)
 	m.Unlock()
 
-	if !cpus.IsEmpty() {
-		err = m.updateContainerCPUSet(containerID, cpus)
-		if err != nil {
-			glog.Errorf("[cpumanager] AddContainer error: %v", err)
-			return err
-		}
-	} else {
-		glog.V(5).Infof("[cpumanager] update container resources is skipped due to cpu set is empty")
+	err = m.updateContainerCPUSet(containerID, cpus)
+	if err != nil {
+		glog.Errorf("[cpumanager] AddContainer error: %v", err)
+		return err
 	}
-
 	return nil
 }
 
@@ -250,7 +236,7 @@ func (m *manager) reconcileState() (success []reconciledContainer, failure []rec
 				continue
 			}
 
-			glog.V(4).Infof("[cpumanager] reconcileState: updating container (pod: %s, container: %s, container id: %s, cpuset: \"%v\")", pod.Name, container.Name, containerID, cset)
+			glog.Infof("[cpumanager] reconcileState: updating container (pod: %s, container: %s, container id: %s, cpuset: \"%v\")", pod.Name, container.Name, containerID, cset)
 			err = m.updateContainerCPUSet(containerID, cset)
 			if err != nil {
 				glog.Errorf("[cpumanager] reconcileState: failed to update container (pod: %s, container: %s, container id: %s, cpuset: \"%v\", error: %v)", pod.Name, container.Name, containerID, cset, err)

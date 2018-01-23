@@ -38,33 +38,19 @@ type PodSecurityPolicyInformer interface {
 }
 
 type podSecurityPolicyInformer struct {
-	factory          internalinterfaces.SharedInformerFactory
-	tweakListOptions internalinterfaces.TweakListOptionsFunc
+	factory internalinterfaces.SharedInformerFactory
 }
 
 // NewPodSecurityPolicyInformer constructs a new informer for PodSecurityPolicy type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
 func NewPodSecurityPolicyInformer(client internalclientset.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredPodSecurityPolicyInformer(client, resyncPeriod, indexers, nil)
-}
-
-// NewFilteredPodSecurityPolicyInformer constructs a new informer for PodSecurityPolicy type.
-// Always prefer using an informer factory to get a shared informer instead of getting an independent
-// one. This reduces memory footprint and number of connections to the server.
-func NewFilteredPodSecurityPolicyInformer(client internalclientset.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
-				if tweakListOptions != nil {
-					tweakListOptions(&options)
-				}
 				return client.Extensions().PodSecurityPolicies().List(options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
-				if tweakListOptions != nil {
-					tweakListOptions(&options)
-				}
 				return client.Extensions().PodSecurityPolicies().Watch(options)
 			},
 		},
@@ -74,12 +60,12 @@ func NewFilteredPodSecurityPolicyInformer(client internalclientset.Interface, re
 	)
 }
 
-func (f *podSecurityPolicyInformer) defaultInformer(client internalclientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredPodSecurityPolicyInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func defaultPodSecurityPolicyInformer(client internalclientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewPodSecurityPolicyInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 }
 
 func (f *podSecurityPolicyInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&extensions.PodSecurityPolicy{}, f.defaultInformer)
+	return f.factory.InformerFor(&extensions.PodSecurityPolicy{}, defaultPodSecurityPolicyInformer)
 }
 
 func (f *podSecurityPolicyInformer) Lister() internalversion.PodSecurityPolicyLister {

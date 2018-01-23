@@ -21,10 +21,9 @@ go_library(
         ],
         "//conditions:default": [],
     }),
-    importpath = "k8s.io/kubernetes/pkg/kubelet/container",
     visibility = ["//visibility:public"],
     deps = [
-        "//pkg/api/legacyscheme:go_default_library",
+        "//pkg/api:go_default_library",
         "//pkg/kubelet/apis/cri/v1alpha1/runtime:go_default_library",
         "//pkg/kubelet/util/format:go_default_library",
         "//pkg/kubelet/util/ioutils:go_default_library",
@@ -58,11 +57,10 @@ go_test(
         "ref_test.go",
         "sync_result_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/container",
     library = ":go_default_library",
     deps = [
-        "//pkg/api/legacyscheme:go_default_library",
-        "//pkg/apis/core/install:go_default_library",
+        "//pkg/api:go_default_library",
+        "//pkg/api/install:go_default_library",
         "//vendor/github.com/stretchr/testify/assert:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
@@ -73,7 +71,6 @@ go_test(
 go_test(
     name = "go_default_xtest",
     srcs = ["runtime_cache_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/container_test",
     deps = [
         ":go_default_library",
         "//pkg/kubelet/container/testing:go_default_library",

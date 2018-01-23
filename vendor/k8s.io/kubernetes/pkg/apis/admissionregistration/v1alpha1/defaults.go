@@ -18,7 +18,6 @@ package v1alpha1
 
 import (
 	admissionregistrationv1alpha1 "k8s.io/api/admissionregistration/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -26,13 +25,9 @@ func addDefaultingFuncs(scheme *runtime.Scheme) error {
 	return RegisterDefaults(scheme)
 }
 
-func SetDefaults_Webhook(obj *admissionregistrationv1alpha1.Webhook) {
+func SetDefaults_ExternalAdmissionHook(obj *admissionregistrationv1alpha1.ExternalAdmissionHook) {
 	if obj.FailurePolicy == nil {
 		policy := admissionregistrationv1alpha1.Ignore
 		obj.FailurePolicy = &policy
-	}
-	if obj.NamespaceSelector == nil {
-		selector := metav1.LabelSelector{}
-		obj.NamespaceSelector = &selector
 	}
 }

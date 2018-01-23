@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
-	"k8s.io/kubernetes/pkg/apis/abac"
+	api "k8s.io/kubernetes/pkg/apis/abac"
 	"k8s.io/kubernetes/pkg/apis/abac/v0"
 	"k8s.io/kubernetes/pkg/apis/abac/v1beta1"
 )
@@ -81,46 +81,46 @@ func TestAuthorizeV0(t *testing.T) {
 	uChuck := user.DefaultInfo{Name: "chuck", UID: "uid5", Groups: authenticatedGroup}
 
 	testCases := []struct {
-		User           user.DefaultInfo
-		Verb           string
-		Resource       string
-		NS             string
-		APIGroup       string
-		Path           string
-		ExpectDecision authorizer.Decision
+		User        user.DefaultInfo
+		Verb        string
+		Resource    string
+		NS          string
+		APIGroup    string
+		Path        string
+		ExpectAllow bool
 	}{
 		// Scheduler can read pods
-		{User: uScheduler, Verb: "list", Resource: "pods", NS: "ns1", ExpectDecision: authorizer.DecisionAllow},
-		{User: uScheduler, Verb: "list", Resource: "pods", NS: "", ExpectDecision: authorizer.DecisionAllow},
+		{User: uScheduler, Verb: "list", Resource: "pods", NS: "ns1", ExpectAllow: true},
+		{User: uScheduler, Verb: "list", Resource: "pods", NS: "", ExpectAllow: true},
 		// Scheduler cannot write pods
-		{User: uScheduler, Verb: "create", Resource: "pods", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uScheduler, Verb: "create", Resource: "pods", NS: "", ExpectDecision: authorizer.DecisionNoOpinion},
+		{User: uScheduler, Verb: "create", Resource: "pods", NS: "ns1", ExpectAllow: false},
+		{User: uScheduler, Verb: "create", Resource: "pods", NS: "", ExpectAllow: false},
 		// Scheduler can write bindings
-		{User: uScheduler, Verb: "get", Resource: "bindings", NS: "ns1", ExpectDecision: authorizer.DecisionAllow},
-		{User: uScheduler, Verb: "get", Resource: "bindings", NS: "", ExpectDecision: authorizer.DecisionAllow},
+		{User: uScheduler, Verb: "get", Resource: "bindings", NS: "ns1", ExpectAllow: true},
+		{User: uScheduler, Verb: "get", Resource: "bindings", NS: "", ExpectAllow: true},
 
 		// Alice can read and write anything in the right namespace.
-		{User: uAlice, Verb: "get", Resource: "pods", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAlice, Verb: "get", Resource: "widgets", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAlice, Verb: "get", Resource: "", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAlice, Verb: "update", Resource: "pods", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAlice, Verb: "update", Resource: "widgets", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAlice, Verb: "update", Resource: "", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAlice, Verb: "update", Resource: "foo", NS: "projectCaribou", APIGroup: "bar", ExpectDecision: authorizer.DecisionAllow},
+		{User: uAlice, Verb: "get", Resource: "pods", NS: "projectCaribou", ExpectAllow: true},
+		{User: uAlice, Verb: "get", Resource: "widgets", NS: "projectCaribou", ExpectAllow: true},
+		{User: uAlice, Verb: "get", Resource: "", NS: "projectCaribou", ExpectAllow: true},
+		{User: uAlice, Verb: "update", Resource: "pods", NS: "projectCaribou", ExpectAllow: true},
+		{User: uAlice, Verb: "update", Resource: "widgets", NS: "projectCaribou", ExpectAllow: true},
+		{User: uAlice, Verb: "update", Resource: "", NS: "projectCaribou", ExpectAllow: true},
+		{User: uAlice, Verb: "update", Resource: "foo", NS: "projectCaribou", APIGroup: "bar", ExpectAllow: true},
 		// .. but not the wrong namespace.
-		{User: uAlice, Verb: "get", Resource: "pods", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uAlice, Verb: "get", Resource: "widgets", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uAlice, Verb: "get", Resource: "", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
+		{User: uAlice, Verb: "get", Resource: "pods", NS: "ns1", ExpectAllow: false},
+		{User: uAlice, Verb: "get", Resource: "widgets", NS: "ns1", ExpectAllow: false},
+		{User: uAlice, Verb: "get", Resource: "", NS: "ns1", ExpectAllow: false},
 
 		// Chuck can read events, since anyone can.
-		{User: uChuck, Verb: "get", Resource: "events", NS: "ns1", ExpectDecision: authorizer.DecisionAllow},
-		{User: uChuck, Verb: "get", Resource: "events", NS: "", ExpectDecision: authorizer.DecisionAllow},
+		{User: uChuck, Verb: "get", Resource: "events", NS: "ns1", ExpectAllow: true},
+		{User: uChuck, Verb: "get", Resource: "events", NS: "", ExpectAllow: true},
 		// Chuck can't do other things.
-		{User: uChuck, Verb: "update", Resource: "events", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uChuck, Verb: "get", Resource: "pods", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uChuck, Verb: "get", Resource: "floop", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
+		{User: uChuck, Verb: "update", Resource: "events", NS: "ns1", ExpectAllow: false},
+		{User: uChuck, Verb: "get", Resource: "pods", NS: "ns1", ExpectAllow: false},
+		{User: uChuck, Verb: "get", Resource: "floop", NS: "ns1", ExpectAllow: false},
 		// Chunk can't access things with no kind or namespace
-		{User: uChuck, Verb: "get", Path: "/", Resource: "", NS: "", ExpectDecision: authorizer.DecisionNoOpinion},
+		{User: uChuck, Verb: "get", Path: "/", Resource: "", NS: "", ExpectAllow: false},
 	}
 	for i, tc := range testCases {
 		attr := authorizer.AttributesRecord{
@@ -133,11 +133,11 @@ func TestAuthorizeV0(t *testing.T) {
 
 			ResourceRequest: len(tc.NS) > 0 || len(tc.Resource) > 0,
 		}
-		decision, _, _ := a.Authorize(attr)
-		if tc.ExpectDecision != decision {
+		authorized, _, _ := a.Authorize(attr)
+		if tc.ExpectAllow != authorized {
 			t.Logf("tc: %v -> attr %v", tc, attr)
 			t.Errorf("%d: Expected allowed=%v but actually allowed=%v\n\t%v",
-				i, tc.ExpectDecision, decision, tc)
+				i, tc.ExpectAllow, authorized, tc)
 		}
 	}
 }
@@ -373,72 +373,72 @@ func TestAuthorizeV1beta1(t *testing.T) {
 	uAPIGroup := user.DefaultInfo{Name: "apigroupuser", UID: "uid8", Groups: authenticatedGroup}
 
 	testCases := []struct {
-		User           user.DefaultInfo
-		Verb           string
-		Resource       string
-		APIGroup       string
-		NS             string
-		Path           string
-		ExpectDecision authorizer.Decision
+		User        user.DefaultInfo
+		Verb        string
+		Resource    string
+		APIGroup    string
+		NS          string
+		Path        string
+		ExpectAllow bool
 	}{
 		// Scheduler can read pods
-		{User: uScheduler, Verb: "list", Resource: "pods", NS: "ns1", ExpectDecision: authorizer.DecisionAllow},
-		{User: uScheduler, Verb: "list", Resource: "pods", NS: "", ExpectDecision: authorizer.DecisionAllow},
+		{User: uScheduler, Verb: "list", Resource: "pods", NS: "ns1", ExpectAllow: true},
+		{User: uScheduler, Verb: "list", Resource: "pods", NS: "", ExpectAllow: true},
 		// Scheduler cannot write pods
-		{User: uScheduler, Verb: "create", Resource: "pods", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uScheduler, Verb: "create", Resource: "pods", NS: "", ExpectDecision: authorizer.DecisionNoOpinion},
+		{User: uScheduler, Verb: "create", Resource: "pods", NS: "ns1", ExpectAllow: false},
+		{User: uScheduler, Verb: "create", Resource: "pods", NS: "", ExpectAllow: false},
 		// Scheduler can write bindings
-		{User: uScheduler, Verb: "get", Resource: "bindings", NS: "ns1", ExpectDecision: authorizer.DecisionAllow},
-		{User: uScheduler, Verb: "get", Resource: "bindings", NS: "", ExpectDecision: authorizer.DecisionAllow},
+		{User: uScheduler, Verb: "get", Resource: "bindings", NS: "ns1", ExpectAllow: true},
+		{User: uScheduler, Verb: "get", Resource: "bindings", NS: "", ExpectAllow: true},
 
 		// Alice can read and write anything in the right namespace.
-		{User: uAlice, Verb: "get", Resource: "pods", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAlice, Verb: "get", Resource: "widgets", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAlice, Verb: "get", Resource: "", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAlice, Verb: "update", Resource: "pods", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAlice, Verb: "update", Resource: "widgets", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAlice, Verb: "update", Resource: "", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
+		{User: uAlice, Verb: "get", Resource: "pods", NS: "projectCaribou", ExpectAllow: true},
+		{User: uAlice, Verb: "get", Resource: "widgets", NS: "projectCaribou", ExpectAllow: true},
+		{User: uAlice, Verb: "get", Resource: "", NS: "projectCaribou", ExpectAllow: true},
+		{User: uAlice, Verb: "update", Resource: "pods", NS: "projectCaribou", ExpectAllow: true},
+		{User: uAlice, Verb: "update", Resource: "widgets", NS: "projectCaribou", ExpectAllow: true},
+		{User: uAlice, Verb: "update", Resource: "", NS: "projectCaribou", ExpectAllow: true},
 		// .. but not the wrong namespace.
-		{User: uAlice, Verb: "get", Resource: "pods", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uAlice, Verb: "get", Resource: "widgets", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uAlice, Verb: "get", Resource: "", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
+		{User: uAlice, Verb: "get", Resource: "pods", NS: "ns1", ExpectAllow: false},
+		{User: uAlice, Verb: "get", Resource: "widgets", NS: "ns1", ExpectAllow: false},
+		{User: uAlice, Verb: "get", Resource: "", NS: "ns1", ExpectAllow: false},
 
 		// Debbie can write to pods in the right namespace
-		{User: uDebbie, Verb: "update", Resource: "pods", NS: "projectCaribou", ExpectDecision: authorizer.DecisionAllow},
+		{User: uDebbie, Verb: "update", Resource: "pods", NS: "projectCaribou", ExpectAllow: true},
 
 		// Chuck can read events, since anyone can.
-		{User: uChuck, Verb: "get", Resource: "events", NS: "ns1", ExpectDecision: authorizer.DecisionAllow},
-		{User: uChuck, Verb: "get", Resource: "events", NS: "", ExpectDecision: authorizer.DecisionAllow},
+		{User: uChuck, Verb: "get", Resource: "events", NS: "ns1", ExpectAllow: true},
+		{User: uChuck, Verb: "get", Resource: "events", NS: "", ExpectAllow: true},
 		// Chuck can't do other things.
-		{User: uChuck, Verb: "update", Resource: "events", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uChuck, Verb: "get", Resource: "pods", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uChuck, Verb: "get", Resource: "floop", NS: "ns1", ExpectDecision: authorizer.DecisionNoOpinion},
+		{User: uChuck, Verb: "update", Resource: "events", NS: "ns1", ExpectAllow: false},
+		{User: uChuck, Verb: "get", Resource: "pods", NS: "ns1", ExpectAllow: false},
+		{User: uChuck, Verb: "get", Resource: "floop", NS: "ns1", ExpectAllow: false},
 		// Chuck can't access things with no resource or namespace
-		{User: uChuck, Verb: "get", Path: "/", Resource: "", NS: "", ExpectDecision: authorizer.DecisionNoOpinion},
+		{User: uChuck, Verb: "get", Path: "/", Resource: "", NS: "", ExpectAllow: false},
 		// but can access /api
-		{User: uChuck, Verb: "get", Path: "/api", Resource: "", NS: "", ExpectDecision: authorizer.DecisionAllow},
+		{User: uChuck, Verb: "get", Path: "/api", Resource: "", NS: "", ExpectAllow: true},
 		// though he cannot write to it
-		{User: uChuck, Verb: "create", Path: "/api", Resource: "", NS: "", ExpectDecision: authorizer.DecisionNoOpinion},
+		{User: uChuck, Verb: "create", Path: "/api", Resource: "", NS: "", ExpectAllow: false},
 		// while he can write to /custom
-		{User: uChuck, Verb: "update", Path: "/custom", Resource: "", NS: "", ExpectDecision: authorizer.DecisionAllow},
+		{User: uChuck, Verb: "update", Path: "/custom", Resource: "", NS: "", ExpectAllow: true},
 		// he cannot get "/root"
-		{User: uChuck, Verb: "get", Path: "/root", Resource: "", NS: "", ExpectDecision: authorizer.DecisionNoOpinion},
+		{User: uChuck, Verb: "get", Path: "/root", Resource: "", NS: "", ExpectAllow: false},
 		// but can get any subpath
-		{User: uChuck, Verb: "get", Path: "/root/", Resource: "", NS: "", ExpectDecision: authorizer.DecisionAllow},
-		{User: uChuck, Verb: "get", Path: "/root/test/1/2/3", Resource: "", NS: "", ExpectDecision: authorizer.DecisionAllow},
+		{User: uChuck, Verb: "get", Path: "/root/", Resource: "", NS: "", ExpectAllow: true},
+		{User: uChuck, Verb: "get", Path: "/root/test/1/2/3", Resource: "", NS: "", ExpectAllow: true},
 
 		// the user "noresource" can get any non-resource request
-		{User: uNoResource, Verb: "get", Path: "", Resource: "", NS: "", ExpectDecision: authorizer.DecisionAllow},
-		{User: uNoResource, Verb: "get", Path: "/", Resource: "", NS: "", ExpectDecision: authorizer.DecisionAllow},
-		{User: uNoResource, Verb: "get", Path: "/foo/bar/baz", Resource: "", NS: "", ExpectDecision: authorizer.DecisionAllow},
+		{User: uNoResource, Verb: "get", Path: "", Resource: "", NS: "", ExpectAllow: true},
+		{User: uNoResource, Verb: "get", Path: "/", Resource: "", NS: "", ExpectAllow: true},
+		{User: uNoResource, Verb: "get", Path: "/foo/bar/baz", Resource: "", NS: "", ExpectAllow: true},
 		// but cannot get any request where IsResourceRequest() == true
-		{User: uNoResource, Verb: "get", Path: "/", Resource: "", NS: "bar", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uNoResource, Verb: "get", Path: "/foo/bar/baz", Resource: "foo", NS: "bar", ExpectDecision: authorizer.DecisionNoOpinion},
+		{User: uNoResource, Verb: "get", Path: "/", Resource: "", NS: "bar", ExpectAllow: false},
+		{User: uNoResource, Verb: "get", Path: "/foo/bar/baz", Resource: "foo", NS: "bar", ExpectAllow: false},
 
 		// Test APIGroup matching
-		{User: uAPIGroup, Verb: "get", APIGroup: "x", Resource: "foo", NS: "projectAnyGroup", ExpectDecision: authorizer.DecisionAllow},
-		{User: uAPIGroup, Verb: "get", APIGroup: "x", Resource: "foo", NS: "projectEmptyGroup", ExpectDecision: authorizer.DecisionNoOpinion},
-		{User: uAPIGroup, Verb: "get", APIGroup: "x", Resource: "foo", NS: "projectXGroup", ExpectDecision: authorizer.DecisionAllow},
+		{User: uAPIGroup, Verb: "get", APIGroup: "x", Resource: "foo", NS: "projectAnyGroup", ExpectAllow: true},
+		{User: uAPIGroup, Verb: "get", APIGroup: "x", Resource: "foo", NS: "projectEmptyGroup", ExpectAllow: false},
+		{User: uAPIGroup, Verb: "get", APIGroup: "x", Resource: "foo", NS: "projectXGroup", ExpectAllow: true},
 	}
 	for i, tc := range testCases {
 		attr := authorizer.AttributesRecord{
@@ -451,10 +451,10 @@ func TestAuthorizeV1beta1(t *testing.T) {
 			Path:            tc.Path,
 		}
 		// t.Logf("tc %2v: %v -> attr %v", i, tc, attr)
-		decision, _, _ := a.Authorize(attr)
-		if tc.ExpectDecision != decision {
+		authorized, _, _ := a.Authorize(attr)
+		if tc.ExpectAllow != authorized {
 			t.Errorf("%d: Expected allowed=%v but actually allowed=%v, for case %+v & %+v",
-				i, tc.ExpectDecision, decision, tc, attr)
+				i, tc.ExpectAllow, authorized, tc, attr)
 		}
 	}
 }
@@ -799,8 +799,8 @@ func TestSubjectMatches(t *testing.T) {
 	}
 
 	for k, tc := range testCases {
-		policy := &abac.Policy{}
-		if err := abac.Scheme.Convert(tc.Policy, policy, nil); err != nil {
+		policy := &api.Policy{}
+		if err := api.Scheme.Convert(tc.Policy, policy, nil); err != nil {
 			t.Errorf("%s: error converting: %v", k, err)
 			continue
 		}
@@ -1254,8 +1254,8 @@ func TestPolicy(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		policy := &abac.Policy{}
-		if err := abac.Scheme.Convert(test.policy, policy, nil); err != nil {
+		policy := &api.Policy{}
+		if err := api.Scheme.Convert(test.policy, policy, nil); err != nil {
 			t.Errorf("%s: error converting: %v", test.name, err)
 			continue
 		}

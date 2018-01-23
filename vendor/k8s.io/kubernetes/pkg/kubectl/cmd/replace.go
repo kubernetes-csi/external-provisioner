@@ -92,7 +92,7 @@ func NewCmdReplace(f cmdutil.Factory, out io.Writer) *cobra.Command {
 }
 
 func RunReplace(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []string, options *resource.FilenameOptions) error {
-	schema, err := f.Validator(cmdutil.GetFlagBool(cmd, "validate"))
+	schema, err := f.Validator(cmdutil.GetFlagBool(cmd, "validate"), cmdutil.GetFlagBool(cmd, "openapi-validation"), cmdutil.GetFlagString(cmd, "schema-cache-dir"))
 	if err != nil {
 		return err
 	}
@@ -125,7 +125,12 @@ func RunReplace(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []str
 		return err
 	}
 
-	r := f.NewUnstructuredBuilder().
+	builder, err := f.NewUnstructuredBuilder(true)
+	if err != nil {
+		return err
+	}
+
+	r := builder.
 		Schema(schema).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
@@ -166,7 +171,7 @@ func RunReplace(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []str
 }
 
 func forceReplace(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []string, shortOutput bool, options *resource.FilenameOptions) error {
-	schema, err := f.Validator(cmdutil.GetFlagBool(cmd, "validate"))
+	schema, err := f.Validator(cmdutil.GetFlagBool(cmd, "validate"), cmdutil.GetFlagBool(cmd, "openapi-validation"), cmdutil.GetFlagString(cmd, "schema-cache-dir"))
 	if err != nil {
 		return err
 	}
@@ -232,7 +237,7 @@ func forceReplace(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []s
 	if timeout == 0 {
 		timeout = kubectl.Timeout
 	}
-	err = r.Visit(func(info *resource.Info, err error) error {
+	r.Visit(func(info *resource.Info, err error) error {
 		if err != nil {
 			return err
 		}
@@ -244,11 +249,13 @@ func forceReplace(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []s
 			return true, nil
 		})
 	})
+
+	builder, err := f.NewUnstructuredBuilder(true)
 	if err != nil {
 		return err
 	}
 
-	r = f.NewUnstructuredBuilder().
+	r = builder.
 		Schema(schema).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().

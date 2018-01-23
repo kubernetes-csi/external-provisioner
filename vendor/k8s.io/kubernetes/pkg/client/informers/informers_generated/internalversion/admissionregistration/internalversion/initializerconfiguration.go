@@ -38,33 +38,19 @@ type InitializerConfigurationInformer interface {
 }
 
 type initializerConfigurationInformer struct {
-	factory          internalinterfaces.SharedInformerFactory
-	tweakListOptions internalinterfaces.TweakListOptionsFunc
+	factory internalinterfaces.SharedInformerFactory
 }
 
 // NewInitializerConfigurationInformer constructs a new informer for InitializerConfiguration type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
 func NewInitializerConfigurationInformer(client internalclientset.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredInitializerConfigurationInformer(client, resyncPeriod, indexers, nil)
-}
-
-// NewFilteredInitializerConfigurationInformer constructs a new informer for InitializerConfiguration type.
-// Always prefer using an informer factory to get a shared informer instead of getting an independent
-// one. This reduces memory footprint and number of connections to the server.
-func NewFilteredInitializerConfigurationInformer(client internalclientset.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
-				if tweakListOptions != nil {
-					tweakListOptions(&options)
-				}
 				return client.Admissionregistration().InitializerConfigurations().List(options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
-				if tweakListOptions != nil {
-					tweakListOptions(&options)
-				}
 				return client.Admissionregistration().InitializerConfigurations().Watch(options)
 			},
 		},
@@ -74,12 +60,12 @@ func NewFilteredInitializerConfigurationInformer(client internalclientset.Interf
 	)
 }
 
-func (f *initializerConfigurationInformer) defaultInformer(client internalclientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredInitializerConfigurationInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func defaultInitializerConfigurationInformer(client internalclientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewInitializerConfigurationInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 }
 
 func (f *initializerConfigurationInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&admissionregistration.InitializerConfiguration{}, f.defaultInformer)
+	return f.factory.InformerFor(&admissionregistration.InitializerConfiguration{}, defaultInitializerConfigurationInformer)
 }
 
 func (f *initializerConfigurationInformer) Lister() internalversion.InitializerConfigurationLister {

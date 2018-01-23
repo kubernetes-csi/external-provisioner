@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/kubectl/plugins"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 	"k8s.io/kubernetes/pkg/printers"
@@ -54,8 +54,8 @@ func (f *ring2Factory) PrinterForCommand(cmd *cobra.Command, isLocal bool, outpu
 	var err error
 
 	if isLocal {
-		mapper = legacyscheme.Registry.RESTMapper()
-		typer = legacyscheme.Scheme
+		mapper = api.Registry.RESTMapper()
+		typer = api.Scheme
 	} else {
 		mapper, typer, err = f.objectMappingFactory.UnstructuredObject()
 		if err != nil {
@@ -125,13 +125,8 @@ func (f *ring2Factory) PrintObject(cmd *cobra.Command, isLocal bool, mapper meta
 	if err != nil {
 		return err
 	}
-	// Prefer the existing external version if specified
-	var preferredVersion []string
-	if gvks[0].Version != "" && gvks[0].Version != runtime.APIVersionInternal {
-		preferredVersion = []string{gvks[0].Version}
-	}
 
-	mapping, err := mapper.RESTMapping(gvks[0].GroupKind(), preferredVersion...)
+	mapping, err := mapper.RESTMapping(gvks[0].GroupKind())
 	if err != nil {
 		return err
 	}
@@ -143,40 +138,39 @@ func (f *ring2Factory) PrintObject(cmd *cobra.Command, isLocal bool, mapper meta
 	return printer.PrintObj(obj, out)
 }
 
-func (f *ring2Factory) PrintResourceInfoForCommand(cmd *cobra.Command, info *resource.Info, out io.Writer) error {
-	printer, err := f.PrinterForCommand(cmd, false, nil, printers.PrintOptions{})
-	if err != nil {
-		return err
-	}
-	if !printer.IsGeneric() {
-		printer, err = f.PrinterForMapping(cmd, false, nil, nil, false)
-		if err != nil {
-			return err
-		}
-	}
-	return printer.PrintObj(info.Object, out)
-}
-
-// NewBuilder returns a new resource builder for structured api objects.
-func (f *ring2Factory) NewBuilder() *resource.Builder {
+// NewBuilder returns a new resource builder.
+// Receives a bool flag and avoids remote calls if set to false
+func (f *ring2Factory) NewBuilder(allowRemoteCalls bool) *resource.Builder {
+	var clientMapper resource.ClientMapper
 	clientMapperFunc := resource.ClientMapperFunc(f.objectMappingFactory.ClientForMapping)
 
 	mapper, typer := f.objectMappingFactory.Object()
 	categoryExpander := f.objectMappingFactory.CategoryExpander()
 
-	return resource.NewBuilder(mapper, categoryExpander, typer, clientMapperFunc, f.clientAccessFactory.Decoder(true))
+	if allowRemoteCalls {
+		clientMapper = clientMapperFunc
+	} else {
+		clientMapper = resource.DisabledClientForMapping{ClientMapper: clientMapperFunc}
+	}
+
+	return resource.NewBuilder(mapper, categoryExpander, typer, clientMapper, f.clientAccessFactory.Decoder(true))
 }
 
-// NewUnstructuredBuilder returns a new resource builder for unstructured api objects.
-func (f *ring2Factory) NewUnstructuredBuilder() *resource.Builder {
+func (f *ring2Factory) NewUnstructuredBuilder(allowRemoteCalls bool) (*resource.Builder, error) {
+	if !allowRemoteCalls {
+		return f.NewBuilder(allowRemoteCalls), nil
+	}
+
 	clientMapperFunc := resource.ClientMapperFunc(f.objectMappingFactory.UnstructuredClientForMapping)
+
 	mapper, typer, err := f.objectMappingFactory.UnstructuredObject()
 	if err != nil {
-		CheckErr(err)
+		return nil, err
 	}
-	categoryExpander := f.objectMappingFactory.CategoryExpander()
 
-	return resource.NewBuilder(mapper, categoryExpander, typer, clientMapperFunc, unstructured.UnstructuredJSONScheme)
+	categoryExpander := f.objectMappingFactory.CategoryExpander()
+	return resource.NewBuilder(mapper, categoryExpander, typer, clientMapperFunc, unstructured.UnstructuredJSONScheme), nil
+
 }
 
 // PluginLoader loads plugins from a path set by the KUBECTL_PLUGINS_PATH env var.
@@ -186,10 +180,10 @@ func (f *ring2Factory) NewUnstructuredBuilder() *resource.Builder {
 // system directory structure spec for the given platform.
 func (f *ring2Factory) PluginLoader() plugins.PluginLoader {
 	if len(os.Getenv("KUBECTL_PLUGINS_PATH")) > 0 {
-		return plugins.KubectlPluginsPathPluginLoader()
+		return plugins.PluginsEnvVarPluginLoader()
 	}
 	return plugins.TolerantMultiPluginLoader{
-		plugins.XDGDataDirsPluginLoader(),
+		plugins.XDGDataPluginLoader(),
 		plugins.UserDirPluginLoader(),
 	}
 }

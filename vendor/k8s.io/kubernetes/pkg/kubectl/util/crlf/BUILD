@@ -8,7 +8,6 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["crlf.go"],
-    importpath = "k8s.io/kubernetes/pkg/kubectl/util/crlf",
 )
 
 filegroup(

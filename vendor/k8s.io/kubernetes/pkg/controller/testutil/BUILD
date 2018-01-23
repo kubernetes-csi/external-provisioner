@@ -8,10 +8,8 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["test_utils.go"],
-    importpath = "k8s.io/kubernetes/pkg/controller/testutil",
     deps = [
-        "//pkg/api/legacyscheme:go_default_library",
-        "//pkg/apis/core:go_default_library",
+        "//pkg/api:go_default_library",
         "//pkg/util/node:go_default_library",
         "//vendor/github.com/evanphx/json-patch:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",

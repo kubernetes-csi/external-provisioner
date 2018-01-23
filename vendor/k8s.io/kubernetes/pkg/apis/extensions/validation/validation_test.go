@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/security/apparmor"
 	"k8s.io/kubernetes/pkg/security/podsecuritypolicy/seccomp"
@@ -1169,7 +1169,7 @@ func TestValidateDeployment(t *testing.T) {
 	// must have valid strategy type
 	invalidStrategyDeployment := validDeployment()
 	invalidStrategyDeployment.Spec.Strategy.Type = extensions.DeploymentStrategyType("randomType")
-	errorCases[`supported values: "Recreate", "RollingUpdate"`] = invalidStrategyDeployment
+	errorCases["supported values: Recreate, RollingUpdate"] = invalidStrategyDeployment
 
 	// rollingUpdate should be nil for recreate.
 	invalidRecreateDeployment := validDeployment()
@@ -1334,6 +1334,15 @@ func TestValidateDeploymentStatus(t *testing.T) {
 			availableReplicas:  3,
 			observedGeneration: 1,
 			expectedErr:        true,
+		},
+		// TODO: Remove the following test case once we stop supporting upgrades from 1.5.
+		{
+			name:               "don't validate readyReplicas when it's zero",
+			replicas:           3,
+			readyReplicas:      0,
+			availableReplicas:  3,
+			observedGeneration: 1,
+			expectedErr:        false,
 		},
 		{
 			name:               "invalid collisionCount",
@@ -1737,6 +1746,70 @@ func TestValidateIngressStatusUpdate(t *testing.T) {
 			if err.Field != s[0] || !strings.Contains(err.Error(), s[1]) {
 				t.Errorf("unexpected error: %q, expected: %q", err, k)
 			}
+		}
+	}
+}
+
+func TestValidateScale(t *testing.T) {
+	successCases := []extensions.Scale{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "frontend",
+				Namespace: metav1.NamespaceDefault,
+			},
+			Spec: extensions.ScaleSpec{
+				Replicas: 1,
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "frontend",
+				Namespace: metav1.NamespaceDefault,
+			},
+			Spec: extensions.ScaleSpec{
+				Replicas: 10,
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "frontend",
+				Namespace: metav1.NamespaceDefault,
+			},
+			Spec: extensions.ScaleSpec{
+				Replicas: 0,
+			},
+		},
+	}
+
+	for _, successCase := range successCases {
+		if errs := ValidateScale(&successCase); len(errs) != 0 {
+			t.Errorf("expected success: %v", errs)
+		}
+	}
+
+	errorCases := []struct {
+		scale extensions.Scale
+		msg   string
+	}{
+		{
+			scale: extensions.Scale{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "frontend",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: extensions.ScaleSpec{
+					Replicas: -1,
+				},
+			},
+			msg: "must be greater than or equal to 0",
+		},
+	}
+
+	for _, c := range errorCases {
+		if errs := ValidateScale(&c.scale); len(errs) == 0 {
+			t.Errorf("expected failure for %s", c.msg)
+		} else if !strings.Contains(errs[0].Error(), c.msg) {
+			t.Errorf("unexpected error: %v, expected: %s", errs[0], c.msg)
 		}
 	}
 }
@@ -2459,42 +2532,42 @@ func TestValidatePodSecurityPolicy(t *testing.T) {
 		"no user options": {
 			psp:         noUserOptions,
 			errorType:   field.ErrorTypeNotSupported,
-			errorDetail: `supported values: "MustRunAs", "MustRunAsNonRoot", "RunAsAny"`,
+			errorDetail: "supported values: MustRunAs, MustRunAsNonRoot, RunAsAny",
 		},
 		"no selinux options": {
 			psp:         noSELinuxOptions,
 			errorType:   field.ErrorTypeNotSupported,
-			errorDetail: `supported values: "MustRunAs", "RunAsAny"`,
+			errorDetail: "supported values: MustRunAs, RunAsAny",
 		},
 		"no fsgroup options": {
 			psp:         noFSGroupOptions,
 			errorType:   field.ErrorTypeNotSupported,
-			errorDetail: `supported values: "MustRunAs", "RunAsAny"`,
+			errorDetail: "supported values: MustRunAs, RunAsAny",
 		},
 		"no sup group options": {
 			psp:         noSupplementalGroupsOptions,
 			errorType:   field.ErrorTypeNotSupported,
-			errorDetail: `supported values: "MustRunAs", "RunAsAny"`,
+			errorDetail: "supported values: MustRunAs, RunAsAny",
 		},
 		"invalid user strategy type": {
 			psp:         invalidUserStratType,
 			errorType:   field.ErrorTypeNotSupported,
-			errorDetail: `supported values: "MustRunAs", "MustRunAsNonRoot", "RunAsAny"`,
+			errorDetail: "supported values: MustRunAs, MustRunAsNonRoot, RunAsAny",
 		},
 		"invalid selinux strategy type": {
 			psp:         invalidSELinuxStratType,
 			errorType:   field.ErrorTypeNotSupported,
-			errorDetail: `supported values: "MustRunAs", "RunAsAny"`,
+			errorDetail: "supported values: MustRunAs, RunAsAny",
 		},
 		"invalid sup group strategy type": {
 			psp:         invalidSupGroupStratType,
 			errorType:   field.ErrorTypeNotSupported,
-			errorDetail: `supported values: "MustRunAs", "RunAsAny"`,
+			errorDetail: "supported values: MustRunAs, RunAsAny",
 		},
 		"invalid fs group strategy type": {
 			psp:         invalidFSGroupStratType,
 			errorType:   field.ErrorTypeNotSupported,
-			errorDetail: `supported values: "MustRunAs", "RunAsAny"`,
+			errorDetail: "supported values: MustRunAs, RunAsAny",
 		},
 		"invalid uid": {
 			psp:         invalidUIDPSP,

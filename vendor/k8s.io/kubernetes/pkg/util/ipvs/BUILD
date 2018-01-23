@@ -1,5 +1,7 @@
 package(default_visibility = ["//visibility:public"])
 
+licenses(["notice"])
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_library",
@@ -16,11 +18,14 @@ go_test(
         ],
         "//conditions:default": [],
     }),
-    importpath = "k8s.io/kubernetes/pkg/util/ipvs",
     library = ":go_default_library",
+    tags = ["automanaged"],
     deps = select({
         "@io_bazel_rules_go//go/platform:linux_amd64": [
             "//vendor/github.com/docker/libnetwork/ipvs:go_default_library",
+            "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
+            "//vendor/k8s.io/utils/exec:go_default_library",
+            "//vendor/k8s.io/utils/exec/testing:go_default_library",
         ],
         "//conditions:default": [],
     }),
@@ -37,7 +42,7 @@ go_library(
         ],
         "//conditions:default": [],
     }),
-    importpath = "k8s.io/kubernetes/pkg/util/ipvs",
+    tags = ["automanaged"],
     deps = [
         "//vendor/k8s.io/utils/exec:go_default_library",
     ] + select({

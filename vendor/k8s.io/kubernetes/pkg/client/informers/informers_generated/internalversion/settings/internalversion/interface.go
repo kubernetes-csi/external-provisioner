@@ -29,17 +29,15 @@ type Interface interface {
 }
 
 type version struct {
-	factory          internalinterfaces.SharedInformerFactory
-	namespace        string
-	tweakListOptions internalinterfaces.TweakListOptionsFunc
+	internalinterfaces.SharedInformerFactory
 }
 
 // New returns a new Interface.
-func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakListOptions internalinterfaces.TweakListOptionsFunc) Interface {
-	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
+func New(f internalinterfaces.SharedInformerFactory) Interface {
+	return &version{f}
 }
 
 // PodPresets returns a PodPresetInformer.
 func (v *version) PodPresets() PodPresetInformer {
-	return &podPresetInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+	return &podPresetInformer{factory: v.SharedInformerFactory}
 }

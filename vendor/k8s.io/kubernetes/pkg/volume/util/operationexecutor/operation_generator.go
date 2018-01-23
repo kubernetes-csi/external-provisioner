@@ -267,18 +267,6 @@ func (og *operationGenerator) GenerateAttachVolumeFunc(
 			volumeToAttach.VolumeSpec, volumeToAttach.NodeName)
 
 		if attachErr != nil {
-			if derr, ok := attachErr.(*util.DanglingAttachError); ok {
-				addErr := actualStateOfWorld.MarkVolumeAsAttached(
-					v1.UniqueVolumeName(""),
-					volumeToAttach.VolumeSpec,
-					derr.CurrentNode,
-					derr.DevicePath)
-
-				if addErr != nil {
-					glog.Errorf("AttachVolume.MarkVolumeAsAttached failed to fix dangling volume error for volume %q with %s", volumeToAttach.VolumeName, addErr)
-				}
-
-			}
 			// On failure, return error. Caller will log and retry.
 			eventErr, detailedErr := volumeToAttach.GenerateError("AttachVolume.Attach failed", attachErr)
 			for _, pod := range volumeToAttach.ScheduledPods {
@@ -676,7 +664,7 @@ func (og *operationGenerator) GenerateVerifyControllerAttachedVolumeFunc(
 		}
 
 		// Fetch current node object
-		node, fetchErr := og.kubeClient.CoreV1().Nodes().Get(string(nodeName), metav1.GetOptions{})
+		node, fetchErr := og.kubeClient.Core().Nodes().Get(string(nodeName), metav1.GetOptions{})
 		if fetchErr != nil {
 			// On failure, return error. Caller will log and retry.
 			return volumeToMount.GenerateErrorDetailed("VerifyControllerAttachedVolume failed fetching node from API server", fetchErr)
@@ -710,7 +698,7 @@ func (og *operationGenerator) GenerateVerifyControllerAttachedVolumeFunc(
 func (og *operationGenerator) verifyVolumeIsSafeToDetach(
 	volumeToDetach AttachedVolume) error {
 	// Fetch current node object
-	node, fetchErr := og.kubeClient.CoreV1().Nodes().Get(string(volumeToDetach.NodeName), metav1.GetOptions{})
+	node, fetchErr := og.kubeClient.Core().Nodes().Get(string(volumeToDetach.NodeName), metav1.GetOptions{})
 	if fetchErr != nil {
 		if errors.IsNotFound(fetchErr) {
 			glog.Warningf(volumeToDetach.GenerateMsgDetailed("Node not found on API server. DetachVolume will skip safe to detach check", ""))
@@ -768,9 +756,6 @@ func (og *operationGenerator) GenerateExpandVolumeFunc(
 				return expandErr
 			}
 			newSize = updatedSize
-			// k8s doesn't have transactions, we can't guarantee that after updating PV - updating PVC will be
-			// successful, that is why all PVCs for which pvc.Spec.Size > pvc.Status.Size must be reprocessed
-			// until they reflect user requested size in pvc.Status.Size
 			updateErr := resizeMap.UpdatePVSize(pvcWithResizeRequest, newSize)
 
 			if updateErr != nil {
@@ -781,8 +766,6 @@ func (og *operationGenerator) GenerateExpandVolumeFunc(
 		}
 
 		// No Cloudprovider resize needed, lets mark resizing as done
-		// Rest of the volume expand controller code will assume PVC as *not* resized until pvc.Status.Size
-		// reflects user requested size.
 		if !volumePlugin.RequiresFSResize() {
 			glog.V(4).Infof("Controller resizing done for PVC %s", pvcWithResizeRequest.QualifiedName())
 			err := resizeMap.MarkAsResized(pvcWithResizeRequest, newSize)

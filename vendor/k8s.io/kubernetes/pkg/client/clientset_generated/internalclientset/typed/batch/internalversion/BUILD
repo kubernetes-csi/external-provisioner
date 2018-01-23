@@ -14,7 +14,6 @@ go_library(
         "generated_expansion.go",
         "job.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/batch/internalversion",
     deps = [
         "//pkg/apis/batch:go_default_library",
         "//pkg/client/clientset_generated/internalclientset/scheme:go_default_library",

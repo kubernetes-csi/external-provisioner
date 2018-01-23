@@ -9,7 +9,6 @@ load(
 go_test(
     name = "go_default_test",
     srcs = ["ssh_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/ssh",
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/golang/glog:go_default_library",
@@ -21,7 +20,6 @@ go_test(
 go_library(
     name = "go_default_library",
     srcs = ["ssh.go"],
-    importpath = "k8s.io/kubernetes/pkg/ssh",
     deps = [
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/github.com/prometheus/client_golang/prometheus:go_default_library",

@@ -17,11 +17,11 @@ limitations under the License.
 package admission
 
 import (
+	"net/http"
 	"net/url"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apiserver/pkg/admission"
-	webhookconfig "k8s.io/apiserver/pkg/admission/plugin/webhook/config"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
@@ -34,13 +34,25 @@ import (
 // WantsInternalKubeClientSet defines a function which sets ClientSet for admission plugins that need it
 type WantsInternalKubeClientSet interface {
 	SetInternalKubeClientSet(internalclientset.Interface)
-	admission.InitializationValidator
+	admission.Validator
+}
+
+// WantsExternalKubeClientSet defines a function which sets ClientSet for admission plugins that need it
+type WantsExternalKubeClientSet interface {
+	SetExternalKubeClientSet(clientset.Interface)
+	admission.Validator
 }
 
 // WantsInternalKubeInformerFactory defines a function which sets InformerFactory for admission plugins that need it
 type WantsInternalKubeInformerFactory interface {
 	SetInternalKubeInformerFactory(informers.SharedInformerFactory)
-	admission.InitializationValidator
+	admission.Validator
+}
+
+// WantsAuthorizer defines a function which sets Authorizer for admission plugins that need it.
+type WantsAuthorizer interface {
+	SetAuthorizer(authorizer.Authorizer)
+	admission.Validator
 }
 
 // WantsCloudConfig defines a function which sets CloudConfig for admission plugins that need it.
@@ -53,16 +65,22 @@ type WantsRESTMapper interface {
 	SetRESTMapper(meta.RESTMapper)
 }
 
-// WantsQuotaConfiguration defines a function which sets quota configuration for admission plugins that need it.
-type WantsQuotaConfiguration interface {
-	SetQuotaConfiguration(quota.Configuration)
-	admission.InitializationValidator
+// WantsQuotaRegistry defines a function which sets quota registry for admission plugins that need it.
+type WantsQuotaRegistry interface {
+	SetQuotaRegistry(quota.Registry)
+	admission.Validator
 }
 
 // WantsServiceResolver defines a fuction that accepts a ServiceResolver for
 // admission plugins that need to make calls to services.
 type WantsServiceResolver interface {
-	SetServiceResolver(webhookconfig.ServiceResolver)
+	SetServiceResolver(ServiceResolver)
+}
+
+// WantsClientCert defines a fuction that accepts a cert & key for admission
+// plugins that need to make calls and prove their identity.
+type WantsClientCert interface {
+	SetClientCert(cert, key []byte)
 }
 
 // ServiceResolver knows how to convert a service reference into an actual
@@ -71,23 +89,26 @@ type ServiceResolver interface {
 	ResolveEndpoint(namespace, name string) (*url.URL, error)
 }
 
-// WantsAuthenticationInfoResolverWrapper defines a function that wraps the standard AuthenticationInfoResolver
-// to allow the apiserver to control what is returned as auth info
-type WantsAuthenticationInfoResolverWrapper interface {
-	SetAuthenticationInfoResolverWrapper(webhookconfig.AuthenticationInfoResolverWrapper)
-	admission.InitializationValidator
+// WantsProxyTransport defines a fuction that accepts a proxy transport for admission
+// plugins that need to make calls to pods.
+type WantsProxyTransport interface {
+	SetProxyTransport(proxyTransport *http.Transport)
 }
 
 type PluginInitializer struct {
-	internalClient                    internalclientset.Interface
-	externalClient                    clientset.Interface
-	informers                         informers.SharedInformerFactory
-	authorizer                        authorizer.Authorizer
-	cloudConfig                       []byte
-	restMapper                        meta.RESTMapper
-	quotaConfiguration                quota.Configuration
-	serviceResolver                   webhookconfig.ServiceResolver
-	authenticationInfoResolverWrapper webhookconfig.AuthenticationInfoResolverWrapper
+	internalClient  internalclientset.Interface
+	externalClient  clientset.Interface
+	informers       informers.SharedInformerFactory
+	authorizer      authorizer.Authorizer
+	cloudConfig     []byte
+	restMapper      meta.RESTMapper
+	quotaRegistry   quota.Registry
+	serviceResolver ServiceResolver
+
+	// for proving we are apiserver in call-outs
+	clientCert     []byte
+	clientKey      []byte
+	proxyTransport *http.Transport
 }
 
 var _ admission.PluginInitializer = &PluginInitializer{}
@@ -97,22 +118,42 @@ var _ admission.PluginInitializer = &PluginInitializer{}
 // all public, this construction method is pointless boilerplate.
 func NewPluginInitializer(
 	internalClient internalclientset.Interface,
+	externalClient clientset.Interface,
 	sharedInformers informers.SharedInformerFactory,
+	authz authorizer.Authorizer,
 	cloudConfig []byte,
 	restMapper meta.RESTMapper,
-	quotaConfiguration quota.Configuration,
-	authenticationInfoResolverWrapper webhookconfig.AuthenticationInfoResolverWrapper,
-	serviceResolver webhookconfig.ServiceResolver,
+	quotaRegistry quota.Registry,
 ) *PluginInitializer {
 	return &PluginInitializer{
-		internalClient:                    internalClient,
-		informers:                         sharedInformers,
-		cloudConfig:                       cloudConfig,
-		restMapper:                        restMapper,
-		quotaConfiguration:                quotaConfiguration,
-		authenticationInfoResolverWrapper: authenticationInfoResolverWrapper,
-		serviceResolver:                   serviceResolver,
+		internalClient: internalClient,
+		externalClient: externalClient,
+		informers:      sharedInformers,
+		authorizer:     authz,
+		cloudConfig:    cloudConfig,
+		restMapper:     restMapper,
+		quotaRegistry:  quotaRegistry,
 	}
+}
+
+// SetServiceResolver sets the service resolver which is needed by some plugins.
+func (i *PluginInitializer) SetServiceResolver(s ServiceResolver) *PluginInitializer {
+	i.serviceResolver = s
+	return i
+}
+
+// SetClientCert sets the client cert & key (identity used for calling out to
+// web hooks) which is needed by some plugins.
+func (i *PluginInitializer) SetClientCert(cert, key []byte) *PluginInitializer {
+	i.clientCert = cert
+	i.clientKey = key
+	return i
+}
+
+// SetProxyTransport sets the proxyTransport which is needed by some plugins.
+func (i *PluginInitializer) SetProxyTransport(proxyTransport *http.Transport) *PluginInitializer {
+	i.proxyTransport = proxyTransport
+	return i
 }
 
 // Initialize checks the initialization interfaces implemented by each plugin
@@ -122,8 +163,16 @@ func (i *PluginInitializer) Initialize(plugin admission.Interface) {
 		wants.SetInternalKubeClientSet(i.internalClient)
 	}
 
+	if wants, ok := plugin.(WantsExternalKubeClientSet); ok {
+		wants.SetExternalKubeClientSet(i.externalClient)
+	}
+
 	if wants, ok := plugin.(WantsInternalKubeInformerFactory); ok {
 		wants.SetInternalKubeInformerFactory(i.informers)
+	}
+
+	if wants, ok := plugin.(WantsAuthorizer); ok {
+		wants.SetAuthorizer(i.authorizer)
 	}
 
 	if wants, ok := plugin.(WantsCloudConfig); ok {
@@ -134,17 +183,25 @@ func (i *PluginInitializer) Initialize(plugin admission.Interface) {
 		wants.SetRESTMapper(i.restMapper)
 	}
 
-	if wants, ok := plugin.(WantsQuotaConfiguration); ok {
-		wants.SetQuotaConfiguration(i.quotaConfiguration)
+	if wants, ok := plugin.(WantsQuotaRegistry); ok {
+		wants.SetQuotaRegistry(i.quotaRegistry)
 	}
 
 	if wants, ok := plugin.(WantsServiceResolver); ok {
+		if i.serviceResolver == nil {
+			panic("An admission plugin wants the service resolver, but it was not provided.")
+		}
 		wants.SetServiceResolver(i.serviceResolver)
 	}
 
-	if wants, ok := plugin.(WantsAuthenticationInfoResolverWrapper); ok {
-		if i.authenticationInfoResolverWrapper != nil {
-			wants.SetAuthenticationInfoResolverWrapper(i.authenticationInfoResolverWrapper)
+	if wants, ok := plugin.(WantsClientCert); ok {
+		if i.clientCert == nil || i.clientKey == nil {
+			panic("An admission plugin wants a client cert/key, but they were not provided.")
 		}
+		wants.SetClientCert(i.clientCert, i.clientKey)
+	}
+
+	if wants, ok := plugin.(WantsProxyTransport); ok {
+		wants.SetProxyTransport(i.proxyTransport)
 	}
 }

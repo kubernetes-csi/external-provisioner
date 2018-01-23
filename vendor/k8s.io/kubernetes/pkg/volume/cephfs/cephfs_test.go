@@ -85,8 +85,9 @@ func TestPlugin(t *testing.T) {
 		t.Errorf("Got a nil Mounter")
 	}
 	volpath := path.Join(tmpDir, "pods/poduid/volumes/kubernetes.io~cephfs/vol1")
-	if volumePath != volpath {
-		t.Errorf("Got unexpected path: %s", volumePath)
+	path := mounter.GetPath()
+	if path != volpath {
+		t.Errorf("Got unexpected path: %s", path)
 	}
 	if err := mounter.SetUp(nil); err != nil {
 		t.Errorf("Expected success, got: %v", err)
@@ -111,7 +112,7 @@ func TestPlugin(t *testing.T) {
 	if _, err := os.Stat(volumePath); err == nil {
 		t.Errorf("TearDown() failed, volume path still exists: %s", volumePath)
 	} else if !os.IsNotExist(err) {
-		t.Errorf("TearDown() failed: %v", err)
+		t.Errorf("SetUp() failed: %v", err)
 	}
 }
 

@@ -21,9 +21,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/storage/names"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	api "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/apis/core/validation"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/validation"
 )
 
 // strategy implements behavior for ServiceAccount objects
@@ -34,7 +33,7 @@ type strategy struct {
 
 // Strategy is the default logic that applies when creating and updating ServiceAccount
 // objects via the REST API.
-var Strategy = strategy{legacyscheme.Scheme, names.SimpleNameGenerator}
+var Strategy = strategy{api.Scheme, names.SimpleNameGenerator}
 
 func (strategy) NamespaceScoped() bool {
 	return true

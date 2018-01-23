@@ -12,9 +12,8 @@ go_library(
         "doc.go",
         "healthcheck.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/proxy/healthcheck",
     deps = [
-        "//pkg/apis/core:go_default_library",
+        "//pkg/api:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/github.com/renstrom/dedent:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
@@ -28,7 +27,6 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = ["healthcheck_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/proxy/healthcheck",
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/davecgh/go-spew/spew:go_default_library",

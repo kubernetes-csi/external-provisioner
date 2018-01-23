@@ -76,16 +76,11 @@ func NewController(
 		return nil, fmt.Errorf("cloud IPAM controller does not support %q provider", cloud.ProviderName())
 	}
 
-	set, err := cidrset.NewCIDRSet(clusterCIDR, nodeCIDRMaskSize)
-	if err != nil {
-		return nil, err
-	}
-
 	c := &Controller{
 		config:  config,
 		adapter: newAdapter(kubeClient, gceCloud),
 		syncers: make(map[string]*nodesync.NodeSync),
-		set:     set,
+		set:     cidrset.NewCIDRSet(clusterCIDR, nodeCIDRMaskSize),
 	}
 
 	if err := occupyServiceCIDR(c.set, clusterCIDR, serviceCIDR); err != nil {

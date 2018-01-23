@@ -38,7 +38,7 @@ var (
 		An autoscaler can automatically increase or decrease number of pods deployed within the system as needed.`))
 
 	autoscaleExample = templates.Examples(i18n.T(`
-		# Auto scale a deployment "foo", with the number of pods between 2 and 10, no target CPU utilization specified so a default autoscaling policy will be used:
+		# Auto scale a deployment "foo", with the number of pods between 2 and 10, target CPU utilization specified so a default autoscaling policy will be used:
 		kubectl autoscale deployment foo --min=2 --max=10
 
 		# Auto scale a replication controller "foo", with the number of pods between 1 and 5, target CPU utilization at 80%:
@@ -90,7 +90,8 @@ func RunAutoscale(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []s
 		return err
 	}
 
-	r := f.NewBuilder().
+	mapper, typer := f.Object()
+	r := f.NewBuilder(true).
 		ContinueOnError().
 		NamespaceParam(namespace).DefaultNamespace().
 		FilenameParam(enforceNamespace, options).
@@ -144,7 +145,6 @@ func RunAutoscale(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []s
 			return err
 		}
 
-		mapper, typer := f.Object()
 		resourceMapper := &resource.Mapper{
 			ObjectTyper:  typer,
 			RESTMapper:   mapper,

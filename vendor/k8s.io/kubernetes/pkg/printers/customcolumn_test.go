@@ -25,8 +25,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/printers"
 )
 
@@ -113,7 +112,7 @@ func TestNewColumnPrinterFromSpec(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		printer, err := printers.NewCustomColumnsPrinterFromSpec(test.spec, legacyscheme.Codecs.UniversalDecoder(), test.noHeaders)
+		printer, err := printers.NewCustomColumnsPrinterFromSpec(test.spec, api.Codecs.UniversalDecoder(), test.noHeaders)
 		if test.expectErr {
 			if err == nil {
 				t.Errorf("[%s] unexpected non-error", test.name)
@@ -216,7 +215,7 @@ func TestNewColumnPrinterFromTemplate(t *testing.T) {
 	}
 	for _, test := range tests {
 		reader := bytes.NewBufferString(test.spec)
-		printer, err := printers.NewCustomColumnsPrinterFromTemplate(reader, legacyscheme.Codecs.UniversalDecoder())
+		printer, err := printers.NewCustomColumnsPrinterFromTemplate(reader, api.Codecs.UniversalDecoder())
 		if test.expectErr {
 			if err == nil {
 				t.Errorf("[%s] unexpected non-error", test.name)
@@ -287,32 +286,12 @@ bar
 foo       baz
 `,
 		},
-		{
-			columns: []printers.Column{
-				{
-					Header:    "NAME",
-					FieldSpec: "{.metadata.name}",
-				},
-				{
-					Header:    "API_VERSION",
-					FieldSpec: "{.apiVersion}",
-				},
-				{
-					Header:    "NOT_FOUND",
-					FieldSpec: "{.notFound}",
-				},
-			},
-			obj: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}, TypeMeta: metav1.TypeMeta{APIVersion: "baz"}},
-			expectedOutput: `NAME      API_VERSION   NOT_FOUND
-foo       baz           <none>
-`,
-		},
 	}
 
 	for _, test := range tests {
 		printer := &printers.CustomColumnsPrinter{
 			Columns: test.columns,
-			Decoder: legacyscheme.Codecs.UniversalDecoder(),
+			Decoder: api.Codecs.UniversalDecoder(),
 		}
 		buffer := &bytes.Buffer{}
 		if err := printer.PrintObj(test.obj, buffer); err != nil {

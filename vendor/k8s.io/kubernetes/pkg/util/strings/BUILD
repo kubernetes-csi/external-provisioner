@@ -13,7 +13,6 @@ go_library(
         "line_delimiter.go",
         "strings.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/util/strings",
 )
 
 go_test(
@@ -23,7 +22,6 @@ go_test(
         "line_delimiter_test.go",
         "strings_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/util/strings",
     library = ":go_default_library",
 )
 

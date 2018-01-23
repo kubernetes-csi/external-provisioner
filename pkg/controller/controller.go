@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	jsonv2 "encoding/json"
 	"fmt"
 	"k8s.io/apimachinery/pkg/util/json"
 	"net"
@@ -29,13 +30,12 @@ import (
 
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 )
@@ -194,6 +194,42 @@ func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connecti
 	return provisioner
 }
 
+func printIndentedJson(data interface{}) string {
+	var indentedJSON []byte
+
+	indentedJSON, err := jsonv2.MarshalIndent(data, "", "\t")
+	if err != nil {
+		return fmt.Sprintf("JSON parse error: %v", err)
+	}
+	return string(indentedJSON)
+}
+
+// getKeyFromSecret returns a key for a specific action passed as a parameter,
+// if specified action is not found, then error is returned.
+func getKeyFromSecret(secretName string, secretNamespace string, action string, client kubernetes.Interface) (string, error) {
+	if client == nil {
+		return "", fmt.Errorf("Cannot get kube client")
+	}
+	secrets, err := client.CoreV1().Secrets(secretNamespace).Get(secretName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	for k, v := range secrets.Data {
+		// key must match value in action variable
+		if k == action {
+			return string(v), nil
+		}
+	}
+	// For backward compatibility need to check for a default key
+	for k, v := range secrets.Data {
+		if k == "default" {
+			return string(v), nil
+		}
+	}
+
+	return "", fmt.Errorf("failed to find action: %s in secret: %s/%s ", action, secretName, secretNamespace)
+}
+
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
 	if options.PVC.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim Selector is not supported")
@@ -203,6 +239,29 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 
+	userCredentials := map[string]string{}
+	if storageClassName := options.PVC.Spec.StorageClassName; *storageClassName != "" {
+		fmt.Printf("><SB> provisioner was called for storage class: %s and for user: %s\n", *storageClassName, options.PVC.Spec.UserID)
+		storageClass, err := p.client.StorageV1().StorageClasses().Get(*storageClassName, metav1.GetOptions{})
+		if err != nil {
+			glog.Warningf("failed to retrieve information about the storage class: %s with error: %v", storageClassName, err)
+		} else {
+			if storageClass.SecretRefs != nil {
+				// Now we can extract user's key for "create" action
+				if secret, found := storageClass.SecretRefs[options.PVC.Spec.UserID]; found {
+					key, err := getKeyFromSecret(secret.Name, secret.Namespace, "create", p.client)
+					if err == nil {
+						userCredentials[options.PVC.Spec.UserID] = key
+						fmt.Printf("><SB> Extracted user name: %s secret name: %s secret namespace: %s key: %s \n", options.PVC.Spec.UserID, secret.Name, secret.Namespace, key)
+					} else {
+						glog.Warningf("failed to retrieve secret: %s/%s with error: %v", secret.Name, secret.Namespace, err)
+					}
+				} else {
+					glog.Warningf("user: %s is not found in storageclass: %s/%s", options.PVC.Spec.UserID, secret.Name, secret.Namespace)
+				}
+			}
+		}
+	}
 	// Create a CSI CreateVolumeRequest
 	req := csi.CreateVolumeRequest{
 		Name:       share,
@@ -218,6 +277,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			RequiredBytes: uint64(volSizeBytes),
 			LimitBytes:    uint64(volSizeBytes),
 		},
+		UserCredentials: userCredentials,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
@@ -243,6 +303,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			Annotations: annotations,
 		},
 		Spec: v1.PersistentVolumeSpec{
+			UserID: options.PVC.Spec.UserID,
 			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
 			AccessModes:                   options.PVC.Spec.AccessModes,
 			Capacity: v1.ResourceList{
@@ -258,7 +319,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		},
 	}
 
-	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
+	glog.Infof("successfully created PV %+v for user: %s", pv.Spec.PersistentVolumeSource, pv.Spec.UserID)
 
 	return pv, nil
 }

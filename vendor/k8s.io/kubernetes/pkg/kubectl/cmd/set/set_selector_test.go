@@ -24,14 +24,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/api/core/v1"
-	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/rest/fake"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/apis/batch"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 	"k8s.io/kubernetes/pkg/printers"
 )
@@ -46,14 +45,14 @@ func TestUpdateSelectorForObjectTypes(t *testing.T) {
 			},
 		}}
 
-	rc := v1.ReplicationController{}
-	ser := v1.Service{}
-	dep := extensionsv1beta1.Deployment{Spec: extensionsv1beta1.DeploymentSpec{Selector: &before}}
-	ds := extensionsv1beta1.DaemonSet{Spec: extensionsv1beta1.DaemonSetSpec{Selector: &before}}
-	rs := extensionsv1beta1.ReplicaSet{Spec: extensionsv1beta1.ReplicaSetSpec{Selector: &before}}
-	job := batchv1.Job{Spec: batchv1.JobSpec{Selector: &before}}
-	pvc := v1.PersistentVolumeClaim{Spec: v1.PersistentVolumeClaimSpec{Selector: &before}}
-	sa := v1.ServiceAccount{}
+	rc := api.ReplicationController{}
+	ser := api.Service{}
+	dep := extensions.Deployment{Spec: extensions.DeploymentSpec{Selector: &before}}
+	ds := extensions.DaemonSet{Spec: extensions.DaemonSetSpec{Selector: &before}}
+	rs := extensions.ReplicaSet{Spec: extensions.ReplicaSetSpec{Selector: &before}}
+	job := batch.Job{Spec: batch.JobSpec{Selector: &before}}
+	pvc := api.PersistentVolumeClaim{Spec: api.PersistentVolumeClaimSpec{Selector: &before}}
+	sa := api.ServiceAccount{}
 	type args struct {
 		obj      runtime.Object
 		selector metav1.LabelSelector
@@ -128,7 +127,7 @@ func TestUpdateSelectorForObjectTypes(t *testing.T) {
 }
 
 func TestUpdateNewSelectorValuesForObject(t *testing.T) {
-	ser := v1.Service{}
+	ser := api.Service{}
 	type args struct {
 		obj      runtime.Object
 		selector metav1.LabelSelector
@@ -170,7 +169,7 @@ func TestUpdateNewSelectorValuesForObject(t *testing.T) {
 }
 
 func TestUpdateOldSelectorValuesForObject(t *testing.T) {
-	ser := v1.Service{Spec: v1.ServiceSpec{Selector: map[string]string{"fee": "true"}}}
+	ser := api.Service{Spec: api.ServiceSpec{Selector: map[string]string{"fee": "true"}}}
 	type args struct {
 		obj      runtime.Object
 		selector metav1.LabelSelector
@@ -318,7 +317,7 @@ func TestGetResourcesAndSelector(t *testing.T) {
 func TestSelectorTest(t *testing.T) {
 	f, tf, codec, ns := cmdtesting.NewAPIFactory()
 	tf.Client = &fake.RESTClient{
-		GroupVersion:         schema.GroupVersion{Version: ""},
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			t.Fatalf("unexpected request: %s %#v\n%#v", req.Method, req.URL, req)
@@ -326,7 +325,7 @@ func TestSelectorTest(t *testing.T) {
 		}),
 	}
 	tf.Namespace = "test"
-	tf.ClientConfig = &restclient.Config{ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Version: ""}}}
+	tf.ClientConfig = &restclient.Config{ContentConfig: restclient.ContentConfig{GroupVersion: &api.Registry.GroupOrDie(api.GroupName).GroupVersion}}
 
 	buf := bytes.NewBuffer([]byte{})
 	cmd := NewCmdSelector(f, buf)

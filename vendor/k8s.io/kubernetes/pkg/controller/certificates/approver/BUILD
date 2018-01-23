@@ -9,7 +9,6 @@ load(
 go_test(
     name = "go_default_test",
     srcs = ["sarapprove_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/controller/certificates/approver",
     library = ":go_default_library",
     deps = [
         "//pkg/apis/certificates/v1beta1:go_default_library",
@@ -25,7 +24,6 @@ go_test(
 go_library(
     name = "go_default_library",
     srcs = ["sarapprove.go"],
-    importpath = "k8s.io/kubernetes/pkg/controller/certificates/approver",
     deps = [
         "//pkg/apis/certificates/v1beta1:go_default_library",
         "//pkg/controller/certificates:go_default_library",

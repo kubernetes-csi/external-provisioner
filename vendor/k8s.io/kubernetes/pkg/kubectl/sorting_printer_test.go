@@ -25,11 +25,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	internal "k8s.io/kubernetes/pkg/api"
 )
 
 func encodeOrDie(obj runtime.Object) []byte {
-	data, err := runtime.Encode(legacyscheme.Codecs.LegacyCodec(api.SchemeGroupVersion), obj)
+	data, err := runtime.Encode(internal.Codecs.LegacyCodec(api.SchemeGroupVersion), obj)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -389,7 +389,7 @@ func TestSortingPrinter(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		sort := &SortingPrinter{SortField: test.field, Decoder: legacyscheme.Codecs.UniversalDecoder()}
+		sort := &SortingPrinter{SortField: test.field, Decoder: internal.Codecs.UniversalDecoder()}
 		err := sort.sortObj(test.obj)
 		if err != nil {
 			if len(test.expectedErr) > 0 {

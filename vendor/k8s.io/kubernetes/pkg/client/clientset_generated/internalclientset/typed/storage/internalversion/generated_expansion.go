@@ -17,5 +17,3 @@ limitations under the License.
 package internalversion
 
 type StorageClassExpansion interface{}
-
-type VolumeAttachmentExpansion interface{}

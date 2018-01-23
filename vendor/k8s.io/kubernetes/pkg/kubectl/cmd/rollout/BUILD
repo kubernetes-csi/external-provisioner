@@ -13,7 +13,6 @@ go_library(
         "rollout_status.go",
         "rollout_undo.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubectl/cmd/rollout",
     visibility = [
         "//build/visible_to:pkg_kubectl_cmd_rollout_CONSUMERS",
     ],

@@ -47,10 +47,10 @@ import (
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/client-go/tools/remotecommand"
 	utiltesting "k8s.io/client-go/util/testing"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 	statsapi "k8s.io/kubernetes/pkg/kubelet/apis/stats/v1alpha1"
 	// Do some initialization to decode the query parameters correctly.
-	_ "k8s.io/kubernetes/pkg/apis/core/install"
+	_ "k8s.io/kubernetes/pkg/api/install"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	kubecontainertesting "k8s.io/kubernetes/pkg/kubelet/container/testing"
@@ -183,7 +183,7 @@ func (_ *fakeKubelet) GetCgroupStats(cgroupName string) (*statsapi.ContainerStat
 type fakeAuth struct {
 	authenticateFunc func(*http.Request) (user.Info, bool, error)
 	attributesFunc   func(user.Info, *http.Request) authorizer.Attributes
-	authorizeFunc    func(authorizer.Attributes) (authorized authorizer.Decision, reason string, err error)
+	authorizeFunc    func(authorizer.Attributes) (authorized bool, reason string, err error)
 }
 
 func (f *fakeAuth) AuthenticateRequest(req *http.Request) (user.Info, bool, error) {
@@ -192,7 +192,7 @@ func (f *fakeAuth) AuthenticateRequest(req *http.Request) (user.Info, bool, erro
 func (f *fakeAuth) GetRequestAttributes(u user.Info, req *http.Request) authorizer.Attributes {
 	return f.attributesFunc(u, req)
 }
-func (f *fakeAuth) Authorize(a authorizer.Attributes) (authorized authorizer.Decision, reason string, err error) {
+func (f *fakeAuth) Authorize(a authorizer.Attributes) (authorized bool, reason string, err error) {
 	return f.authorizeFunc(a)
 }
 
@@ -205,10 +205,6 @@ type serverTestFramework struct {
 }
 
 func newServerTest() *serverTestFramework {
-	return newServerTestWithDebug(true)
-}
-
-func newServerTestWithDebug(enableDebugging bool) *serverTestFramework {
 	fw := &serverTestFramework{}
 	fw.fakeKubelet = &fakeKubelet{
 		hostnameFunc: func() string {
@@ -232,8 +228,8 @@ func newServerTestWithDebug(enableDebugging bool) *serverTestFramework {
 		attributesFunc: func(u user.Info, req *http.Request) authorizer.Attributes {
 			return &authorizer.AttributesRecord{User: u}
 		},
-		authorizeFunc: func(a authorizer.Attributes) (decision authorizer.Decision, reason string, err error) {
-			return authorizer.DecisionAllow, "", nil
+		authorizeFunc: func(a authorizer.Attributes) (authorized bool, reason string, err error) {
+			return true, "", nil
 		},
 	}
 	fw.criHandler = &utiltesting.FakeHandler{
@@ -243,7 +239,7 @@ func newServerTestWithDebug(enableDebugging bool) *serverTestFramework {
 		fw.fakeKubelet,
 		stats.NewResourceAnalyzer(fw.fakeKubelet, time.Minute),
 		fw.fakeAuth,
-		enableDebugging,
+		true,
 		false,
 		&kubecontainertesting.Mock{},
 		fw.criHandler)
@@ -688,12 +684,12 @@ Otherwise, add it to the expected list of paths that map to the "proxy" subresou
 			}
 			return attributesGetter.GetRequestAttributes(u, req)
 		}
-		fw.fakeAuth.authorizeFunc = func(a authorizer.Attributes) (decision authorizer.Decision, reason string, err error) {
+		fw.fakeAuth.authorizeFunc = func(a authorizer.Attributes) (authorized bool, reason string, err error) {
 			calledAuthorize = true
 			if a != expectedAttributes {
 				t.Fatalf("%s: expected attributes\n\t%#v\ngot\n\t%#v", tc.Path, expectedAttributes, a)
 			}
-			return authorizer.DecisionNoOpinion, "", nil
+			return false, "", nil
 		}
 
 		req, err := http.NewRequest(tc.Method, fw.testHTTPServer.URL+tc.Path, nil)
@@ -747,9 +743,9 @@ func TestAuthenticationError(t *testing.T) {
 		calledAttributes = true
 		return expectedAttributes
 	}
-	fw.fakeAuth.authorizeFunc = func(a authorizer.Attributes) (decision authorizer.Decision, reason string, err error) {
+	fw.fakeAuth.authorizeFunc = func(a authorizer.Attributes) (authorized bool, reason string, err error) {
 		calledAuthorize = true
-		return authorizer.DecisionNoOpinion, "", errors.New("Failed")
+		return false, "", errors.New("Failed")
 	}
 
 	assertHealthFails(t, fw.testHTTPServer.URL+"/healthz", http.StatusInternalServerError)
@@ -785,9 +781,9 @@ func TestAuthenticationFailure(t *testing.T) {
 		calledAttributes = true
 		return expectedAttributes
 	}
-	fw.fakeAuth.authorizeFunc = func(a authorizer.Attributes) (decision authorizer.Decision, reason string, err error) {
+	fw.fakeAuth.authorizeFunc = func(a authorizer.Attributes) (authorized bool, reason string, err error) {
 		calledAuthorize = true
-		return authorizer.DecisionNoOpinion, "", nil
+		return false, "", nil
 	}
 
 	assertHealthFails(t, fw.testHTTPServer.URL+"/healthz", http.StatusUnauthorized)
@@ -823,9 +819,9 @@ func TestAuthorizationSuccess(t *testing.T) {
 		calledAttributes = true
 		return expectedAttributes
 	}
-	fw.fakeAuth.authorizeFunc = func(a authorizer.Attributes) (decision authorizer.Decision, reason string, err error) {
+	fw.fakeAuth.authorizeFunc = func(a authorizer.Attributes) (authorized bool, reason string, err error) {
 		calledAuthorize = true
-		return authorizer.DecisionAllow, "", nil
+		return true, "", nil
 	}
 
 	assertHealthIsOk(t, fw.testHTTPServer.URL+"/healthz")
@@ -1638,60 +1634,4 @@ func TestCRIHandler(t *testing.T) {
 	assert.Equal(t, "GET", fw.criHandler.RequestReceived.Method)
 	assert.Equal(t, path, fw.criHandler.RequestReceived.URL.Path)
 	assert.Equal(t, query, fw.criHandler.RequestReceived.URL.RawQuery)
-}
-
-func TestDebuggingDisabledHandlers(t *testing.T) {
-	fw := newServerTestWithDebug(false)
-	defer fw.testHTTPServer.Close()
-
-	paths := []string{
-		"/run", "/exec", "/attach", "/portForward", "/containerLogs", "/runningpods",
-		"/run/", "/exec/", "/attach/", "/portForward/", "/containerLogs/", "/runningpods/",
-		"/run/xxx", "/exec/xxx", "/attach/xxx", "/debug/pprof/profile", "/logs/kubelet.log",
-	}
-
-	for _, p := range paths {
-		resp, err := http.Get(fw.testHTTPServer.URL + p)
-		require.NoError(t, err)
-		assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
-		body, err := ioutil.ReadAll(resp.Body)
-		require.NoError(t, err)
-		assert.Equal(t, "Debug endpoints are disabled.\n", string(body))
-
-		resp, err = http.Post(fw.testHTTPServer.URL+p, "", nil)
-		require.NoError(t, err)
-		assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
-		body, err = ioutil.ReadAll(resp.Body)
-		require.NoError(t, err)
-		assert.Equal(t, "Debug endpoints are disabled.\n", string(body))
-	}
-
-	// test some other paths, make sure they're working
-	containerInfo := &cadvisorapi.ContainerInfo{
-		ContainerReference: cadvisorapi.ContainerReference{
-			Name: "/",
-		},
-	}
-	fw.fakeKubelet.rawInfoFunc = func(req *cadvisorapi.ContainerInfoRequest) (map[string]*cadvisorapi.ContainerInfo, error) {
-		return map[string]*cadvisorapi.ContainerInfo{
-			containerInfo.Name: containerInfo,
-		}, nil
-	}
-
-	resp, err := http.Get(fw.testHTTPServer.URL + "/stats")
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-	machineInfo := &cadvisorapi.MachineInfo{
-		NumCores:       4,
-		MemoryCapacity: 1024,
-	}
-	fw.fakeKubelet.machineInfoFunc = func() (*cadvisorapi.MachineInfo, error) {
-		return machineInfo, nil
-	}
-
-	resp, err = http.Get(fw.testHTTPServer.URL + "/spec")
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-
 }

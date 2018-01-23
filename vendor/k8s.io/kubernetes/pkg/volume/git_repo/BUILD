@@ -12,7 +12,6 @@ go_library(
         "doc.go",
         "git_repo.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/volume/git_repo",
     deps = [
         "//pkg/util/strings:go_default_library",
         "//pkg/volume:go_default_library",
@@ -26,7 +25,6 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = ["git_repo_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/volume/git_repo",
     library = ":go_default_library",
     deps = [
         "//pkg/volume:go_default_library",

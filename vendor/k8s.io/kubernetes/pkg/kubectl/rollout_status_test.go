@@ -20,11 +20,11 @@ import (
 	"fmt"
 	"testing"
 
-	apps "k8s.io/api/apps/v1beta1"
-	api "k8s.io/api/core/v1"
-	extensions "k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/apis/apps"
+	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
 )
 
 func TestDeploymentStatusViewerStatus(t *testing.T) {
@@ -116,7 +116,7 @@ func TestDeploymentStatusViewerStatus(t *testing.T) {
 				Generation: test.generation,
 			},
 			Spec: extensions.DeploymentSpec{
-				Replicas: &test.specReplicas,
+				Replicas: test.specReplicas,
 			},
 			Status: test.status,
 		}
@@ -306,8 +306,7 @@ func TestStatefulSetStatusViewerStatus(t *testing.T) {
 			generation: 1,
 			strategy: apps.StatefulSetUpdateStrategy{Type: apps.RollingUpdateStatefulSetStrategyType,
 				RollingUpdate: func() *apps.RollingUpdateStatefulSetStrategy {
-					partition := int32(2)
-					return &apps.RollingUpdateStatefulSetStrategy{Partition: &partition}
+					return &apps.RollingUpdateStatefulSetStrategy{Partition: 2}
 				}()},
 			status: apps.StatefulSetStatus{
 				ObservedGeneration: func() *int64 {
@@ -329,8 +328,7 @@ func TestStatefulSetStatusViewerStatus(t *testing.T) {
 			generation: 1,
 			strategy: apps.StatefulSetUpdateStrategy{Type: apps.RollingUpdateStatefulSetStrategyType,
 				RollingUpdate: func() *apps.RollingUpdateStatefulSetStrategy {
-					partition := int32(2)
-					return &apps.RollingUpdateStatefulSetStrategy{Partition: &partition}
+					return &apps.RollingUpdateStatefulSetStrategy{Partition: 2}
 				}()},
 			status: apps.StatefulSetStatus{
 				ObservedGeneration: func() *int64 {
@@ -375,7 +373,7 @@ func TestStatefulSetStatusViewerStatus(t *testing.T) {
 		s.Status = test.status
 		s.Spec.UpdateStrategy = test.strategy
 		s.Generation = test.generation
-		client := fake.NewSimpleClientset(s).AppsV1beta1()
+		client := fake.NewSimpleClientset(s).Apps()
 		dsv := &StatefulSetStatusViewer{c: client}
 		msg, done, err := dsv.Status(s.Namespace, s.Name, 0)
 		if test.err && err == nil {
@@ -441,7 +439,7 @@ func newStatefulSet(replicas int32) *apps.StatefulSet {
 					DNSPolicy:     api.DNSClusterFirst,
 				},
 			},
-			Replicas:       &replicas,
+			Replicas:       replicas,
 			UpdateStrategy: apps.StatefulSetUpdateStrategy{Type: apps.RollingUpdateStatefulSetStrategyType},
 		},
 		Status: apps.StatefulSetStatus{},

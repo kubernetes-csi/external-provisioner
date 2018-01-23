@@ -19,7 +19,6 @@ package config
 import (
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -139,7 +138,6 @@ func (o GetContextsOptions) RunGetContexts() error {
 		}
 	}
 
-	sort.Strings(toPrint)
 	for _, name := range toPrint {
 		err = printContext(name, config.Contexts[name], out, o.nameOnly, config.CurrentContext == name)
 		if err != nil {

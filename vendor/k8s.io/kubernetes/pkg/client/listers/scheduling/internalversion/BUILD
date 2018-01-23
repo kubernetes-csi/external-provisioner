@@ -11,7 +11,6 @@ go_library(
         "expansion_generated.go",
         "priorityclass.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/client/listers/scheduling/internalversion",
     deps = [
         "//pkg/apis/scheduling:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",

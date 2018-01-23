@@ -3,7 +3,6 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = ["rest.go"],
-    importpath = "k8s.io/kubernetes/pkg/registry/authorization/selfsubjectrulesreview",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/apis/authorization:go_default_library",
@@ -11,7 +10,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/authorization/authorizer:go_default_library",
         "//vendor/k8s.io/apiserver/pkg/endpoints/request:go_default_library",
-        "//vendor/k8s.io/apiserver/pkg/registry/rest:go_default_library",
     ],
 )
 

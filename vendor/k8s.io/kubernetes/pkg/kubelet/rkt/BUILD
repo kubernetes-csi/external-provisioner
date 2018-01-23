@@ -19,7 +19,6 @@ go_library(
         "systemd.go",
         "version.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/rkt",
     deps = [
         "//pkg/credentialprovider:go_default_library",
         "//pkg/kubelet/container:go_default_library",
@@ -66,7 +65,6 @@ go_test(
         "fake_rkt_interface_test.go",
         "rkt_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/rkt",
     library = ":go_default_library",
     deps = [
         "//pkg/kubelet/container:go_default_library",

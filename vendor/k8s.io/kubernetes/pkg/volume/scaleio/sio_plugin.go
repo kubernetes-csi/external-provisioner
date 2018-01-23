@@ -60,11 +60,12 @@ func (p *sioPlugin) GetPluginName() string {
 }
 
 func (p *sioPlugin) GetVolumeName(spec *volume.Spec) (string, error) {
-	attribs, err := getVolumeSourceAttribs(spec)
+	source, err := getVolumeSourceFromSpec(spec)
 	if err != nil {
 		return "", err
 	}
-	return attribs.volName, nil
+
+	return source.VolumeName, nil
 }
 
 func (p *sioPlugin) CanSupport(spec *volume.Spec) bool {
@@ -80,33 +81,29 @@ func (p *sioPlugin) NewMounter(
 	spec *volume.Spec,
 	pod *api.Pod,
 	_ volume.VolumeOptions) (volume.Mounter, error) {
-
-	// extract source info from either ScaleIOVolumeSource or ScaleIOPersistentVolumeSource type
-	attribs, err := getVolumeSourceAttribs(spec)
+	sioSource, err := getVolumeSourceFromSpec(spec)
 	if err != nil {
-		return nil, errors.New(log("mounter failed to extract volume attributes from spec: %v", err))
-	}
-
-	secretName, secretNS, err := getSecretAndNamespaceFromSpec(spec, pod)
-	if err != nil {
-		return nil, errors.New(log("failed to get secret name or secretNamespace: %v", err))
+		glog.Error(log("failed to extract ScaleIOVolumeSource from spec: %v", err))
+		return nil, err
 	}
 
 	return &sioVolume{
-		pod:             pod,
-		spec:            spec,
-		secretName:      secretName,
-		secretNamespace: secretNS,
-		volSpecName:     spec.Name(),
-		volName:         attribs.volName,
-		podUID:          pod.UID,
-		readOnly:        attribs.readOnly,
-		fsType:          attribs.fsType,
-		plugin:          p,
+		pod:         pod,
+		spec:        spec,
+		source:      sioSource,
+		namespace:   pod.Namespace,
+		volSpecName: spec.Name(),
+		volName:     sioSource.VolumeName,
+		podUID:      pod.UID,
+		readOnly:    sioSource.ReadOnly,
+		fsType:      sioSource.FSType,
+		plugin:      p,
 	}, nil
 }
 
 // NewUnmounter creates a representation of the volume to unmount
+// The specName param can be used to carry the namespace value (if needed) using format:
+// specName = [<namespace>nsSep]<somevalue> where the specname is pre-pended with the namespace
 func (p *sioPlugin) NewUnmounter(specName string, podUID types.UID) (volume.Unmounter, error) {
 	glog.V(4).Info(log("Unmounter for %s", specName))
 
@@ -159,25 +156,22 @@ func (p *sioPlugin) GetAccessModes() []api.PersistentVolumeAccessMode {
 var _ volume.DeletableVolumePlugin = &sioPlugin{}
 
 func (p *sioPlugin) NewDeleter(spec *volume.Spec) (volume.Deleter, error) {
-	attribs, err := getVolumeSourceAttribs(spec)
+	sioSource, err := getVolumeSourceFromSpec(spec)
 	if err != nil {
-		glog.Error(log("deleter failed to extract volume attributes from spec: %v", err))
+		glog.Error(log("deleter failed to extract source from spec: %v", err))
 		return nil, err
 	}
 
-	secretName, secretNS, err := getSecretAndNamespaceFromSpec(spec, nil)
-	if err != nil {
-		return nil, errors.New(log("failed to get secret name or secretNamespace: %v", err))
-	}
+	namespace := spec.PersistentVolume.Spec.ClaimRef.Namespace
 
 	return &sioVolume{
-		spec:            spec,
-		secretName:      secretName,
-		secretNamespace: secretNS,
-		volSpecName:     spec.Name(),
-		volName:         attribs.volName,
-		plugin:          p,
-		readOnly:        attribs.readOnly,
+		spec:        spec,
+		source:      sioSource,
+		namespace:   namespace,
+		volSpecName: spec.Name(),
+		volName:     sioSource.VolumeName,
+		plugin:      p,
+		readOnly:    sioSource.ReadOnly,
 	}, nil
 }
 
@@ -195,26 +189,13 @@ func (p *sioPlugin) NewProvisioner(options volume.VolumeOptions) (volume.Provisi
 		return nil, errors.New("option parameters missing")
 	}
 
-	// Supports ref of name of secret a couple of ways:
-	// options.Parameters["secretRef"] for backward compat, or
-	// options.Parameters["secretName"]
-	secretName := configData[confKey.secretName]
-	if secretName == "" {
-		secretName = configData["secretName"]
-		configData[confKey.secretName] = secretName
-	}
-
-	secretNS := configData[confKey.secretNamespace]
-	if secretNS == "" {
-		secretNS = options.PVC.Namespace
-	}
+	namespace := options.PVC.Namespace
 
 	return &sioVolume{
-		configData:      configData,
-		plugin:          p,
-		options:         options,
-		secretName:      secretName,
-		secretNamespace: secretNS,
-		volSpecName:     options.PVName,
+		configData:  configData,
+		plugin:      p,
+		options:     options,
+		namespace:   namespace,
+		volSpecName: options.PVName,
 	}, nil
 }

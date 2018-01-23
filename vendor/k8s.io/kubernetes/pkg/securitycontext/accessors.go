@@ -19,7 +19,7 @@ package securitycontext
 import (
 	"reflect"
 
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 // PodSecurityContextAccessor allows reading the values of a PodSecurityContext object

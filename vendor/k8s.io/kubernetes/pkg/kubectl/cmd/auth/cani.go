@@ -156,10 +156,10 @@ func (o *CanIOptions) Complete(f cmdutil.Factory, args []string) error {
 func (o *CanIOptions) Validate() error {
 	if o.NonResourceURL != "" {
 		if o.Subresource != "" {
-			return fmt.Errorf("--subresource can not be used with NonResourceURL")
+			return fmt.Errorf("--subresource can not be used with nonResourceURL")
 		}
 		if o.Resource != (schema.GroupVersionResource{}) || o.ResourceName != "" {
-			return fmt.Errorf("NonResourceURL and ResourceName can not specified together")
+			return fmt.Errorf("nonResourceURL and Resource can not specified together")
 		}
 	}
 	return nil

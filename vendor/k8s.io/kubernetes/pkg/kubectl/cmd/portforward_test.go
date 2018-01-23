@@ -25,9 +25,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest/fake"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 )
 
@@ -44,7 +43,7 @@ func (f *fakePortForwarder) ForwardPorts(method string, url *url.URL, opts PortF
 }
 
 func testPortForward(t *testing.T, flags map[string]string, args []string) {
-	version := "v1"
+	version := api.Registry.GroupOrDie(api.GroupName).GroupVersion.Version
 
 	tests := []struct {
 		name                       string
@@ -70,7 +69,7 @@ func testPortForward(t *testing.T, flags map[string]string, args []string) {
 		var err error
 		f, tf, codec, ns := cmdtesting.NewAPIFactory()
 		tf.Client = &fake.RESTClient{
-			GroupVersion:         schema.GroupVersion{Group: ""},
+			APIRegistry:          api.Registry,
 			NegotiatedSerializer: ns,
 			Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 				switch p, m := req.URL.Path, req.Method; {

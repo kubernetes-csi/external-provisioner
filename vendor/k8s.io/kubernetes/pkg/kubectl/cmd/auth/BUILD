@@ -11,7 +11,6 @@ go_library(
         "cani.go",
         "reconcile.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubectl/cmd/auth",
     visibility = [
         "//build/visible_to:pkg_kubectl_cmd_auth_CONSUMERS",
     ],
@@ -50,11 +49,10 @@ filegroup(
 go_test(
     name = "go_default_test",
     srcs = ["cani_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/kubectl/cmd/auth",
     library = ":go_default_library",
     deps = [
+        "//pkg/api:go_default_library",
         "//pkg/kubectl/cmd/testing:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
         "//vendor/k8s.io/client-go/rest:go_default_library",
         "//vendor/k8s.io/client-go/rest/fake:go_default_library",
     ],

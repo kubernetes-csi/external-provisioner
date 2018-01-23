@@ -13,7 +13,6 @@ go_library(
         "replica_set.go",
         "replica_set_utils.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/controller/replicaset",
     deps = [
         "//pkg/api/v1/pod:go_default_library",
         "//pkg/controller:go_default_library",
@@ -24,7 +23,6 @@ go_library(
         "//vendor/k8s.io/apimachinery/pkg/api/errors:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/runtime:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
         "//vendor/k8s.io/client-go/informers/core/v1:go_default_library",
@@ -44,14 +42,11 @@ go_library(
 
 go_test(
     name = "go_default_test",
-    srcs = [
-        "replica_set_test.go",
-        "replica_set_utils_test.go",
-    ],
-    importpath = "k8s.io/kubernetes/pkg/controller/replicaset",
+    srcs = ["replica_set_test.go"],
     library = ":go_default_library",
     deps = [
-        "//pkg/api/legacyscheme:go_default_library",
+        "//pkg/api:go_default_library",
+        "//pkg/api/testapi:go_default_library",
         "//pkg/controller:go_default_library",
         "//pkg/securitycontext:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",

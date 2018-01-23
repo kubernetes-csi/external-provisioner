@@ -87,12 +87,17 @@ func (o *ViewLastAppliedOptions) Complete(f cmdutil.Factory, args []string) erro
 		return err
 	}
 
-	r := f.NewUnstructuredBuilder().
+	builder, err := f.NewUnstructuredBuilder(true)
+	if err != nil {
+		return err
+	}
+
+	r := builder.
 		NamespaceParam(cmdNamespace).DefaultNamespace().
 		FilenameParam(enforceNamespace, &o.FilenameOptions).
 		ResourceTypeOrNameArgs(enforceNamespace, args...).
 		SelectAllParam(o.All).
-		LabelSelectorParam(o.Selector).
+		SelectorParam(o.Selector).
 		Latest().
 		Flatten().
 		Do()

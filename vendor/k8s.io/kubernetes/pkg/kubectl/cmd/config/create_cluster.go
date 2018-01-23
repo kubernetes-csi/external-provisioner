@@ -150,7 +150,8 @@ func (o *createClusterOptions) modifyCluster(existingCluster clientcmdapi.Cluste
 func (o *createClusterOptions) complete(cmd *cobra.Command) error {
 	args := cmd.Flags().Args()
 	if len(args) != 1 {
-		return helpErrorf(cmd, "Unexpected args: %v", args)
+		cmd.Help()
+		return fmt.Errorf("Unexpected args: %v", args)
 	}
 
 	o.name = args[0]

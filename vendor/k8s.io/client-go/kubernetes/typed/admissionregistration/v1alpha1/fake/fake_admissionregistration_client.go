@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,14 +28,6 @@ type FakeAdmissionregistrationV1alpha1 struct {
 
 func (c *FakeAdmissionregistrationV1alpha1) InitializerConfigurations() v1alpha1.InitializerConfigurationInterface {
 	return &FakeInitializerConfigurations{c}
-}
-
-func (c *FakeAdmissionregistrationV1alpha1) MutatingWebhookConfigurations() v1alpha1.MutatingWebhookConfigurationInterface {
-	return &FakeMutatingWebhookConfigurations{c}
-}
-
-func (c *FakeAdmissionregistrationV1alpha1) ValidatingWebhookConfigurations() v1alpha1.ValidatingWebhookConfigurationInterface {
-	return &FakeValidatingWebhookConfigurations{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate

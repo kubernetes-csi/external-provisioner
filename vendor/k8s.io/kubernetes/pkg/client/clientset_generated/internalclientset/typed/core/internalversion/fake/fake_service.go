@@ -23,7 +23,7 @@ import (
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
-	core "k8s.io/kubernetes/pkg/apis/core"
+	api "k8s.io/kubernetes/pkg/api"
 )
 
 // FakeServices implements ServiceInterface
@@ -37,20 +37,20 @@ var servicesResource = schema.GroupVersionResource{Group: "", Version: "", Resou
 var servicesKind = schema.GroupVersionKind{Group: "", Version: "", Kind: "Service"}
 
 // Get takes name of the service, and returns the corresponding service object, and an error if there is any.
-func (c *FakeServices) Get(name string, options v1.GetOptions) (result *core.Service, err error) {
+func (c *FakeServices) Get(name string, options v1.GetOptions) (result *api.Service, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewGetAction(servicesResource, c.ns, name), &core.Service{})
+		Invokes(testing.NewGetAction(servicesResource, c.ns, name), &api.Service{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*core.Service), err
+	return obj.(*api.Service), err
 }
 
 // List takes label and field selectors, and returns the list of Services that match those selectors.
-func (c *FakeServices) List(opts v1.ListOptions) (result *core.ServiceList, err error) {
+func (c *FakeServices) List(opts v1.ListOptions) (result *api.ServiceList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewListAction(servicesResource, servicesKind, c.ns, opts), &core.ServiceList{})
+		Invokes(testing.NewListAction(servicesResource, servicesKind, c.ns, opts), &api.ServiceList{})
 
 	if obj == nil {
 		return nil, err
@@ -60,8 +60,8 @@ func (c *FakeServices) List(opts v1.ListOptions) (result *core.ServiceList, err 
 	if label == nil {
 		label = labels.Everything()
 	}
-	list := &core.ServiceList{}
-	for _, item := range obj.(*core.ServiceList).Items {
+	list := &api.ServiceList{}
+	for _, item := range obj.(*api.ServiceList).Items {
 		if label.Matches(labels.Set(item.Labels)) {
 			list.Items = append(list.Items, item)
 		}
@@ -77,43 +77,43 @@ func (c *FakeServices) Watch(opts v1.ListOptions) (watch.Interface, error) {
 }
 
 // Create takes the representation of a service and creates it.  Returns the server's representation of the service, and an error, if there is any.
-func (c *FakeServices) Create(service *core.Service) (result *core.Service, err error) {
+func (c *FakeServices) Create(service *api.Service) (result *api.Service, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewCreateAction(servicesResource, c.ns, service), &core.Service{})
+		Invokes(testing.NewCreateAction(servicesResource, c.ns, service), &api.Service{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*core.Service), err
+	return obj.(*api.Service), err
 }
 
 // Update takes the representation of a service and updates it. Returns the server's representation of the service, and an error, if there is any.
-func (c *FakeServices) Update(service *core.Service) (result *core.Service, err error) {
+func (c *FakeServices) Update(service *api.Service) (result *api.Service, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateAction(servicesResource, c.ns, service), &core.Service{})
+		Invokes(testing.NewUpdateAction(servicesResource, c.ns, service), &api.Service{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*core.Service), err
+	return obj.(*api.Service), err
 }
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeServices) UpdateStatus(service *core.Service) (*core.Service, error) {
+func (c *FakeServices) UpdateStatus(service *api.Service) (*api.Service, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceAction(servicesResource, "status", c.ns, service), &core.Service{})
+		Invokes(testing.NewUpdateSubresourceAction(servicesResource, "status", c.ns, service), &api.Service{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*core.Service), err
+	return obj.(*api.Service), err
 }
 
 // Delete takes name of the service and deletes it. Returns an error if one occurs.
 func (c *FakeServices) Delete(name string, options *v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(servicesResource, c.ns, name), &core.Service{})
+		Invokes(testing.NewDeleteAction(servicesResource, c.ns, name), &api.Service{})
 
 	return err
 }
@@ -122,17 +122,17 @@ func (c *FakeServices) Delete(name string, options *v1.DeleteOptions) error {
 func (c *FakeServices) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
 	action := testing.NewDeleteCollectionAction(servicesResource, c.ns, listOptions)
 
-	_, err := c.Fake.Invokes(action, &core.ServiceList{})
+	_, err := c.Fake.Invokes(action, &api.ServiceList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched service.
-func (c *FakeServices) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *core.Service, err error) {
+func (c *FakeServices) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *api.Service, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(servicesResource, c.ns, name, data, subresources...), &core.Service{})
+		Invokes(testing.NewPatchSubresourceAction(servicesResource, c.ns, name, data, subresources...), &api.Service{})
 
 	if obj == nil {
 		return nil, err
 	}
-	return obj.(*core.Service), err
+	return obj.(*api.Service), err
 }

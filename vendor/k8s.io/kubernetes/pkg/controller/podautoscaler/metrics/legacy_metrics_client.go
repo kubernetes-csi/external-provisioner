@@ -54,8 +54,8 @@ type HeapsterMetricsClient struct {
 
 func NewHeapsterMetricsClient(client clientset.Interface, namespace, scheme, service, port string) MetricsClient {
 	return &HeapsterMetricsClient{
-		services:        client.CoreV1().Services(namespace),
-		podsGetter:      client.CoreV1(),
+		services:        client.Core().Services(namespace),
+		podsGetter:      client.Core(),
 		heapsterScheme:  scheme,
 		heapsterService: service,
 		heapsterPort:    port,

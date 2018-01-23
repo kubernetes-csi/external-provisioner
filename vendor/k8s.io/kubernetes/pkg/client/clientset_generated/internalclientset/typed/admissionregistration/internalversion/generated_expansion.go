@@ -16,8 +16,6 @@ limitations under the License.
 
 package internalversion
 
+type ExternalAdmissionHookConfigurationExpansion interface{}
+
 type InitializerConfigurationExpansion interface{}
-
-type MutatingWebhookConfigurationExpansion interface{}
-
-type ValidatingWebhookConfigurationExpansion interface{}

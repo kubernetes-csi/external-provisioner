@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
@@ -63,24 +64,33 @@ func (m *Helper) Get(namespace, name string, export bool) (runtime.Object, error
 	return req.Do().Get()
 }
 
-func (m *Helper) List(namespace, apiVersion string, export bool, options *metav1.ListOptions) (runtime.Object, error) {
+// TODO: add field selector
+func (m *Helper) List(namespace, apiVersion string, selector labels.Selector, export, includeUninitialized bool) (runtime.Object, error) {
 	req := m.RESTClient.Get().
 		NamespaceIfScoped(namespace, m.NamespaceScoped).
 		Resource(m.Resource).
-		VersionedParams(options, metav1.ParameterCodec)
+		VersionedParams(&metav1.ListOptions{
+			LabelSelector: selector.String(),
+		}, metav1.ParameterCodec)
 	if export {
 		// TODO: I should be part of ListOptions
 		req.Param("export", strconv.FormatBool(export))
 	}
+	if includeUninitialized {
+		req.Param("includeUninitialized", strconv.FormatBool(includeUninitialized))
+	}
 	return req.Do().Get()
 }
 
-func (m *Helper) Watch(namespace, apiVersion string, options *metav1.ListOptions) (watch.Interface, error) {
-	options.Watch = true
+func (m *Helper) Watch(namespace, resourceVersion, apiVersion string, labelSelector labels.Selector) (watch.Interface, error) {
 	return m.RESTClient.Get().
 		NamespaceIfScoped(namespace, m.NamespaceScoped).
 		Resource(m.Resource).
-		VersionedParams(options, metav1.ParameterCodec).
+		VersionedParams(&metav1.ListOptions{
+			ResourceVersion: resourceVersion,
+			Watch:           true,
+			LabelSelector:   labelSelector.String(),
+		}, metav1.ParameterCodec).
 		Watch()
 }
 

@@ -22,15 +22,15 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
-	core "k8s.io/kubernetes/pkg/apis/core"
+	api "k8s.io/kubernetes/pkg/api"
 )
 
 // NamespaceLister helps list Namespaces.
 type NamespaceLister interface {
 	// List lists all Namespaces in the indexer.
-	List(selector labels.Selector) (ret []*core.Namespace, err error)
+	List(selector labels.Selector) (ret []*api.Namespace, err error)
 	// Get retrieves the Namespace from the index for a given name.
-	Get(name string) (*core.Namespace, error)
+	Get(name string) (*api.Namespace, error)
 	NamespaceListerExpansion
 }
 
@@ -45,21 +45,21 @@ func NewNamespaceLister(indexer cache.Indexer) NamespaceLister {
 }
 
 // List lists all Namespaces in the indexer.
-func (s *namespaceLister) List(selector labels.Selector) (ret []*core.Namespace, err error) {
+func (s *namespaceLister) List(selector labels.Selector) (ret []*api.Namespace, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*core.Namespace))
+		ret = append(ret, m.(*api.Namespace))
 	})
 	return ret, err
 }
 
 // Get retrieves the Namespace from the index for a given name.
-func (s *namespaceLister) Get(name string) (*core.Namespace, error) {
+func (s *namespaceLister) Get(name string) (*api.Namespace, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.NewNotFound(core.Resource("namespace"), name)
+		return nil, errors.NewNotFound(api.Resource("namespace"), name)
 	}
-	return obj.(*core.Namespace), nil
+	return obj.(*api.Namespace), nil
 }

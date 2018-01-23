@@ -19,7 +19,7 @@ package fake
 import (
 	restclient "k8s.io/client-go/rest"
 	core "k8s.io/client-go/testing"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 func (c *FakePods) Bind(binding *api.Binding) error {

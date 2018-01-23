@@ -13,7 +13,6 @@ go_library(
         "helpers.go",
         "types.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/bootstrap/api",
     deps = ["//vendor/k8s.io/api/core/v1:go_default_library"],
 )
 
@@ -33,6 +32,5 @@ filegroup(
 go_test(
     name = "go_default_test",
     srcs = ["helpers_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/bootstrap/api",
     library = ":go_default_library",
 )

@@ -21,12 +21,13 @@ import (
 	"io"
 
 	"github.com/spf13/cobra"
-	"k8s.io/api/core/v1"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
@@ -43,7 +44,6 @@ type SelectorOptions struct {
 	all         bool
 	record      bool
 	changeCause string
-	output      string
 
 	resources []string
 	selector  *metav1.LabelSelector
@@ -107,7 +107,6 @@ func (o *SelectorOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args [
 	o.all = cmdutil.GetFlagBool(cmd, "all")
 	o.record = cmdutil.GetRecordFlag(cmd)
 	o.dryrun = cmdutil.GetDryRunFlag(cmd)
-	o.output = cmdutil.GetFlagString(cmd, "output")
 
 	cmdNamespace, enforceNamespace, err := f.DefaultNamespace()
 	if err != nil {
@@ -118,30 +117,20 @@ func (o *SelectorOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args [
 	mapper, _ := f.Object()
 	o.mapper = mapper
 	o.encoder = f.JSONEncoder()
-
 	o.resources, o.selector, err = getResourcesAndSelector(args)
 	if err != nil {
 		return err
 	}
 
 	includeUninitialized := cmdutil.ShouldIncludeUninitialized(cmd, false)
-	o.builder = f.NewBuilder().
+	o.builder = f.NewBuilder(!o.local).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
 		FilenameParam(enforceNamespace, &o.fileOptions).
 		IncludeUninitialized(includeUninitialized).
 		Flatten()
 
-	if o.local {
-		// if a --local flag was provided, and a resource was specified in the form
-		// <resource>/<name>, fail immediately as --local cannot query the api server
-		// for the specified resource.
-		if len(o.resources) > 0 {
-			return resource.LocalResourceError
-		}
-
-		o.builder = o.builder.Local(f.ClientForMapping)
-	} else {
+	if !o.local {
 		o.builder = o.builder.
 			ResourceTypeOrNameArgs(o.all, o.resources...).
 			Latest()
@@ -178,15 +167,10 @@ func (o *SelectorOptions) RunSelector() error {
 	return r.Visit(func(info *resource.Info, err error) error {
 		patch := &Patch{Info: info}
 		CalculatePatch(patch, o.encoder, func(info *resource.Info) ([]byte, error) {
-			versioned, err := info.Mapping.ConvertToVersion(info.Object, info.Mapping.GroupVersionKind.GroupVersion())
-			if err != nil {
-				return nil, err
-			}
-			patch.Info.VersionedObject = versioned
-			selectErr := updateSelectorForObject(info.VersionedObject, *o.selector)
+			selectErr := updateSelectorForObject(info.Object, *o.selector)
 
 			if selectErr == nil {
-				return runtime.Encode(o.encoder, info.VersionedObject)
+				return runtime.Encode(o.encoder, info.Object)
 			}
 			return nil, selectErr
 		})
@@ -195,7 +179,8 @@ func (o *SelectorOptions) RunSelector() error {
 			return patch.Err
 		}
 		if o.local || o.dryrun {
-			return o.PrintObject(info.VersionedObject)
+			o.PrintObject(info.Object)
+			return nil
 		}
 
 		patched, err := resource.NewHelper(info.Client, info.Mapping).Patch(info.Namespace, info.Name, types.StrategicMergePatchType, patch.Patch)
@@ -212,12 +197,7 @@ func (o *SelectorOptions) RunSelector() error {
 		}
 
 		info.Refresh(patched, true)
-
-		shortOutput := o.output == "name"
-		if len(o.output) > 0 && !shortOutput {
-			return o.PrintObject(patched)
-		}
-		cmdutil.PrintSuccess(o.mapper, shortOutput, o.out, info.Mapping.Resource, info.Name, o.dryrun, "selector updated")
+		cmdutil.PrintSuccess(o.mapper, false, o.out, info.Mapping.Resource, info.Name, o.dryrun, "selector updated")
 		return nil
 	})
 }
@@ -235,7 +215,7 @@ func updateSelectorForObject(obj runtime.Object, selector metav1.LabelSelector) 
 	}
 	var err error
 	switch t := obj.(type) {
-	case *v1.Service:
+	case *api.Service:
 		t.Spec.Selector, err = copyOldSelector()
 	default:
 		err = fmt.Errorf("setting a selector is only supported for Services")

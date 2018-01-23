@@ -11,7 +11,6 @@ go_library(
         "doc.go",
         "ports.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/master/ports",
 )
 
 filegroup(

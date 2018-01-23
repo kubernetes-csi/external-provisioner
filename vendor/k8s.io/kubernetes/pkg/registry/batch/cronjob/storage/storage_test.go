@@ -25,12 +25,10 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/generic"
-	genericregistrytest "k8s.io/apiserver/pkg/registry/generic/testing"
 	etcdtesting "k8s.io/apiserver/pkg/storage/etcd/testing"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
 	"k8s.io/kubernetes/pkg/apis/batch"
-	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/registry/registrytest"
 )
 
@@ -75,7 +73,7 @@ func TestCreate(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	validCronJob := validNewCronJob()
 	validCronJob.ObjectMeta = metav1.ObjectMeta{}
 	test.TestCreate(
@@ -97,7 +95,7 @@ func TestUpdate(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	schedule := "1 1 1 1 ?"
 	test.TestUpdate(
 		// valid
@@ -126,7 +124,7 @@ func TestDelete(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	test.TestDelete(validNewCronJob())
 }
 
@@ -139,7 +137,7 @@ func TestGet(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	test.TestGet(validNewCronJob())
 }
 
@@ -152,7 +150,7 @@ func TestList(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	test.TestList(validNewCronJob())
 }
 
@@ -165,7 +163,7 @@ func TestWatch(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	test.TestWatch(
 		validNewCronJob(),
 		// matching labels

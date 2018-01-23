@@ -17,9 +17,10 @@ limitations under the License.
 package sysctl
 
 import (
-	api "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/apis/core/helper"
 	"testing"
+
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/helper"
 )
 
 func TestValidate(t *testing.T) {

@@ -137,7 +137,7 @@ func (plugin *iscsiPlugin) NewDetacher() (volume.Detacher, error) {
 	}, nil
 }
 
-func (detacher *iscsiDetacher) Detach(volumeName string, nodeName types.NodeName) error {
+func (detacher *iscsiDetacher) Detach(deviceMountPath string, nodeName types.NodeName) error {
 	return nil
 }
 
@@ -146,11 +146,6 @@ func (detacher *iscsiDetacher) UnmountDevice(deviceMountPath string) error {
 	err := detacher.manager.DetachDisk(*unMounter, deviceMountPath)
 	if err != nil {
 		return fmt.Errorf("iscsi: failed to detach disk: %s\nError: %v", deviceMountPath, err)
-	}
-	glog.V(4).Infof("iscsi: %q is unmounted, deleting the directory", deviceMountPath)
-	err = os.RemoveAll(deviceMountPath)
-	if err != nil {
-		return fmt.Errorf("iscsi: failed to delete the directory: %s\nError: %v", deviceMountPath, err)
 	}
 	glog.V(4).Infof("iscsi: successfully detached disk: %s", deviceMountPath)
 	return nil

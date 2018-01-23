@@ -12,9 +12,8 @@ go_library(
         "allocator.go",
         "operation.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/registry/core/service/portallocator",
     deps = [
-        "//pkg/apis/core:go_default_library",
+        "//pkg/api:go_default_library",
         "//pkg/registry/core/service/allocator:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/net:go_default_library",
@@ -24,10 +23,9 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = ["allocator_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/registry/core/service/portallocator",
     library = ":go_default_library",
     deps = [
-        "//pkg/apis/core:go_default_library",
+        "//pkg/api:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/net:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/sets:go_default_library",
     ],

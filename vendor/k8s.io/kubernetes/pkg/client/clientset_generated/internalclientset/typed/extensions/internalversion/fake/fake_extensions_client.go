@@ -46,6 +46,14 @@ func (c *FakeExtensions) ReplicaSets(namespace string) internalversion.ReplicaSe
 	return &FakeReplicaSets{c, namespace}
 }
 
+func (c *FakeExtensions) Scales(namespace string) internalversion.ScaleInterface {
+	return &FakeScales{c, namespace}
+}
+
+func (c *FakeExtensions) ThirdPartyResources() internalversion.ThirdPartyResourceInterface {
+	return &FakeThirdPartyResources{c}
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeExtensions) RESTClient() rest.Interface {

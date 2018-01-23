@@ -22,15 +22,15 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
-	core "k8s.io/kubernetes/pkg/apis/core"
+	api "k8s.io/kubernetes/pkg/api"
 )
 
 // PersistentVolumeLister helps list PersistentVolumes.
 type PersistentVolumeLister interface {
 	// List lists all PersistentVolumes in the indexer.
-	List(selector labels.Selector) (ret []*core.PersistentVolume, err error)
+	List(selector labels.Selector) (ret []*api.PersistentVolume, err error)
 	// Get retrieves the PersistentVolume from the index for a given name.
-	Get(name string) (*core.PersistentVolume, error)
+	Get(name string) (*api.PersistentVolume, error)
 	PersistentVolumeListerExpansion
 }
 
@@ -45,21 +45,21 @@ func NewPersistentVolumeLister(indexer cache.Indexer) PersistentVolumeLister {
 }
 
 // List lists all PersistentVolumes in the indexer.
-func (s *persistentVolumeLister) List(selector labels.Selector) (ret []*core.PersistentVolume, err error) {
+func (s *persistentVolumeLister) List(selector labels.Selector) (ret []*api.PersistentVolume, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*core.PersistentVolume))
+		ret = append(ret, m.(*api.PersistentVolume))
 	})
 	return ret, err
 }
 
 // Get retrieves the PersistentVolume from the index for a given name.
-func (s *persistentVolumeLister) Get(name string) (*core.PersistentVolume, error) {
+func (s *persistentVolumeLister) Get(name string) (*api.PersistentVolume, error) {
 	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.NewNotFound(core.Resource("persistentvolume"), name)
+		return nil, errors.NewNotFound(api.Resource("persistentvolume"), name)
 	}
-	return obj.(*core.PersistentVolume), nil
+	return obj.(*api.PersistentVolume), nil
 }

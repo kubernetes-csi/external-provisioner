@@ -25,8 +25,8 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
-	api "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/apis/core/helper"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/helper"
 )
 
 const (
@@ -35,7 +35,7 @@ const (
 	UNTAINTED = "untainted"
 )
 
-// parseTaint parses a taint from a string. Taint must be of the format '<key>=<value>:<effect>'.
+// parseTaint parses a taint from a string. Taint must be off the format '<key>=<value>:<effect>'.
 func parseTaint(st string) (v1.Taint, error) {
 	var taint v1.Taint
 	parts := strings.Split(st, "=")
@@ -45,14 +45,15 @@ func parseTaint(st string) (v1.Taint, error) {
 
 	parts2 := strings.Split(parts[1], ":")
 
+	effect := v1.TaintEffect(parts2[1])
+
 	errs := validation.IsValidLabelValue(parts2[0])
 	if len(parts2) != 2 || len(errs) != 0 {
 		return taint, fmt.Errorf("invalid taint spec: %v, %s", st, strings.Join(errs, "; "))
 	}
 
-	effect := v1.TaintEffect(parts2[1])
-	if err := validateTaintEffect(effect); err != nil {
-		return taint, err
+	if effect != v1.TaintEffectNoSchedule && effect != v1.TaintEffectPreferNoSchedule && effect != v1.TaintEffectNoExecute {
+		return taint, fmt.Errorf("invalid taint spec: %v, unsupported taint effect", st)
 	}
 
 	taint.Key = parts[0]
@@ -60,14 +61,6 @@ func parseTaint(st string) (v1.Taint, error) {
 	taint.Effect = effect
 
 	return taint, nil
-}
-
-func validateTaintEffect(effect v1.TaintEffect) error {
-	if effect != v1.TaintEffectNoSchedule && effect != v1.TaintEffectPreferNoSchedule && effect != v1.TaintEffectNoExecute {
-		return fmt.Errorf("invalid taint effect: %v, unsupported taint effect", effect)
-	}
-
-	return nil
 }
 
 // NewTaintsVar wraps []api.Taint in a struct that implements flag.Value to allow taints to be
@@ -83,10 +76,6 @@ type taintsVar struct {
 }
 
 func (t taintsVar) Set(s string) error {
-	if len(s) == 0 {
-		*t.ptr = nil
-		return nil
-	}
 	sts := strings.Split(s, ",")
 	var taints []api.Taint
 	for _, st := range sts {
@@ -102,7 +91,7 @@ func (t taintsVar) Set(s string) error {
 
 func (t taintsVar) String() string {
 	if len(*t.ptr) == 0 {
-		return ""
+		return "<nil>"
 	}
 	var taints []string
 	for _, taint := range *t.ptr {
@@ -144,14 +133,6 @@ func ParseTaints(spec []string) ([]v1.Taint, []v1.Taint, error) {
 				parts := strings.Split(taintKey, ":")
 				taintKey = parts[0]
 				effect = v1.TaintEffect(parts[1])
-			}
-
-			// If effect is specified, need to validate it.
-			if len(effect) > 0 {
-				err := validateTaintEffect(effect)
-				if err != nil {
-					return nil, nil, err
-				}
 			}
 			taintsToRemove = append(taintsToRemove, v1.Taint{Key: taintKey, Effect: effect})
 		} else {
@@ -257,7 +238,11 @@ func DeleteTaint(taints []v1.Taint, taintToDelete *v1.Taint) ([]v1.Taint, bool) 
 // RemoveTaint tries to remove a taint from annotations list. Returns a new copy of updated Node and true if something was updated
 // false otherwise.
 func RemoveTaint(node *v1.Node, taint *v1.Taint) (*v1.Node, bool, error) {
-	newNode := node.DeepCopy()
+	objCopy, err := api.Scheme.DeepCopy(node)
+	if err != nil {
+		return nil, false, err
+	}
+	newNode := objCopy.(*v1.Node)
 	nodeTaints := newNode.Spec.Taints
 	if len(nodeTaints) == 0 {
 		return newNode, false, nil
@@ -275,7 +260,11 @@ func RemoveTaint(node *v1.Node, taint *v1.Taint) (*v1.Node, bool, error) {
 // AddOrUpdateTaint tries to add a taint to annotations list. Returns a new copy of updated Node and true if something was updated
 // false otherwise.
 func AddOrUpdateTaint(node *v1.Node, taint *v1.Taint) (*v1.Node, bool, error) {
-	newNode := node.DeepCopy()
+	objCopy, err := api.Scheme.DeepCopy(node)
+	if err != nil {
+		return nil, false, err
+	}
+	newNode := objCopy.(*v1.Node)
 	nodeTaints := newNode.Spec.Taints
 
 	var newTaints []v1.Taint

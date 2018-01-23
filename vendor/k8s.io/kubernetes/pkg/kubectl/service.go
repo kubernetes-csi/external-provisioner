@@ -21,10 +21,10 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 // The only difference between ServiceGeneratorV1 and V2 is that the service port is named "default" in V1, while it is left unnamed in V2.
@@ -113,7 +113,7 @@ func generate(genericParams map[string]interface{}) (runtime.Object, error) {
 
 	isHeadlessService := params["cluster-ip"] == "None"
 
-	ports := []v1.ServicePort{}
+	ports := []api.ServicePort{}
 	servicePortName, found := params["port-name"]
 	if !found {
 		// Leave the port unnamed.
@@ -135,7 +135,7 @@ func generate(genericParams map[string]interface{}) (runtime.Object, error) {
 	if portString, found = params["ports"]; !found {
 		portString, found = params["port"]
 		if !found && !isHeadlessService {
-			return nil, fmt.Errorf("'ports' or 'port' is a required parameter.")
+			return nil, fmt.Errorf("'port' is a required parameter.")
 		}
 	}
 
@@ -168,20 +168,20 @@ func generate(genericParams map[string]interface{}) (runtime.Object, error) {
 					protocol = exposeProtocol
 				}
 			}
-			ports = append(ports, v1.ServicePort{
+			ports = append(ports, api.ServicePort{
 				Name:     name,
 				Port:     int32(port),
-				Protocol: v1.Protocol(protocol),
+				Protocol: api.Protocol(protocol),
 			})
 		}
 	}
 
-	service := v1.Service{
+	service := api.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: labels,
 		},
-		Spec: v1.ServiceSpec{
+		Spec: api.ServiceSpec{
 			Selector: selector,
 			Ports:    ports,
 		},
@@ -213,24 +213,24 @@ func generate(genericParams map[string]interface{}) (runtime.Object, error) {
 		service.Spec.ExternalIPs = []string{params["external-ip"]}
 	}
 	if len(params["type"]) != 0 {
-		service.Spec.Type = v1.ServiceType(params["type"])
+		service.Spec.Type = api.ServiceType(params["type"])
 	}
-	if service.Spec.Type == v1.ServiceTypeLoadBalancer {
+	if service.Spec.Type == api.ServiceTypeLoadBalancer {
 		service.Spec.LoadBalancerIP = params["load-balancer-ip"]
 	}
 	if len(params["session-affinity"]) != 0 {
-		switch v1.ServiceAffinity(params["session-affinity"]) {
-		case v1.ServiceAffinityNone:
-			service.Spec.SessionAffinity = v1.ServiceAffinityNone
-		case v1.ServiceAffinityClientIP:
-			service.Spec.SessionAffinity = v1.ServiceAffinityClientIP
+		switch api.ServiceAffinity(params["session-affinity"]) {
+		case api.ServiceAffinityNone:
+			service.Spec.SessionAffinity = api.ServiceAffinityNone
+		case api.ServiceAffinityClientIP:
+			service.Spec.SessionAffinity = api.ServiceAffinityClientIP
 		default:
 			return nil, fmt.Errorf("unknown session affinity: %s", params["session-affinity"])
 		}
 	}
 	if len(params["cluster-ip"]) != 0 {
 		if params["cluster-ip"] == "None" {
-			service.Spec.ClusterIP = v1.ClusterIPNone
+			service.Spec.ClusterIP = api.ClusterIPNone
 		} else {
 			service.Spec.ClusterIP = params["cluster-ip"]
 		}

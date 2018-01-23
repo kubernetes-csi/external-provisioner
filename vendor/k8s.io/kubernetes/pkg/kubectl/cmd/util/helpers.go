@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evanphx/json-patch"
+	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
@@ -36,6 +36,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/json"
@@ -43,7 +44,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 	"k8s.io/kubernetes/pkg/printers"
@@ -116,6 +117,11 @@ var ErrExit = fmt.Errorf("exit")
 // This method is generic to the command in use and may be used by non-Kubectl
 // commands.
 func CheckErr(err error) {
+	checkErr(err, fatalErrHandler)
+}
+
+// checkErrWithPrefix works like CheckErr, but adds a caller-defined prefix to non-nil errors
+func checkErrWithPrefix(prefix string, err error) {
 	checkErr(err, fatalErrHandler)
 }
 
@@ -363,15 +369,6 @@ func GetFlagInt(cmd *cobra.Command, flag string) int {
 }
 
 // Assumes the flag has a default value.
-func GetFlagInt32(cmd *cobra.Command, flag string) int32 {
-	i, err := cmd.Flags().GetInt32(flag)
-	if err != nil {
-		glog.Fatalf("error accessing flag %s for command %s: %v", flag, cmd.Name(), err)
-	}
-	return i
-}
-
-// Assumes the flag has a default value.
 func GetFlagInt64(cmd *cobra.Command, flag string) int64 {
 	i, err := cmd.Flags().GetInt64(flag)
 	if err != nil {
@@ -398,10 +395,20 @@ func GetPodRunningTimeoutFlag(cmd *cobra.Command) (time.Duration, error) {
 
 func AddValidateFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("validate", true, "If true, use a schema to validate the input before sending it")
+	cmd.Flags().String("schema-cache-dir", fmt.Sprintf("~/%s/%s", clientcmd.RecommendedHomeDir, clientcmd.RecommendedSchemaName), fmt.Sprintf("If non-empty, load/store cached API schemas in this directory, default is '$HOME/%s/%s'", clientcmd.RecommendedHomeDir, clientcmd.RecommendedSchemaName))
+	cmd.Flags().Bool("openapi-validation", true, "If true, use openapi rather than swagger for validation.")
+	cmd.MarkFlagFilename("schema-cache-dir")
 }
 
 func AddValidateOptionFlags(cmd *cobra.Command, options *ValidateOptions) {
 	cmd.Flags().BoolVar(&options.EnableValidation, "validate", true, "If true, use a schema to validate the input before sending it")
+	cmd.Flags().StringVar(&options.SchemaCacheDir, "schema-cache-dir", fmt.Sprintf("~/%s/%s", clientcmd.RecommendedHomeDir, clientcmd.RecommendedSchemaName), fmt.Sprintf("If non-empty, load/store cached API schemas in this directory, default is '$HOME/%s/%s'", clientcmd.RecommendedHomeDir, clientcmd.RecommendedSchemaName))
+	cmd.Flags().BoolVar(&options.UseOpenAPI, "openapi-validation", true, "If true, use openapi rather than swagger for validation")
+	cmd.MarkFlagFilename("schema-cache-dir")
+}
+
+func AddOpenAPIFlags(cmd *cobra.Command) {
+	cmd.Flags().Bool("openapi-validation", true, "If true, use openapi rather than swagger for validation")
 }
 
 func AddFilenameOptionFlags(cmd *cobra.Command, options *resource.FilenameOptions, usage string) {
@@ -439,6 +446,8 @@ func AddGeneratorFlags(cmd *cobra.Command, defaultGenerator string) {
 
 type ValidateOptions struct {
 	EnableValidation bool
+	UseOpenAPI       bool
+	SchemaCacheDir   string
 }
 
 func ReadConfigDataFromReader(reader io.Reader, source string) ([]byte, error) {
@@ -581,7 +590,7 @@ func ChangeResourcePatch(info *resource.Info, changeCause string) ([]byte, types
 	}
 }
 
-// ContainsChangeCause checks if input resource info contains change-cause annotation.
+// containsChangeCause checks if input resource info contains change-cause annotation.
 func ContainsChangeCause(info *resource.Info) bool {
 	annotations, err := info.Mapping.MetadataAccessor.Annotations(info.Object)
 	if err != nil {
@@ -696,7 +705,7 @@ func FilterResourceList(obj runtime.Object, filterFuncs kubectl.Filters, filterO
 	if err != nil {
 		return 0, []runtime.Object{obj}, utilerrors.NewAggregate([]error{err})
 	}
-	if errs := runtime.DecodeList(items, legacyscheme.Codecs.UniversalDecoder(), unstructured.UnstructuredJSONScheme); len(errs) > 0 {
+	if errs := runtime.DecodeList(items, api.Codecs.UniversalDecoder(), unstructured.UnstructuredJSONScheme); len(errs) > 0 {
 		return 0, []runtime.Object{obj}, utilerrors.NewAggregate(errs)
 	}
 
@@ -739,6 +748,17 @@ func PrintFilterCount(out io.Writer, found, hidden, errors int, options *printer
 	}
 }
 
+// ObjectListToVersionedObject receives a list of api objects and a group version
+// and squashes the list's items into a single versioned runtime.Object.
+func ObjectListToVersionedObject(objects []runtime.Object, version schema.GroupVersion) (runtime.Object, error) {
+	objectList := &api.List{Items: objects}
+	converted, err := resource.TryConvert(api.Scheme, objectList, version, api.Registry.GroupOrDie(api.GroupName).GroupVersion)
+	if err != nil {
+		return nil, err
+	}
+	return converted, nil
+}
+
 // IsSiblingCommandExists receives a pointer to a cobra command and a target string.
 // Returns true if the target string is found in the list of sibling commands.
 func IsSiblingCommandExists(cmd *cobra.Command, targetCmdName string) bool {
@@ -758,7 +778,6 @@ func DefaultSubCommandRun(out io.Writer) func(c *cobra.Command, args []string) {
 		c.SetOutput(out)
 		RequireNoArguments(c, args)
 		c.Help()
-		CheckErr(ErrExit)
 	}
 }
 
