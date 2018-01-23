@@ -6,7 +6,6 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["cmd_sanity.go"],
-    importpath = "k8s.io/kubernetes/pkg/kubectl/cmd/util/sanity",
     visibility = [
         "//build/visible_to:pkg_kubectl_cmd_util_sanity_CONSUMERS",
     ],

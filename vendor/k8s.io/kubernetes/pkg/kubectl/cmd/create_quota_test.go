@@ -21,19 +21,18 @@ import (
 	"net/http"
 	"testing"
 
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest/fake"
+	"k8s.io/kubernetes/pkg/api"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 )
 
 func TestCreateQuota(t *testing.T) {
-	resourceQuotaObject := &v1.ResourceQuota{}
+	resourceQuotaObject := &api.ResourceQuota{}
 	resourceQuotaObject.Name = "my-quota"
 	f, tf, codec, ns := cmdtesting.NewAPIFactory()
 	tf.Printer = &testPrinter{}
 	tf.Client = &fake.RESTClient{
-		GroupVersion:         schema.GroupVersion{Version: "v1"},
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			switch p, m := req.URL.Path, req.Method; {

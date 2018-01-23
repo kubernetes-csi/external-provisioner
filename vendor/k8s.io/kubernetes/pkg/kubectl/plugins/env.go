@@ -24,21 +24,19 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// Env represents an environment variable with its name and value.
+// Env represents an environment variable with its name and value
 type Env struct {
 	N string
 	V string
 }
 
-// String returns "name=value" string.
 func (e Env) String() string {
 	return fmt.Sprintf("%s=%s", e.N, e.V)
 }
 
-// EnvList is a list of Env.
+// EnvList is a list of Env
 type EnvList []Env
 
-// Slice returns a slice of "name=value" strings.
 func (e EnvList) Slice() []string {
 	envs := []string{}
 	for _, env := range e {
@@ -47,7 +45,6 @@ func (e EnvList) Slice() []string {
 	return envs
 }
 
-// Merge converts "name=value" strings into Env values and merges them into e.
 func (e EnvList) Merge(s ...string) EnvList {
 	newList := e
 	newList = append(newList, fromSlice(s)...)
@@ -56,14 +53,12 @@ func (e EnvList) Merge(s ...string) EnvList {
 
 // EnvProvider provides the environment in which the plugin will run.
 type EnvProvider interface {
-	// Env returns the env list.
 	Env() (EnvList, error)
 }
 
-// MultiEnvProvider satisfies the EnvProvider interface for multiple env providers.
+// MultiEnvProvider is an EnvProvider for multiple env providers, returns on first error.
 type MultiEnvProvider []EnvProvider
 
-// Env returns the combined env list of multiple env providers, returns on first error.
 func (p MultiEnvProvider) Env() (EnvList, error) {
 	env := EnvList{}
 	for _, provider := range p {
@@ -76,10 +71,9 @@ func (p MultiEnvProvider) Env() (EnvList, error) {
 	return env, nil
 }
 
-// PluginCallerEnvProvider satisfies the EnvProvider interface.
+// PluginCallerEnvProvider provides env with the path to the caller binary (usually full path to 'kubectl').
 type PluginCallerEnvProvider struct{}
 
-// Env returns env with the path to the caller binary (usually full path to 'kubectl').
 func (p *PluginCallerEnvProvider) Env() (EnvList, error) {
 	caller, err := os.Executable()
 	if err != nil {
@@ -90,12 +84,11 @@ func (p *PluginCallerEnvProvider) Env() (EnvList, error) {
 	}, nil
 }
 
-// PluginDescriptorEnvProvider satisfies the EnvProvider interface.
+// PluginDescriptorEnvProvider provides env vars with information about the running plugin.
 type PluginDescriptorEnvProvider struct {
 	Plugin *Plugin
 }
 
-// Env returns env with information about the running plugin.
 func (p *PluginDescriptorEnvProvider) Env() (EnvList, error) {
 	if p.Plugin == nil {
 		return []Env{}, fmt.Errorf("plugin not present to extract env")
@@ -111,24 +104,19 @@ func (p *PluginDescriptorEnvProvider) Env() (EnvList, error) {
 	return env, nil
 }
 
-// OSEnvProvider satisfies the EnvProvider interface.
+// OSEnvProvider provides current environment from the operating system.
 type OSEnvProvider struct{}
 
-// Env returns the current environment from the operating system.
 func (p *OSEnvProvider) Env() (EnvList, error) {
 	return fromSlice(os.Environ()), nil
 }
 
-// EmptyEnvProvider satisfies the EnvProvider interface.
 type EmptyEnvProvider struct{}
 
-// Env returns an empty environment.
 func (p *EmptyEnvProvider) Env() (EnvList, error) {
 	return EnvList{}, nil
 }
 
-// FlagToEnvName converts a flag string into a UNIX like environment variable name.
-//  e.g --some-flag => "PREFIX_SOME_FLAG"
 func FlagToEnvName(flagName, prefix string) string {
 	envName := strings.TrimPrefix(flagName, "--")
 	envName = strings.ToUpper(envName)
@@ -137,8 +125,6 @@ func FlagToEnvName(flagName, prefix string) string {
 	return envName
 }
 
-// FlagToEnv converts a flag and its value into an Env.
-//  e.g --some-flag some-value => Env{N: "PREFIX_SOME_FLAG", V="SOME_VALUE"}
 func FlagToEnv(flag *pflag.Flag, prefix string) Env {
 	envName := FlagToEnvName(flag.Name, prefix)
 	return Env{envName, flag.Value.String()}

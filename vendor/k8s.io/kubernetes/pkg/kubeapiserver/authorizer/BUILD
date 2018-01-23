@@ -12,7 +12,6 @@ go_test(
     data = [
         "//pkg/auth/authorizer/abac:example_policy",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubeapiserver/authorizer",
     library = ":go_default_library",
     deps = ["//pkg/kubeapiserver/authorizer/modes:go_default_library"],
 )
@@ -20,7 +19,6 @@ go_test(
 go_library(
     name = "go_default_library",
     srcs = ["config.go"],
-    importpath = "k8s.io/kubernetes/pkg/kubeapiserver/authorizer",
     deps = [
         "//pkg/auth/authorizer/abac:go_default_library",
         "//pkg/auth/nodeidentifier:go_default_library",

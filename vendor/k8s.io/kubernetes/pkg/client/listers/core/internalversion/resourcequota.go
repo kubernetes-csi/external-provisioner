@@ -22,13 +22,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
-	core "k8s.io/kubernetes/pkg/apis/core"
+	api "k8s.io/kubernetes/pkg/api"
 )
 
 // ResourceQuotaLister helps list ResourceQuotas.
 type ResourceQuotaLister interface {
 	// List lists all ResourceQuotas in the indexer.
-	List(selector labels.Selector) (ret []*core.ResourceQuota, err error)
+	List(selector labels.Selector) (ret []*api.ResourceQuota, err error)
 	// ResourceQuotas returns an object that can list and get ResourceQuotas.
 	ResourceQuotas(namespace string) ResourceQuotaNamespaceLister
 	ResourceQuotaListerExpansion
@@ -45,9 +45,9 @@ func NewResourceQuotaLister(indexer cache.Indexer) ResourceQuotaLister {
 }
 
 // List lists all ResourceQuotas in the indexer.
-func (s *resourceQuotaLister) List(selector labels.Selector) (ret []*core.ResourceQuota, err error) {
+func (s *resourceQuotaLister) List(selector labels.Selector) (ret []*api.ResourceQuota, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*core.ResourceQuota))
+		ret = append(ret, m.(*api.ResourceQuota))
 	})
 	return ret, err
 }
@@ -60,9 +60,9 @@ func (s *resourceQuotaLister) ResourceQuotas(namespace string) ResourceQuotaName
 // ResourceQuotaNamespaceLister helps list and get ResourceQuotas.
 type ResourceQuotaNamespaceLister interface {
 	// List lists all ResourceQuotas in the indexer for a given namespace.
-	List(selector labels.Selector) (ret []*core.ResourceQuota, err error)
+	List(selector labels.Selector) (ret []*api.ResourceQuota, err error)
 	// Get retrieves the ResourceQuota from the indexer for a given namespace and name.
-	Get(name string) (*core.ResourceQuota, error)
+	Get(name string) (*api.ResourceQuota, error)
 	ResourceQuotaNamespaceListerExpansion
 }
 
@@ -74,21 +74,21 @@ type resourceQuotaNamespaceLister struct {
 }
 
 // List lists all ResourceQuotas in the indexer for a given namespace.
-func (s resourceQuotaNamespaceLister) List(selector labels.Selector) (ret []*core.ResourceQuota, err error) {
+func (s resourceQuotaNamespaceLister) List(selector labels.Selector) (ret []*api.ResourceQuota, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*core.ResourceQuota))
+		ret = append(ret, m.(*api.ResourceQuota))
 	})
 	return ret, err
 }
 
 // Get retrieves the ResourceQuota from the indexer for a given namespace and name.
-func (s resourceQuotaNamespaceLister) Get(name string) (*core.ResourceQuota, error) {
+func (s resourceQuotaNamespaceLister) Get(name string) (*api.ResourceQuota, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.NewNotFound(core.Resource("resourcequota"), name)
+		return nil, errors.NewNotFound(api.Resource("resourcequota"), name)
 	}
-	return obj.(*core.ResourceQuota), nil
+	return obj.(*api.ResourceQuota), nil
 }

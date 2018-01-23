@@ -8,7 +8,6 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["doc.go"],
-    importpath = "k8s.io/kubernetes/pkg/registry",
 )
 
 filegroup(
@@ -22,10 +21,9 @@ filegroup(
     name = "all-srcs",
     srcs = [
         ":package-srcs",
+        "//pkg/registry/admissionregistration/externaladmissionhookconfiguration:all-srcs",
         "//pkg/registry/admissionregistration/initializerconfiguration:all-srcs",
-        "//pkg/registry/admissionregistration/mutatingwebhookconfiguration:all-srcs",
         "//pkg/registry/admissionregistration/rest:all-srcs",
-        "//pkg/registry/admissionregistration/validatingwebhookconfiguration:all-srcs",
         "//pkg/registry/apps/controllerrevision:all-srcs",
         "//pkg/registry/apps/rest:all-srcs",
         "//pkg/registry/apps/statefulset:all-srcs",
@@ -82,7 +80,6 @@ filegroup(
         "//pkg/registry/settings/rest:all-srcs",
         "//pkg/registry/storage/rest:all-srcs",
         "//pkg/registry/storage/storageclass:all-srcs",
-        "//pkg/registry/storage/volumeattachment:all-srcs",
     ],
     tags = ["automanaged"],
 )

@@ -13,13 +13,11 @@ go_library(
         "authentication.go",
         "authorization.go",
         "cloudprovider.go",
-        "options.go",
         "serving.go",
         "storage_versions.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubeapiserver/options",
     deps = [
-        "//pkg/api/legacyscheme:go_default_library",
+        "//pkg/api:go_default_library",
         "//pkg/client/informers/informers_generated/internalversion:go_default_library",
         "//pkg/cloudprovider:go_default_library",
         "//pkg/kubeapiserver/authenticator:go_default_library",
@@ -54,7 +52,6 @@ filegroup(
 go_test(
     name = "go_default_test",
     srcs = ["storage_versions_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/kubeapiserver/options",
     library = ":go_default_library",
     deps = ["//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library"],
 )

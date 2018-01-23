@@ -11,7 +11,6 @@ go_library(
         "doc.go",
         "namespace_controller.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/controller/namespace",
     deps = [
         "//pkg/controller:go_default_library",
         "//pkg/controller/namespace/deletion:go_default_library",

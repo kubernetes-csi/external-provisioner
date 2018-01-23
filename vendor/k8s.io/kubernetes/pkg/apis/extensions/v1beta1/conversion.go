@@ -24,12 +24,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/conversion"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/kubernetes/pkg/apis/autoscaling"
-	api "k8s.io/kubernetes/pkg/apis/core"
-	k8s_api_v1 "k8s.io/kubernetes/pkg/apis/core/v1"
+	"k8s.io/kubernetes/pkg/api"
+	k8s_api_v1 "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/apis/networking"
 )
@@ -37,8 +35,8 @@ import (
 func addConversionFuncs(scheme *runtime.Scheme) error {
 	// Add non-generated conversion functions
 	err := scheme.AddConversionFuncs(
-		Convert_autoscaling_ScaleStatus_To_v1beta1_ScaleStatus,
-		Convert_v1beta1_ScaleStatus_To_autoscaling_ScaleStatus,
+		Convert_extensions_ScaleStatus_To_v1beta1_ScaleStatus,
+		Convert_v1beta1_ScaleStatus_To_extensions_ScaleStatus,
 		Convert_extensions_DeploymentSpec_To_v1beta1_DeploymentSpec,
 		Convert_v1beta1_DeploymentSpec_To_extensions_DeploymentSpec,
 		Convert_extensions_DeploymentStrategy_To_v1beta1_DeploymentStrategy,
@@ -74,35 +72,48 @@ func addConversionFuncs(scheme *runtime.Scheme) error {
 	return nil
 }
 
-func Convert_autoscaling_ScaleStatus_To_v1beta1_ScaleStatus(in *autoscaling.ScaleStatus, out *extensionsv1beta1.ScaleStatus, s conversion.Scope) error {
+func Convert_extensions_ScaleStatus_To_v1beta1_ScaleStatus(in *extensions.ScaleStatus, out *extensionsv1beta1.ScaleStatus, s conversion.Scope) error {
 	out.Replicas = int32(in.Replicas)
-	out.TargetSelector = in.Selector
 
 	out.Selector = nil
-	selector, err := metav1.ParseToLabelSelector(in.Selector)
-	if err != nil {
-		return fmt.Errorf("failed to parse selector: %v", err)
-	}
-	if len(selector.MatchExpressions) == 0 {
-		out.Selector = selector.MatchLabels
-	}
+	out.TargetSelector = ""
+	if in.Selector != nil {
+		if in.Selector.MatchExpressions == nil || len(in.Selector.MatchExpressions) == 0 {
+			out.Selector = in.Selector.MatchLabels
+		}
 
+		selector, err := metav1.LabelSelectorAsSelector(in.Selector)
+		if err != nil {
+			return fmt.Errorf("invalid label selector: %v", err)
+		}
+		out.TargetSelector = selector.String()
+	}
 	return nil
 }
 
-func Convert_v1beta1_ScaleStatus_To_autoscaling_ScaleStatus(in *extensionsv1beta1.ScaleStatus, out *autoscaling.ScaleStatus, s conversion.Scope) error {
+func Convert_v1beta1_ScaleStatus_To_extensions_ScaleStatus(in *extensionsv1beta1.ScaleStatus, out *extensions.ScaleStatus, s conversion.Scope) error {
 	out.Replicas = in.Replicas
 
+	// Normally when 2 fields map to the same internal value we favor the old field, since
+	// old clients can't be expected to know about new fields but clients that know about the
+	// new field can be expected to know about the old field (though that's not quite true, due
+	// to kubectl apply). However, these fields are readonly, so any non-nil value should work.
 	if in.TargetSelector != "" {
-		out.Selector = in.TargetSelector
-	} else if in.Selector != nil {
-		set := labels.Set{}
-		for key, val := range in.Selector {
-			set[key] = val
+		labelSelector, err := metav1.ParseToLabelSelector(in.TargetSelector)
+		if err != nil {
+			out.Selector = nil
+			return fmt.Errorf("failed to parse target selector: %v", err)
 		}
-		out.Selector = labels.SelectorFromSet(set).String()
+		out.Selector = labelSelector
+	} else if in.Selector != nil {
+		out.Selector = new(metav1.LabelSelector)
+		selector := make(map[string]string)
+		for key, val := range in.Selector {
+			selector[key] = val
+		}
+		out.Selector.MatchLabels = selector
 	} else {
-		out.Selector = ""
+		out.Selector = nil
 	}
 	return nil
 }
@@ -110,7 +121,7 @@ func Convert_v1beta1_ScaleStatus_To_autoscaling_ScaleStatus(in *extensionsv1beta
 func Convert_extensions_DeploymentSpec_To_v1beta1_DeploymentSpec(in *extensions.DeploymentSpec, out *extensionsv1beta1.DeploymentSpec, s conversion.Scope) error {
 	out.Replicas = &in.Replicas
 	out.Selector = in.Selector
-	if err := k8s_api_v1.Convert_core_PodTemplateSpec_To_v1_PodTemplateSpec(&in.Template, &out.Template, s); err != nil {
+	if err := k8s_api_v1.Convert_api_PodTemplateSpec_To_v1_PodTemplateSpec(&in.Template, &out.Template, s); err != nil {
 		return err
 	}
 	if err := Convert_extensions_DeploymentStrategy_To_v1beta1_DeploymentStrategy(&in.Strategy, &out.Strategy, s); err != nil {
@@ -140,7 +151,7 @@ func Convert_v1beta1_DeploymentSpec_To_extensions_DeploymentSpec(in *extensionsv
 		out.Replicas = *in.Replicas
 	}
 	out.Selector = in.Selector
-	if err := k8s_api_v1.Convert_v1_PodTemplateSpec_To_core_PodTemplateSpec(&in.Template, &out.Template, s); err != nil {
+	if err := k8s_api_v1.Convert_v1_PodTemplateSpec_To_api_PodTemplateSpec(&in.Template, &out.Template, s); err != nil {
 		return err
 	}
 	if err := Convert_v1beta1_DeploymentStrategy_To_extensions_DeploymentStrategy(&in.Strategy, &out.Strategy, s); err != nil {
@@ -236,7 +247,7 @@ func Convert_extensions_ReplicaSetSpec_To_v1beta1_ReplicaSetSpec(in *extensions.
 	*out.Replicas = int32(in.Replicas)
 	out.MinReadySeconds = in.MinReadySeconds
 	out.Selector = in.Selector
-	if err := k8s_api_v1.Convert_core_PodTemplateSpec_To_v1_PodTemplateSpec(&in.Template, &out.Template, s); err != nil {
+	if err := k8s_api_v1.Convert_api_PodTemplateSpec_To_v1_PodTemplateSpec(&in.Template, &out.Template, s); err != nil {
 		return err
 	}
 	return nil
@@ -248,7 +259,7 @@ func Convert_v1beta1_ReplicaSetSpec_To_extensions_ReplicaSetSpec(in *extensionsv
 	}
 	out.MinReadySeconds = in.MinReadySeconds
 	out.Selector = in.Selector
-	if err := k8s_api_v1.Convert_v1_PodTemplateSpec_To_core_PodTemplateSpec(&in.Template, &out.Template, s); err != nil {
+	if err := k8s_api_v1.Convert_v1_PodTemplateSpec_To_api_PodTemplateSpec(&in.Template, &out.Template, s); err != nil {
 		return err
 	}
 	return nil

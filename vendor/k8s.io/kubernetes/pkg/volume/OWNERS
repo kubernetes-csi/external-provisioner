@@ -7,11 +7,15 @@ approvers:
 - gnufied
 - childsb
 reviewers:
+- thockin
+- smarterclayton
+- brendandburns
+- derekwaynecarr
+- pmorie
 - saad-ali
+- justinsb
 - jsafrane
 - rootfs
 - jingxu97
 - msau42
 - gnufied
-- verult
-- davidz627

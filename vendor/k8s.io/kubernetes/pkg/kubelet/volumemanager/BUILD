@@ -9,7 +9,6 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["volume_manager.go"],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/volumemanager",
     deps = [
         "//pkg/kubelet/config:go_default_library",
         "//pkg/kubelet/container:go_default_library",
@@ -38,7 +37,6 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = ["volume_manager_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/volumemanager",
     library = ":go_default_library",
     deps = [
         "//pkg/kubelet/config:go_default_library",

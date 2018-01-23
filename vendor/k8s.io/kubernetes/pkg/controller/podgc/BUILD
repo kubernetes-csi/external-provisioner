@@ -12,7 +12,6 @@ go_library(
         "doc.go",
         "gc_controller.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/controller/podgc",
     deps = [
         "//pkg/controller:go_default_library",
         "//pkg/util/metrics:go_default_library",
@@ -33,7 +32,6 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = ["gc_controller_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/controller/podgc",
     library = ":go_default_library",
     deps = [
         "//pkg/controller:go_default_library",

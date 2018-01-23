@@ -11,7 +11,6 @@ go_library(
         "mock_volume.go",
         "testing.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/volume/testing",
     deps = [
         "//pkg/cloudprovider:go_default_library",
         "//pkg/util/io:go_default_library",

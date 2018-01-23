@@ -89,9 +89,9 @@ func makeServiceDescription(serviceName string) string {
 	return fmt.Sprintf(`{"kubernetes.io/service-name":"%s"}`, serviceName)
 }
 
-// MakeNodesHealthCheckName returns name of the health check resource used by
+// makeNodesHealthCheckName returns name of the health check resource used by
 // the GCE load balancers (l4) for performing health checks on nodes.
-func MakeNodesHealthCheckName(clusterID string) string {
+func makeNodesHealthCheckName(clusterID string) string {
 	return fmt.Sprintf("k8s-%v-node", clusterID)
 }
 
@@ -103,14 +103,12 @@ func makeHealthCheckDescription(serviceName string) string {
 // balancers (l4) for performing health checks.
 func MakeHealthCheckFirewallName(clusterID, hcName string, isNodesHealthCheck bool) string {
 	if isNodesHealthCheck {
-		return MakeNodesHealthCheckName(clusterID) + "-http-hc"
+		return makeNodesHealthCheckName(clusterID) + "-http-hc"
 	}
 	return "k8s-" + hcName + "-http-hc"
 }
 
-// MakeFirewallName returns the firewall name used by the GCE load
-// balancers (l4) for serving traffic.
-func MakeFirewallName(name string) string {
+func makeFirewallName(name string) string {
 	return fmt.Sprintf("k8s-fw-%s", name)
 }
 

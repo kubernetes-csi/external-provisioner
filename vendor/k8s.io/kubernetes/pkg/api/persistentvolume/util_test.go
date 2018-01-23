@@ -24,7 +24,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 func TestPVSecrets(t *testing.T) {
@@ -65,29 +65,15 @@ func TestPVSecrets(t *testing.T) {
 		{Spec: api.PersistentVolumeSpec{
 			ClaimRef: &api.ObjectReference{Namespace: "claimrefns", Name: "claimrefname"},
 			PersistentVolumeSource: api.PersistentVolumeSource{
-				RBD: &api.RBDPersistentVolumeSource{
-					SecretRef: &api.SecretReference{
+				RBD: &api.RBDVolumeSource{
+					SecretRef: &api.LocalObjectReference{
 						Name: "Spec.PersistentVolumeSource.RBD.SecretRef"}}}}},
 		{Spec: api.PersistentVolumeSpec{
 			ClaimRef: &api.ObjectReference{Namespace: "claimrefns", Name: "claimrefname"},
 			PersistentVolumeSource: api.PersistentVolumeSource{
-				RBD: &api.RBDPersistentVolumeSource{
-					SecretRef: &api.SecretReference{
-						Name:      "Spec.PersistentVolumeSource.RBD.SecretRef",
-						Namespace: "rbdns"}}}}},
-		{Spec: api.PersistentVolumeSpec{
-			ClaimRef: &api.ObjectReference{Namespace: "claimrefns", Name: "claimrefname"},
-			PersistentVolumeSource: api.PersistentVolumeSource{
-				ScaleIO: &api.ScaleIOPersistentVolumeSource{
-					SecretRef: &api.SecretReference{
+				ScaleIO: &api.ScaleIOVolumeSource{
+					SecretRef: &api.LocalObjectReference{
 						Name: "Spec.PersistentVolumeSource.ScaleIO.SecretRef"}}}}},
-		{Spec: api.PersistentVolumeSpec{
-			ClaimRef: &api.ObjectReference{Namespace: "claimrefns", Name: "claimrefname"},
-			PersistentVolumeSource: api.PersistentVolumeSource{
-				ScaleIO: &api.ScaleIOPersistentVolumeSource{
-					SecretRef: &api.SecretReference{
-						Name:      "Spec.PersistentVolumeSource.ScaleIO.SecretRef",
-						Namespace: "scaleions"}}}}},
 		{Spec: api.PersistentVolumeSpec{
 			ClaimRef: &api.ObjectReference{Namespace: "claimrefns", Name: "claimrefname"},
 			PersistentVolumeSource: api.PersistentVolumeSource{
@@ -155,9 +141,7 @@ func TestPVSecrets(t *testing.T) {
 		"cephfs/Spec.PersistentVolumeSource.CephFS.SecretRef",
 		"claimrefns/Spec.PersistentVolumeSource.FlexVolume.SecretRef",
 		"claimrefns/Spec.PersistentVolumeSource.RBD.SecretRef",
-		"rbdns/Spec.PersistentVolumeSource.RBD.SecretRef",
 		"claimrefns/Spec.PersistentVolumeSource.ScaleIO.SecretRef",
-		"scaleions/Spec.PersistentVolumeSource.ScaleIO.SecretRef",
 		"claimrefns/Spec.PersistentVolumeSource.ISCSI.SecretRef",
 		"storageosns/Spec.PersistentVolumeSource.StorageOS.SecretRef",
 	)

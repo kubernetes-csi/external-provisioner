@@ -44,6 +44,7 @@ func init() {
 
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
+		&KubeProxyConfiguration{},
 		&KubeSchedulerConfiguration{},
 	)
 	return nil

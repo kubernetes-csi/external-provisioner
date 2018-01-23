@@ -13,7 +13,6 @@ go_library(
         "request_cache.go",
         "server.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/server/streaming",
     deps = [
         "//pkg/kubelet/apis/cri/v1alpha1/runtime:go_default_library",
         "//pkg/kubelet/server/portforward:go_default_library",
@@ -34,10 +33,9 @@ go_test(
         "request_cache_test.go",
         "server_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/server/streaming",
     library = ":go_default_library",
     deps = [
-        "//pkg/apis/core:go_default_library",
+        "//pkg/api:go_default_library",
         "//pkg/kubelet/apis/cri/v1alpha1/runtime:go_default_library",
         "//pkg/kubelet/server/portforward:go_default_library",
         "//vendor/github.com/stretchr/testify/assert:go_default_library",

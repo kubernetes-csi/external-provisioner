@@ -22,9 +22,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/storage/names"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	api "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/apis/core/validation"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/validation"
 )
 
 type limitrangeStrategy struct {
@@ -34,7 +33,7 @@ type limitrangeStrategy struct {
 
 // Strategy is the default logic that applies when creating and updating
 // LimitRange objects via the REST API.
-var Strategy = limitrangeStrategy{legacyscheme.Scheme, names.SimpleNameGenerator}
+var Strategy = limitrangeStrategy{api.Scheme, names.SimpleNameGenerator}
 
 func (limitrangeStrategy) NamespaceScoped() bool {
 	return true

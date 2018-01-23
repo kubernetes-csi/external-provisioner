@@ -24,9 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/rest/fake"
+	"k8s.io/kubernetes/pkg/api"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 )
 
@@ -121,12 +121,11 @@ func TestRunAccessCheck(t *testing.T) {
 
 		f, tf, _, ns := cmdtesting.NewAPIFactory()
 		tf.Client = &fake.RESTClient{
-			GroupVersion:         schema.GroupVersion{Group: "", Version: "v1"},
+			APIRegistry:          api.Registry,
 			NegotiatedSerializer: ns,
 			Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-				expectPath := "/apis/authorization.k8s.io/v1/selfsubjectaccessreviews"
-				if req.URL.Path != expectPath {
-					t.Errorf("%s: expected %v, got %v", test.name, expectPath, req.URL.Path)
+				if req.URL.Path != "/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" {
+					t.Errorf("%s: %v", test.name, req.URL.Path)
 					return nil, nil
 				}
 				bodyBits, err := ioutil.ReadAll(req.Body)
@@ -152,7 +151,7 @@ func TestRunAccessCheck(t *testing.T) {
 			}),
 		}
 		tf.Namespace = "test"
-		tf.ClientConfig = &restclient.Config{ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Group: "", Version: "v1"}}}
+		tf.ClientConfig = &restclient.Config{ContentConfig: restclient.ContentConfig{GroupVersion: &api.Registry.GroupOrDie(api.GroupName).GroupVersion}}
 
 		if err := test.o.Complete(f, test.args); err != nil {
 			t.Errorf("%s: %v", test.name, err)

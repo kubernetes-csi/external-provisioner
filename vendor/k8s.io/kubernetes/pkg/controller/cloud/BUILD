@@ -12,7 +12,7 @@ go_library(
         "node_controller.go",
         "pvlcontroller.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/controller/cloud",
+    tags = ["automanaged"],
     deps = [
         "//pkg/api/v1/node:go_default_library",
         "//pkg/cloudprovider:go_default_library",
@@ -48,7 +48,6 @@ go_test(
         "node_controller_test.go",
         "pvlcontroller_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/controller/cloud",
     library = ":go_default_library",
     deps = [
         "//pkg/cloudprovider:go_default_library",
@@ -58,7 +57,6 @@ go_test(
         "//pkg/kubelet/apis:go_default_library",
         "//plugin/pkg/scheduler/algorithm:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
-        "//vendor/github.com/stretchr/testify/assert:go_default_library",
         "//vendor/k8s.io/api/core/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",

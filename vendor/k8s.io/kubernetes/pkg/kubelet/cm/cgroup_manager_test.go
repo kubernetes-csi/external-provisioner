@@ -23,49 +23,52 @@ import (
 	"testing"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/kubernetes/pkg/kubelet/apis/kubeletconfig"
 )
 
 func Test(t *testing.T) {
 	tests := []struct {
-		input    map[string]string
+		input    string
 		expected *map[v1.ResourceName]int64
 	}{
 		{
-			input:    map[string]string{"memory": ""},
+			input:    "memory",
 			expected: nil,
 		},
 		{
-			input:    map[string]string{"memory": "a"},
+			input:    "memory=a",
 			expected: nil,
 		},
 		{
-			input:    map[string]string{"memory": "a%"},
+			input:    "memory=a%",
 			expected: nil,
 		},
 		{
-			input:    map[string]string{"memory": "200%"},
+			input:    "memory=200%",
 			expected: nil,
 		},
 		{
-			input: map[string]string{"memory": "0%"},
+			input: "memory=0%",
 			expected: &map[v1.ResourceName]int64{
 				v1.ResourceMemory: 0,
 			},
 		},
 		{
-			input: map[string]string{"memory": "100%"},
+			input: "memory=100%",
 			expected: &map[v1.ResourceName]int64{
 				v1.ResourceMemory: 100,
 			},
 		},
 		{
 			// need to change this when CPU is added as a supported resource
-			input:    map[string]string{"memory": "100%", "cpu": "50%"},
+			input:    "memory=100%,cpu=50%",
 			expected: nil,
 		},
 	}
 	for _, test := range tests {
-		actual, err := ParseQOSReserved(test.input)
+		m := kubeletconfig.ConfigurationMap{}
+		m.Set(test.input)
+		actual, err := ParseQOSReserved(m)
 		if actual != nil && test.expected == nil {
 			t.Errorf("Unexpected success, input: %v, expected: %v, actual: %v, err: %v", test.input, test.expected, actual, err)
 		}

@@ -18,7 +18,7 @@ package securitycontext
 
 import (
 	"k8s.io/api/core/v1"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 // ValidSecurityContextWithContainerDefaults creates a valid security context provider based on

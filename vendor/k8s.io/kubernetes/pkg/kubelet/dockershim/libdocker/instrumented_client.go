@@ -22,8 +22,7 @@ import (
 	dockertypes "github.com/docker/docker/api/types"
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerimagetypes "github.com/docker/docker/api/types/image"
-
-	"k8s.io/kubernetes/pkg/kubelet/dockershim/metrics"
+	"k8s.io/kubernetes/pkg/kubelet/metrics"
 )
 
 // instrumentedInterface wraps the Interface and records the operations
@@ -32,7 +31,7 @@ type instrumentedInterface struct {
 	client Interface
 }
 
-// NewInstrumentedInterface creates an instrumented Interface from an existing Interface.
+// Creates an instrumented Interface from an existing Interface.
 func NewInstrumentedInterface(dockerClient Interface) Interface {
 	return instrumentedInterface{
 		client: dockerClient,
@@ -70,15 +69,6 @@ func (in instrumentedInterface) InspectContainer(id string) (*dockertypes.Contai
 	defer recordOperation(operation, time.Now())
 
 	out, err := in.client.InspectContainer(id)
-	recordError(operation, err)
-	return out, err
-}
-
-func (in instrumentedInterface) InspectContainerWithSize(id string) (*dockertypes.ContainerJSON, error) {
-	const operation = "inspect_container_withsize"
-	defer recordOperation(operation, time.Now())
-
-	out, err := in.client.InspectContainerWithSize(id)
 	recordError(operation, err)
 	return out, err
 }
@@ -260,13 +250,4 @@ func (in instrumentedInterface) ResizeContainerTTY(id string, height, width uint
 	err := in.client.ResizeContainerTTY(id, height, width)
 	recordError(operation, err)
 	return err
-}
-
-func (in instrumentedInterface) GetContainerStats(id string) (*dockertypes.StatsJSON, error) {
-	const operation = "stats"
-	defer recordOperation(operation, time.Now())
-
-	out, err := in.client.GetContainerStats(id)
-	recordError(operation, err)
-	return out, err
 }

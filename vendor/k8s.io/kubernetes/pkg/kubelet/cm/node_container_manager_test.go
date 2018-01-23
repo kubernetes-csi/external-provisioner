@@ -29,7 +29,7 @@ import (
 
 func TestNodeAllocatableReservationForScheduling(t *testing.T) {
 	memoryEvictionThreshold := resource.MustParse("100Mi")
-	cpuMemCases := []struct {
+	testCases := []struct {
 		kubeReserved   v1.ResourceList
 		systemReserved v1.ResourceList
 		expected       v1.ResourceList
@@ -87,7 +87,7 @@ func TestNodeAllocatableReservationForScheduling(t *testing.T) {
 			expected:       getResourceList("", "150Mi"),
 		},
 	}
-	for idx, tc := range cpuMemCases {
+	for idx, tc := range testCases {
 		nc := NodeConfig{
 			NodeAllocatableConfig: NodeAllocatableConfig{
 				KubeReserved:   tc.kubeReserved,
@@ -111,64 +111,24 @@ func TestNodeAllocatableReservationForScheduling(t *testing.T) {
 			assert.Equal(t, expected.MilliValue(), v.MilliValue(), "test case %d failed for resource %q", idx+1, k)
 		}
 	}
+}
 
-	ephemeralStorageEvictionThreshold := resource.MustParse("100Mi")
-	ephemeralStorageTestCases := []struct {
-		kubeReserved  v1.ResourceList
-		expected      v1.ResourceList
-		capacity      v1.ResourceList
-		hardThreshold evictionapi.ThresholdValue
-	}{
-		{
-			kubeReserved: getEphemeralStorageResourceList("100Mi"),
-			capacity:     getEphemeralStorageResourceList("10Gi"),
-			expected:     getEphemeralStorageResourceList("100Mi"),
-		},
-		{
-			kubeReserved: getEphemeralStorageResourceList("100Mi"),
-			hardThreshold: evictionapi.ThresholdValue{
-				Quantity: &ephemeralStorageEvictionThreshold,
-			},
-			capacity: getEphemeralStorageResourceList("10Gi"),
-			expected: getEphemeralStorageResourceList("200Mi"),
-		},
-		{
-			kubeReserved: getEphemeralStorageResourceList("150Mi"),
-			capacity:     getEphemeralStorageResourceList("10Gi"),
-			hardThreshold: evictionapi.ThresholdValue{
-				Percentage: 0.05,
-			},
-			expected: getEphemeralStorageResourceList("694157320"),
-		},
-
-		{
-			kubeReserved: v1.ResourceList{},
-			capacity:     getEphemeralStorageResourceList("10Gi"),
-			expected:     getEphemeralStorageResourceList(""),
+func TestNodeAllocatableWithNilHardThreshold(t *testing.T) {
+	nc := NodeConfig{
+		NodeAllocatableConfig: NodeAllocatableConfig{
+			KubeReserved:   getResourceList("100m", "100Mi"),
+			SystemReserved: getResourceList("50m", "50Mi"),
 		},
 	}
-	for idx, tc := range ephemeralStorageTestCases {
-		nc := NodeConfig{
-			NodeAllocatableConfig: NodeAllocatableConfig{
-				KubeReserved: tc.kubeReserved,
-				HardEvictionThresholds: []evictionapi.Threshold{
-					{
-						Signal:   evictionapi.SignalNodeFsAvailable,
-						Operator: evictionapi.OpLessThan,
-						Value:    tc.hardThreshold,
-					},
-				},
-			},
-		}
-		cm := &containerManagerImpl{
-			NodeConfig: nc,
-			capacity:   tc.capacity,
-		}
-		for k, v := range cm.GetNodeAllocatableReservation() {
-			expected, exists := tc.expected[k]
-			assert.True(t, exists, "test case %d expected resource %q", idx+1, k)
-			assert.Equal(t, expected.MilliValue(), v.MilliValue(), "test case %d failed for resource %q", idx+1, k)
-		}
+	cm := &containerManagerImpl{
+		NodeConfig: nc,
+		capacity:   getResourceList("10", "10Gi"),
+	}
+	expected := getResourceList("150m", "150Mi")
+	for k, v := range cm.GetNodeAllocatableReservation() {
+		expected, exists := expected[k]
+		assert.True(t, exists)
+		assert.Equal(t, expected.MilliValue(), v.MilliValue(), "failed for resource %q", k)
 	}
 }
 
@@ -347,30 +307,34 @@ func TestNodeAllocatableInputValidation(t *testing.T) {
 		}
 	}
 
-	ephemeralStorageEvictionThreshold := resource.MustParse("100Mi")
-	ephemeralStorageTestCases := []struct {
+	storageEvictionThreshold := resource.MustParse("100Mi")
+	storageTestCases := []struct {
 		kubeReserved         v1.ResourceList
+		systemReserved       v1.ResourceList
 		capacity             v1.ResourceList
 		hardThreshold        evictionapi.ThresholdValue
 		invalidConfiguration bool
 	}{
 		{
-			kubeReserved: getEphemeralStorageResourceList("100Mi"),
-			capacity:     getEphemeralStorageResourceList("500Mi"),
+			kubeReserved:   getEphemeralStorageResourceList("100Mi"),
+			systemReserved: getEphemeralStorageResourceList("50Mi"),
+			capacity:       getEphemeralStorageResourceList("500Mi"),
 		},
 		{
-			kubeReserved: getEphemeralStorageResourceList("20Gi"),
+			kubeReserved:   getEphemeralStorageResourceList("10Gi"),
+			systemReserved: getEphemeralStorageResourceList("10Gi"),
 			hardThreshold: evictionapi.ThresholdValue{
-				Quantity: &ephemeralStorageEvictionThreshold,
+				Quantity: &storageEvictionThreshold,
 			},
 			capacity:             getEphemeralStorageResourceList("20Gi"),
 			invalidConfiguration: true,
 		},
 	}
-	for _, tc := range ephemeralStorageTestCases {
+	for _, tc := range storageTestCases {
 		nc := NodeConfig{
 			NodeAllocatableConfig: NodeAllocatableConfig{
-				KubeReserved: tc.kubeReserved,
+				KubeReserved:   tc.kubeReserved,
+				SystemReserved: tc.systemReserved,
 				HardEvictionThresholds: []evictionapi.Threshold{
 					{
 						Signal:   evictionapi.SignalNodeFsAvailable,

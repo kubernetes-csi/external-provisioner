@@ -21,22 +21,22 @@ import (
 	"strings"
 	"testing"
 
-	"k8s.io/api/core/v1"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 func TestConfigMapHash(t *testing.T) {
 	cases := []struct {
 		desc string
-		cm   *v1.ConfigMap
+		cm   *api.ConfigMap
 		hash string
 		err  string
 	}{
 		// empty map
-		{"empty data", &v1.ConfigMap{Data: map[string]string{}}, "42745tchd9", ""},
+		{"empty data", &api.ConfigMap{Data: map[string]string{}}, "42745tchd9", ""},
 		// one key
-		{"one key", &v1.ConfigMap{Data: map[string]string{"one": ""}}, "9g67k2htb6", ""},
+		{"one key", &api.ConfigMap{Data: map[string]string{"one": ""}}, "9g67k2htb6", ""},
 		// three keys (tests sorting order)
-		{"three keys", &v1.ConfigMap{Data: map[string]string{"two": "2", "one": "", "three": "3"}}, "f5h7t85m9b", ""},
+		{"three keys", &api.ConfigMap{Data: map[string]string{"two": "2", "one": "", "three": "3"}}, "f5h7t85m9b", ""},
 	}
 
 	for _, c := range cases {
@@ -53,16 +53,16 @@ func TestConfigMapHash(t *testing.T) {
 func TestSecretHash(t *testing.T) {
 	cases := []struct {
 		desc   string
-		secret *v1.Secret
+		secret *api.Secret
 		hash   string
 		err    string
 	}{
 		// empty map
-		{"empty data", &v1.Secret{Type: "my-type", Data: map[string][]byte{}}, "t75bgf6ctb", ""},
+		{"empty data", &api.Secret{Type: "my-type", Data: map[string][]byte{}}, "t75bgf6ctb", ""},
 		// one key
-		{"one key", &v1.Secret{Type: "my-type", Data: map[string][]byte{"one": []byte("")}}, "74bd68bm66", ""},
+		{"one key", &api.Secret{Type: "my-type", Data: map[string][]byte{"one": []byte("")}}, "74bd68bm66", ""},
 		// three keys (tests sorting order)
-		{"three keys", &v1.Secret{Type: "my-type", Data: map[string][]byte{"two": []byte("2"), "one": []byte(""), "three": []byte("3")}}, "dgcb6h9tmk", ""},
+		{"three keys", &api.Secret{Type: "my-type", Data: map[string][]byte{"two": []byte("2"), "one": []byte(""), "three": []byte("3")}}, "dgcb6h9tmk", ""},
 	}
 
 	for _, c := range cases {
@@ -79,16 +79,16 @@ func TestSecretHash(t *testing.T) {
 func TestEncodeConfigMap(t *testing.T) {
 	cases := []struct {
 		desc   string
-		cm     *v1.ConfigMap
+		cm     *api.ConfigMap
 		expect string
 		err    string
 	}{
 		// empty map
-		{"empty data", &v1.ConfigMap{Data: map[string]string{}}, `{"data":{},"kind":"ConfigMap","name":""}`, ""},
+		{"empty data", &api.ConfigMap{Data: map[string]string{}}, `{"data":{},"kind":"ConfigMap","name":""}`, ""},
 		// one key
-		{"one key", &v1.ConfigMap{Data: map[string]string{"one": ""}}, `{"data":{"one":""},"kind":"ConfigMap","name":""}`, ""},
+		{"one key", &api.ConfigMap{Data: map[string]string{"one": ""}}, `{"data":{"one":""},"kind":"ConfigMap","name":""}`, ""},
 		// three keys (tests sorting order)
-		{"three keys", &v1.ConfigMap{Data: map[string]string{"two": "2", "one": "", "three": "3"}}, `{"data":{"one":"","three":"3","two":"2"},"kind":"ConfigMap","name":""}`, ""},
+		{"three keys", &api.ConfigMap{Data: map[string]string{"two": "2", "one": "", "three": "3"}}, `{"data":{"one":"","three":"3","two":"2"},"kind":"ConfigMap","name":""}`, ""},
 	}
 	for _, c := range cases {
 		s, err := encodeConfigMap(c.cm)
@@ -104,16 +104,16 @@ func TestEncodeConfigMap(t *testing.T) {
 func TestEncodeSecret(t *testing.T) {
 	cases := []struct {
 		desc   string
-		secret *v1.Secret
+		secret *api.Secret
 		expect string
 		err    string
 	}{
 		// empty map
-		{"empty data", &v1.Secret{Type: "my-type", Data: map[string][]byte{}}, `{"data":{},"kind":"Secret","name":"","type":"my-type"}`, ""},
+		{"empty data", &api.Secret{Type: "my-type", Data: map[string][]byte{}}, `{"data":{},"kind":"Secret","name":"","type":"my-type"}`, ""},
 		// one key
-		{"one key", &v1.Secret{Type: "my-type", Data: map[string][]byte{"one": []byte("")}}, `{"data":{"one":""},"kind":"Secret","name":"","type":"my-type"}`, ""},
+		{"one key", &api.Secret{Type: "my-type", Data: map[string][]byte{"one": []byte("")}}, `{"data":{"one":""},"kind":"Secret","name":"","type":"my-type"}`, ""},
 		// three keys (tests sorting order) - note json.Marshal base64 encodes the values because they come in as []byte
-		{"three keys", &v1.Secret{Type: "my-type", Data: map[string][]byte{"two": []byte("2"), "one": []byte(""), "three": []byte("3")}}, `{"data":{"one":"","three":"Mw==","two":"Mg=="},"kind":"Secret","name":"","type":"my-type"}`, ""},
+		{"three keys", &api.Secret{Type: "my-type", Data: map[string][]byte{"two": []byte("2"), "one": []byte(""), "three": []byte("3")}}, `{"data":{"one":"","three":"Mw==","two":"Mg=="},"kind":"Secret","name":"","type":"my-type"}`, ""},
 	}
 	for _, c := range cases {
 		s, err := encodeSecret(c.secret)
@@ -148,8 +148,8 @@ not their metadata (e.g. the Data of a ConfigMap, but nothing in ObjectMeta).
 		obj      interface{}
 		expect   int
 	}{
-		{"ConfigMap", v1.ConfigMap{}, 3},
-		{"Secret", v1.Secret{}, 5},
+		{"ConfigMap", api.ConfigMap{}, 3},
+		{"Secret", api.Secret{}, 4},
 	}
 	for _, c := range cases {
 		val := reflect.ValueOf(c.obj)

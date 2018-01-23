@@ -25,8 +25,8 @@ import (
 
 	"net/url"
 
-	"k8s.io/api/core/v1"
 	"k8s.io/client-go/rest/fake"
+	"k8s.io/kubernetes/pkg/api"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 	"k8s.io/metrics/pkg/apis/metrics/v1alpha1"
 )
@@ -45,6 +45,7 @@ func TestTopNodeAllMetrics(t *testing.T) {
 	f, tf, codec, ns := cmdtesting.NewAPIFactory()
 	tf.Printer = &testPrinter{}
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			switch p, m := req.URL.Path, req.Method; {
@@ -90,6 +91,7 @@ func TestTopNodeAllMetricsCustomDefaults(t *testing.T) {
 	f, tf, codec, ns := cmdtesting.NewAPIFactory()
 	tf.Printer = &testPrinter{}
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			switch p, m := req.URL.Path, req.Method; {
@@ -145,6 +147,7 @@ func TestTopNodeWithNameMetrics(t *testing.T) {
 	f, tf, codec, ns := cmdtesting.NewAPIFactory()
 	tf.Printer = &testPrinter{}
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			switch p, m := req.URL.Path, req.Method; {
@@ -188,7 +191,7 @@ func TestTopNodeWithLabelSelectorMetrics(t *testing.T) {
 		ListMeta: metrics.ListMeta,
 		Items:    metrics.Items[0:1],
 	}
-	expectedNodes := v1.NodeList{
+	expectedNodes := api.NodeList{
 		ListMeta: nodes.ListMeta,
 		Items:    nodes.Items[0:1],
 	}
@@ -204,6 +207,7 @@ func TestTopNodeWithLabelSelectorMetrics(t *testing.T) {
 	f, tf, codec, ns := cmdtesting.NewAPIFactory()
 	tf.Printer = &testPrinter{}
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			switch p, m, q := req.URL.Path, req.Method, req.URL.RawQuery; {

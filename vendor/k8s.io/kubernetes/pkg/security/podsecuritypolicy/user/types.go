@@ -18,7 +18,7 @@ package user
 
 import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 // RunAsUserStrategy defines the interface for all uid constraint strategies.

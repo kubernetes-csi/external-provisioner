@@ -22,19 +22,16 @@ import (
 	"github.com/google/cadvisor/events"
 	cadvisorapi "github.com/google/cadvisor/info/v1"
 	cadvisorapiv2 "github.com/google/cadvisor/info/v2"
-	"k8s.io/kubernetes/pkg/kubelet/winstats"
 )
 
 type cadvisorClient struct {
-	winStatsClient winstats.Client
 }
 
 var _ Interface = new(cadvisorClient)
 
 // New creates a cAdvisor and exports its API on the specified port if port > 0.
 func New(address string, port uint, imageFsInfoProvider ImageFsInfoProvider, rootPath string) (Interface, error) {
-	client, err := winstats.NewPerfCounterClient()
-	return &cadvisorClient{winStatsClient: client}, err
+	return &cadvisorClient{}, nil
 }
 
 func (cu *cadvisorClient) Start() error {
@@ -50,7 +47,7 @@ func (cu *cadvisorClient) ContainerInfo(name string, req *cadvisorapi.ContainerI
 }
 
 func (cu *cadvisorClient) ContainerInfoV2(name string, options cadvisorapiv2.RequestOptions) (map[string]cadvisorapiv2.ContainerInfo, error) {
-	return cu.winStatsClient.WinContainerInfos()
+	return make(map[string]cadvisorapiv2.ContainerInfo), nil
 }
 
 func (cu *cadvisorClient) SubcontainerInfo(name string, req *cadvisorapi.ContainerInfoRequest) (map[string]*cadvisorapi.ContainerInfo, error) {
@@ -58,11 +55,11 @@ func (cu *cadvisorClient) SubcontainerInfo(name string, req *cadvisorapi.Contain
 }
 
 func (cu *cadvisorClient) MachineInfo() (*cadvisorapi.MachineInfo, error) {
-	return cu.winStatsClient.WinMachineInfo()
+	return &cadvisorapi.MachineInfo{}, nil
 }
 
 func (cu *cadvisorClient) VersionInfo() (*cadvisorapi.VersionInfo, error) {
-	return cu.winStatsClient.WinVersionInfo()
+	return &cadvisorapi.VersionInfo{}, nil
 }
 
 func (cu *cadvisorClient) ImagesFsInfo() (cadvisorapiv2.FsInfo, error) {

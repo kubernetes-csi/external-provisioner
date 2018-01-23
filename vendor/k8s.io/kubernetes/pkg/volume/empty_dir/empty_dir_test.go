@@ -83,7 +83,7 @@ func TestPluginEmptyRootContext(t *testing.T) {
 
 func TestPluginHugetlbfs(t *testing.T) {
 	doTestPlugin(t, pluginTestConfig{
-		medium:                        v1.StorageMediumHugePages,
+		medium:                        v1.StorageMediumHugepages,
 		expectedSetupMounts:           1,
 		expectedTeardownMounts:        0,
 		shouldBeMountedBeforeTeardown: true,
@@ -216,7 +216,7 @@ func doTestPlugin(t *testing.T, config pluginTestConfig) {
 	if _, err := os.Stat(volPath); err == nil {
 		t.Errorf("TearDown() failed, volume path still exists: %s", volPath)
 	} else if !os.IsNotExist(err) {
-		t.Errorf("TearDown() failed: %v", err)
+		t.Errorf("SetUp() failed: %v", err)
 	}
 
 	// Check the number of physicalMounter calls during tardown

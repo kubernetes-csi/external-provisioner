@@ -14,7 +14,6 @@ go_library(
         "gce_pd.go",
         "gce_util.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/volume/gce_pd",
     deps = [
         "//pkg/cloudprovider:go_default_library",
         "//pkg/cloudprovider/providers/gce:go_default_library",
@@ -39,7 +38,6 @@ go_test(
         "attacher_test.go",
         "gce_pd_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/volume/gce_pd",
     library = ":go_default_library",
     deps = [
         "//pkg/util/mount:go_default_library",

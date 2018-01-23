@@ -23,8 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 type FakeAPIObject struct{}
@@ -52,8 +51,8 @@ func TestGetReference(t *testing.T) {
 	// when vendoring kube, if you don't force the set of registered versions (like make test does)
 	// then you run into trouble because the types aren't registered in the scheme by anything.  This does the
 	// register manually to allow unit test execution
-	if _, _, err := legacyscheme.Scheme.ObjectKinds(&api.Pod{}); err != nil {
-		api.AddToScheme(legacyscheme.Scheme)
+	if _, _, err := api.Scheme.ObjectKinds(&api.Pod{}); err != nil {
+		api.AddToScheme(api.Scheme)
 	}
 
 	table := map[string]struct {
@@ -136,7 +135,7 @@ func TestGetReference(t *testing.T) {
 	}
 
 	for name, item := range table {
-		ref, err := GetPartialReference(legacyscheme.Scheme, item.obj, item.fieldPath)
+		ref, err := GetPartialReference(api.Scheme, item.obj, item.fieldPath)
 		if e, a := item.shouldErr, (err != nil); e != a {
 			t.Errorf("%v: expected %v, got %v, err %v", name, e, a, err)
 			continue

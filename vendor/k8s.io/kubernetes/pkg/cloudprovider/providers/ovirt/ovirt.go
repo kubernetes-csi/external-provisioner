@@ -18,6 +18,7 @@ package ovirt
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -191,7 +192,7 @@ func (v *OVirtCloud) NodeAddresses(nodeName types.NodeName) ([]v1.NodeAddress, e
 // This method will not be called from the node that is requesting this ID. i.e. metadata service
 // and other local methods cannot be used here
 func (v *OVirtCloud) NodeAddressesByProviderID(providerID string) ([]v1.NodeAddress, error) {
-	return []v1.NodeAddress{}, cloudprovider.NotImplemented
+	return []v1.NodeAddress{}, errors.New("unimplemented")
 }
 
 // mapNodeNameToInstanceName maps from a k8s NodeName to an ovirt instance name (the hostname)
@@ -213,7 +214,7 @@ func (v *OVirtCloud) ExternalID(nodeName types.NodeName) (string, error) {
 // InstanceExistsByProviderID returns true if the instance with the given provider id still exists and is running.
 // If false is returned with no error, the instance will be immediately deleted by the cloud controller manager.
 func (v *OVirtCloud) InstanceExistsByProviderID(providerID string) (bool, error) {
-	return false, cloudprovider.NotImplemented
+	return false, errors.New("unimplemented")
 }
 
 // InstanceID returns the cloud provider ID of the node with the specified NodeName.
@@ -232,7 +233,7 @@ func (v *OVirtCloud) InstanceID(nodeName types.NodeName) (string, error) {
 // This method will not be called from the node that is requesting this ID. i.e. metadata service
 // and other local methods cannot be used here
 func (v *OVirtCloud) InstanceTypeByProviderID(providerID string) (string, error) {
-	return "", cloudprovider.NotImplemented
+	return "", errors.New("unimplemented")
 }
 
 // InstanceType returns the type of the specified instance.
@@ -320,5 +321,5 @@ func (v *OVirtCloud) CurrentNodeName(hostname string) (types.NodeName, error) {
 }
 
 func (v *OVirtCloud) AddSSHKeyToAllInstances(user string, keyData []byte) error {
-	return cloudprovider.NotImplemented
+	return errors.New("unimplemented")
 }

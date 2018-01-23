@@ -18,9 +18,10 @@ package service
 
 import (
 	"fmt"
-	api "k8s.io/kubernetes/pkg/apis/core"
-	netsets "k8s.io/kubernetes/pkg/util/net/sets"
 	"strings"
+
+	"k8s.io/kubernetes/pkg/api"
+	netsets "k8s.io/kubernetes/pkg/util/net/sets"
 )
 
 const (

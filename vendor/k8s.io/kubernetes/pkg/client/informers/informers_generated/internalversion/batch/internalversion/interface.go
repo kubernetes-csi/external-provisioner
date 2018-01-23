@@ -31,22 +31,20 @@ type Interface interface {
 }
 
 type version struct {
-	factory          internalinterfaces.SharedInformerFactory
-	namespace        string
-	tweakListOptions internalinterfaces.TweakListOptionsFunc
+	internalinterfaces.SharedInformerFactory
 }
 
 // New returns a new Interface.
-func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakListOptions internalinterfaces.TweakListOptionsFunc) Interface {
-	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
+func New(f internalinterfaces.SharedInformerFactory) Interface {
+	return &version{f}
 }
 
 // CronJobs returns a CronJobInformer.
 func (v *version) CronJobs() CronJobInformer {
-	return &cronJobInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+	return &cronJobInformer{factory: v.SharedInformerFactory}
 }
 
 // Jobs returns a JobInformer.
 func (v *version) Jobs() JobInformer {
-	return &jobInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+	return &jobInformer{factory: v.SharedInformerFactory}
 }

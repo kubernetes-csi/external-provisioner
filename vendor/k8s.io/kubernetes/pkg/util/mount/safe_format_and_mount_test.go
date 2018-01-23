@@ -18,8 +18,6 @@ package mount
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
 	"runtime"
 	"testing"
 
@@ -52,11 +50,6 @@ func TestSafeFormatAndMount(t *testing.T) {
 	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
 		t.Skipf("not supported on GOOS=%s", runtime.GOOS)
 	}
-	mntDir, err := ioutil.TempDir(os.TempDir(), "mount")
-	if err != nil {
-		t.Fatalf("failed to create tmp dir: %v", err)
-	}
-	defer os.RemoveAll(mntDir)
 	tests := []struct {
 		description   string
 		fstype        string
@@ -214,7 +207,7 @@ func TestSafeFormatAndMount(t *testing.T) {
 		}
 
 		device := "/dev/foo"
-		dest := mntDir
+		dest := "/mnt/bar"
 		err := mounter.FormatAndMount(device, dest, test.fstype, test.mountOptions)
 		if test.expectedError == nil {
 			if err != nil {

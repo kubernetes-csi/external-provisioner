@@ -23,11 +23,10 @@ import (
 	// TODO: Migrate kubelet to either use its own internal objects or client library.
 	"k8s.io/api/core/v1"
 	internalapi "k8s.io/kubernetes/pkg/kubelet/apis/cri"
+	"k8s.io/kubernetes/pkg/kubelet/apis/kubeletconfig"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	evictionapi "k8s.io/kubernetes/pkg/kubelet/eviction/api"
-	"k8s.io/kubernetes/pkg/kubelet/lifecycle"
 	"k8s.io/kubernetes/pkg/kubelet/status"
-	"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 
 	"fmt"
 	"strconv"
@@ -43,14 +42,14 @@ type ContainerManager interface {
 	// - Creates the system container where all non-containerized processes run.
 	Start(*v1.Node, ActivePodsFunc, status.PodStatusProvider, internalapi.RuntimeService) error
 
-	// SystemCgroupsLimit returns resources allocated to system cgroups in the machine.
+	// Returns resources allocated to system cgroups in the machine.
 	// These cgroups include the system and Kubernetes services.
 	SystemCgroupsLimit() v1.ResourceList
 
-	// GetNodeConfig returns a NodeConfig that is being used by the container manager.
+	// Returns a NodeConfig that is being used by the container manager.
 	GetNodeConfig() NodeConfig
 
-	// Status returns internal Status.
+	// Returns internal Status.
 	Status() Status
 
 	// NewPodContainerManager is a factory method which returns a podContainerManager object
@@ -63,7 +62,7 @@ type ContainerManager interface {
 	// GetQOSContainersInfo returns the names of top level QoS containers
 	GetQOSContainersInfo() QOSContainersInfo
 
-	// GetNodeAllocatableReservation returns the amount of compute resources that have to be reserved from scheduling.
+	// GetNodeAllocatable returns the amount of compute resources that have to be reserved from scheduling.
 	GetNodeAllocatableReservation() v1.ResourceList
 
 	// GetCapacity returns the amount of compute resources tracked by container manager available on the node.
@@ -73,16 +72,9 @@ type ContainerManager interface {
 	// level QoS containers have their desired state in a thread-safe way
 	UpdateQOSCgroups() error
 
-	// GetResources returns RunContainerOptions with devices, mounts, and env fields populated for
+	// Returns RunContainerOptions with devices, mounts, and env fields populated for
 	// extended resources required by container.
-	GetResources(pod *v1.Pod, container *v1.Container) (*kubecontainer.RunContainerOptions, error)
-
-	// UpdatePluginResources calls Allocate of device plugin handler for potential
-	// requests for device plugin resources, and returns an error if fails.
-	// Otherwise, it updates allocatableResource in nodeInfo if necessary,
-	// to make sure it is at least equal to the pod's requested capacity for
-	// any registered device plugin resource
-	UpdatePluginResources(*schedulercache.NodeInfo, *lifecycle.PodAdmitAttributes) error
+	GetResources(pod *v1.Pod, container *v1.Container, activePods []*v1.Pod) (*kubecontainer.RunContainerOptions, error)
 
 	InternalContainerLifecycle() InternalContainerLifecycle
 }
@@ -95,7 +87,6 @@ type NodeConfig struct {
 	CgroupsPerQOS         bool
 	CgroupRoot            string
 	CgroupDriver          string
-	KubeletRootDir        string
 	ProtectKernelDefaults bool
 	NodeAllocatableConfig
 	ExperimentalQOSReserved               map[v1.ResourceName]int64
@@ -144,7 +135,7 @@ func parsePercentage(v string) (int64, error) {
 }
 
 // ParseQOSReserved parses the --qos-reserve-requests option
-func ParseQOSReserved(m map[string]string) (*map[v1.ResourceName]int64, error) {
+func ParseQOSReserved(m kubeletconfig.ConfigurationMap) (*map[v1.ResourceName]int64, error) {
 	reservations := make(map[v1.ResourceName]int64)
 	for k, v := range m {
 		switch v1.ResourceName(k) {

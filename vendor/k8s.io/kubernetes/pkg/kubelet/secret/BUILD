@@ -9,7 +9,6 @@ load(
 go_test(
     name = "go_default_test",
     srcs = ["secret_manager_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/secret",
     library = ":go_default_library",
     deps = [
         "//vendor/github.com/stretchr/testify/assert:go_default_library",
@@ -29,7 +28,6 @@ go_library(
         "fake_manager.go",
         "secret_manager.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/secret",
     deps = [
         "//pkg/api/v1/pod:go_default_library",
         "//pkg/kubelet/util:go_default_library",

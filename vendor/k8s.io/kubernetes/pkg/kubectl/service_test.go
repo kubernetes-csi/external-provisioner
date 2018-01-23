@@ -20,16 +20,16 @@ import (
 	"reflect"
 	"testing"
 
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 func TestGenerateService(t *testing.T) {
 	tests := []struct {
 		generator Generator
 		params    map[string]interface{}
-		expected  v1.Service
+		expected  api.Service
 	}{
 		{
 			generator: ServiceGeneratorV2{},
@@ -40,16 +40,16 @@ func TestGenerateService(t *testing.T) {
 				"protocol":       "TCP",
 				"container-port": "1234",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Port:       80,
 							Protocol:   "TCP",
@@ -69,16 +69,16 @@ func TestGenerateService(t *testing.T) {
 				"protocol":       "UDP",
 				"container-port": "foobar",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Port:       80,
 							Protocol:   "UDP",
@@ -98,7 +98,7 @@ func TestGenerateService(t *testing.T) {
 				"protocol":       "TCP",
 				"container-port": "1234",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 					Labels: map[string]string{
@@ -106,12 +106,12 @@ func TestGenerateService(t *testing.T) {
 						"key2": "value2",
 					},
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Port:       80,
 							Protocol:   "TCP",
@@ -131,16 +131,16 @@ func TestGenerateService(t *testing.T) {
 				"container-port": "foobar",
 				"external-ip":    "1.2.3.4",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Port:       80,
 							Protocol:   "UDP",
@@ -162,23 +162,23 @@ func TestGenerateService(t *testing.T) {
 				"external-ip":    "1.2.3.4",
 				"type":           "LoadBalancer",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Port:       80,
 							Protocol:   "UDP",
 							TargetPort: intstr.FromString("foobar"),
 						},
 					},
-					Type:        v1.ServiceTypeLoadBalancer,
+					Type:        api.ServiceTypeLoadBalancer,
 					ExternalIPs: []string{"1.2.3.4"},
 				},
 			},
@@ -191,25 +191,25 @@ func TestGenerateService(t *testing.T) {
 				"port":           "80",
 				"protocol":       "UDP",
 				"container-port": "foobar",
-				"type":           string(v1.ServiceTypeNodePort),
+				"type":           string(api.ServiceTypeNodePort),
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Port:       80,
 							Protocol:   "UDP",
 							TargetPort: intstr.FromString("foobar"),
 						},
 					},
-					Type: v1.ServiceTypeNodePort,
+					Type: api.ServiceTypeNodePort,
 				},
 			},
 		},
@@ -222,25 +222,25 @@ func TestGenerateService(t *testing.T) {
 				"protocol":                      "UDP",
 				"container-port":                "foobar",
 				"create-external-load-balancer": "true", // ignored when type is present
-				"type": string(v1.ServiceTypeNodePort),
+				"type": string(api.ServiceTypeNodePort),
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Port:       80,
 							Protocol:   "UDP",
 							TargetPort: intstr.FromString("foobar"),
 						},
 					},
-					Type: v1.ServiceTypeNodePort,
+					Type: api.ServiceTypeNodePort,
 				},
 			},
 		},
@@ -253,16 +253,16 @@ func TestGenerateService(t *testing.T) {
 				"protocol":       "TCP",
 				"container-port": "1234",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Name:       "default",
 							Port:       80,
@@ -283,16 +283,16 @@ func TestGenerateService(t *testing.T) {
 				"container-port":   "1234",
 				"session-affinity": "ClientIP",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Name:       "default",
 							Port:       80,
@@ -300,7 +300,7 @@ func TestGenerateService(t *testing.T) {
 							TargetPort: intstr.FromInt(1234),
 						},
 					},
-					SessionAffinity: v1.ServiceAffinityClientIP,
+					SessionAffinity: api.ServiceAffinityClientIP,
 				},
 			},
 		},
@@ -314,16 +314,16 @@ func TestGenerateService(t *testing.T) {
 				"container-port": "1234",
 				"cluster-ip":     "10.10.10.10",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Port:       80,
 							Protocol:   "TCP",
@@ -344,23 +344,23 @@ func TestGenerateService(t *testing.T) {
 				"container-port": "1234",
 				"cluster-ip":     "None",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Port:       80,
 							Protocol:   "TCP",
 							TargetPort: intstr.FromInt(1234),
 						},
 					},
-					ClusterIP: v1.ClusterIPNone,
+					ClusterIP: api.ClusterIPNone,
 				},
 			},
 		},
@@ -373,25 +373,25 @@ func TestGenerateService(t *testing.T) {
 				"protocol":       "TCP",
 				"container-port": "foobar",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Name:       "port-1",
 							Port:       80,
-							Protocol:   v1.ProtocolTCP,
+							Protocol:   api.ProtocolTCP,
 							TargetPort: intstr.FromString("foobar"),
 						},
 						{
 							Name:       "port-2",
 							Port:       443,
-							Protocol:   v1.ProtocolTCP,
+							Protocol:   api.ProtocolTCP,
 							TargetPort: intstr.FromString("foobar"),
 						},
 					},
@@ -407,25 +407,25 @@ func TestGenerateService(t *testing.T) {
 				"protocol":    "UDP",
 				"target-port": "1234",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Name:       "port-1",
 							Port:       80,
-							Protocol:   v1.ProtocolUDP,
+							Protocol:   api.ProtocolUDP,
 							TargetPort: intstr.FromInt(1234),
 						},
 						{
 							Name:       "port-2",
 							Port:       443,
-							Protocol:   v1.ProtocolUDP,
+							Protocol:   api.ProtocolUDP,
 							TargetPort: intstr.FromInt(1234),
 						},
 					},
@@ -440,25 +440,25 @@ func TestGenerateService(t *testing.T) {
 				"ports":    "80,443",
 				"protocol": "TCP",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Name:       "port-1",
 							Port:       80,
-							Protocol:   v1.ProtocolTCP,
+							Protocol:   api.ProtocolTCP,
 							TargetPort: intstr.FromInt(80),
 						},
 						{
 							Name:       "port-2",
 							Port:       443,
-							Protocol:   v1.ProtocolTCP,
+							Protocol:   api.ProtocolTCP,
 							TargetPort: intstr.FromInt(443),
 						},
 					},
@@ -473,25 +473,25 @@ func TestGenerateService(t *testing.T) {
 				"ports":     "80,8080",
 				"protocols": "8080/UDP",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Name:       "port-1",
 							Port:       80,
-							Protocol:   v1.ProtocolTCP,
+							Protocol:   api.ProtocolTCP,
 							TargetPort: intstr.FromInt(80),
 						},
 						{
 							Name:       "port-2",
 							Port:       8080,
-							Protocol:   v1.ProtocolUDP,
+							Protocol:   api.ProtocolUDP,
 							TargetPort: intstr.FromInt(8080),
 						},
 					},
@@ -506,31 +506,31 @@ func TestGenerateService(t *testing.T) {
 				"ports":     "80,8080,8081",
 				"protocols": "8080/UDP,8081/TCP",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 					},
-					Ports: []v1.ServicePort{
+					Ports: []api.ServicePort{
 						{
 							Name:       "port-1",
 							Port:       80,
-							Protocol:   v1.ProtocolTCP,
+							Protocol:   api.ProtocolTCP,
 							TargetPort: intstr.FromInt(80),
 						},
 						{
 							Name:       "port-2",
 							Port:       8080,
-							Protocol:   v1.ProtocolUDP,
+							Protocol:   api.ProtocolUDP,
 							TargetPort: intstr.FromInt(8080),
 						},
 						{
 							Name:       "port-3",
 							Port:       8081,
-							Protocol:   v1.ProtocolTCP,
+							Protocol:   api.ProtocolTCP,
 							TargetPort: intstr.FromInt(8081),
 						},
 					},
@@ -546,17 +546,17 @@ func TestGenerateService(t *testing.T) {
 				"container-port": "1234",
 				"cluster-ip":     "None",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 						"baz": "blah",
 					},
-					Ports:     []v1.ServicePort{},
-					ClusterIP: v1.ClusterIPNone,
+					Ports:     []api.ServicePort{},
+					ClusterIP: api.ClusterIPNone,
 				},
 			},
 		},
@@ -567,16 +567,16 @@ func TestGenerateService(t *testing.T) {
 				"name":       "test",
 				"cluster-ip": "None",
 			},
-			expected: v1.Service{
+			expected: api.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test",
 				},
-				Spec: v1.ServiceSpec{
+				Spec: api.ServiceSpec{
 					Selector: map[string]string{
 						"foo": "bar",
 					},
-					Ports:     []v1.ServicePort{},
-					ClusterIP: v1.ClusterIPNone,
+					Ports:     []api.ServicePort{},
+					ClusterIP: api.ClusterIPNone,
 				},
 			},
 		},

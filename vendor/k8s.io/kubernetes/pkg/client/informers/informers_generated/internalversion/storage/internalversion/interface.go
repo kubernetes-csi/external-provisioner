@@ -26,27 +26,18 @@ import (
 type Interface interface {
 	// StorageClasses returns a StorageClassInformer.
 	StorageClasses() StorageClassInformer
-	// VolumeAttachments returns a VolumeAttachmentInformer.
-	VolumeAttachments() VolumeAttachmentInformer
 }
 
 type version struct {
-	factory          internalinterfaces.SharedInformerFactory
-	namespace        string
-	tweakListOptions internalinterfaces.TweakListOptionsFunc
+	internalinterfaces.SharedInformerFactory
 }
 
 // New returns a new Interface.
-func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakListOptions internalinterfaces.TweakListOptionsFunc) Interface {
-	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
+func New(f internalinterfaces.SharedInformerFactory) Interface {
+	return &version{f}
 }
 
 // StorageClasses returns a StorageClassInformer.
 func (v *version) StorageClasses() StorageClassInformer {
-	return &storageClassInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
-}
-
-// VolumeAttachments returns a VolumeAttachmentInformer.
-func (v *version) VolumeAttachments() VolumeAttachmentInformer {
-	return &volumeAttachmentInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+	return &storageClassInformer{factory: v.SharedInformerFactory}
 }

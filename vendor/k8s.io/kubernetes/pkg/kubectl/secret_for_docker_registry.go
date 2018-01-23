@@ -20,8 +20,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/credentialprovider"
 	"k8s.io/kubernetes/pkg/kubectl/util/hash"
 )
@@ -89,11 +89,11 @@ func (s SecretForDockerRegistryGeneratorV1) StructuredGenerate() (runtime.Object
 	if err != nil {
 		return nil, err
 	}
-	secret := &v1.Secret{}
+	secret := &api.Secret{}
 	secret.Name = s.Name
-	secret.Type = v1.SecretTypeDockercfg
+	secret.Type = api.SecretTypeDockercfg
 	secret.Data = map[string][]byte{}
-	secret.Data[v1.DockerConfigKey] = dockercfgContent
+	secret.Data[api.DockerConfigKey] = dockercfgContent
 	if s.AppendHash {
 		h, err := hash.SecretHash(secret)
 		if err != nil {
@@ -141,9 +141,7 @@ func handleDockercfgContent(username, password, email, server string) ([]byte, e
 		Email:    email,
 	}
 
-	dockerCfg := credentialprovider.DockerConfigJson{
-		Auths: map[string]credentialprovider.DockerConfigEntry{server: dockercfgAuth},
-	}
+	dockerCfg := map[string]credentialprovider.DockerConfigEntry{server: dockercfgAuth}
 
 	return json.Marshal(dockerCfg)
 }

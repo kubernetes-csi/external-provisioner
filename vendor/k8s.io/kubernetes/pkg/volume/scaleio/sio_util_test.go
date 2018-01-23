@@ -25,7 +25,6 @@ import (
 
 	api "k8s.io/api/core/v1"
 	utiltesting "k8s.io/client-go/util/testing"
-	"k8s.io/kubernetes/pkg/volume"
 )
 
 var (
@@ -49,7 +48,7 @@ var (
 		confKey.gateway:          "http://sio/",
 		confKey.volSpecName:      testSioVolName,
 		confKey.volumeName:       "sio-vol",
-		confKey.secretName:       "sio-secret",
+		confKey.secretRef:        "sio-secret",
 		confKey.protectionDomain: "defaultPD",
 		confKey.storagePool:      "deraultSP",
 		confKey.fsType:           "xfs",
@@ -61,7 +60,7 @@ var (
 
 func TestUtilMapVolumeSource(t *testing.T) {
 	data := make(map[string]string)
-	mapVolumeSpec(data, volume.NewSpecFromVolume(vol))
+	mapVolumeSource(data, vol.VolumeSource.ScaleIO)
 	if data[confKey.gateway] != "http://test.scaleio:1111" {
 		t.Error("Unexpected gateway value")
 	}
@@ -80,6 +79,9 @@ func TestUtilMapVolumeSource(t *testing.T) {
 	if data[confKey.fsType] != "ext4" {
 		t.Error("Unexpected fstype value")
 	}
+	if data[confKey.secretRef] != "test-secret" {
+		t.Error("Unexpected secret ref value")
+	}
 	if data[confKey.sslEnabled] != "false" {
 		t.Error("Unexpected sslEnabled value")
 	}
@@ -90,8 +92,8 @@ func TestUtilMapVolumeSource(t *testing.T) {
 
 func TestUtilValidateConfigs(t *testing.T) {
 	data := map[string]string{
-		confKey.secretName: "sio-secret",
-		confKey.system:     "sio",
+		confKey.secretRef: "sio-secret",
+		confKey.system:    "sio",
 	}
 	if err := validateConfigs(data); err != gatewayNotProvidedErr {
 		t.Error("Expecting error for missing gateway, but did not get it")
@@ -103,7 +105,7 @@ func TestUtilApplyConfigDefaults(t *testing.T) {
 		confKey.system:     "sio",
 		confKey.gateway:    "http://sio/",
 		confKey.volumeName: "sio-vol",
-		confKey.secretName: "test-secret",
+		confKey.secretRef:  "test-secret",
 	}
 	applyConfigDefaults(data)
 
@@ -128,7 +130,7 @@ func TestUtilApplyConfigDefaults(t *testing.T) {
 	if data[confKey.storageMode] != "ThinProvisioned" {
 		t.Error("Unexpected storage mode value")
 	}
-	if data[confKey.secretName] != "test-secret" {
+	if data[confKey.secretRef] != "test-secret" {
 		t.Error("Unexpected secret ref value")
 	}
 	if data[confKey.sslEnabled] != "false" {
@@ -155,7 +157,7 @@ func TestUtilSaveConfig(t *testing.T) {
 	config := path.Join(tmpDir, testConfigFile)
 	data := map[string]string{
 		confKey.gateway:    "https://test-gateway/",
-		confKey.secretName: "sio-secret",
+		confKey.secretRef:  "sio-secret",
 		confKey.sslEnabled: "false",
 	}
 	if err := saveConfig(config, data); err != nil {
@@ -176,7 +178,7 @@ func TestUtilSaveConfig(t *testing.T) {
 }
 
 func TestUtilAttachSecret(t *testing.T) {
-	plugMgr, tmpDir := newPluginMgr(t, makeScaleIOSecret(testSecret, testns))
+	plugMgr, tmpDir := newPluginMgr(t)
 	defer os.RemoveAll(tmpDir)
 
 	plug, err := plugMgr.FindPluginByName(sioPluginName)

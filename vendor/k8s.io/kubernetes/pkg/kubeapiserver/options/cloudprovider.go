@@ -81,8 +81,6 @@ func (s *CloudProviderOptions) DefaultExternalHost(genericoptions *genericoption
 			for _, addr := range addrs {
 				if addr.Type == v1.NodeExternalIP {
 					genericoptions.ExternalHost = addr.Address
-					glog.Warning("[Deprecated] Getting host address using cloud provider is " +
-						"now deprecated. Please use --external-hostname explicitly")
 				}
 			}
 		}

@@ -14,9 +14,8 @@ go_library(
         "runasany.go",
         "types.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/security/podsecuritypolicy/group",
     deps = [
-        "//pkg/apis/core:go_default_library",
+        "//pkg/api:go_default_library",
         "//pkg/apis/extensions:go_default_library",
         "//pkg/security/podsecuritypolicy/util:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/validation/field:go_default_library",
@@ -29,10 +28,9 @@ go_test(
         "mustrunas_test.go",
         "runasany_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/security/podsecuritypolicy/group",
     library = ":go_default_library",
     deps = [
-        "//pkg/apis/core:go_default_library",
+        "//pkg/api:go_default_library",
         "//pkg/apis/extensions:go_default_library",
     ],
 )

@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 )
 
@@ -34,8 +35,8 @@ type Registry interface {
 	ListReplicaSets(ctx genericapirequest.Context, options *metainternalversion.ListOptions) (*extensions.ReplicaSetList, error)
 	WatchReplicaSets(ctx genericapirequest.Context, options *metainternalversion.ListOptions) (watch.Interface, error)
 	GetReplicaSet(ctx genericapirequest.Context, replicaSetID string, options *metav1.GetOptions) (*extensions.ReplicaSet, error)
-	CreateReplicaSet(ctx genericapirequest.Context, replicaSet *extensions.ReplicaSet, createValidation rest.ValidateObjectFunc) (*extensions.ReplicaSet, error)
-	UpdateReplicaSet(ctx genericapirequest.Context, replicaSet *extensions.ReplicaSet, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc) (*extensions.ReplicaSet, error)
+	CreateReplicaSet(ctx genericapirequest.Context, replicaSet *extensions.ReplicaSet) (*extensions.ReplicaSet, error)
+	UpdateReplicaSet(ctx genericapirequest.Context, replicaSet *extensions.ReplicaSet) (*extensions.ReplicaSet, error)
 	DeleteReplicaSet(ctx genericapirequest.Context, replicaSetID string) error
 }
 
@@ -73,16 +74,16 @@ func (s *storage) GetReplicaSet(ctx genericapirequest.Context, replicaSetID stri
 	return obj.(*extensions.ReplicaSet), nil
 }
 
-func (s *storage) CreateReplicaSet(ctx genericapirequest.Context, replicaSet *extensions.ReplicaSet, createValidation rest.ValidateObjectFunc) (*extensions.ReplicaSet, error) {
-	obj, err := s.Create(ctx, replicaSet, createValidation, false)
+func (s *storage) CreateReplicaSet(ctx genericapirequest.Context, replicaSet *extensions.ReplicaSet) (*extensions.ReplicaSet, error) {
+	obj, err := s.Create(ctx, replicaSet, false)
 	if err != nil {
 		return nil, err
 	}
 	return obj.(*extensions.ReplicaSet), nil
 }
 
-func (s *storage) UpdateReplicaSet(ctx genericapirequest.Context, replicaSet *extensions.ReplicaSet, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc) (*extensions.ReplicaSet, error) {
-	obj, _, err := s.Update(ctx, replicaSet.Name, rest.DefaultUpdatedObjectInfo(replicaSet), createValidation, updateValidation)
+func (s *storage) UpdateReplicaSet(ctx genericapirequest.Context, replicaSet *extensions.ReplicaSet) (*extensions.ReplicaSet, error) {
+	obj, _, err := s.Update(ctx, replicaSet.Name, rest.DefaultUpdatedObjectInfo(replicaSet, api.Scheme))
 	if err != nil {
 		return nil, err
 	}

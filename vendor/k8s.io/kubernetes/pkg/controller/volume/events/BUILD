@@ -8,7 +8,6 @@ load(
 go_library(
     name = "go_default_library",
     srcs = ["event.go"],
-    importpath = "k8s.io/kubernetes/pkg/controller/volume/events",
 )
 
 filegroup(

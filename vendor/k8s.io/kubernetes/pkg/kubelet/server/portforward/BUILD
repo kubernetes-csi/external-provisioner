@@ -14,9 +14,8 @@ go_library(
         "portforward.go",
         "websocket.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/server/portforward",
     deps = [
-        "//pkg/apis/core:go_default_library",
+        "//pkg/api:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/httpstream:go_default_library",
@@ -33,10 +32,9 @@ go_test(
         "httpstream_test.go",
         "websocket_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/kubelet/server/portforward",
     library = ":go_default_library",
     deps = [
-        "//pkg/apis/core:go_default_library",
+        "//pkg/api:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/httpstream:go_default_library",
     ],
 )

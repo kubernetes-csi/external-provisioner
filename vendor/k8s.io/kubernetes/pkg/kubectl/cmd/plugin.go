@@ -19,9 +19,6 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"os"
-	"os/exec"
-	"syscall"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
@@ -112,15 +109,6 @@ func NewCmdForPlugin(f cmdutil.Factory, plugin *plugins.Plugin, runner plugins.P
 			}
 
 			if err := runner.Run(plugin, runningContext); err != nil {
-				if exiterr, ok := err.(*exec.ExitError); ok {
-					// check for (and exit with) the correct exit code
-					// from a failed plugin command execution
-					if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
-						fmt.Fprintf(errout, "error: %v\n", err)
-						os.Exit(status.ExitStatus())
-					}
-				}
-
 				cmdutil.CheckErr(err)
 			}
 		},

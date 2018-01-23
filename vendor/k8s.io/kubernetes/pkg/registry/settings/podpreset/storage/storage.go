@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
+	"k8s.io/kubernetes/pkg/api"
 	settingsapi "k8s.io/kubernetes/pkg/apis/settings"
 	"k8s.io/kubernetes/pkg/registry/settings/podpreset"
 )
@@ -32,6 +33,7 @@ type REST struct {
 // NewREST returns a RESTStorage object that will work against replication controllers.
 func NewREST(optsGetter generic.RESTOptionsGetter) *REST {
 	store := &genericregistry.Store{
+		Copier:                   api.Scheme,
 		NewFunc:                  func() runtime.Object { return &settingsapi.PodPreset{} },
 		NewListFunc:              func() runtime.Object { return &settingsapi.PodPresetList{} },
 		DefaultQualifiedResource: settingsapi.Resource("podpresets"),

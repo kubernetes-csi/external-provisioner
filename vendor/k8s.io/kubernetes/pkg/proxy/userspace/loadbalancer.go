@@ -17,9 +17,10 @@ limitations under the License.
 package userspace
 
 import (
-	api "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/proxy"
 	"net"
+
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/proxy"
 )
 
 // LoadBalancer is an interface for distributing incoming requests to service endpoints.

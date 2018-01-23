@@ -31,8 +31,8 @@ import (
 	cgroupfs "github.com/opencontainers/runc/libcontainer/cgroups/fs"
 	"k8s.io/api/core/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	v1qos "k8s.io/kubernetes/pkg/api/v1/helper/qos"
 	"k8s.io/kubernetes/pkg/api/v1/resource"
-	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 )
 
@@ -194,6 +194,9 @@ func (m *qosContainerManagerImpl) setCPUCgroupConfig(configs map[v1.PodQOSClass]
 
 	// set burstable shares based on current observe state
 	burstableCPUShares := MilliCPUToShares(burstablePodCPURequest)
+	if burstableCPUShares < uint64(MinShares) {
+		burstableCPUShares = uint64(MinShares)
+	}
 	configs[v1.PodQOSBurstable].ResourceParameters.CpuShares = &burstableCPUShares
 	return nil
 }
@@ -314,7 +317,7 @@ func (m *qosContainerManagerImpl) UpdateCgroups() error {
 		}
 	}
 	if updateSuccess {
-		glog.V(4).Infof("[ContainerManager]: Updated QoS cgroup configuration")
+		glog.V(2).Infof("[ContainerManager]: Updated QoS cgroup configuration")
 		return nil
 	}
 
@@ -331,12 +334,12 @@ func (m *qosContainerManagerImpl) UpdateCgroups() error {
 	for _, config := range qosConfigs {
 		err := m.cgroupManager.Update(config)
 		if err != nil {
-			glog.Errorf("[ContainerManager]: Failed to update QoS cgroup configuration")
+			glog.V(2).Infof("[ContainerManager]: Failed to update QoS cgroup configuration")
 			return err
 		}
 	}
 
-	glog.V(4).Infof("[ContainerManager]: Updated QoS cgroup configuration on retry")
+	glog.V(2).Infof("[ContainerManager]: Updated QoS cgroup configuration on retry")
 	return nil
 }
 

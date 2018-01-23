@@ -73,7 +73,7 @@ message StorageClass {
 
   // Secrets for authentication and authorization against a storage backend,
   // which is described by the StorageClass object. CredentialID is the key, to
-  // select corresponding Secret.
+  // select corresponding SecretRef
   // +optional
   map<string, k8s.io.api.core.v1.SecretReference> secretRefs = 8;
 }

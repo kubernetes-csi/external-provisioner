@@ -20,20 +20,20 @@ import (
 	"reflect"
 	"testing"
 
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 func TestQuotaGenerate(t *testing.T) {
 	hard := "cpu=10,memory=5G,pods=10,services=7"
-	resourceQuotaSpecList, err := populateResourceListV1(hard)
+	resourceQuotaSpecList, err := populateResourceList(hard)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 
 	tests := map[string]struct {
 		params    map[string]interface{}
-		expected  *v1.ResourceQuota
+		expected  *api.ResourceQuota
 		expectErr bool
 	}{
 		"test-valid-use": {
@@ -41,11 +41,11 @@ func TestQuotaGenerate(t *testing.T) {
 				"name": "foo",
 				"hard": hard,
 			},
-			expected: &v1.ResourceQuota{
+			expected: &api.ResourceQuota{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "foo",
 				},
-				Spec: v1.ResourceQuotaSpec{Hard: resourceQuotaSpecList},
+				Spec: api.ResourceQuotaSpec{Hard: resourceQuotaSpecList},
 			},
 			expectErr: false,
 		},
@@ -61,15 +61,15 @@ func TestQuotaGenerate(t *testing.T) {
 				"hard":   hard,
 				"scopes": "BestEffort,NotTerminating",
 			},
-			expected: &v1.ResourceQuota{
+			expected: &api.ResourceQuota{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "foo",
 				},
-				Spec: v1.ResourceQuotaSpec{
+				Spec: api.ResourceQuotaSpec{
 					Hard: resourceQuotaSpecList,
-					Scopes: []v1.ResourceQuotaScope{
-						v1.ResourceQuotaScopeBestEffort,
-						v1.ResourceQuotaScopeNotTerminating,
+					Scopes: []api.ResourceQuotaScope{
+						api.ResourceQuotaScopeBestEffort,
+						api.ResourceQuotaScopeNotTerminating,
 					},
 				},
 			},
@@ -81,11 +81,11 @@ func TestQuotaGenerate(t *testing.T) {
 				"hard":   hard,
 				"scopes": "",
 			},
-			expected: &v1.ResourceQuota{
+			expected: &api.ResourceQuota{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "foo",
 				},
-				Spec: v1.ResourceQuotaSpec{Hard: resourceQuotaSpecList},
+				Spec: api.ResourceQuotaSpec{Hard: resourceQuotaSpecList},
 			},
 			expectErr: false,
 		},
@@ -108,8 +108,8 @@ func TestQuotaGenerate(t *testing.T) {
 		if test.expectErr && err != nil {
 			continue
 		}
-		if !reflect.DeepEqual(obj.(*v1.ResourceQuota), test.expected) {
-			t.Errorf("%s:\nexpected:\n%#v\nsaw:\n%#v", name, test.expected, obj.(*v1.ResourceQuota))
+		if !reflect.DeepEqual(obj.(*api.ResourceQuota), test.expected) {
+			t.Errorf("%s:\nexpected:\n%#v\nsaw:\n%#v", name, test.expected, obj.(*api.ResourceQuota))
 		}
 	}
 }

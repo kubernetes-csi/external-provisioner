@@ -17,7 +17,6 @@ limitations under the License.
 package mount
 
 import (
-	"os"
 	"path/filepath"
 	"sync"
 
@@ -126,7 +125,7 @@ func (f *FakeMounter) List() ([]MountPoint, error) {
 }
 
 func (f *FakeMounter) IsMountPointMatch(mp MountPoint, dir string) bool {
-	return mp.Path == dir
+	return (mp.Path == dir)
 }
 
 func (f *FakeMounter) IsNotMountPoint(dir string) (bool, error) {
@@ -136,11 +135,6 @@ func (f *FakeMounter) IsNotMountPoint(dir string) (bool, error) {
 func (f *FakeMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
-
-	_, err := os.Stat(file)
-	if err != nil {
-		return true, err
-	}
 
 	// If file is a symlink, get its absolute path
 	absFile, err := filepath.EvalSymlinks(file)
@@ -180,20 +174,4 @@ func (f *FakeMounter) GetDeviceNameFromMount(mountPath, pluginDir string) (strin
 
 func (f *FakeMounter) MakeRShared(path string) error {
 	return nil
-}
-
-func (f *FakeMounter) GetFileType(pathname string) (FileType, error) {
-	return FileType("fake"), nil
-}
-
-func (f *FakeMounter) MakeDir(pathname string) error {
-	return nil
-}
-
-func (f *FakeMounter) MakeFile(pathname string) error {
-	return nil
-}
-
-func (f *FakeMounter) ExistsPath(pathname string) bool {
-	return false
 }

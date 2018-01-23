@@ -25,7 +25,6 @@ import (
 
 	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
 	internalapi "k8s.io/kubernetes/pkg/kubelet/apis/cri"
 	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
@@ -259,12 +258,6 @@ func (cgc *containerGC) evictSandboxes(evictTerminatedPods bool) error {
 		return err
 	}
 
-	// collect all the PodSandboxId of container
-	sandboxIDs := sets.NewString()
-	for _, container := range containers {
-		sandboxIDs.Insert(container.PodSandboxId)
-	}
-
 	sandboxes, err := cgc.manager.getKubeletSandboxes(true)
 	if err != nil {
 		return err
@@ -284,7 +277,15 @@ func (cgc *containerGC) evictSandboxes(evictTerminatedPods bool) error {
 		}
 
 		// Set sandboxes that still have containers to be active.
-		if sandboxIDs.Has(sandbox.Id) {
+		hasContainers := false
+		sandboxID := sandbox.Id
+		for _, container := range containers {
+			if container.PodSandboxId == sandboxID {
+				hasContainers = true
+				break
+			}
+		}
+		if hasContainers {
 			sandboxInfo.active = true
 		}
 

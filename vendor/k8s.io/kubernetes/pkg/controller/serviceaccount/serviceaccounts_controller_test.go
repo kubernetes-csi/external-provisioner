@@ -165,15 +165,12 @@ func TestServiceAccountCreation(t *testing.T) {
 		}
 		saInformer := informers.Core().V1().ServiceAccounts()
 		nsInformer := informers.Core().V1().Namespaces()
-		controller, err := NewServiceAccountsController(
+		controller := NewServiceAccountsController(
 			saInformer,
 			nsInformer,
 			client,
 			options,
 		)
-		if err != nil {
-			t.Fatalf("error creating ServiceAccounts controller: %v", err)
-		}
 		controller.saListerSynced = alwaysReady
 		controller.nsListerSynced = alwaysReady
 

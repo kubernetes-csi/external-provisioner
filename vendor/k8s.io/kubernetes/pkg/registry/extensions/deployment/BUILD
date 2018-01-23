@@ -13,13 +13,13 @@ go_library(
         "registry.go",
         "strategy.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/registry/extensions/deployment",
     deps = [
-        "//pkg/api/legacyscheme:go_default_library",
+        "//pkg/api:go_default_library",
         "//pkg/api/pod:go_default_library",
         "//pkg/apis/extensions:go_default_library",
         "//pkg/apis/extensions/validation:go_default_library",
         "//vendor/k8s.io/api/apps/v1beta1:go_default_library",
+        "//vendor/k8s.io/api/apps/v1beta2:go_default_library",
         "//vendor/k8s.io/api/extensions/v1beta1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/equality:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/api/validation:go_default_library",
@@ -37,10 +37,9 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = ["strategy_test.go"],
-    importpath = "k8s.io/kubernetes/pkg/registry/extensions/deployment",
     library = ":go_default_library",
     deps = [
-        "//pkg/apis/core:go_default_library",
+        "//pkg/api:go_default_library",
         "//pkg/apis/extensions:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",

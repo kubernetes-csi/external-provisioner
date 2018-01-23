@@ -158,24 +158,9 @@ type server struct {
 	server  *http.Server
 }
 
-func validateExecRequest(req *runtimeapi.ExecRequest) error {
-	if req.ContainerId == "" {
-		return grpc.Errorf(codes.InvalidArgument, "missing required container_id")
-	}
-	if req.Tty && req.Stderr {
-		// If TTY is set, stderr cannot be true because multiplexing is not
-		// supported.
-		return grpc.Errorf(codes.InvalidArgument, "tty and stderr cannot both be true")
-	}
-	if !req.Stdin && !req.Stdout && !req.Stderr {
-		return grpc.Errorf(codes.InvalidArgument, "one of stdin, stdout, or stderr must be set")
-	}
-	return nil
-}
-
 func (s *server) GetExec(req *runtimeapi.ExecRequest) (*runtimeapi.ExecResponse, error) {
-	if err := validateExecRequest(req); err != nil {
-		return nil, err
+	if req.ContainerId == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "missing required container_id")
 	}
 	token, err := s.cache.Insert(req)
 	if err != nil {
@@ -186,24 +171,9 @@ func (s *server) GetExec(req *runtimeapi.ExecRequest) (*runtimeapi.ExecResponse,
 	}, nil
 }
 
-func validateAttachRequest(req *runtimeapi.AttachRequest) error {
-	if req.ContainerId == "" {
-		return grpc.Errorf(codes.InvalidArgument, "missing required container_id")
-	}
-	if req.Tty && req.Stderr {
-		// If TTY is set, stderr cannot be true because multiplexing is not
-		// supported.
-		return grpc.Errorf(codes.InvalidArgument, "tty and stderr cannot both be true")
-	}
-	if !req.Stdin && !req.Stdout && !req.Stderr {
-		return grpc.Errorf(codes.InvalidArgument, "one of stdin, stdout, and stderr must be set")
-	}
-	return nil
-}
-
 func (s *server) GetAttach(req *runtimeapi.AttachRequest) (*runtimeapi.AttachResponse, error) {
-	if err := validateAttachRequest(req); err != nil {
-		return nil, err
+	if req.ContainerId == "" {
+		return nil, grpc.Errorf(codes.InvalidArgument, "missing required container_id")
 	}
 	token, err := s.cache.Insert(req)
 	if err != nil {
@@ -269,8 +239,8 @@ func (s *server) serveExec(req *restful.Request, resp *restful.Response) {
 
 	streamOpts := &remotecommandserver.Options{
 		Stdin:  exec.Stdin,
-		Stdout: exec.Stdout,
-		Stderr: exec.Stderr,
+		Stdout: true,
+		Stderr: !exec.Tty,
 		TTY:    exec.Tty,
 	}
 
@@ -303,8 +273,8 @@ func (s *server) serveAttach(req *restful.Request, resp *restful.Response) {
 
 	streamOpts := &remotecommandserver.Options{
 		Stdin:  attach.Stdin,
-		Stdout: attach.Stdout,
-		Stderr: attach.Stderr,
+		Stdout: true,
+		Stderr: !attach.Tty,
 		TTY:    attach.Tty,
 	}
 	remotecommandserver.ServeAttach(
@@ -362,11 +332,11 @@ var _ remotecommandserver.Attacher = &criAdapter{}
 var _ portforward.PortForwarder = &criAdapter{}
 
 func (a *criAdapter) ExecInContainer(podName string, podUID types.UID, container string, cmd []string, in io.Reader, out, err io.WriteCloser, tty bool, resize <-chan remotecommand.TerminalSize, timeout time.Duration) error {
-	return a.Runtime.Exec(container, cmd, in, out, err, tty, resize)
+	return a.Exec(container, cmd, in, out, err, tty, resize)
 }
 
 func (a *criAdapter) AttachContainer(podName string, podUID types.UID, container string, in io.Reader, out, err io.WriteCloser, tty bool, resize <-chan remotecommand.TerminalSize) error {
-	return a.Runtime.Attach(container, in, out, err, tty, resize)
+	return a.Attach(container, in, out, err, tty, resize)
 }
 
 func (a *criAdapter) PortForward(podName string, podUID types.UID, port int32, stream io.ReadWriteCloser) error {

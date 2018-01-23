@@ -37,19 +37,20 @@ import (
 )
 
 var (
-	describeLong = templates.LongDesc(`
-		Show details of a specific resource or group of resources
-
-		Print a detailed description of the selected resources, including related resources such
-		as events or controllers. You may select a single object by name, all objects of that 
-		type, provide a name prefix, or label selector. For example:
+	describe_long = templates.LongDesc(`
+		Show details of a specific resource or group of resources.
+		It includes the uninitialized objects, unless --include-uninitialized=false is explicitly set.
+		This command joins many API calls together to form a detailed description of a
+		given resource or group of resources.
 
 		    $ kubectl describe TYPE NAME_PREFIX
 
 		will first check for an exact match on TYPE and NAME_PREFIX. If no such resource
-		exists, it will output details for every resource that has a name prefixed with NAME_PREFIX.`)
+		exists, it will output details for every resource that has a name prefixed with NAME_PREFIX.
 
-	describeExample = templates.Examples(i18n.T(`
+		` + validResources)
+
+	describe_example = templates.Examples(i18n.T(`
 		# Describe a node
 		kubectl describe nodes kubernetes-node-emt8.c.myproject.internal
 
@@ -82,8 +83,8 @@ func NewCmdDescribe(f cmdutil.Factory, out, cmdErr io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "describe (-f FILENAME | TYPE [NAME_PREFIX | -l label] | TYPE/NAME)",
 		Short:   i18n.T("Show details of a specific resource or group of resources"),
-		Long:    describeLong + "\n\n" + cmdutil.ValidResourceTypeList(f),
-		Example: describeExample,
+		Long:    describe_long,
+		Example: describe_example,
 		Run: func(cmd *cobra.Command, args []string) {
 			err := RunDescribe(f, out, cmdErr, cmd, args, options, describerSettings)
 			cmdutil.CheckErr(err)
@@ -112,18 +113,24 @@ func RunDescribe(f cmdutil.Factory, out, cmdErr io.Writer, cmd *cobra.Command, a
 		enforceNamespace = false
 	}
 	if len(args) == 0 && cmdutil.IsFilenameSliceEmpty(options.Filenames) {
-		fmt.Fprint(cmdErr, "You must specify the type of resource to describe. ", cmdutil.ValidResourceTypeList(f))
+		fmt.Fprint(cmdErr, "You must specify the type of resource to describe. ", validResources)
 		return cmdutil.UsageErrorf(cmd, "Required resource not specified.")
+	}
+
+	builder, err := f.NewUnstructuredBuilder(true)
+	if err != nil {
+		return err
 	}
 
 	// include the uninitialized objects by default
 	// unless user explicitly set --include-uninitialized=false
 	includeUninitialized := cmdutil.ShouldIncludeUninitialized(cmd, true)
-	r := f.NewUnstructuredBuilder().
+
+	r := builder.
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().AllNamespaces(allNamespaces).
 		FilenameParam(enforceNamespace, options).
-		LabelSelectorParam(selector).
+		SelectorParam(selector).
 		IncludeUninitialized(includeUninitialized).
 		ResourceTypeOrNameArgs(true, args...).
 		Flatten().

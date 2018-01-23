@@ -66,8 +66,8 @@ type RouteController struct {
 }
 
 func New(routes cloudprovider.Routes, kubeClient clientset.Interface, nodeInformer coreinformers.NodeInformer, clusterName string, clusterCIDR *net.IPNet) *RouteController {
-	if kubeClient != nil && kubeClient.CoreV1().RESTClient().GetRateLimiter() != nil {
-		metrics.RegisterMetricAndTrackRateLimiterUsage("route_controller", kubeClient.CoreV1().RESTClient().GetRateLimiter())
+	if kubeClient != nil && kubeClient.Core().RESTClient().GetRateLimiter() != nil {
+		metrics.RegisterMetricAndTrackRateLimiterUsage("route_controller", kubeClient.Core().RESTClient().GetRateLimiter())
 	}
 
 	if clusterCIDR == nil {
@@ -75,7 +75,6 @@ func New(routes cloudprovider.Routes, kubeClient clientset.Interface, nodeInform
 	}
 
 	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(glog.Infof)
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "route_controller"})
 
 	rc := &RouteController{
@@ -103,7 +102,7 @@ func (rc *RouteController) Run(stopCh <-chan struct{}, syncPeriod time.Duration)
 	}
 
 	if rc.broadcaster != nil {
-		rc.broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(rc.kubeClient.CoreV1().RESTClient()).Events("")})
+		rc.broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(rc.kubeClient.Core().RESTClient()).Events("")})
 	}
 
 	// TODO: If we do just the full Resync every 5 minutes (default value)
@@ -115,7 +114,7 @@ func (rc *RouteController) Run(stopCh <-chan struct{}, syncPeriod time.Duration)
 		if err := rc.reconcileNodeRoutes(); err != nil {
 			glog.Errorf("Couldn't reconcile node routes: %v", err)
 		}
-	}, syncPeriod, stopCh)
+	}, syncPeriod, wait.NeverStop)
 
 	<-stopCh
 }
@@ -255,7 +254,7 @@ func (rc *RouteController) updateNetworkingCondition(nodeName types.NodeName, ro
 			glog.Errorf("Error updating node %s: %v", nodeName, err)
 			return err
 		}
-		glog.V(4).Infof("Error updating node %s, retrying: %v", nodeName, err)
+		glog.Errorf("Error updating node %s, retrying: %v", nodeName, err)
 	}
 	glog.Errorf("Error updating node %s: %v", nodeName, err)
 	return err

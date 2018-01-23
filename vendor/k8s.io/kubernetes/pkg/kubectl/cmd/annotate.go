@@ -65,16 +65,14 @@ type AnnotateOptions struct {
 
 var (
 	annotateLong = templates.LongDesc(`
-		Update the annotations on one or more resources
+		Update the annotations on one or more resources.
 
-		All Kubernetes objects support the ability to store additional data with the object as
-		annotations. Annotations are key/value pairs that can be larger than labels and include
-		arbitrary string values such as structured JSON. Tools and system extensions may use
-		annotations to store their own data.  
+		* An annotation is a key/value pair that can hold larger (compared to a label), and possibly not human-readable, data.
+		* It is intended to store non-identifying auxiliary data, especially data manipulated by tools and system extensions.
+		* If --overwrite is true, then existing annotations can be overwritten, otherwise attempting to overwrite an annotation will result in an error.
+		* If --resource-version is specified, then updates will use this resource version, otherwise the existing resource-version will be used.
 
-		Attempting to set an annotation that already exists will fail unless --overwrite is set.
-		If --resource-version is specified and does not match the current resource version on
-		the server the command will fail.`)
+		` + validResources)
 
 	annotateExample = templates.Examples(i18n.T(`
     # Update pod 'foo' with the annotation 'description' and the value 'my frontend'.
@@ -115,7 +113,7 @@ func NewCmdAnnotate(f cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "annotate [--overwrite] (-f FILENAME | TYPE NAME) KEY_1=VAL_1 ... KEY_N=VAL_N [--resource-version=version]",
 		Short:   i18n.T("Update the annotations on a resource"),
-		Long:    annotateLong + "\n\n" + cmdutil.ValidResourceTypeList(f),
+		Long:    annotateLong,
 		Example: annotateExample,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := options.Complete(out, cmd, args); err != nil {
@@ -188,24 +186,25 @@ func (o AnnotateOptions) RunAnnotate(f cmdutil.Factory, cmd *cobra.Command) erro
 
 	changeCause := f.Command(cmd, false)
 
-	includeUninitialized := cmdutil.ShouldIncludeUninitialized(cmd, false)
-
-	var b *resource.Builder
-	if o.local {
-		b = f.NewBuilder().
-			Local(f.ClientForMapping)
-	} else {
-		b = f.NewUnstructuredBuilder().
-			LabelSelectorParam(o.selector).
-			ResourceTypeOrNameArgs(o.all, o.resources...).
-			Latest()
+	builder, err := f.NewUnstructuredBuilder(!o.local)
+	if err != nil {
+		return err
 	}
-	r := b.ContinueOnError().
+
+	includeUninitialized := cmdutil.ShouldIncludeUninitialized(cmd, false)
+	b := builder.
+		ContinueOnError().
 		NamespaceParam(namespace).DefaultNamespace().
 		FilenameParam(enforceNamespace, &o.FilenameOptions).
 		IncludeUninitialized(includeUninitialized).
-		Flatten().
-		Do()
+		Flatten()
+
+	if !o.local {
+		b = b.SelectorParam(o.selector).
+			ResourceTypeOrNameArgs(o.all, o.resources...).
+			Latest()
+	}
+	r := b.Do()
 	if err := r.Err(); err != nil {
 		return err
 	}

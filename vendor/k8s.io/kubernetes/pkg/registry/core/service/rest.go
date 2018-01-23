@@ -36,10 +36,10 @@ import (
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/helper"
 	apiservice "k8s.io/kubernetes/pkg/api/service"
-	api "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/apis/core/helper"
-	"k8s.io/kubernetes/pkg/apis/core/validation"
+	"k8s.io/kubernetes/pkg/api/validation"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/registry/core/endpoint"
 	"k8s.io/kubernetes/pkg/registry/core/service/ipallocator"
@@ -59,16 +59,6 @@ type REST struct {
 	serviceIPs       ipallocator.Interface
 	serviceNodePorts portallocator.Interface
 	proxyTransport   http.RoundTripper
-}
-
-// ServiceNodePort includes protocol and port number of a service NodePort.
-type ServiceNodePort struct {
-	// The IP protocol for this port. Supports "TCP" and "UDP".
-	Protocol api.Protocol
-
-	// The port on each node on which this service is exposed.
-	// Default is to auto-allocate a port if the ServiceType of this Service requires one.
-	NodePort int32
 }
 
 // NewStorage returns a new REST.
@@ -98,7 +88,7 @@ func (rs *REST) Categories() []string {
 }
 
 // TODO: implement includeUninitialized by refactoring this to move to store
-func (rs *REST) Create(ctx genericapirequest.Context, obj runtime.Object, createValidation rest.ValidateObjectFunc, includeUninitialized bool) (runtime.Object, error) {
+func (rs *REST) Create(ctx genericapirequest.Context, obj runtime.Object, includeUninitialized bool) (runtime.Object, error) {
 	service := obj.(*api.Service)
 
 	if err := rest.BeforeCreate(Strategy, ctx, obj); err != nil {
@@ -143,7 +133,7 @@ func (rs *REST) Create(ctx genericapirequest.Context, obj runtime.Object, create
 		}
 	}
 
-	out, err := rs.registry.CreateService(ctx, service, createValidation)
+	out, err := rs.registry.CreateService(ctx, service)
 	if err != nil {
 		err = rest.CheckGeneratedNameError(Strategy, err, service)
 	}
@@ -294,7 +284,7 @@ func (rs *REST) healthCheckNodePortUpdate(oldService, service *api.Service, node
 	return true, nil
 }
 
-func (rs *REST) Update(ctx genericapirequest.Context, name string, objInfo rest.UpdatedObjectInfo, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc) (runtime.Object, bool, error) {
+func (rs *REST) Update(ctx genericapirequest.Context, name string, objInfo rest.UpdatedObjectInfo) (runtime.Object, bool, error) {
 	oldService, err := rs.registry.GetService(ctx, name, &metav1.GetOptions{})
 	if err != nil {
 		return nil, false, err
@@ -370,7 +360,7 @@ func (rs *REST) Update(ctx genericapirequest.Context, name string, objInfo rest.
 		}
 	}
 
-	out, err := rs.registry.UpdateService(ctx, service, createValidation, updateValidation)
+	out, err := rs.registry.UpdateService(ctx, service)
 	if err == nil {
 		el := nodePortOp.Commit()
 		if el != nil {
@@ -447,20 +437,9 @@ func (rs *REST) ResourceLocation(ctx genericapirequest.Context, id string) (*url
 
 // This is O(N), but we expect haystack to be small;
 // so small that we expect a linear search to be faster
-func containsNumber(haystack []int, needle int) bool {
+func contains(haystack []int, needle int) bool {
 	for _, v := range haystack {
 		if v == needle {
-			return true
-		}
-	}
-	return false
-}
-
-// This is O(N), but we expect serviceNodePorts to be small;
-// so small that we expect a linear search to be faster
-func containsNodePort(serviceNodePorts []ServiceNodePort, serviceNodePort ServiceNodePort) bool {
-	for _, snp := range serviceNodePorts {
-		if snp == serviceNodePort {
 			return true
 		}
 	}
@@ -590,48 +569,44 @@ func (rs *REST) initNodePorts(service *api.Service, nodePortOp *portallocator.Po
 }
 
 func (rs *REST) updateNodePorts(oldService, newService *api.Service, nodePortOp *portallocator.PortAllocationOperation) error {
-	oldNodePortsNumbers := CollectServiceNodePorts(oldService)
-	newNodePorts := []ServiceNodePort{}
-	portAllocated := map[int]bool{}
+	oldNodePorts := CollectServiceNodePorts(oldService)
 
+	newNodePorts := []int{}
 	for i := range newService.Spec.Ports {
 		servicePort := &newService.Spec.Ports[i]
-		nodePort := ServiceNodePort{Protocol: servicePort.Protocol, NodePort: servicePort.NodePort}
-		if nodePort.NodePort != 0 {
-			if !containsNumber(oldNodePortsNumbers, int(nodePort.NodePort)) && !portAllocated[int(nodePort.NodePort)] {
-				err := nodePortOp.Allocate(int(nodePort.NodePort))
+		nodePort := int(servicePort.NodePort)
+		if nodePort != 0 {
+			if !contains(oldNodePorts, nodePort) {
+				err := nodePortOp.Allocate(nodePort)
 				if err != nil {
-					el := field.ErrorList{field.Invalid(field.NewPath("spec", "ports").Index(i).Child("nodePort"), nodePort.NodePort, err.Error())}
+					el := field.ErrorList{field.Invalid(field.NewPath("spec", "ports").Index(i).Child("nodePort"), nodePort, err.Error())}
 					return errors.NewInvalid(api.Kind("Service"), newService.Name, el)
 				}
-				portAllocated[int(nodePort.NodePort)] = true
 			}
 		} else {
-			nodePortNumber, err := nodePortOp.AllocateNext()
+			nodePort, err := nodePortOp.AllocateNext()
 			if err != nil {
 				// TODO: what error should be returned here?  It's not a
 				// field-level validation failure (the field is valid), and it's
 				// not really an internal error.
 				return errors.NewInternalError(fmt.Errorf("failed to allocate a nodePort: %v", err))
 			}
-			servicePort.NodePort = int32(nodePortNumber)
-			nodePort.NodePort = servicePort.NodePort
+			servicePort.NodePort = int32(nodePort)
 		}
-		if containsNodePort(newNodePorts, nodePort) {
-			return fmt.Errorf("duplicate nodePort: %v", nodePort)
+		// Detect duplicate node ports; this should have been caught by validation, so we panic
+		if contains(newNodePorts, nodePort) {
+			panic("duplicate node port")
 		}
 		newNodePorts = append(newNodePorts, nodePort)
 	}
 
-	newNodePortsNumbers := CollectServiceNodePorts(newService)
-
 	// The comparison loops are O(N^2), but we don't expect N to be huge
 	// (there's a hard-limit at 2^16, because they're ports; and even 4 ports would be a lot)
-	for _, oldNodePortNumber := range oldNodePortsNumbers {
-		if containsNumber(newNodePortsNumbers, oldNodePortNumber) {
+	for _, oldNodePort := range oldNodePorts {
+		if contains(newNodePorts, oldNodePort) {
 			continue
 		}
-		nodePortOp.ReleaseDeferred(int(oldNodePortNumber))
+		nodePortOp.ReleaseDeferred(oldNodePort)
 	}
 
 	return nil

@@ -166,12 +166,8 @@ func GetServicePrincipalToken(config *Config, env *azure.Environment) (*adal.Ser
 
 	if config.UseManagedIdentityExtension {
 		glog.V(2).Infoln("azure: using managed identity extension to retrieve access token")
-		msiEndpoint, err := adal.GetMSIVMEndpoint()
-		if err != nil {
-			return nil, fmt.Errorf("Getting the managed service identity endpoint: %v", err)
-		}
 		return adal.NewServicePrincipalTokenFromMSI(
-			msiEndpoint,
+			*oauthConfig,
 			env.ServiceManagementEndpoint)
 	}
 
@@ -289,7 +285,7 @@ func NewCloud(configReader io.Reader) (cloudprovider.Interface, error) {
 		az.operationPollRateLimiter = flowcontrol.NewTokenBucketRateLimiter(
 			az.CloudProviderRateLimitQPS,
 			az.CloudProviderRateLimitBucket)
-		glog.V(2).Infof("Azure cloudprovider using rate limit config: QPS=%g, bucket=%d",
+		glog.V(2).Infof("Azure cloudprovider using rate limit config: QPS=%d, bucket=%d",
 			az.CloudProviderRateLimitQPS,
 			az.CloudProviderRateLimitBucket)
 	} else {

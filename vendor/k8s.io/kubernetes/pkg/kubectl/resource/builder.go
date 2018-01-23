@@ -17,7 +17,6 @@ limitations under the License.
 package resource
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -31,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/kubernetes/pkg/kubectl/categories"
 	"k8s.io/kubernetes/pkg/kubectl/validation"
 )
 
@@ -45,7 +43,7 @@ const defaultHttpGetAttempts int = 3
 // over using the Visitor interface.
 type Builder struct {
 	mapper           *Mapper
-	categoryExpander categories.CategoryExpander
+	categoryExpander CategoryExpander
 
 	errs []error
 
@@ -53,11 +51,9 @@ type Builder struct {
 	stream bool
 	dir    bool
 
-	labelSelector        *string
-	fieldSelector        *string
+	selector             labels.Selector
 	selectAll            bool
 	includeUninitialized bool
-	limitChunks          int64
 
 	resources []string
 
@@ -92,11 +88,6 @@ Example resource specifications include:
    '<resource> <name>'
    '<resource>'`)
 
-var LocalResourceError = errors.New(`error: you must specify resources by --filename when --local is set.
-Example resource specifications include:
-   '-f rsrc.yaml'
-   '--filename=rsrc.json'`)
-
 // TODO: expand this to include other errors.
 func IsUsageError(err error) bool {
 	if err == nil {
@@ -116,7 +107,7 @@ type resourceTuple struct {
 }
 
 // NewBuilder creates a builder that operates on generic objects.
-func NewBuilder(mapper meta.RESTMapper, categoryExpander categories.CategoryExpander, typer runtime.ObjectTyper, clientMapper ClientMapper, decoder runtime.Decoder) *Builder {
+func NewBuilder(mapper meta.RESTMapper, categoryExpander CategoryExpander, typer runtime.ObjectTyper, clientMapper ClientMapper, decoder runtime.Decoder) *Builder {
 	return &Builder{
 		mapper:           &Mapper{typer, mapper, clientMapper, decoder},
 		categoryExpander: categoryExpander,
@@ -161,12 +152,6 @@ func (b *Builder) FilenameParam(enforceNamespace bool, filenameOptions *Filename
 		b.RequireNamespace()
 	}
 
-	return b
-}
-
-// Local wraps the builder's clientMapper in a DisabledClientMapperForMapping
-func (b *Builder) Local(mapperFunc ClientMapperFunc) *Builder {
-	b.mapper.ClientMapper = DisabledClientForMapping{ClientMapper: ClientMapperFunc(mapperFunc)}
 	return b
 }
 
@@ -264,41 +249,28 @@ func (b *Builder) ResourceNames(resource string, names ...string) *Builder {
 	return b
 }
 
-// LabelSelectorParam defines a selector that should be applied to the object types to load.
+// SelectorParam defines a selector that should be applied to the object types to load.
 // This will not affect files loaded from disk or URL. If the parameter is empty it is
-// a no-op - to select all resources invoke `b.LabelSelector(labels.Everything.String)`.
-func (b *Builder) LabelSelectorParam(s string) *Builder {
-	selector := strings.TrimSpace(s)
-	if len(selector) == 0 {
+// a no-op - to select all resources invoke `b.Selector(labels.Everything)`.
+func (b *Builder) SelectorParam(s string) *Builder {
+	selector, err := labels.Parse(s)
+	if err != nil {
+		b.errs = append(b.errs, fmt.Errorf("the provided selector %q is not valid: %v", s, err))
+		return b
+	}
+	if selector.Empty() {
 		return b
 	}
 	if b.selectAll {
-		b.errs = append(b.errs, fmt.Errorf("found non-empty label selector %q with previously set 'all' parameter. ", s))
+		b.errs = append(b.errs, fmt.Errorf("found non empty selector %q with previously set 'all' parameter. ", s))
 		return b
 	}
-	return b.LabelSelector(selector)
+	return b.Selector(selector)
 }
 
-// LabelSelector accepts a selector directly and will filter the resulting list by that object.
-// Use LabelSelectorParam instead for user input.
-func (b *Builder) LabelSelector(selector string) *Builder {
-	b.labelSelector = &selector
-	return b
-}
-
-// FieldSelectorParam defines a selector that should be applied to the object types to load.
-// This will not affect files loaded from disk or URL. If the parameter is empty it is
-// a no-op - to select all resources.
-func (b *Builder) FieldSelectorParam(s string) *Builder {
-	s = strings.TrimSpace(s)
-	if len(s) == 0 {
-		return b
-	}
-	if b.selectAll {
-		b.errs = append(b.errs, fmt.Errorf("found non-empty field selector %q with previously set 'all' parameter. ", s))
-		return b
-	}
-	b.fieldSelector = &s
+// Selector accepts a selector directly, and if non nil will trigger a list action.
+func (b *Builder) Selector(selector labels.Selector) *Builder {
+	b.selector = selector
 	return b
 }
 
@@ -346,17 +318,9 @@ func (b *Builder) RequireNamespace() *Builder {
 	return b
 }
 
-// RequestChunksOf attempts to load responses from the server in batches of size limit
-// to avoid long delays loading and transferring very large lists. If unset defaults to
-// no chunking.
-func (b *Builder) RequestChunksOf(chunkSize int64) *Builder {
-	b.limitChunks = chunkSize
-	return b
-}
-
 // SelectEverythingParam
 func (b *Builder) SelectAllParam(selectAll bool) *Builder {
-	if selectAll && (b.labelSelector != nil || b.fieldSelector != nil) {
+	if selectAll && b.selector != nil {
 		b.errs = append(b.errs, fmt.Errorf("setting 'all' parameter but found a non empty selector. "))
 		return b
 	}
@@ -401,9 +365,8 @@ func (b *Builder) ResourceTypeOrNameArgs(allowEmptySelector bool, args ...string
 		b.ResourceTypes(SplitResourceArgument(args[0])...)
 	case len(args) == 1:
 		b.ResourceTypes(SplitResourceArgument(args[0])...)
-		if b.labelSelector == nil && allowEmptySelector {
-			selector := labels.Everything().String()
-			b.labelSelector = &selector
+		if b.selector == nil && allowEmptySelector {
+			b.selector = labels.Everything()
 		}
 	case len(args) == 0:
 	default:
@@ -591,8 +554,7 @@ func (b *Builder) visitorResult() *Result {
 	}
 
 	if b.selectAll {
-		selector := labels.Everything().String()
-		b.labelSelector = &selector
+		b.selector = labels.Everything()
 	}
 
 	// visit items specified by paths
@@ -601,7 +563,7 @@ func (b *Builder) visitorResult() *Result {
 	}
 
 	// visit selectors
-	if b.labelSelector != nil || b.fieldSelector != nil {
+	if b.selector != nil {
 		return b.visitBySelector()
 	}
 
@@ -641,14 +603,6 @@ func (b *Builder) visitBySelector() *Result {
 		return result
 	}
 
-	var labelSelector, fieldSelector string
-	if b.labelSelector != nil {
-		labelSelector = *b.labelSelector
-	}
-	if b.fieldSelector != nil {
-		fieldSelector = *b.fieldSelector
-	}
-
 	visitors := []Visitor{}
 	for _, mapping := range mappings {
 		client, err := b.mapper.ClientForMapping(mapping)
@@ -660,7 +614,7 @@ func (b *Builder) visitBySelector() *Result {
 		if mapping.Scope.Name() != meta.RESTScopeNameNamespace {
 			selectorNamespace = ""
 		}
-		visitors = append(visitors, NewSelector(client, mapping, selectorNamespace, labelSelector, fieldSelector, b.export, b.includeUninitialized, b.limitChunks))
+		visitors = append(visitors, NewSelector(client, mapping, selectorNamespace, b.selector, b.export, b.includeUninitialized))
 	}
 	if b.continueOnError {
 		result.visitor = EagerVisitorList(visitors)
@@ -835,12 +789,8 @@ func (b *Builder) visitByPaths() *Result {
 		}
 		visitors = NewDecoratedVisitor(visitors, RetrieveLatest)
 	}
-	if b.labelSelector != nil {
-		selector, err := labels.Parse(*b.labelSelector)
-		if err != nil {
-			return result.withError(fmt.Errorf("the provided selector %q is not valid: %v", b.labelSelector, err))
-		}
-		visitors = NewFilteredVisitor(visitors, FilterByLabelSelector(selector))
+	if b.selector != nil {
+		visitors = NewFilteredVisitor(visitors, FilterBySelector(b.selector))
 	}
 	result.visitor = visitors
 	result.sources = b.paths
@@ -933,5 +883,5 @@ func MultipleTypesRequested(args []string) bool {
 		}
 		rKinds.Insert(rTuple.Resource)
 	}
-	return rKinds.Len() > 1
+	return (rKinds.Len() > 1)
 }

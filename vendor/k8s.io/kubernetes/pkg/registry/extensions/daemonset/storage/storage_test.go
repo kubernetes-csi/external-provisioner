@@ -24,10 +24,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/generic"
-	genericregistrytest "k8s.io/apiserver/pkg/registry/generic/testing"
 	etcdtesting "k8s.io/apiserver/pkg/storage/etcd/testing"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/registry/registrytest"
 )
@@ -82,7 +80,7 @@ func TestCreate(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	ds := newValidDaemonSet()
 	ds.ObjectMeta = metav1.ObjectMeta{}
 	test.TestCreate(
@@ -109,7 +107,7 @@ func TestUpdate(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	test.TestUpdate(
 		// valid
 		newValidDaemonSet(),
@@ -138,7 +136,7 @@ func TestDelete(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	test.TestDelete(newValidDaemonSet())
 }
 
@@ -146,7 +144,7 @@ func TestGet(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	test.TestGet(newValidDaemonSet())
 }
 
@@ -154,7 +152,7 @@ func TestList(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	test.TestList(newValidDaemonSet())
 }
 
@@ -162,7 +160,7 @@ func TestWatch(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Store)
 	test.TestWatch(
 		validDaemonSet,
 		// matching labels

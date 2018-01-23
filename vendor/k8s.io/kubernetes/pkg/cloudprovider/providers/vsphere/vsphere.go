@@ -34,7 +34,7 @@ import (
 	"golang.org/x/net/context"
 	"k8s.io/api/core/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
-	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
+	v1helper "k8s.io/kubernetes/pkg/api/v1/helper"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/vsphere/vclib"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/vsphere/vclib/diskmanagers"
@@ -354,7 +354,7 @@ func (vs *VSphere) NodeAddressesByProviderID(providerID string) ([]v1.NodeAddres
 
 // AddSSHKeyToAllInstances add SSH key to all instances
 func (vs *VSphere) AddSSHKeyToAllInstances(user string, keyData []byte) error {
-	return cloudprovider.NotImplemented
+	return errors.New("unimplemented")
 }
 
 // CurrentNodeName gives the current node name
@@ -380,35 +380,7 @@ func (vs *VSphere) ExternalID(nodeName k8stypes.NodeName) (string, error) {
 // InstanceExistsByProviderID returns true if the instance with the given provider id still exists and is running.
 // If false is returned with no error, the instance will be immediately deleted by the cloud controller manager.
 func (vs *VSphere) InstanceExistsByProviderID(providerID string) (bool, error) {
-	vmName := path.Base(providerID)
-	nodeName := vmNameToNodeName(vmName)
-	// Create context
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	// Ensure client is logged in and session is valid
-	err := vs.conn.Connect(ctx)
-	if err != nil {
-		return false, err
-	}
-	vm, err := vs.getVMByName(ctx, nodeName)
-	if err != nil {
-		if vclib.IsNotFound(err) {
-			return false, nil
-		}
-		glog.Errorf("Failed to get VM object for node: %q. err: +%v", nodeNameToVMName(nodeName), err)
-		return false, err
-	}
-
-	isActive, err := vm.IsActive(ctx)
-	if err != nil {
-		glog.Errorf("Failed to check whether node %q is active. err: %+v.", nodeNameToVMName(nodeName), err)
-		return false, err
-	}
-	if !isActive {
-		return false, nil
-	}
-
-	return true, nil
+	return false, errors.New("unimplemented")
 }
 
 // InstanceID returns the cloud provider ID of the node with the specified Name.

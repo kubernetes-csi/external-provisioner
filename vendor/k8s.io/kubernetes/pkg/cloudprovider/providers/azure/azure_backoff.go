@@ -157,11 +157,11 @@ func (az *Cloud) DeleteLBWithRetry(lbName string) error {
 func (az *Cloud) CreateOrUpdateRouteTableWithRetry(routeTable network.RouteTable) error {
 	return wait.ExponentialBackoff(az.resourceRequestBackoff, func() (bool, error) {
 		az.operationPollRateLimiter.Accept()
-		glog.V(10).Infof("RouteTablesClient.CreateOrUpdate(%s): start", *routeTable.Name)
+		glog.V(10).Infof("RouteTablesClient.CreateOrUpdate(%s): start", routeTable)
 		respChan, errChan := az.RouteTablesClient.CreateOrUpdate(az.ResourceGroup, az.RouteTableName, routeTable, nil)
 		resp := <-respChan
 		err := <-errChan
-		glog.V(10).Infof("RouteTablesClient.CreateOrUpdate(%s): end", *routeTable.Name)
+		glog.V(10).Infof("RouteTablesClient.CreateOrUpdate(%s): end", routeTable)
 		return processRetryResponse(resp.Response, err)
 	})
 }

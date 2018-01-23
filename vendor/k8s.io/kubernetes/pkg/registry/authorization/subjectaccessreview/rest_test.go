@@ -26,29 +26,28 @@ import (
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
-	"k8s.io/apiserver/pkg/registry/rest"
 	authorizationapi "k8s.io/kubernetes/pkg/apis/authorization"
 )
 
 type fakeAuthorizer struct {
 	attrs authorizer.Attributes
 
-	decision authorizer.Decision
-	reason   string
-	err      error
+	ok     bool
+	reason string
+	err    error
 }
 
-func (f *fakeAuthorizer) Authorize(attrs authorizer.Attributes) (authorizer.Decision, string, error) {
+func (f *fakeAuthorizer) Authorize(attrs authorizer.Attributes) (bool, string, error) {
 	f.attrs = attrs
-	return f.decision, f.reason, f.err
+	return f.ok, f.reason, f.err
 }
 
 func TestCreate(t *testing.T) {
 	testcases := map[string]struct {
-		spec     authorizationapi.SubjectAccessReviewSpec
-		decision authorizer.Decision
-		reason   string
-		err      error
+		spec   authorizationapi.SubjectAccessReviewSpec
+		ok     bool
+		reason string
+		err    error
 
 		expectedErr    string
 		expectedAttrs  authorizer.Attributes
@@ -63,9 +62,9 @@ func TestCreate(t *testing.T) {
 				User: "bob",
 				NonResourceAttributes: &authorizationapi.NonResourceAttributes{Verb: "get", Path: "/mypath"},
 			},
-			decision: authorizer.DecisionNoOpinion,
-			reason:   "myreason",
-			err:      errors.New("myerror"),
+			ok:     false,
+			reason: "myreason",
+			err:    errors.New("myerror"),
 			expectedAttrs: authorizer.AttributesRecord{
 				User:            &user.DefaultInfo{Name: "bob"},
 				Verb:            "get",
@@ -84,9 +83,9 @@ func TestCreate(t *testing.T) {
 				User: "bob",
 				NonResourceAttributes: &authorizationapi.NonResourceAttributes{Verb: "get", Path: "/mypath"},
 			},
-			decision: authorizer.DecisionAllow,
-			reason:   "allowed",
-			err:      nil,
+			ok:     true,
+			reason: "allowed",
+			err:    nil,
 			expectedAttrs: authorizer.AttributesRecord{
 				User:            &user.DefaultInfo{Name: "bob"},
 				Verb:            "get",
@@ -113,9 +112,9 @@ func TestCreate(t *testing.T) {
 					Name:        "mydeployment",
 				},
 			},
-			decision: authorizer.DecisionNoOpinion,
-			reason:   "myreason",
-			err:      errors.New("myerror"),
+			ok:     false,
+			reason: "myreason",
+			err:    errors.New("myerror"),
 			expectedAttrs: authorizer.AttributesRecord{
 				User:            &user.DefaultInfo{Name: "bob"},
 				Namespace:       "myns",
@@ -129,7 +128,6 @@ func TestCreate(t *testing.T) {
 			},
 			expectedStatus: authorizationapi.SubjectAccessReviewStatus{
 				Allowed:         false,
-				Denied:          false,
 				Reason:          "myreason",
 				EvaluationError: "myerror",
 			},
@@ -148,9 +146,9 @@ func TestCreate(t *testing.T) {
 					Name:        "mydeployment",
 				},
 			},
-			decision: authorizer.DecisionAllow,
-			reason:   "allowed",
-			err:      nil,
+			ok:     true,
+			reason: "allowed",
+			err:    nil,
 			expectedAttrs: authorizer.AttributesRecord{
 				User:            &user.DefaultInfo{Name: "bob"},
 				Namespace:       "myns",
@@ -164,38 +162,21 @@ func TestCreate(t *testing.T) {
 			},
 			expectedStatus: authorizationapi.SubjectAccessReviewStatus{
 				Allowed:         true,
-				Denied:          false,
 				Reason:          "allowed",
 				EvaluationError: "",
-			},
-		},
-
-		"resource denied": {
-			spec: authorizationapi.SubjectAccessReviewSpec{
-				User:               "bob",
-				ResourceAttributes: &authorizationapi.ResourceAttributes{},
-			},
-			decision: authorizer.DecisionDeny,
-			expectedAttrs: authorizer.AttributesRecord{
-				User:            &user.DefaultInfo{Name: "bob"},
-				ResourceRequest: true,
-			},
-			expectedStatus: authorizationapi.SubjectAccessReviewStatus{
-				Allowed: false,
-				Denied:  true,
 			},
 		},
 	}
 
 	for k, tc := range testcases {
 		auth := &fakeAuthorizer{
-			decision: tc.decision,
-			reason:   tc.reason,
-			err:      tc.err,
+			ok:     tc.ok,
+			reason: tc.reason,
+			err:    tc.err,
 		}
-		storage := NewREST(auth)
+		rest := NewREST(auth)
 
-		result, err := storage.Create(genericapirequest.NewContext(), &authorizationapi.SubjectAccessReview{Spec: tc.spec}, rest.ValidateAllObjectFunc, false)
+		result, err := rest.Create(genericapirequest.NewContext(), &authorizationapi.SubjectAccessReview{Spec: tc.spec}, false)
 		if err != nil {
 			if tc.expectedErr != "" {
 				if !strings.Contains(err.Error(), tc.expectedErr) {

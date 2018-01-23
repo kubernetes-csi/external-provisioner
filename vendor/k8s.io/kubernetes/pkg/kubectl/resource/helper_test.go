@@ -26,17 +26,17 @@ import (
 	"strings"
 	"testing"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest/fake"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/testapi"
+	apitesting "k8s.io/kubernetes/pkg/api/testing"
 )
 
 func objBody(obj runtime.Object) io.ReadCloser {
-	return ioutil.NopCloser(bytes.NewReader([]byte(runtime.EncodeOrDie(corev1Codec, obj))))
+	return ioutil.NopCloser(bytes.NewReader([]byte(runtime.EncodeOrDie(testapi.Default.Codec(), obj))))
 }
 
 func header() http.Header {
@@ -52,17 +52,6 @@ func splitPath(path string) []string {
 		return []string{}
 	}
 	return strings.Split(path, "/")
-}
-
-// V1DeepEqualSafePodSpec returns a PodSpec which is ready to be used with apiequality.Semantic.DeepEqual
-func V1DeepEqualSafePodSpec() corev1.PodSpec {
-	grace := int64(30)
-	return corev1.PodSpec{
-		RestartPolicy:                 corev1.RestartPolicyAlways,
-		DNSPolicy:                     corev1.DNSClusterFirst,
-		TerminationGracePeriodSeconds: &grace,
-		SecurityContext:               &corev1.PodSecurityContext{},
-	}
 }
 
 func TestHelperDelete(t *testing.T) {
@@ -114,7 +103,8 @@ func TestHelperDelete(t *testing.T) {
 	}
 	for _, test := range tests {
 		client := &fake.RESTClient{
-			NegotiatedSerializer: scheme.Codecs,
+			APIRegistry:          api.Registry,
+			NegotiatedSerializer: testapi.Default.NegotiatedSerializer(),
 			Resp:                 test.Resp,
 			Err:                  test.HttpErr,
 		}
@@ -177,26 +167,26 @@ func TestHelperCreate(t *testing.T) {
 				Header:     header(),
 				Body:       objBody(&metav1.Status{Status: metav1.StatusSuccess}),
 			},
-			Object:       &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}},
-			ExpectObject: &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}},
+			Object:       &api.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}},
+			ExpectObject: &api.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}},
 			Req:          expectPost,
 		},
 		{
 			Modify:       false,
-			Object:       &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}},
-			ExpectObject: &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}},
+			Object:       &api.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}},
+			ExpectObject: &api.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}},
 			Resp:         &http.Response{StatusCode: http.StatusOK, Header: header(), Body: objBody(&metav1.Status{Status: metav1.StatusSuccess})},
 			Req:          expectPost,
 		},
 		{
 			Modify: true,
-			Object: &corev1.Pod{
+			Object: &api.Pod{
 				ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"},
-				Spec:       V1DeepEqualSafePodSpec(),
+				Spec:       apitesting.DeepEqualSafePodSpec(),
 			},
-			ExpectObject: &corev1.Pod{
+			ExpectObject: &api.Pod{
 				ObjectMeta: metav1.ObjectMeta{Name: "foo"},
-				Spec:       V1DeepEqualSafePodSpec(),
+				Spec:       apitesting.DeepEqualSafePodSpec(),
 			},
 			Resp: &http.Response{StatusCode: http.StatusOK, Header: header(), Body: objBody(&metav1.Status{Status: metav1.StatusSuccess})},
 			Req:  expectPost,
@@ -204,14 +194,14 @@ func TestHelperCreate(t *testing.T) {
 	}
 	for i, test := range tests {
 		client := &fake.RESTClient{
-			GroupVersion:         corev1GV,
-			NegotiatedSerializer: scheme.Codecs,
+			APIRegistry:          api.Registry,
+			NegotiatedSerializer: testapi.Default.NegotiatedSerializer(),
 			Resp:                 test.Resp,
 			Err:                  test.HttpErr,
 		}
 		modifier := &Helper{
 			RESTClient:      client,
-			Versioner:       metaAccessor,
+			Versioner:       testapi.Default.MetadataAccessor(),
 			NamespaceScoped: true,
 		}
 		_, err := modifier.Create("bar", test.Modify, test.Object)
@@ -231,7 +221,7 @@ func TestHelperCreate(t *testing.T) {
 		t.Logf("got body: %s", string(body))
 		expect := []byte{}
 		if test.ExpectObject != nil {
-			expect = []byte(runtime.EncodeOrDie(corev1Codec, test.ExpectObject))
+			expect = []byte(runtime.EncodeOrDie(testapi.Default.Codec(), test.ExpectObject))
 		}
 		if !reflect.DeepEqual(expect, body) {
 			t.Errorf("%d: unexpected body: %s (expected %s)", i, string(body), string(expect))
@@ -263,7 +253,7 @@ func TestHelperGet(t *testing.T) {
 			Resp: &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     header(),
-				Body:       objBody(&corev1.Pod{TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"}, ObjectMeta: metav1.ObjectMeta{Name: "foo"}}),
+				Body:       objBody(&api.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}}),
 			},
 			Req: func(req *http.Request) bool {
 				if req.Method != "GET" {
@@ -283,10 +273,10 @@ func TestHelperGet(t *testing.T) {
 			},
 		},
 	}
-	for i, test := range tests {
+	for _, test := range tests {
 		client := &fake.RESTClient{
-			GroupVersion:         corev1GV,
-			NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: scheme.Codecs},
+			APIRegistry:          api.Registry,
+			NegotiatedSerializer: testapi.Default.NegotiatedSerializer(),
 			Resp:                 test.Resp,
 			Err:                  test.HttpErr,
 		}
@@ -295,14 +285,13 @@ func TestHelperGet(t *testing.T) {
 			NamespaceScoped: true,
 		}
 		obj, err := modifier.Get("bar", "foo", false)
-
 		if (err != nil) != test.Err {
-			t.Errorf("unexpected error: %d %t %v", i, test.Err, err)
+			t.Errorf("unexpected error: %t %v", test.Err, err)
 		}
 		if err != nil {
 			continue
 		}
-		if obj.(*corev1.Pod).Name != "foo" {
+		if obj.(*api.Pod).Name != "foo" {
 			t.Errorf("unexpected object: %#v", obj)
 		}
 		if test.Req != nil && !test.Req(client.Req) {
@@ -334,8 +323,8 @@ func TestHelperList(t *testing.T) {
 			Resp: &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     header(),
-				Body: objBody(&corev1.PodList{
-					Items: []corev1.Pod{{
+				Body: objBody(&api.PodList{
+					Items: []api.Pod{{
 						ObjectMeta: metav1.ObjectMeta{Name: "foo"},
 					},
 					},
@@ -350,7 +339,7 @@ func TestHelperList(t *testing.T) {
 					t.Errorf("url doesn't contain name: %#v", req.URL)
 					return false
 				}
-				if req.URL.Query().Get(metav1.LabelSelectorQueryParam(corev1GV.String())) != labels.SelectorFromSet(labels.Set{"foo": "baz"}).String() {
+				if req.URL.Query().Get(metav1.LabelSelectorQueryParam(api.Registry.GroupOrDie(api.GroupName).GroupVersion.String())) != labels.SelectorFromSet(labels.Set{"foo": "baz"}).String() {
 					t.Errorf("url doesn't contain query parameters: %#v", req.URL)
 					return false
 				}
@@ -360,8 +349,8 @@ func TestHelperList(t *testing.T) {
 	}
 	for _, test := range tests {
 		client := &fake.RESTClient{
-			GroupVersion:         corev1GV,
-			NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: scheme.Codecs},
+			APIRegistry:          api.Registry,
+			NegotiatedSerializer: testapi.Default.NegotiatedSerializer(),
 			Resp:                 test.Resp,
 			Err:                  test.HttpErr,
 		}
@@ -369,84 +358,18 @@ func TestHelperList(t *testing.T) {
 			RESTClient:      client,
 			NamespaceScoped: true,
 		}
-		obj, err := modifier.List("bar", corev1GV.String(), false, &metav1.ListOptions{LabelSelector: "foo=baz"})
+		obj, err := modifier.List("bar", api.Registry.GroupOrDie(api.GroupName).GroupVersion.String(), labels.SelectorFromSet(labels.Set{"foo": "baz"}), false, false)
 		if (err != nil) != test.Err {
 			t.Errorf("unexpected error: %t %v", test.Err, err)
 		}
 		if err != nil {
 			continue
 		}
-		if obj.(*corev1.PodList).Items[0].Name != "foo" {
+		if obj.(*api.PodList).Items[0].Name != "foo" {
 			t.Errorf("unexpected object: %#v", obj)
 		}
 		if test.Req != nil && !test.Req(client.Req) {
 			t.Errorf("unexpected request: %#v", client.Req)
-		}
-	}
-}
-
-func TestHelperListSelectorCombination(t *testing.T) {
-	tests := []struct {
-		Name          string
-		Err           bool
-		ErrMsg        string
-		FieldSelector string
-		LabelSelector string
-	}{
-		{
-			Name: "No selector",
-			Err:  false,
-		},
-		{
-			Name:          "Only Label Selector",
-			Err:           false,
-			LabelSelector: "foo=baz",
-		},
-		{
-			Name:          "Only Field Selector",
-			Err:           false,
-			FieldSelector: "xyz=zyx",
-		},
-		{
-			Name:          "Both Label and Field Selector",
-			Err:           false,
-			LabelSelector: "foo=baz",
-			FieldSelector: "xyz=zyx",
-		},
-	}
-
-	resp := &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     header(),
-		Body: objBody(&corev1.PodList{
-			Items: []corev1.Pod{{
-				ObjectMeta: metav1.ObjectMeta{Name: "foo"},
-			},
-			},
-		}),
-	}
-	client := &fake.RESTClient{
-		NegotiatedSerializer: scheme.Codecs,
-		Resp:                 resp,
-		Err:                  nil,
-	}
-	modifier := &Helper{
-		RESTClient:      client,
-		NamespaceScoped: true,
-	}
-
-	for _, test := range tests {
-		_, err := modifier.List("bar",
-			corev1GV.String(),
-			false,
-			&metav1.ListOptions{LabelSelector: test.LabelSelector, FieldSelector: test.FieldSelector})
-		if test.Err {
-			if err == nil {
-				t.Errorf("%q expected error: %q", test.Name, test.ErrMsg)
-			}
-			if err != nil && err.Error() != test.ErrMsg {
-				t.Errorf("%q expected error: %q", test.Name, test.ErrMsg)
-			}
 		}
 	}
 }
@@ -487,7 +410,7 @@ func TestHelperReplace(t *testing.T) {
 		{
 			Namespace:       "bar",
 			NamespaceScoped: true,
-			Object:          &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}},
+			Object:          &api.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}},
 			Resp: &http.Response{
 				StatusCode: http.StatusNotFound,
 				Header:     header(),
@@ -498,9 +421,9 @@ func TestHelperReplace(t *testing.T) {
 		{
 			Namespace:       "bar",
 			NamespaceScoped: true,
-			Object:          &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}},
+			Object:          &api.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}},
 			ExpectPath:      "/namespaces/bar/foo",
-			ExpectObject:    &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}},
+			ExpectObject:    &api.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo"}},
 			Resp: &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     header(),
@@ -512,30 +435,30 @@ func TestHelperReplace(t *testing.T) {
 		{
 			Namespace:       "bar",
 			NamespaceScoped: true,
-			Object: &corev1.Pod{
+			Object: &api.Pod{
 				ObjectMeta: metav1.ObjectMeta{Name: "foo"},
-				Spec:       V1DeepEqualSafePodSpec(),
+				Spec:       apitesting.DeepEqualSafePodSpec(),
 			},
 			ExpectPath: "/namespaces/bar/foo",
-			ExpectObject: &corev1.Pod{
+			ExpectObject: &api.Pod{
 				ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"},
-				Spec:       V1DeepEqualSafePodSpec(),
+				Spec:       apitesting.DeepEqualSafePodSpec(),
 			},
 			Overwrite: true,
 			HTTPClient: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 				if req.Method == "PUT" {
 					return &http.Response{StatusCode: http.StatusOK, Header: header(), Body: objBody(&metav1.Status{Status: metav1.StatusSuccess})}, nil
 				}
-				return &http.Response{StatusCode: http.StatusOK, Header: header(), Body: objBody(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}})}, nil
+				return &http.Response{StatusCode: http.StatusOK, Header: header(), Body: objBody(&api.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}})}, nil
 			}),
 			Req: expectPut,
 		},
 		// cluster scoped resource
 		{
-			Object: &corev1.Node{
+			Object: &api.Node{
 				ObjectMeta: metav1.ObjectMeta{Name: "foo"},
 			},
-			ExpectObject: &corev1.Node{
+			ExpectObject: &api.Node{
 				ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"},
 			},
 			Overwrite:  true,
@@ -544,31 +467,31 @@ func TestHelperReplace(t *testing.T) {
 				if req.Method == "PUT" {
 					return &http.Response{StatusCode: http.StatusOK, Header: header(), Body: objBody(&metav1.Status{Status: metav1.StatusSuccess})}, nil
 				}
-				return &http.Response{StatusCode: http.StatusOK, Header: header(), Body: objBody(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}})}, nil
+				return &http.Response{StatusCode: http.StatusOK, Header: header(), Body: objBody(&api.Node{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}})}, nil
 			}),
 			Req: expectPut,
 		},
 		{
 			Namespace:       "bar",
 			NamespaceScoped: true,
-			Object:          &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}},
+			Object:          &api.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}},
 			ExpectPath:      "/namespaces/bar/foo",
-			ExpectObject:    &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}},
+			ExpectObject:    &api.Pod{ObjectMeta: metav1.ObjectMeta{Name: "foo", ResourceVersion: "10"}},
 			Resp:            &http.Response{StatusCode: http.StatusOK, Header: header(), Body: objBody(&metav1.Status{Status: metav1.StatusSuccess})},
 			Req:             expectPut,
 		},
 	}
 	for i, test := range tests {
 		client := &fake.RESTClient{
-			GroupVersion:         corev1GV,
-			NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: scheme.Codecs},
+			APIRegistry:          api.Registry,
+			NegotiatedSerializer: testapi.Default.NegotiatedSerializer(),
 			Client:               test.HTTPClient,
 			Resp:                 test.Resp,
 			Err:                  test.HttpErr,
 		}
 		modifier := &Helper{
 			RESTClient:      client,
-			Versioner:       metaAccessor,
+			Versioner:       testapi.Default.MetadataAccessor(),
 			NamespaceScoped: test.NamespaceScoped,
 		}
 		_, err := modifier.Replace(test.Namespace, "foo", test.Overwrite, test.Object)
@@ -587,7 +510,7 @@ func TestHelperReplace(t *testing.T) {
 		}
 		expect := []byte{}
 		if test.ExpectObject != nil {
-			expect = []byte(runtime.EncodeOrDie(corev1Codec, test.ExpectObject))
+			expect = []byte(runtime.EncodeOrDie(testapi.Default.Codec(), test.ExpectObject))
 		}
 		if !reflect.DeepEqual(expect, body) {
 			t.Errorf("%d: unexpected body: %s", i, string(body))

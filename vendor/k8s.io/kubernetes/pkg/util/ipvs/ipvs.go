@@ -25,6 +25,10 @@ import (
 type Interface interface {
 	// Flush clears all virtual servers in system. return occurred error immediately.
 	Flush() error
+	// EnsureVirtualServerAddressBind checks if virtual server's address is bound to dummy interface and, if not, binds it. If the address is already bound, return true.
+	EnsureVirtualServerAddressBind(serv *VirtualServer, dev string) (exist bool, err error)
+	// UnbindVirtualServerAddress checks if virtual server's address is bound to dummy interface and, if so, unbinds it.
+	UnbindVirtualServerAddress(serv *VirtualServer, dev string) error
 	// AddVirtualServer creates the specified virtual server.
 	AddVirtualServer(*VirtualServer) error
 	// UpdateVirtualServer updates an already existing virtual server.  If the virtual server does not exist, return error.
@@ -59,8 +63,6 @@ type ServiceFlags uint32
 const (
 	// FlagPersistent specify IPVS service session affinity
 	FlagPersistent = 0x1
-	// FlagHashed specify IPVS service hash flag
-	FlagHashed = 0x2
 )
 
 // Equal check the equality of virtual server.
@@ -85,14 +87,6 @@ type RealServer struct {
 	Weight  int
 }
 
-func (rs *RealServer) String() string {
-	return net.JoinHostPort(rs.Address.String(), strconv.Itoa(int(rs.Port)))
-}
-
-// Equal check the equality of real server.
-// We don't use struct == since it doesn't work because of slice.
-func (rs *RealServer) Equal(other *RealServer) bool {
-	return rs.Address.Equal(other.Address) &&
-		rs.Port == other.Port &&
-		rs.Weight == other.Weight
+func (dest *RealServer) String() string {
+	return net.JoinHostPort(dest.Address.String(), strconv.Itoa(int(dest.Port)))
 }

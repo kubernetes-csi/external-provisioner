@@ -28,27 +28,23 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/golang/glog"
 
 	clientv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/helper"
 	apiservice "k8s.io/kubernetes/pkg/api/service"
-	api "k8s.io/kubernetes/pkg/apis/core"
-	"k8s.io/kubernetes/pkg/apis/core/helper"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/proxy"
 	"k8s.io/kubernetes/pkg/proxy/healthcheck"
-	"k8s.io/kubernetes/pkg/proxy/metrics"
 	utilproxy "k8s.io/kubernetes/pkg/proxy/util"
-	"k8s.io/kubernetes/pkg/util/async"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	utilipvs "k8s.io/kubernetes/pkg/util/ipvs"
 	utilsysctl "k8s.io/kubernetes/pkg/util/sysctl"
@@ -109,8 +105,8 @@ type Proxier struct {
 	// with some partial data after kube-proxy restart.
 	endpointsSynced bool
 	servicesSynced  bool
-	initialized     int32
-	syncRunner      *async.BoundedFrequencyRunner // governs calls to syncProxyRules
+
+	throttle flowcontrol.RateLimiter
 
 	// These are effectively const and do not need the mutex to be held.
 	syncPeriod     time.Duration
@@ -135,8 +131,6 @@ type Proxier struct {
 	iptablesData *bytes.Buffer
 	natChains    *bytes.Buffer
 	natRules     *bytes.Buffer
-	// Added as a member to the struct to allow injection for testing.
-	netlinkHandle NetLinkHandle
 }
 
 // IPGetter helps get node network interface IP
@@ -159,17 +153,17 @@ func (r *realIPGetter) NodeIPs() (ips []net.IP, err error) {
 		}
 		intf, err := net.InterfaceByName(name)
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("Failed to get interface by name: %s, error: %v", name, err))
 			continue
 		}
 		addrs, err := intf.Addrs()
 		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("Failed to get addresses from interface: %s, error: %v", name, err))
 			continue
 		}
 		for _, a := range addrs {
 			if ipnet, ok := a.(*net.IPNet); ok {
-				ips = append(ips, ipnet.IP)
+				if ipnet.IP.To4() != nil {
+					ips = append(ips, ipnet.IP.To4())
+				}
 			}
 		}
 	}
@@ -198,6 +192,11 @@ func NewProxier(ipt utiliptables.Interface, ipvs utilipvs.Interface,
 	healthzServer healthcheck.HealthzUpdater,
 	scheduler string,
 ) (*Proxier, error) {
+	// check valid user input
+	if minSyncPeriod > syncPeriod {
+		return nil, fmt.Errorf("min-sync (%v) must be < sync(%v)", minSyncPeriod, syncPeriod)
+	}
+
 	// Set the route_localnet sysctl we need for
 	if err := sysctl.SetSysctl(sysctlRouteLocalnet, 1); err != nil {
 		return nil, fmt.Errorf("can't set sysctl %s: %v", sysctlRouteLocalnet, err)
@@ -221,6 +220,9 @@ func NewProxier(ipt utiliptables.Interface, ipvs utilipvs.Interface,
 	}
 
 	// Generate the masquerade mark to use for SNAT rules.
+	if masqueradeBit < 0 || masqueradeBit > 31 {
+		return nil, fmt.Errorf("invalid iptables-masquerade-bit %v not in [0, 31]", masqueradeBit)
+	}
 	masqueradeValue := 1 << uint(masqueradeBit)
 	masqueradeMark := fmt.Sprintf("%#08x/%#08x", masqueradeValue, masqueradeValue)
 
@@ -240,14 +242,23 @@ func NewProxier(ipt utiliptables.Interface, ipvs utilipvs.Interface,
 
 	healthChecker := healthcheck.NewServer(hostname, recorder, nil, nil) // use default implementations of deps
 
-	proxier := &Proxier{
+	var throttle flowcontrol.RateLimiter
+	// Defaulting back to not limit sync rate when minSyncPeriod is 0.
+	if minSyncPeriod != 0 {
+		syncsPerSecond := float32(time.Second) / float32(minSyncPeriod)
+		// The average use case will process 2 updates in short succession
+		throttle = flowcontrol.NewTokenBucketRateLimiter(syncsPerSecond, 2)
+	}
+
+	return &Proxier{
 		portsMap:         make(map[utilproxy.LocalPort]utilproxy.Closeable),
 		serviceMap:       make(proxyServiceMap),
 		serviceChanges:   newServiceChangeMap(),
 		endpointsMap:     make(proxyEndpointsMap),
-		endpointsChanges: newEndpointsChangeMap(hostname),
+		endpointsChanges: newEndpointsChangeMap(),
 		syncPeriod:       syncPeriod,
 		minSyncPeriod:    minSyncPeriod,
+		throttle:         throttle,
 		iptables:         ipt,
 		masqueradeAll:    masqueradeAll,
 		masqueradeMark:   masqueradeMark,
@@ -265,12 +276,7 @@ func NewProxier(ipt utiliptables.Interface, ipvs utilipvs.Interface,
 		iptablesData:     bytes.NewBuffer(nil),
 		natChains:        bytes.NewBuffer(nil),
 		natRules:         bytes.NewBuffer(nil),
-		netlinkHandle:    NewNetLinkHandle(),
-	}
-	burstSyncs := 2
-	glog.V(3).Infof("minSyncPeriod: %v, syncPeriod: %v, burstSyncs: %d", minSyncPeriod, syncPeriod, burstSyncs)
-	proxier.syncRunner = async.NewBoundedFrequencyRunner("sync-runner", proxier.syncProxyRules, minSyncPeriod, syncPeriod, burstSyncs)
-	return proxier, nil
+	}, nil
 }
 
 type proxyServiceMap map[proxy.ServicePortName]*serviceInfo
@@ -288,41 +294,37 @@ type serviceInfo struct {
 	loadBalancerSourceRanges []string
 	onlyNodeLocalEndpoints   bool
 	healthCheckNodePort      int
-	// The following fields are computed and stored for performance reasons.
-	serviceNameString string
 }
 
 // <serviceMap> is updated by this function (based on the given changes).
 // <changes> map is cleared after applying them.
 func updateServiceMap(
 	serviceMap proxyServiceMap,
-	changes *serviceChangeMap) (result updateServiceMapResult) {
-	result.staleServices = sets.NewString()
+	changes *serviceChangeMap) (syncRequired bool, hcServices map[types.NamespacedName]uint16, staleServices sets.String) {
+	syncRequired = false
+	staleServices = sets.NewString()
 
-	func() {
-		changes.lock.Lock()
-		defer changes.lock.Unlock()
-		for _, change := range changes.items {
-			existingPorts := serviceMap.merge(change.current)
-			serviceMap.unmerge(change.previous, existingPorts, result.staleServices)
-		}
-		changes.items = make(map[types.NamespacedName]*serviceChange)
-	}()
+	for _, change := range changes.items {
+		mergeSyncRequired, existingPorts := serviceMap.mergeService(change.current)
+		unmergeSyncRequired := serviceMap.unmergeService(change.previous, existingPorts, staleServices)
+		syncRequired = syncRequired || mergeSyncRequired || unmergeSyncRequired
+	}
+	changes.items = make(map[types.NamespacedName]*serviceChange)
 
 	// TODO: If this will appear to be computationally expensive, consider
 	// computing this incrementally similarly to serviceMap.
-	result.hcServices = make(map[types.NamespacedName]uint16)
-	for svcPortName, info := range serviceMap {
+	hcServices = make(map[types.NamespacedName]uint16)
+	for svcPort, info := range serviceMap {
 		if info.healthCheckNodePort != 0 {
-			result.hcServices[svcPortName.NamespacedName] = uint16(info.healthCheckNodePort)
+			hcServices[svcPort.NamespacedName] = uint16(info.healthCheckNodePort)
 		}
 	}
 
-	return result
+	return syncRequired, hcServices, staleServices
 }
 
 // returns a new serviceInfo struct
-func newServiceInfo(svcPortName proxy.ServicePortName, port *api.ServicePort, service *api.Service) *serviceInfo {
+func newServiceInfo(serviceName proxy.ServicePortName, port *api.ServicePort, service *api.Service) *serviceInfo {
 	onlyNodeLocalEndpoints := false
 	if utilfeature.DefaultFeatureGate.Enabled(features.ExternalTrafficLocalOnly) &&
 		apiservice.RequestsOnlyLocalTraffic(service) {
@@ -345,77 +347,90 @@ func newServiceInfo(svcPortName proxy.ServicePortName, port *api.ServicePort, se
 		loadBalancerSourceRanges: make([]string, len(service.Spec.LoadBalancerSourceRanges)),
 		onlyNodeLocalEndpoints:   onlyNodeLocalEndpoints,
 	}
-
 	copy(info.loadBalancerSourceRanges, service.Spec.LoadBalancerSourceRanges)
 	copy(info.externalIPs, service.Spec.ExternalIPs)
 
 	if apiservice.NeedsHealthCheck(service) {
 		p := service.Spec.HealthCheckNodePort
 		if p == 0 {
-			glog.Errorf("Service %q has no healthcheck nodeport", svcPortName.NamespacedName.String())
+			glog.Errorf("Service %q has no healthcheck nodeport", serviceName)
 		} else {
 			info.healthCheckNodePort = int(p)
 		}
 	}
 
-	// Store the following for performance reasons.
-	info.serviceNameString = svcPortName.String()
-
 	return info
 }
 
-func (sm *proxyServiceMap) merge(other proxyServiceMap) sets.String {
-	existingPorts := sets.NewString()
-	for svcPortName, info := range other {
-		existingPorts.Insert(svcPortName.Port)
-		_, exists := (*sm)[svcPortName]
-		if !exists {
-			glog.V(1).Infof("Adding new service port %q at %s:%d/%s", svcPortName, info.clusterIP, info.port, info.protocol)
-		} else {
-			glog.V(1).Infof("Updating existing service port %q at %s:%d/%s", svcPortName, info.clusterIP, info.port, info.protocol)
-		}
-		(*sm)[svcPortName] = info
+func (sm *proxyServiceMap) mergeService(service *api.Service) (bool, sets.String) {
+	if service == nil {
+		return false, nil
 	}
-	return existingPorts
+	svcName := types.NamespacedName{Namespace: service.Namespace, Name: service.Name}
+	if utilproxy.ShouldSkipService(svcName, service) {
+		return false, nil
+	}
+	syncRequired := false
+	existingPorts := sets.NewString()
+	for i := range service.Spec.Ports {
+		servicePort := &service.Spec.Ports[i]
+		serviceName := proxy.ServicePortName{NamespacedName: svcName, Port: servicePort.Name}
+		existingPorts.Insert(servicePort.Name)
+		info := newServiceInfo(serviceName, servicePort, service)
+		oldInfo, exists := (*sm)[serviceName]
+		equal := reflect.DeepEqual(info, oldInfo)
+		if exists {
+			glog.V(1).Infof("Adding new service %q at %s:%d/%s", serviceName, info.clusterIP, servicePort.Port, servicePort.Protocol)
+		} else if !equal {
+			glog.V(1).Infof("Updating existing service %q at %s:%d/%s", serviceName, info.clusterIP, servicePort.Port, servicePort.Protocol)
+		}
+		if !equal {
+			(*sm)[serviceName] = info
+			syncRequired = true
+		}
+	}
+	return syncRequired, existingPorts
 }
 
-func (sm *proxyServiceMap) unmerge(other proxyServiceMap, existingPorts, staleServices sets.String) {
-	for svcPortName := range other {
-		if existingPorts.Has(svcPortName.Port) {
+// <staleServices> are modified by this function with detected stale services.
+func (sm *proxyServiceMap) unmergeService(service *api.Service, existingPorts, staleServices sets.String) bool {
+	if service == nil {
+		return false
+	}
+	svcName := types.NamespacedName{Namespace: service.Namespace, Name: service.Name}
+	if utilproxy.ShouldSkipService(svcName, service) {
+		return false
+	}
+	syncRequired := false
+	for i := range service.Spec.Ports {
+		servicePort := &service.Spec.Ports[i]
+		if existingPorts.Has(servicePort.Name) {
 			continue
 		}
-		info, exists := (*sm)[svcPortName]
+		serviceName := proxy.ServicePortName{NamespacedName: svcName, Port: servicePort.Name}
+		info, exists := (*sm)[serviceName]
 		if exists {
-			glog.V(1).Infof("Removing service port %q", svcPortName)
+			glog.V(1).Infof("Removing service %q", serviceName)
 			if info.protocol == api.ProtocolUDP {
 				staleServices.Insert(info.clusterIP.String())
 			}
-			delete(*sm, svcPortName)
+			delete(*sm, serviceName)
+			syncRequired = true
 		} else {
-			glog.Errorf("Service port %q removed, but doesn't exists", svcPortName)
+			glog.Errorf("Service %q removed, but doesn't exists", serviceName)
 		}
 	}
+	return syncRequired
 }
 
 type serviceChangeMap struct {
-	lock  sync.Mutex
+	sync.Mutex
 	items map[types.NamespacedName]*serviceChange
 }
 
 type serviceChange struct {
-	previous proxyServiceMap
-	current  proxyServiceMap
-}
-
-type updateEndpointMapResult struct {
-	hcEndpoints       map[types.NamespacedName]int
-	staleEndpoints    map[endpointServicePair]bool
-	staleServiceNames map[proxy.ServicePortName]bool
-}
-
-type updateServiceMapResult struct {
-	hcServices    map[types.NamespacedName]uint16
-	staleServices sets.String
+	previous *api.Service
+	current  *api.Service
 }
 
 func newServiceChangeMap() serviceChangeMap {
@@ -424,42 +439,17 @@ func newServiceChangeMap() serviceChangeMap {
 	}
 }
 
-func (scm *serviceChangeMap) update(namespacedName *types.NamespacedName, previous, current *api.Service) bool {
-	scm.lock.Lock()
-	defer scm.lock.Unlock()
+func (scm *serviceChangeMap) update(namespacedName *types.NamespacedName, previous, current *api.Service) {
+	scm.Lock()
+	defer scm.Unlock()
 
 	change, exists := scm.items[*namespacedName]
 	if !exists {
 		change = &serviceChange{}
-		change.previous = serviceToServiceMap(previous)
+		change.previous = previous
 		scm.items[*namespacedName] = change
 	}
-	change.current = serviceToServiceMap(current)
-	if reflect.DeepEqual(change.previous, change.current) {
-		delete(scm.items, *namespacedName)
-	}
-	return len(scm.items) > 0
-}
-
-// Translates single Service object to proxyServiceMap.
-//
-// NOTE: service object should NOT be modified.
-func serviceToServiceMap(service *api.Service) proxyServiceMap {
-	if service == nil {
-		return nil
-	}
-	svcName := types.NamespacedName{Namespace: service.Namespace, Name: service.Name}
-	if utilproxy.ShouldSkipService(svcName, service) {
-		return nil
-	}
-
-	serviceMap := make(proxyServiceMap)
-	for i := range service.Spec.Ports {
-		servicePort := &service.Spec.Ports[i]
-		svcPortName := proxy.ServicePortName{NamespacedName: svcName, Port: servicePort.Name}
-		serviceMap[svcPortName] = newServiceInfo(svcPortName, servicePort, service)
-	}
-	return serviceMap
+	change.current = current
 }
 
 // internal struct for endpoints information
@@ -472,11 +462,6 @@ func (e *endpointsInfo) String() string {
 	return fmt.Sprintf("%v", *e)
 }
 
-// IPPart returns just the IP part of the endpoint.
-func (e *endpointsInfo) IPPart() string {
-	return utilproxy.IPPart(e.endpoint)
-}
-
 type endpointServicePair struct {
 	endpoint        string
 	servicePortName proxy.ServicePortName
@@ -485,38 +470,31 @@ type endpointServicePair struct {
 type proxyEndpointsMap map[proxy.ServicePortName][]*endpointsInfo
 
 type endpointsChange struct {
-	previous proxyEndpointsMap
-	current  proxyEndpointsMap
+	previous *api.Endpoints
+	current  *api.Endpoints
 }
 
 type endpointsChangeMap struct {
-	lock     sync.Mutex
-	hostname string
-	items    map[types.NamespacedName]*endpointsChange
+	sync.Mutex
+	items map[types.NamespacedName]*endpointsChange
 }
 
-// <staleEndpoints> and <staleServices> are modified by this function with detected stale connections.
-func detectStaleConnections(oldEndpointsMap, newEndpointsMap proxyEndpointsMap, staleEndpoints map[endpointServicePair]bool, staleServiceNames map[proxy.ServicePortName]bool) {
-	for svcPortName, epList := range oldEndpointsMap {
+// <staleEndpoints> are modified by this function with detected stale
+// connections.
+func detectStaleConnections(oldEndpointsMap, newEndpointsMap proxyEndpointsMap, staleEndpoints map[endpointServicePair]bool) {
+	for svcPort, epList := range oldEndpointsMap {
 		for _, ep := range epList {
 			stale := true
-			for i := range newEndpointsMap[svcPortName] {
-				if *newEndpointsMap[svcPortName][i] == *ep {
+			for i := range newEndpointsMap[svcPort] {
+				if *newEndpointsMap[svcPort][i] == *ep {
 					stale = false
 					break
 				}
 			}
 			if stale {
-				glog.V(4).Infof("Stale endpoint %v -> %v", svcPortName, ep.endpoint)
-				staleEndpoints[endpointServicePair{endpoint: ep.endpoint, servicePortName: svcPortName}] = true
+				glog.V(4).Infof("Stale endpoint %v -> %v", svcPort, ep.endpoint)
+				staleEndpoints[endpointServicePair{endpoint: ep.endpoint, servicePortName: svcPort}] = true
 			}
-		}
-	}
-
-	for svcPortName, epList := range newEndpointsMap {
-		// For udp service, if its backend changes from 0 to non-0. There may exist a conntrack entry that could blackhole traffic to the service.
-		if len(epList) > 0 && len(oldEndpointsMap[svcPortName]) == 0 {
-			staleServiceNames[svcPortName] = true
 		}
 	}
 }
@@ -526,20 +504,20 @@ func detectStaleConnections(oldEndpointsMap, newEndpointsMap proxyEndpointsMap, 
 func updateEndpointsMap(
 	endpointsMap proxyEndpointsMap,
 	changes *endpointsChangeMap,
-	hostname string) (result updateEndpointMapResult) {
-	result.staleEndpoints = make(map[endpointServicePair]bool)
-	result.staleServiceNames = make(map[proxy.ServicePortName]bool)
-
-	func() {
-		changes.lock.Lock()
-		defer changes.lock.Unlock()
-		for _, change := range changes.items {
-			endpointsMap.unmerge(change.previous)
-			endpointsMap.merge(change.current)
-			detectStaleConnections(change.previous, change.current, result.staleEndpoints, result.staleServiceNames)
+	hostname string) (syncRequired bool, hcEndpoints map[types.NamespacedName]int, staleSet map[endpointServicePair]bool) {
+	syncRequired = false
+	staleSet = make(map[endpointServicePair]bool)
+	for _, change := range changes.items {
+		oldEndpointsMap := endpointsToEndpointsMap(change.previous, hostname)
+		newEndpointsMap := endpointsToEndpointsMap(change.current, hostname)
+		if !reflect.DeepEqual(oldEndpointsMap, newEndpointsMap) {
+			endpointsMap.unmerge(oldEndpointsMap)
+			endpointsMap.merge(newEndpointsMap)
+			detectStaleConnections(oldEndpointsMap, newEndpointsMap, staleSet)
+			syncRequired = true
 		}
-		changes.items = make(map[types.NamespacedName]*endpointsChange)
-	}()
+	}
+	changes.items = make(map[types.NamespacedName]*endpointsChange)
 
 	if !utilfeature.DefaultFeatureGate.Enabled(features.ExternalTrafficLocalOnly) {
 		return
@@ -547,13 +525,13 @@ func updateEndpointsMap(
 
 	// TODO: If this will appear to be computationally expensive, consider
 	// computing this incrementally similarly to endpointsMap.
-	result.hcEndpoints = make(map[types.NamespacedName]int)
+	hcEndpoints = make(map[types.NamespacedName]int)
 	localIPs := getLocalIPs(endpointsMap)
 	for nsn, ips := range localIPs {
-		result.hcEndpoints[nsn] = len(ips)
+		hcEndpoints[nsn] = len(ips)
 	}
 
-	return result
+	return syncRequired, hcEndpoints, staleSet
 }
 
 // Translates single Endpoints object to proxyEndpointsMap.
@@ -604,28 +582,23 @@ func endpointsToEndpointsMap(endpoints *api.Endpoints, hostname string) proxyEnd
 	return endpointsMap
 }
 
-func newEndpointsChangeMap(hostname string) endpointsChangeMap {
+func newEndpointsChangeMap() endpointsChangeMap {
 	return endpointsChangeMap{
-		hostname: hostname,
-		items:    make(map[types.NamespacedName]*endpointsChange),
+		items: make(map[types.NamespacedName]*endpointsChange),
 	}
 }
 
-func (ecm *endpointsChangeMap) update(namespacedName *types.NamespacedName, previous, current *api.Endpoints) bool {
-	ecm.lock.Lock()
-	defer ecm.lock.Unlock()
+func (ecm *endpointsChangeMap) Update(namespacedName *types.NamespacedName, previous, current *api.Endpoints) {
+	ecm.Lock()
+	defer ecm.Unlock()
 
 	change, exists := ecm.items[*namespacedName]
 	if !exists {
 		change = &endpointsChange{}
-		change.previous = endpointsToEndpointsMap(previous, ecm.hostname)
+		change.previous = previous
 		ecm.items[*namespacedName] = change
 	}
-	change.current = endpointsToEndpointsMap(current, ecm.hostname)
-	if reflect.DeepEqual(change.previous, change.current) {
-		delete(ecm.items, *namespacedName)
-	}
-	return len(ecm.items) > 0
+	change.current = current
 }
 
 func (em proxyEndpointsMap) merge(other proxyEndpointsMap) {
@@ -641,19 +614,10 @@ func (em proxyEndpointsMap) unmerge(other proxyEndpointsMap) {
 }
 
 // CanUseIPVSProxier returns true if we can use the ipvs Proxier.
-// This is determined by checking if all the required kernel modules can be loaded. It may
+// This is determined by checking if all the required kernel modules are loaded. It may
 // return an error if it fails to get the kernel modules information without error, in which
 // case it will also return false.
 func CanUseIPVSProxier() (bool, error) {
-	// Try to load IPVS required kernel modules using modprobe
-	for _, kmod := range ipvsModules {
-		err := utilexec.New().Command("modprobe", "--", kmod).Run()
-		if err != nil {
-			glog.Warningf("Failed to load kernel module %v with modprobe. "+
-				"You can ignore this message when kube-proxy is running inside container without mounting /lib/modules", kmod)
-		}
-	}
-
 	// Find out loaded kernel modules
 	out, err := utilexec.New().Command("cut", "-f1", "-d", " ", "/proc/modules").CombinedOutput()
 	if err != nil {
@@ -665,9 +629,9 @@ func CanUseIPVSProxier() (bool, error) {
 	loadModules := sets.NewString()
 	wantModules.Insert(ipvsModules...)
 	loadModules.Insert(mods...)
-	modules := wantModules.Difference(loadModules).UnsortedList()
+	modules := wantModules.Difference(loadModules).List()
 	if len(modules) != 0 {
-		return false, fmt.Errorf("IPVS proxier will not be used because the following required kernel modules are not loaded: %v", modules)
+		return false, fmt.Errorf("Failed to load kernel modules: %v", modules)
 	}
 	return true, nil
 }
@@ -740,7 +704,7 @@ func cleanupIptablesLeftovers(ipt utiliptables.Interface) (encounteredError bool
 }
 
 // CleanupLeftovers clean up all ipvs and iptables rules created by ipvs Proxier.
-func CleanupLeftovers(ipvs utilipvs.Interface, ipt utiliptables.Interface) (encounteredError bool) {
+func CleanupLeftovers(execer utilexec.Interface, ipvs utilipvs.Interface, ipt utiliptables.Interface) (encounteredError bool) {
 	// Return immediately when ipvs interface is nil - Probably initialization failed in somewhere.
 	if ipvs == nil {
 		return true
@@ -753,8 +717,7 @@ func CleanupLeftovers(ipvs utilipvs.Interface, ipt utiliptables.Interface) (enco
 		encounteredError = true
 	}
 	// Delete dummy interface created by ipvs Proxier.
-	nl := NewNetLinkHandle()
-	err = nl.DeleteDummyDevice(DefaultDummyDevice)
+	err = deleteDummyDevice(execer, DefaultDummyDevice)
 	if err != nil {
 		encounteredError = true
 	}
@@ -763,89 +726,81 @@ func CleanupLeftovers(ipvs utilipvs.Interface, ipt utiliptables.Interface) (enco
 	return encounteredError
 }
 
-// Sync is called to synchronize the proxier state to iptables and ipvs as soon as possible.
+// Sync is called to immediately synchronize the proxier state to iptables
 func (proxier *Proxier) Sync() {
-	proxier.syncRunner.Run()
+	proxier.syncProxyRules(syncReasonForce)
 }
 
 // SyncLoop runs periodic work.  This is expected to run as a goroutine or as the main loop of the app.  It does not return.
 func (proxier *Proxier) SyncLoop() {
+	t := time.NewTicker(proxier.syncPeriod)
+	defer t.Stop()
 	// Update healthz timestamp at beginning in case Sync() never succeeds.
 	if proxier.healthzServer != nil {
 		proxier.healthzServer.UpdateTimestamp()
 	}
-	proxier.syncRunner.Loop(wait.NeverStop)
-}
-
-func (proxier *Proxier) setInitialized(value bool) {
-	var initialized int32
-	if value {
-		initialized = 1
+	for {
+		<-t.C
+		glog.V(6).Infof("Periodic sync")
+		proxier.Sync()
 	}
-	atomic.StoreInt32(&proxier.initialized, initialized)
-}
-
-func (proxier *Proxier) isInitialized() bool {
-	return atomic.LoadInt32(&proxier.initialized) > 0
 }
 
 // OnServiceAdd is called whenever creation of new service object is observed.
 func (proxier *Proxier) OnServiceAdd(service *api.Service) {
 	namespacedName := types.NamespacedName{Namespace: service.Namespace, Name: service.Name}
-	if proxier.serviceChanges.update(&namespacedName, nil, service) && proxier.isInitialized() {
-		proxier.syncRunner.Run()
-	}
+	proxier.serviceChanges.update(&namespacedName, nil, service)
+
+	proxier.syncProxyRules(syncReasonServices)
 }
 
 // OnServiceUpdate is called whenever modification of an existing service object is observed.
 func (proxier *Proxier) OnServiceUpdate(oldService, service *api.Service) {
 	namespacedName := types.NamespacedName{Namespace: service.Namespace, Name: service.Name}
-	if proxier.serviceChanges.update(&namespacedName, oldService, service) && proxier.isInitialized() {
-		proxier.syncRunner.Run()
-	}
+	proxier.serviceChanges.update(&namespacedName, oldService, service)
+
+	proxier.syncProxyRules(syncReasonServices)
 }
 
 // OnServiceDelete is called whenever deletion of an existing service object is observed.
 func (proxier *Proxier) OnServiceDelete(service *api.Service) {
 	namespacedName := types.NamespacedName{Namespace: service.Namespace, Name: service.Name}
-	if proxier.serviceChanges.update(&namespacedName, service, nil) && proxier.isInitialized() {
-		proxier.syncRunner.Run()
-	}
+	proxier.serviceChanges.update(&namespacedName, service, nil)
+
+	proxier.syncProxyRules(syncReasonServices)
 }
 
 // OnServiceSynced is called once all the initial even handlers were called and the state is fully propagated to local cache.
 func (proxier *Proxier) OnServiceSynced() {
 	proxier.mu.Lock()
 	proxier.servicesSynced = true
-	proxier.setInitialized(proxier.servicesSynced && proxier.endpointsSynced)
 	proxier.mu.Unlock()
 
-	// Sync unconditionally - this is called once per lifetime.
-	proxier.syncProxyRules()
+	proxier.syncProxyRules(syncReasonServices)
 }
 
 // OnEndpointsAdd is called whenever creation of new endpoints object is observed.
 func (proxier *Proxier) OnEndpointsAdd(endpoints *api.Endpoints) {
 	namespacedName := types.NamespacedName{Namespace: endpoints.Namespace, Name: endpoints.Name}
-	if proxier.endpointsChanges.update(&namespacedName, nil, endpoints) && proxier.isInitialized() {
-		proxier.syncRunner.Run()
-	}
+	proxier.endpointsChanges.Update(&namespacedName, nil, endpoints)
+
+	proxier.syncProxyRules(syncReasonEndpoints)
 }
 
 // OnEndpointsUpdate is called whenever modification of an existing endpoints object is observed.
 func (proxier *Proxier) OnEndpointsUpdate(oldEndpoints, endpoints *api.Endpoints) {
 	namespacedName := types.NamespacedName{Namespace: endpoints.Namespace, Name: endpoints.Name}
-	if proxier.endpointsChanges.update(&namespacedName, oldEndpoints, endpoints) && proxier.isInitialized() {
-		proxier.syncRunner.Run()
-	}
+	proxier.endpointsChanges.Update(&namespacedName, oldEndpoints, endpoints)
+
+	proxier.syncProxyRules(syncReasonEndpoints)
 }
 
 // OnEndpointsDelete is called whenever deletion of an existing endpoints object is observed.
 func (proxier *Proxier) OnEndpointsDelete(endpoints *api.Endpoints) {
 	namespacedName := types.NamespacedName{Namespace: endpoints.Namespace, Name: endpoints.Name}
-	if proxier.endpointsChanges.update(&namespacedName, endpoints, nil) && proxier.isInitialized() {
-		proxier.syncRunner.Run()
-	}
+	proxier.endpointsChanges.Update(&namespacedName, endpoints, nil)
+
+	proxier.syncProxyRules(syncReasonEndpoints)
 }
 
 // OnEndpointsSynced is called once all the initial event handlers were called and the state is fully propagated to local cache.
@@ -854,19 +809,27 @@ func (proxier *Proxier) OnEndpointsSynced() {
 	proxier.endpointsSynced = true
 	proxier.mu.Unlock()
 
-	proxier.syncProxyRules()
+	proxier.syncProxyRules(syncReasonEndpoints)
 }
+
+type syncReason string
+
+const syncReasonServices syncReason = "ServicesUpdate"
+const syncReasonEndpoints syncReason = "EndpointsUpdate"
+const syncReasonForce syncReason = "Force"
 
 // This is where all of the ipvs calls happen.
 // assumes proxier.mu is held
-func (proxier *Proxier) syncProxyRules() {
+func (proxier *Proxier) syncProxyRules(reason syncReason) {
 	proxier.mu.Lock()
 	defer proxier.mu.Unlock()
 
+	if proxier.throttle != nil {
+		proxier.throttle.Accept()
+	}
 	start := time.Now()
 	defer func() {
-		metrics.SyncProxyRulesLatency.Observe(metrics.SinceInMicroseconds(start))
-		glog.V(4).Infof("syncProxyRules took %v", time.Since(start))
+		glog.V(4).Infof("syncProxyRules(%s) took %v", reason, time.Since(start))
 	}()
 	// don't sync rules till we've received services and endpoints
 	if !proxier.endpointsSynced || !proxier.servicesSynced {
@@ -874,21 +837,27 @@ func (proxier *Proxier) syncProxyRules() {
 		return
 	}
 
-	// We assume that if this was called, we really want to sync them,
-	// even if nothing changed in the meantime. In other words, callers are
-	// responsible for detecting no-op changes and not calling this function.
-	serviceUpdateResult := updateServiceMap(
+	// Figure out the new services we need to activate.
+	proxier.serviceChanges.Lock()
+	serviceSyncRequired, hcServices, staleServices := updateServiceMap(
 		proxier.serviceMap, &proxier.serviceChanges)
-	endpointUpdateResult := updateEndpointsMap(
-		proxier.endpointsMap, &proxier.endpointsChanges, proxier.hostname)
+	proxier.serviceChanges.Unlock()
 
-	staleServices := serviceUpdateResult.staleServices
-	// merge stale services gathered from updateEndpointsMap
-	for svcPortName := range endpointUpdateResult.staleServiceNames {
-		if svcInfo, ok := proxier.serviceMap[svcPortName]; ok && svcInfo != nil && svcInfo.protocol == api.ProtocolUDP {
-			glog.V(2).Infof("Stale udp service %v -> %s", svcPortName, svcInfo.clusterIP.String())
-			staleServices.Insert(svcInfo.clusterIP.String())
-		}
+	// If this was called because of a services update, but nothing actionable has changed, skip it.
+	if reason == syncReasonServices && !serviceSyncRequired {
+		glog.V(3).Infof("Skipping ipvs sync because nothing changed")
+		return
+	}
+
+	proxier.endpointsChanges.Lock()
+	endpointsSyncRequired, hcEndpoints, staleEndpoints := updateEndpointsMap(
+		proxier.endpointsMap, &proxier.endpointsChanges, proxier.hostname)
+	proxier.endpointsChanges.Unlock()
+
+	// If this was called because of an endpoints update, but nothing actionable has changed, skip it.
+	if reason == syncReasonEndpoints && !endpointsSyncRequired {
+		glog.V(3).Infof("Skipping ipvs sync because nothing changed")
+		return
 	}
 
 	glog.V(3).Infof("Syncing ipvs Proxier rules")
@@ -943,7 +912,7 @@ func (proxier *Proxier) syncProxyRules() {
 	// End install iptables
 
 	// make sure dummy interface exists in the system where ipvs Proxier will bind service address on it
-	_, err = proxier.netlinkHandle.EnsureDummyDevice(DefaultDummyDevice)
+	_, err = ensureDummyDevice(proxier.exec, DefaultDummyDevice)
 	if err != nil {
 		glog.Errorf("Failed to create dummy interface: %s, error: %v", DefaultDummyDevice, err)
 		return
@@ -983,6 +952,7 @@ func (proxier *Proxier) syncProxyRules() {
 			Scheduler: proxier.ipvsScheduler,
 		}
 		// Set session affinity flag and timeout for IPVS service
+		var flags utilipvs.ServiceFlags
 		if svcInfo.sessionAffinityType == api.ServiceAffinityClientIP {
 			serv.Flags |= utilipvs.FlagPersistent
 			serv.Timeout = uint32(svcInfo.stickyMaxAgeSeconds)
@@ -1001,7 +971,7 @@ func (proxier *Proxier) syncProxyRules() {
 			"-A", string(kubeServicesChain),
 			"-m", "comment", "--comment", fmt.Sprintf(`"%s cluster IP"`, svcNameString),
 			"-m", protocol, "-p", protocol,
-			"-d", utilproxy.ToCIDR(svcInfo.clusterIP),
+			"-d", fmt.Sprintf("%s/32", svcInfo.clusterIP.String()),
 			"--dport", strconv.Itoa(svcInfo.port),
 		)
 		if proxier.masqueradeAll {
@@ -1060,10 +1030,10 @@ func (proxier *Proxier) syncProxyRules() {
 				Address:   net.ParseIP(externalIP),
 				Port:      uint16(svcInfo.port),
 				Protocol:  string(svcInfo.protocol),
+				Flags:     flags,
 				Scheduler: proxier.ipvsScheduler,
 			}
 			if svcInfo.sessionAffinityType == api.ServiceAffinityClientIP {
-				serv.Flags |= utilipvs.FlagPersistent
 				serv.Timeout = uint32(svcInfo.stickyMaxAgeSeconds)
 			}
 			// There is no need to bind externalIP to dummy interface, so set parameter `bindAddr` to `false`.
@@ -1092,7 +1062,7 @@ func (proxier *Proxier) syncProxyRules() {
 						"-A", string(kubeServicesChain),
 						"-m", "comment", "--comment", fmt.Sprintf(`"%s loadbalancer IP"`, svcNameString),
 						"-m", string(svcInfo.protocol), "-p", string(svcInfo.protocol),
-						"-d", utilproxy.ToCIDR(net.ParseIP(ingress.IP)),
+						"-d", fmt.Sprintf("%s/32", ingress.IP),
 						"--dport", fmt.Sprintf("%d", svcInfo.port),
 					)
 
@@ -1109,7 +1079,7 @@ func (proxier *Proxier) syncProxyRules() {
 					// loadbalancer's backend hosts. In this case, request will not hit the loadbalancer but loop back directly.
 					// Need to add the following rule to allow request on host.
 					if allowFromNode {
-						writeLine(proxier.natRules, append(args, "-s", utilproxy.ToCIDR(net.ParseIP(ingress.IP)), "-j", "ACCEPT")...)
+						writeLine(proxier.natRules, append(args, "-s", fmt.Sprintf("%s/32", ingress.IP), "-j", "ACCEPT")...)
 					}
 
 					// If the packet was able to reach the end of firewall chain, then it did not get DNATed.
@@ -1121,10 +1091,10 @@ func (proxier *Proxier) syncProxyRules() {
 					Address:   net.ParseIP(ingress.IP),
 					Port:      uint16(svcInfo.port),
 					Protocol:  string(svcInfo.protocol),
+					Flags:     flags,
 					Scheduler: proxier.ipvsScheduler,
 				}
 				if svcInfo.sessionAffinityType == api.ServiceAffinityClientIP {
-					serv.Flags |= utilipvs.FlagPersistent
 					serv.Timeout = uint32(svcInfo.stickyMaxAgeSeconds)
 				}
 				// There is no need to bind LB ingress.IP to dummy interface, so set parameter `bindAddr` to `false`.
@@ -1156,8 +1126,7 @@ func (proxier *Proxier) syncProxyRules() {
 					continue
 				}
 				if lp.Protocol == "udp" {
-					isIPv6 := utilproxy.IsIPv6(svcInfo.clusterIP)
-					utilproxy.ClearUDPConntrackForPort(proxier.exec, lp.Port, isIPv6)
+					utilproxy.ClearUDPConntrackForPort(proxier.exec, lp.Port)
 				}
 				replacementPortsMap[lp] = socket
 			} // We're holding the port, so it's OK to install ipvs rules.
@@ -1172,10 +1141,10 @@ func (proxier *Proxier) syncProxyRules() {
 						Address:   nodeIP,
 						Port:      uint16(svcInfo.nodePort),
 						Protocol:  string(svcInfo.protocol),
+						Flags:     flags,
 						Scheduler: proxier.ipvsScheduler,
 					}
 					if svcInfo.sessionAffinityType == api.ServiceAffinityClientIP {
-						serv.Flags |= utilipvs.FlagPersistent
 						serv.Timeout = uint32(svcInfo.stickyMaxAgeSeconds)
 					}
 					// There is no need to bind Node IP to dummy interface, so set parameter `bindAddr` to `false`.
@@ -1197,14 +1166,13 @@ func (proxier *Proxier) syncProxyRules() {
 
 	// Sync iptables rules.
 	// NOTE: NoFlushTables is used so we don't flush non-kubernetes chains in the table.
-	proxier.iptablesData.Reset()
-	proxier.iptablesData.Write(proxier.natChains.Bytes())
-	proxier.iptablesData.Write(proxier.natRules.Bytes())
+	natLines := append(proxier.natChains.Bytes(), proxier.natRules.Bytes()...)
+	lines := natLines
 
-	glog.V(5).Infof("Restoring iptables rules: %s", proxier.iptablesData.Bytes())
-	err = proxier.iptables.RestoreAll(proxier.iptablesData.Bytes(), utiliptables.NoFlushTables, utiliptables.RestoreCounters)
+	glog.V(3).Infof("Restoring iptables rules: %s", lines)
+	err = proxier.iptables.RestoreAll(lines, utiliptables.NoFlushTables, utiliptables.RestoreCounters)
 	if err != nil {
-		glog.Errorf("Failed to execute iptables-restore: %v\nRules:\n%s", err, proxier.iptablesData.Bytes())
+		glog.Errorf("Failed to execute iptables-restore: %v\nRules:\n%s", err, lines)
 		// Revert new local ports.
 		utilproxy.RevertPorts(replacementPortsMap, proxier.portsMap)
 		return
@@ -1229,29 +1197,29 @@ func (proxier *Proxier) syncProxyRules() {
 	}
 	proxier.cleanLegacyService(activeIPVSServices, currentIPVSServices)
 
-	// Update healthz timestamp
-	if proxier.healthzServer != nil {
+	// Update healthz timestamp if it is periodic sync.
+	if proxier.healthzServer != nil && reason == syncReasonForce {
 		proxier.healthzServer.UpdateTimestamp()
 	}
 
 	// Update healthchecks.  The endpoints list might include services that are
 	// not "OnlyLocal", but the services list will not, and the healthChecker
 	// will just drop those endpoints.
-	if err := proxier.healthChecker.SyncServices(serviceUpdateResult.hcServices); err != nil {
+	if err := proxier.healthChecker.SyncServices(hcServices); err != nil {
 		glog.Errorf("Error syncing healtcheck services: %v", err)
 	}
-	if err := proxier.healthChecker.SyncEndpoints(endpointUpdateResult.hcEndpoints); err != nil {
+	if err := proxier.healthChecker.SyncEndpoints(hcEndpoints); err != nil {
 		glog.Errorf("Error syncing healthcheck endpoints: %v", err)
 	}
 
 	// Finish housekeeping.
 	// TODO: these could be made more consistent.
-	for _, svcIP := range staleServices.UnsortedList() {
+	for _, svcIP := range staleServices.List() {
 		if err := utilproxy.ClearUDPConntrackForIP(proxier.exec, svcIP); err != nil {
 			glog.Errorf("Failed to delete stale service IP %s connections, error: %v", svcIP, err)
 		}
 	}
-	proxier.deleteEndpointConnections(endpointUpdateResult.staleEndpoints)
+	proxier.deleteEndpointConnections(staleEndpoints)
 }
 
 // After a UDP endpoint has been removed, we must flush any pending conntrack entries to it, or else we
@@ -1260,7 +1228,7 @@ func (proxier *Proxier) syncProxyRules() {
 func (proxier *Proxier) deleteEndpointConnections(connectionMap map[endpointServicePair]bool) {
 	for epSvcPair := range connectionMap {
 		if svcInfo, ok := proxier.serviceMap[epSvcPair.servicePortName]; ok && svcInfo.protocol == api.ProtocolUDP {
-			endpointIP := utilproxy.IPPart(epSvcPair.endpoint)
+			endpointIP := epSvcPair.endpoint[0:strings.Index(epSvcPair.endpoint, ":")]
 			err := utilproxy.ClearUDPConntrackForPeers(proxier.exec, svcInfo.clusterIP.String(), endpointIP)
 			if err != nil {
 				glog.Errorf("Failed to delete %s endpoint connections, error: %v", epSvcPair.servicePortName.String(), err)
@@ -1293,7 +1261,7 @@ func (proxier *Proxier) syncService(svcName string, vs *utilipvs.VirtualServer, 
 	// bind service address to dummy interface even if service not changed,
 	// in case that service IP was removed by other processes
 	if bindAddr {
-		_, err := proxier.netlinkHandle.EnsureAddressBind(vs.Address.String(), DefaultDummyDevice)
+		_, err := proxier.ipvs.EnsureVirtualServerAddressBind(vs, DefaultDummyDevice)
 		if err != nil {
 			glog.Errorf("Failed to bind service address to dummy device %q: %v", svcName, err)
 			return err
@@ -1331,7 +1299,7 @@ func (proxier *Proxier) syncEndpoint(svcPortName proxy.ServicePortName, onlyNode
 
 	if !curEndpoints.Equal(newEndpoints) {
 		// Create new endpoints
-		for _, ep := range newEndpoints.Difference(curEndpoints).UnsortedList() {
+		for _, ep := range newEndpoints.Difference(curEndpoints).List() {
 			ip, port, err := net.SplitHostPort(ep)
 			if err != nil {
 				glog.Errorf("Failed to parse endpoint: %v, error: %v", ep, err)
@@ -1355,7 +1323,7 @@ func (proxier *Proxier) syncEndpoint(svcPortName proxy.ServicePortName, onlyNode
 			}
 		}
 		// Delete old endpoints
-		for _, ep := range curEndpoints.Difference(newEndpoints).UnsortedList() {
+		for _, ep := range curEndpoints.Difference(newEndpoints).List() {
 			ip, port, err := net.SplitHostPort(ep)
 			if err != nil {
 				glog.Errorf("Failed to parse endpoint: %v, error: %v", ep, err)
@@ -1382,7 +1350,6 @@ func (proxier *Proxier) syncEndpoint(svcPortName proxy.ServicePortName, onlyNode
 }
 
 func (proxier *Proxier) cleanLegacyService(atciveServices map[string]bool, currentServices map[string]*utilipvs.VirtualServer) {
-	unbindIPAddr := sets.NewString()
 	for cS := range currentServices {
 		if !atciveServices[cS] {
 			svc := currentServices[cS]
@@ -1390,14 +1357,10 @@ func (proxier *Proxier) cleanLegacyService(atciveServices map[string]bool, curre
 			if err != nil {
 				glog.Errorf("Failed to delete service, error: %v", err)
 			}
-			unbindIPAddr.Insert(svc.Address.String())
-		}
-	}
-
-	for _, addr := range unbindIPAddr.UnsortedList() {
-		err := proxier.netlinkHandle.UnbindAddress(addr, DefaultDummyDevice)
-		if err != nil {
-			glog.Errorf("Failed to unbind service from dummy interface, error: %v", err)
+			err = proxier.ipvs.UnbindVirtualServerAddress(svc, DefaultDummyDevice)
+			if err != nil {
+				glog.Errorf("Failed to unbind service from dummy interface, error: %v", err)
+			}
 		}
 	}
 }
@@ -1445,31 +1408,20 @@ func (proxier *Proxier) linkKubeServiceChain(existingNATChains map[utiliptables.
 
 // Join all words with spaces, terminate with newline and write to buff.
 func writeLine(buf *bytes.Buffer, words ...string) {
-	// We avoid strings.Join for performance reasons.
-	for i := range words {
-		buf.WriteString(words[i])
-		if i < len(words)-1 {
-			buf.WriteByte(' ')
-		} else {
-			buf.WriteByte('\n')
-		}
-	}
+	buf.WriteString(strings.Join(words, " ") + "\n")
 }
 
 func getLocalIPs(endpointsMap proxyEndpointsMap) map[types.NamespacedName]sets.String {
 	localIPs := make(map[types.NamespacedName]sets.String)
-	for svcPortName := range endpointsMap {
-		for _, ep := range endpointsMap[svcPortName] {
+	for svcPort := range endpointsMap {
+		for _, ep := range endpointsMap[svcPort] {
 			if ep.isLocal {
-				// If the endpoint has a bad format, utilproxy.IPPart() will log an
-				// error and ep.IPPart() will return a null string.
-				if ip := ep.IPPart(); ip != "" {
-					nsn := svcPortName.NamespacedName
-					if localIPs[nsn] == nil {
-						localIPs[nsn] = sets.NewString()
-					}
-					localIPs[nsn].Insert(ip)
+				nsn := svcPort.NamespacedName
+				if localIPs[nsn] == nil {
+					localIPs[nsn] = sets.NewString()
 				}
+				ip := strings.Split(ep.endpoint, ":")[0] // just the IP part
+				localIPs[nsn].Insert(ip)
 			}
 		}
 	}
@@ -1520,6 +1472,32 @@ func openLocalPort(lp *utilproxy.LocalPort) (utilproxy.Closeable, error) {
 	}
 	glog.V(2).Infof("Opened local port %s", lp.String())
 	return socket, nil
+}
+
+const cmdIP = "ip"
+
+func ensureDummyDevice(execer utilexec.Interface, dummyDev string) (exist bool, err error) {
+	args := []string{"link", "add", dummyDev, "type", "dummy"}
+	out, err := execer.Command(cmdIP, args...).CombinedOutput()
+	if err != nil {
+		// "exit status code 2" will be returned if the device already exists
+		if ee, ok := err.(utilexec.ExitError); ok {
+			if ee.Exited() && ee.ExitStatus() == 2 {
+				return true, nil
+			}
+		}
+		return false, fmt.Errorf("error creating dummy interface %q: %v: %s", dummyDev, err, out)
+	}
+	return false, nil
+}
+
+func deleteDummyDevice(execer utilexec.Interface, dummyDev string) error {
+	args := []string{"link", "del", dummyDev}
+	out, err := execer.Command(cmdIP, args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error deleting dummy interface %q: %v: %s", dummyDev, err, out)
+	}
+	return nil
 }
 
 // ipvs Proxier fall back on iptables when it needs to do SNAT for engress packets

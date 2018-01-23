@@ -23,9 +23,9 @@ import (
 	"reflect"
 	"testing"
 
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utiltesting "k8s.io/client-go/util/testing"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 var rsaCertPEM = `-----BEGIN CERTIFICATE-----
@@ -124,7 +124,7 @@ func TestSecretForTLSGenerate(t *testing.T) {
 
 	tests := map[string]struct {
 		params    map[string]interface{}
-		expected  *v1.Secret
+		expected  *api.Secret
 		expectErr bool
 	}{
 		"test-valid-tls-secret": {
@@ -133,15 +133,15 @@ func TestSecretForTLSGenerate(t *testing.T) {
 				"key":  validKeyPath,
 				"cert": validCertPath,
 			},
-			expected: &v1.Secret{
+			expected: &api.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "foo",
 				},
 				Data: map[string][]byte{
-					v1.TLSCertKey:       []byte(rsaCertPEM),
-					v1.TLSPrivateKeyKey: []byte(rsaKeyPEM),
+					api.TLSCertKey:       []byte(rsaCertPEM),
+					api.TLSPrivateKeyKey: []byte(rsaKeyPEM),
 				},
-				Type: v1.SecretTypeTLS,
+				Type: api.SecretTypeTLS,
 			},
 			expectErr: false,
 		},
@@ -152,15 +152,15 @@ func TestSecretForTLSGenerate(t *testing.T) {
 				"cert":        validCertPath,
 				"append-hash": true,
 			},
-			expected: &v1.Secret{
+			expected: &api.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "foo-272h6tt825",
 				},
 				Data: map[string][]byte{
-					v1.TLSCertKey:       []byte(rsaCertPEM),
-					v1.TLSPrivateKeyKey: []byte(rsaKeyPEM),
+					api.TLSCertKey:       []byte(rsaCertPEM),
+					api.TLSPrivateKeyKey: []byte(rsaKeyPEM),
 				},
-				Type: v1.SecretTypeTLS,
+				Type: api.SecretTypeTLS,
 			},
 			expectErr: false,
 		},
@@ -170,15 +170,15 @@ func TestSecretForTLSGenerate(t *testing.T) {
 				"key":  invalidKeyPath,
 				"cert": invalidCertPath,
 			},
-			expected: &v1.Secret{
+			expected: &api.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "foo",
 				},
 				Data: map[string][]byte{
-					v1.TLSCertKey:       []byte("test"),
-					v1.TLSPrivateKeyKey: []byte("test"),
+					api.TLSCertKey:       []byte("test"),
+					api.TLSPrivateKeyKey: []byte("test"),
 				},
-				Type: v1.SecretTypeTLS,
+				Type: api.SecretTypeTLS,
 			},
 			expectErr: true,
 		},
@@ -188,15 +188,15 @@ func TestSecretForTLSGenerate(t *testing.T) {
 				"key":  mismatchKeyPath,
 				"cert": mismatchCertPath,
 			},
-			expected: &v1.Secret{
+			expected: &api.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "foo",
 				},
 				Data: map[string][]byte{
-					v1.TLSCertKey:       []byte(rsaCertPEM),
-					v1.TLSPrivateKeyKey: []byte(mismatchRSAKeyPEM),
+					api.TLSCertKey:       []byte(rsaCertPEM),
+					api.TLSPrivateKeyKey: []byte(mismatchRSAKeyPEM),
 				},
-				Type: v1.SecretTypeTLS,
+				Type: api.SecretTypeTLS,
 			},
 			expectErr: true,
 		},
@@ -218,8 +218,8 @@ func TestSecretForTLSGenerate(t *testing.T) {
 		if test.expectErr && err != nil {
 			continue
 		}
-		if !reflect.DeepEqual(obj.(*v1.Secret), test.expected) {
-			t.Errorf("\nexpected:\n%#v\nsaw:\n%#v", test.expected, obj.(*v1.Secret))
+		if !reflect.DeepEqual(obj.(*api.Secret), test.expected) {
+			t.Errorf("\nexpected:\n%#v\nsaw:\n%#v", test.expected, obj.(*api.Secret))
 		}
 	}
 }

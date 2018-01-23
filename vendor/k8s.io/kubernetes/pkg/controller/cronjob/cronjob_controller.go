@@ -66,16 +66,14 @@ type CronJobController struct {
 	recorder   record.EventRecorder
 }
 
-func NewCronJobController(kubeClient clientset.Interface) (*CronJobController, error) {
+func NewCronJobController(kubeClient clientset.Interface) *CronJobController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
-	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
+	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.Core().RESTClient()).Events("")})
 
 	if kubeClient != nil && kubeClient.CoreV1().RESTClient().GetRateLimiter() != nil {
-		if err := metrics.RegisterMetricAndTrackRateLimiterUsage("cronjob_controller", kubeClient.CoreV1().RESTClient().GetRateLimiter()); err != nil {
-			return nil, err
-		}
+		metrics.RegisterMetricAndTrackRateLimiterUsage("cronjob_controller", kubeClient.Core().RESTClient().GetRateLimiter())
 	}
 
 	jm := &CronJobController{
@@ -86,15 +84,12 @@ func NewCronJobController(kubeClient clientset.Interface) (*CronJobController, e
 		recorder:   eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "cronjob-controller"}),
 	}
 
-	return jm, nil
+	return jm
 }
 
-func NewCronJobControllerFromClient(kubeClient clientset.Interface) (*CronJobController, error) {
-	jm, err := NewCronJobController(kubeClient)
-	if err != nil {
-		return nil, err
-	}
-	return jm, nil
+func NewCronJobControllerFromClient(kubeClient clientset.Interface) *CronJobController {
+	jm := NewCronJobController(kubeClient)
+	return jm
 }
 
 // Run the main goroutine responsible for watching and syncing jobs.

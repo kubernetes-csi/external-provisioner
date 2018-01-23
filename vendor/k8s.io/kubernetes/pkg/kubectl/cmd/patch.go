@@ -34,11 +34,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
-	"k8s.io/kubernetes/pkg/kubectl/scheme"
 	"k8s.io/kubernetes/pkg/kubectl/util/i18n"
 	"k8s.io/kubernetes/pkg/printers"
 )
@@ -57,26 +57,23 @@ type PatchOptions struct {
 
 var (
 	patchLong = templates.LongDesc(i18n.T(`
-		Update field(s) of a resource using strategic merge patch, a JSON merge patch, or a JSON patch.
+		Update field(s) of a resource using strategic merge patch
 
 		JSON and YAML formats are accepted.
 
 		Please refer to the models in https://htmlpreview.github.io/?https://github.com/kubernetes/kubernetes/blob/HEAD/docs/api-reference/v1/definitions.html to find if a field is mutable.`))
 
 	patchExample = templates.Examples(i18n.T(`
-		# Partially update a node using a strategic merge patch. Specify the patch as JSON.
+		# Partially update a node using strategic merge patch
 		kubectl patch node k8s-node-1 -p '{"spec":{"unschedulable":true}}'
 
-		# Partially update a node using a strategic merge patch. Specify the patch as YAML.
-		kubectl patch node k8s-node-1 -p $'spec:\n unschedulable: true'
-
-		# Partially update a node identified by the type and name specified in "node.json" using strategic merge patch.
+		# Partially update a node identified by the type and name specified in "node.json" using strategic merge patch
 		kubectl patch -f node.json -p '{"spec":{"unschedulable":true}}'
 
-		# Update a container's image; spec.containers[*].name is required because it's a merge key.
+		# Update a container's image; spec.containers[*].name is required because it's a merge key
 		kubectl patch pod valid-pod -p '{"spec":{"containers":[{"name":"kubernetes-serve-hostname","image":"new image"}]}}'
 
-		# Update a container's image using a json patch with positional arrays.
+		# Update a container's image using a json patch with positional arrays
 		kubectl patch pod valid-pod --type='json' -p='[{"op": "replace", "path": "/spec/containers/0/image", "value":"new image"}]'`))
 )
 
@@ -153,7 +150,14 @@ func RunPatch(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 		return fmt.Errorf("unable to parse %q: %v", patch, err)
 	}
 
-	r := f.NewUnstructuredBuilder().
+	// TODO: fix --local to work with customresources without making use of the discovery client.
+	// https://github.com/kubernetes/kubernetes/issues/46722
+	builder, err := f.NewUnstructuredBuilder(true)
+	if err != nil {
+		return err
+	}
+
+	r := builder.
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
 		FilenameParam(enforceNamespace, &options.FilenameOptions).
@@ -179,7 +183,6 @@ func RunPatch(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 
 		if !options.Local {
 			dataChangedMsg := "not patched"
-			didPatch := false
 			helper := resource.NewHelper(client, mapping)
 			patchedObj, err := helper.Patch(namespace, name, patchType, patchBytes)
 			if err != nil {
@@ -210,7 +213,6 @@ func RunPatch(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 				return err
 			}
 			if !reflect.DeepEqual(oldData, newData) {
-				didPatch = true
 				dataChangedMsg = "patched"
 			}
 
@@ -220,19 +222,13 @@ func RunPatch(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 			}
 
 			if len(options.OutputFormat) > 0 && options.OutputFormat != "name" {
-				return f.PrintResourceInfoForCommand(cmd, info, out)
+				return cmdutil.PrintResourceInfoForCommand(cmd, info, f, out)
 			}
 			mapper, _, err := f.UnstructuredObject()
 			if err != nil {
 				return err
 			}
 			cmdutil.PrintSuccess(mapper, options.OutputFormat == "name", out, info.Mapping.Resource, info.Name, false, dataChangedMsg)
-
-			// if object was not successfully patched, exit with error code 1
-			if !didPatch {
-				return cmdutil.ErrExit
-			}
-
 			return nil
 		}
 
@@ -243,7 +239,7 @@ func RunPatch(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 			return err
 		}
 
-		originalPatchedObjJS, err := getPatchedJSON(patchType, originalObjJS, patchBytes, mapping.GroupVersionKind, scheme.Scheme)
+		originalPatchedObjJS, err := getPatchedJSON(patchType, originalObjJS, patchBytes, mapping.GroupVersionKind, api.Scheme)
 		if err != nil {
 			return err
 		}
@@ -260,7 +256,7 @@ func RunPatch(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []strin
 		if err := info.Refresh(targetObj, true); err != nil {
 			return err
 		}
-		return f.PrintResourceInfoForCommand(cmd, info, out)
+		return cmdutil.PrintResourceInfoForCommand(cmd, info, f, out)
 	})
 	if err != nil {
 		return err

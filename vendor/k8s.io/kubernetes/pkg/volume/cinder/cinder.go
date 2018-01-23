@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/openstack"
+	"k8s.io/kubernetes/pkg/cloudprovider/providers/rackspace"
 	"k8s.io/kubernetes/pkg/util/keymutex"
 	"k8s.io/kubernetes/pkg/util/mount"
 	kstrings "k8s.io/kubernetes/pkg/util/strings"
@@ -46,7 +47,7 @@ type CinderProvider interface {
 	AttachDisk(instanceID, volumeID string) (string, error)
 	DetachDisk(instanceID, volumeID string) error
 	DeleteVolume(volumeID string) error
-	CreateVolume(name string, size int, vtype, availability string, tags *map[string]string) (string, string, bool, error)
+	CreateVolume(name string, size int, vtype, availability string, tags *map[string]string) (string, string, error)
 	GetDevicePath(volumeID string) string
 	InstanceID() (string, error)
 	GetAttachmentDiskPath(instanceID, volumeID string) (string, error)
@@ -187,6 +188,9 @@ func (plugin *cinderPlugin) newProvisionerInternal(options volume.VolumeOptions,
 }
 
 func getCloudProvider(cloudProvider cloudprovider.Interface) (CinderProvider, error) {
+	if cloud, ok := cloudProvider.(*rackspace.Rackspace); ok && cloud != nil {
+		return cloud, nil
+	}
 	if cloud, ok := cloudProvider.(*openstack.OpenStack); ok && cloud != nil {
 		return cloud, nil
 	}
@@ -201,10 +205,12 @@ func (plugin *cinderPlugin) getCloudProvider() (CinderProvider, error) {
 	}
 
 	switch cloud := cloud.(type) {
+	case *rackspace.Rackspace:
+		return cloud, nil
 	case *openstack.OpenStack:
 		return cloud, nil
 	default:
-		return nil, errors.New("Invalid cloud provider: expected OpenStack.")
+		return nil, errors.New("Invalid cloud provider: expected OpenStack or Rackspace.")
 	}
 }
 

@@ -23,8 +23,7 @@ import (
 	"path/filepath"
 
 	"github.com/golang/glog"
-	utilstore "k8s.io/kubernetes/pkg/kubelet/util/store"
-	utilfs "k8s.io/kubernetes/pkg/util/filesystem"
+	"k8s.io/kubernetes/pkg/kubelet/dockershim/errors"
 	hashutil "k8s.io/kubernetes/pkg/util/hash"
 )
 
@@ -83,11 +82,11 @@ type CheckpointHandler interface {
 
 // PersistentCheckpointHandler is an implementation of CheckpointHandler. It persists checkpoint in CheckpointStore
 type PersistentCheckpointHandler struct {
-	store utilstore.Store
+	store CheckpointStore
 }
 
 func NewPersistentCheckpointHandler(dockershimRootDir string) (CheckpointHandler, error) {
-	fstore, err := utilstore.NewFileStore(filepath.Join(dockershimRootDir, sandboxCheckpointDir), utilfs.DefaultFs{})
+	fstore, err := NewFileStore(filepath.Join(dockershimRootDir, sandboxCheckpointDir))
 	if err != nil {
 		return nil, err
 	}
@@ -112,14 +111,12 @@ func (handler *PersistentCheckpointHandler) GetCheckpoint(podSandboxID string) (
 	//TODO: unmarhsal into a struct with just Version, check version, unmarshal into versioned type.
 	err = json.Unmarshal(blob, &checkpoint)
 	if err != nil {
-		glog.Errorf("Failed to unmarshal checkpoint %q, removing checkpoint. Checkpoint content: %q. ErrMsg: %v", podSandboxID, string(blob), err)
-		handler.RemoveCheckpoint(podSandboxID)
-		return nil, fmt.Errorf("failed to unmarshal checkpoint")
+		glog.Errorf("Failed to unmarshal checkpoint %q. Checkpoint content: %q. ErrMsg: %v", podSandboxID, string(blob), err)
+		return &checkpoint, errors.CorruptCheckpointError
 	}
 	if checkpoint.CheckSum != calculateChecksum(checkpoint) {
-		glog.Errorf("Checksum of checkpoint %q is not valid, removing checkpoint", podSandboxID)
-		handler.RemoveCheckpoint(podSandboxID)
-		return nil, fmt.Errorf("checkpoint is corrupted")
+		glog.Errorf("Checksum of checkpoint %q is not valid", podSandboxID)
+		return &checkpoint, errors.CorruptCheckpointError
 	}
 	return &checkpoint, nil
 }

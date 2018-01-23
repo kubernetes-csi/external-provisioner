@@ -26,22 +26,17 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	appsv1 "k8s.io/api/apps/v1"
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
-	appsv1beta2 "k8s.io/api/apps/v1beta2"
-	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/api/core/v1"
-	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/rest/fake"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
-	"k8s.io/kubernetes/pkg/kubectl/categories"
+	"k8s.io/kubernetes/pkg/apis/apps"
+	"k8s.io/kubernetes/pkg/apis/batch"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
-	"k8s.io/kubernetes/pkg/kubectl/scheme"
 	"k8s.io/kubernetes/pkg/printers"
 )
 
@@ -54,21 +49,22 @@ Example resource specifications include:
    '<resource> <name>'
    '<resource>'`
 
-func TestSetServiceAccountLocal(t *testing.T) {
+func TestServiceAccountLocal(t *testing.T) {
 	inputs := []struct {
 		yaml     string
 		apiGroup string
 	}{
-		{yaml: "../../../../test/fixtures/doc-yaml/user-guide/replication.yaml", apiGroup: ""},
-		{yaml: "../../../../test/fixtures/doc-yaml/admin/daemon.yaml", apiGroup: "extensions"},
-		{yaml: "../../../../test/fixtures/doc-yaml/user-guide/replicaset/redis-slave.yaml", apiGroup: "extensions"},
-		{yaml: "../../../../test/fixtures/doc-yaml/user-guide/job.yaml", apiGroup: "batch"},
-		{yaml: "../../../../test/fixtures/doc-yaml/user-guide/deployment.yaml", apiGroup: "extensions"},
+		{yaml: "../../../../test/fixtures/doc-yaml/user-guide/replication.yaml", apiGroup: api.GroupName},
+		{yaml: "../../../../test/fixtures/doc-yaml/admin/daemon.yaml", apiGroup: extensions.GroupName},
+		{yaml: "../../../../test/fixtures/doc-yaml/user-guide/replicaset/redis-slave.yaml", apiGroup: extensions.GroupName},
+		{yaml: "../../../../test/fixtures/doc-yaml/user-guide/job.yaml", apiGroup: batch.GroupName},
+		{yaml: "../../../../test/fixtures/doc-yaml/user-guide/deployment.yaml", apiGroup: extensions.GroupName},
+		{yaml: "../../../../examples/storage/minio/minio-distributed-statefulset.yaml", apiGroup: apps.GroupName},
 	}
 
 	f, tf, _, _ := cmdtesting.NewAPIFactory()
 	tf.Client = &fake.RESTClient{
-		GroupVersion: schema.GroupVersion{Version: "v1"},
+		APIRegistry: api.Registry,
 		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			t.Fatalf("unexpected request: %s %#v\n%#v", req.Method, req.URL, req)
 			return nil, nil
@@ -95,232 +91,71 @@ func TestSetServiceAccountLocal(t *testing.T) {
 	}
 }
 
-func TestSetServiceAccountMultiLocal(t *testing.T) {
-	testapi.Default = testapi.Groups[""]
-	f, tf, codec, ns := cmdtesting.NewAPIFactory()
-	tf.Client = &fake.RESTClient{
-		GroupVersion:         schema.GroupVersion{Version: ""},
-		NegotiatedSerializer: ns,
-		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-			t.Fatalf("unexpected request: %s %#v\n%#v", req.Method, req.URL, req)
-			return nil, nil
-		}),
-	}
-	tf.Namespace = "test"
-	tf.ClientConfig = &restclient.Config{ContentConfig: restclient.ContentConfig{GroupVersion: &schema.GroupVersion{Version: ""}}}
-
-	buf := bytes.NewBuffer([]byte{})
-	cmd := NewCmdServiceAccount(f, buf, buf)
-	cmd.SetOutput(buf)
-	cmd.Flags().Set("output", "name")
-	cmd.Flags().Set("local", "true")
-	mapper, typer := f.Object()
-	tf.Printer = &printers.NamePrinter{Decoders: []runtime.Decoder{codec}, Typer: typer, Mapper: mapper}
-	opts := serviceAccountConfig{fileNameOptions: resource.FilenameOptions{
-		Filenames: []string{"../../../../test/fixtures/pkg/kubectl/cmd/set/multi-resource-yaml.yaml"}},
-		out:   buf,
-		local: true}
-
-	err := opts.Complete(f, cmd, []string{serviceAccount})
-	if err == nil {
-		err = opts.Run()
-	}
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	expectedOut := "replicationcontrollers/first-rc\nreplicationcontrollers/second-rc\n"
-	if buf.String() != expectedOut {
-		t.Errorf("expected out:\n%s\nbut got:\n%s", expectedOut, buf.String())
-	}
-}
-
-func TestSetServiceAccountRemote(t *testing.T) {
+func TestServiceAccountRemote(t *testing.T) {
 	inputs := []struct {
-		object                          runtime.Object
-		apiPrefix, apiGroup, apiVersion string
-		testAPIGroup                    string
-		args                            []string
+		object              runtime.Object
+		apiPrefix, apiGroup string
+		args                []string
 	}{
 		{
-			object: &extensionsv1beta1.ReplicaSet{
+			object: &extensions.ReplicaSet{
+				TypeMeta:   metav1.TypeMeta{Kind: "ReplicaSet", APIVersion: api.Registry.GroupOrDie(extensions.GroupName).GroupVersion.String()},
 				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
 			},
-			testAPIGroup: "extensions",
-			apiPrefix:    "/apis", apiGroup: "extensions", apiVersion: "v1beta1",
+			apiPrefix: "/apis", apiGroup: extensions.GroupName,
 			args: []string{"replicaset", "nginx", serviceAccount},
 		},
 		{
-			object: &appsv1beta2.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
-				Spec: appsv1beta2.ReplicaSetSpec{
-					Template: v1.PodTemplateSpec{
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{
-								{
-									Name:  "nginx",
-									Image: "nginx",
-								},
-							},
-						},
-					},
-				},
-			},
-			testAPIGroup: "extensions",
-			apiPrefix:    "/apis", apiGroup: "apps", apiVersion: "v1beta2",
-			args: []string{"replicaset", "nginx", serviceAccount},
-		},
-		{
-			object: &appsv1.ReplicaSet{
-				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
-				Spec: appsv1.ReplicaSetSpec{
-					Template: v1.PodTemplateSpec{
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{
-								{
-									Name:  "nginx",
-									Image: "nginx",
-								},
-							},
-						},
-					},
-				},
-			},
-			testAPIGroup: "extensions",
-			apiPrefix:    "/apis", apiGroup: "apps", apiVersion: "v1",
-			args: []string{"replicaset", "nginx", serviceAccount},
-		},
-		{
-			object: &extensionsv1beta1.DaemonSet{
+			object: &extensions.DaemonSet{
+				TypeMeta:   metav1.TypeMeta{Kind: "DaemonSet", APIVersion: api.Registry.GroupOrDie(extensions.GroupName).GroupVersion.String()},
 				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
 			},
-			testAPIGroup: "extensions",
-			apiPrefix:    "/apis", apiGroup: "extensions", apiVersion: "v1beta1",
+			apiPrefix: "/apis", apiGroup: extensions.GroupName,
 			args: []string{"daemonset", "nginx", serviceAccount},
 		},
 		{
-			object: &appsv1beta2.DaemonSet{
+			object: &api.ReplicationController{
+				TypeMeta:   metav1.TypeMeta{Kind: "ReplicationController", APIVersion: api.Registry.GroupOrDie(api.GroupName).GroupVersion.String()},
 				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
 			},
-			testAPIGroup: "extensions",
-			apiPrefix:    "/apis", apiGroup: "apps", apiVersion: "v1beta2",
-			args: []string{"daemonset", "nginx", serviceAccount},
-		},
+			apiPrefix: "/api", apiGroup: api.GroupName,
+			args: []string{"replicationcontroller", "nginx", serviceAccount}},
 		{
-			object: &appsv1.DaemonSet{
+			object: &extensions.Deployment{
+				TypeMeta:   metav1.TypeMeta{Kind: "Deployment", APIVersion: api.Registry.GroupOrDie(extensions.GroupName).GroupVersion.String()},
 				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
 			},
-			testAPIGroup: "extensions",
-			apiPrefix:    "/apis", apiGroup: "apps", apiVersion: "v1",
-			args: []string{"daemonset", "nginx", serviceAccount},
-		},
-		{
-			object: &extensionsv1beta1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
-			},
-			testAPIGroup: "extensions",
-			apiPrefix:    "/apis", apiGroup: "extensions", apiVersion: "v1beta1",
+			apiPrefix: "/apis", apiGroup: extensions.GroupName,
 			args: []string{"deployment", "nginx", serviceAccount},
 		},
 		{
-			object: &appsv1beta1.Deployment{
+			object: &batch.Job{
+				TypeMeta:   metav1.TypeMeta{Kind: "Job", APIVersion: api.Registry.GroupOrDie(batch.GroupName).GroupVersion.String()},
 				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
 			},
-			testAPIGroup: "extensions",
-			apiPrefix:    "/apis", apiGroup: "apps", apiVersion: "v1beta1",
-			args: []string{"deployment", "nginx", serviceAccount},
-		},
-		{
-			object: &appsv1beta2.Deployment{
-				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
-			},
-			testAPIGroup: "extensions",
-			apiPrefix:    "/apis", apiGroup: "apps", apiVersion: "v1beta2",
-			args: []string{"deployment", "nginx", serviceAccount},
-		},
-		{
-			object: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
-				Spec: appsv1.DeploymentSpec{
-					Template: v1.PodTemplateSpec{
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{
-								{
-									Name:  "nginx",
-									Image: "nginx",
-								},
-							},
-						},
-					},
-				},
-			},
-			testAPIGroup: "extensions",
-			apiPrefix:    "/apis", apiGroup: "apps", apiVersion: "v1",
-			args: []string{"deployment", "nginx", serviceAccount},
-		},
-		{
-			object: &appsv1beta1.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
-			},
-			testAPIGroup: "apps",
-			apiPrefix:    "/apis", apiGroup: "apps", apiVersion: "v1beta1",
-			args: []string{"statefulset", "nginx", serviceAccount},
-		},
-		{
-			object: &appsv1beta2.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
-			},
-			testAPIGroup: "apps",
-			apiPrefix:    "/apis", apiGroup: "apps", apiVersion: "v1beta2",
-			args: []string{"statefulset", "nginx", serviceAccount},
-		},
-		{
-			object: &appsv1.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
-				Spec: appsv1.StatefulSetSpec{
-					Template: v1.PodTemplateSpec{
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{
-								{
-									Name:  "nginx",
-									Image: "nginx",
-								},
-							},
-						},
-					},
-				},
-			},
-			testAPIGroup: "apps",
-			apiPrefix:    "/apis", apiGroup: "apps", apiVersion: "v1",
-			args: []string{"statefulset", "nginx", serviceAccount},
-		},
-		{
-			object: &batchv1.Job{
-				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
-			},
-			testAPIGroup: "batch",
-			apiPrefix:    "/apis", apiGroup: "batch", apiVersion: "v1",
+			apiPrefix: "/apis", apiGroup: batch.GroupName,
 			args: []string{"job", "nginx", serviceAccount},
 		},
 		{
-			object: &v1.ReplicationController{
+			object: &apps.StatefulSet{
+				TypeMeta:   metav1.TypeMeta{Kind: "StatefulSet", APIVersion: api.Registry.GroupOrDie(apps.GroupName).GroupVersion.String()},
 				ObjectMeta: metav1.ObjectMeta{Name: "nginx"},
 			},
-			testAPIGroup: "",
-			apiPrefix:    "/api", apiGroup: "", apiVersion: "v1",
-			args: []string{"replicationcontroller", "nginx", serviceAccount},
+			apiPrefix: "/apis", apiGroup: apps.GroupName,
+			args: []string{"statefulset", "nginx", serviceAccount},
 		},
 	}
 	for _, input := range inputs {
-		groupVersion := schema.GroupVersion{Group: input.apiGroup, Version: input.apiVersion}
-		testapi.Default = testapi.Groups[input.testAPIGroup]
-		f, tf, _, ns := cmdtesting.NewAPIFactory()
-		codec := scheme.Codecs.CodecForVersions(scheme.Codecs.LegacyCodec(groupVersion), scheme.Codecs.UniversalDecoder(groupVersion), groupVersion, groupVersion)
+
+		groupVersion := api.Registry.GroupOrDie(input.apiGroup).GroupVersion
+		testapi.Default = testapi.Groups[input.apiGroup]
+		f, tf, codec, _ := cmdtesting.NewAPIFactory()
 		tf.Printer = printers.NewVersionedPrinter(&printers.YAMLPrinter{}, testapi.Default.Converter(), *testapi.Default.GroupVersion())
 		tf.Namespace = "test"
-		tf.CategoryExpander = categories.LegacyCategoryExpander
+		tf.CategoryExpander = resource.LegacyCategoryExpander
 		tf.Client = &fake.RESTClient{
-			GroupVersion:         groupVersion,
-			NegotiatedSerializer: ns,
+			APIRegistry:          api.Registry,
+			NegotiatedSerializer: testapi.Default.NegotiatedSerializer(),
 			Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 				resourcePath := testapi.Default.ResourcePath(input.args[0]+"s", tf.Namespace, input.args[1])
 				switch p, m := req.URL.Path, req.Method; {
@@ -342,12 +177,14 @@ func TestSetServiceAccountRemote(t *testing.T) {
 					return nil, fmt.Errorf("unexpected request")
 				}
 			}),
-			VersionedAPIPath: path.Join(input.apiPrefix, testapi.Default.GroupVersion().String()),
+			VersionedAPIPath: path.Join(input.apiPrefix, groupVersion.String()),
+			GroupName:        input.apiGroup,
 		}
 		out := new(bytes.Buffer)
 		cmd := NewCmdServiceAccount(f, out, out)
 		cmd.SetOutput(out)
 		cmd.Flags().Set("output", "yaml")
+
 		saConfig := serviceAccountConfig{
 			out:   out,
 			local: false}
@@ -369,7 +206,7 @@ func TestServiceAccountValidation(t *testing.T) {
 	for _, input := range inputs {
 		f, tf, _, _ := cmdtesting.NewAPIFactory()
 		tf.Client = &fake.RESTClient{
-			GroupVersion: schema.GroupVersion{Version: "v1"},
+			APIRegistry: api.Registry,
 			Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 				t.Fatalf("unexpected request: %s %#v\n%#v", req.Method, req.URL, req)
 				return nil, nil

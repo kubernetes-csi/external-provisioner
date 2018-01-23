@@ -19,45 +19,116 @@ limitations under the License.
 package ipvs
 
 import (
-	"fmt"
 	"net"
 	"reflect"
 	"syscall"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/utils/exec"
+	fakeexec "k8s.io/utils/exec/testing"
+
 	"github.com/docker/libnetwork/ipvs"
 )
 
-func Test_toVirtualServer(t *testing.T) {
+const dummyDevice = "kube-ipvs0"
+
+func TestEnsureVirtualServerAddressBind(t *testing.T) {
+	vs := &VirtualServer{
+		Address:  net.ParseIP("10.20.30.40"),
+		Port:     uint16(1234),
+		Protocol: string("TCP"),
+	}
+	fcmd := fakeexec.FakeCmd{
+		CombinedOutputScript: []fakeexec.FakeCombinedOutputAction{
+			// Success.
+			func() ([]byte, error) { return []byte{}, nil },
+			// Exists.
+			func() ([]byte, error) { return nil, &fakeexec.FakeExitError{Status: 2} },
+		},
+	}
+	fexec := fakeexec.FakeExec{
+		CommandScript: []fakeexec.FakeCommandAction{
+			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+		},
+	}
+	runner := New(&fexec)
+	// Success.
+	exists, err := runner.EnsureVirtualServerAddressBind(vs, dummyDevice)
+	if err != nil {
+		t.Errorf("expected success, got %v", err)
+	}
+	if exists {
+		t.Errorf("expected exists = false")
+	}
+	if fcmd.CombinedOutputCalls != 1 {
+		t.Errorf("expected 1 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+	}
+	if !sets.NewString(fcmd.CombinedOutputLog[0]...).HasAll("ip", "addr", "add", "10.20.30.40/32", "dev", "kube-ipvs0") {
+		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[0])
+	}
+	// Exists.
+	exists, err = runner.EnsureVirtualServerAddressBind(vs, dummyDevice)
+	if err != nil {
+		t.Errorf("expected success, got %v", err)
+	}
+	if !exists {
+		t.Errorf("expected exists = true")
+	}
+}
+
+func TestUnbindVirtualServerAddress(t *testing.T) {
+	svc := &VirtualServer{
+		Address:  net.ParseIP("10.20.30.41"),
+		Port:     uint16(80),
+		Protocol: string("TCP"),
+	}
+	fcmd := fakeexec.FakeCmd{
+		CombinedOutputScript: []fakeexec.FakeCombinedOutputAction{
+			// Success.
+			func() ([]byte, error) { return []byte{}, nil },
+			// Failure.
+			func() ([]byte, error) { return nil, &fakeexec.FakeExitError{Status: 2} },
+		},
+	}
+	fexec := fakeexec.FakeExec{
+		CommandScript: []fakeexec.FakeCommandAction{
+			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+			func(cmd string, args ...string) exec.Cmd { return fakeexec.InitFakeCmd(&fcmd, cmd, args...) },
+		},
+	}
+	runner := New(&fexec)
+	// Success.
+	err := runner.UnbindVirtualServerAddress(svc, dummyDevice)
+	if err != nil {
+		t.Errorf("expected success, got %v", err)
+	}
+	if fcmd.CombinedOutputCalls != 1 {
+		t.Errorf("expected 1 CombinedOutput() calls, got %d", fcmd.CombinedOutputCalls)
+	}
+	if !sets.NewString(fcmd.CombinedOutputLog[0]...).HasAll("ip", "addr", "del", "10.20.30.41/32", "dev", "kube-ipvs0") {
+		t.Errorf("wrong CombinedOutput() log, got %s", fcmd.CombinedOutputLog[0])
+	}
+	// Failure.
+	err = runner.UnbindVirtualServerAddress(svc, dummyDevice)
+	if err == nil {
+		t.Errorf("expected failure")
+	}
+}
+
+func Test_toFrontendService(t *testing.T) {
 	Tests := []struct {
 		ipvsService   ipvs.Service
 		virtualServer VirtualServer
-		expectError   bool
-		reason        string
 	}{
-		{
-			ipvs.Service{
-				Flags: 0x0,
-			},
-			VirtualServer{},
-			true,
-			fmt.Sprintf("IPVS Service Flags should be >= %d, got 0x0", FlagHashed),
-		},
-		{
-			ipvs.Service{
-				Flags: 0x1,
-			},
-			VirtualServer{},
-			true,
-			fmt.Sprintf("IPVS Service Flags should be >= %d, got 0x1", FlagHashed),
-		},
 		{
 			ipvs.Service{
 				Protocol:      syscall.IPPROTO_TCP,
 				Port:          80,
 				FWMark:        0,
 				SchedName:     "",
-				Flags:         uint32(FlagPersistent + FlagHashed),
+				Flags:         0,
 				Timeout:       0,
 				Netmask:       0xffffffff,
 				AddressFamily: syscall.AF_INET,
@@ -69,11 +140,9 @@ func Test_toVirtualServer(t *testing.T) {
 				Protocol:  "TCP",
 				Port:      80,
 				Scheduler: "",
-				Flags:     ServiceFlags(FlagPersistent),
+				Flags:     0,
 				Timeout:   0,
 			},
-			false,
-			"",
 		},
 		{
 			ipvs.Service{
@@ -81,7 +150,7 @@ func Test_toVirtualServer(t *testing.T) {
 				Port:          33434,
 				FWMark:        0,
 				SchedName:     "wlc",
-				Flags:         uint32(0 + FlagHashed),
+				Flags:         1234,
 				Timeout:       100,
 				Netmask:       128,
 				AddressFamily: syscall.AF_INET6,
@@ -93,11 +162,9 @@ func Test_toVirtualServer(t *testing.T) {
 				Protocol:  "UDP",
 				Port:      33434,
 				Scheduler: "wlc",
-				Flags:     ServiceFlags(0),
+				Flags:     1234,
 				Timeout:   100,
 			},
-			false,
-			"",
 		},
 		{
 			ipvs.Service{
@@ -105,7 +172,7 @@ func Test_toVirtualServer(t *testing.T) {
 				Port:          0,
 				FWMark:        0,
 				SchedName:     "lc",
-				Flags:         uint32(0 + FlagHashed),
+				Flags:         0,
 				Timeout:       0,
 				Netmask:       0xffffffff,
 				AddressFamily: syscall.AF_INET,
@@ -117,11 +184,9 @@ func Test_toVirtualServer(t *testing.T) {
 				Protocol:  "",
 				Port:      0,
 				Scheduler: "lc",
-				Flags:     ServiceFlags(0),
+				Flags:     0,
 				Timeout:   0,
 			},
-			false,
-			"",
 		},
 		{
 			ipvs.Service{
@@ -129,7 +194,7 @@ func Test_toVirtualServer(t *testing.T) {
 				Port:          0,
 				FWMark:        0,
 				SchedName:     "wrr",
-				Flags:         uint32(FlagPersistent + FlagHashed),
+				Flags:         0,
 				Timeout:       0,
 				Netmask:       128,
 				AddressFamily: syscall.AF_INET6,
@@ -141,26 +206,19 @@ func Test_toVirtualServer(t *testing.T) {
 				Protocol:  "",
 				Port:      0,
 				Scheduler: "wrr",
-				Flags:     ServiceFlags(FlagPersistent),
+				Flags:     0,
 				Timeout:   0,
 			},
-			false,
-			"",
 		},
 	}
 
 	for i := range Tests {
 		got, err := toVirtualServer(&Tests[i].ipvsService)
-		if Tests[i].expectError && err == nil {
-			t.Errorf("case: %d, expected error: %s, got nil", i, Tests[i].reason)
-		}
-		if !Tests[i].expectError && err != nil {
+		if err != nil {
 			t.Errorf("case: %d, unexpected error: %v", i, err)
 		}
-		if got != nil && &Tests[i].virtualServer != nil {
-			if !reflect.DeepEqual(*got, Tests[i].virtualServer) {
-				t.Errorf("case: %d, got %#v, want %#v", i, *got, Tests[i].virtualServer)
-			}
+		if !reflect.DeepEqual(*got, Tests[i].virtualServer) {
+			t.Errorf("case: %d, got %#v, want %#v", i, *got, Tests[i].virtualServer)
 		}
 	}
 }

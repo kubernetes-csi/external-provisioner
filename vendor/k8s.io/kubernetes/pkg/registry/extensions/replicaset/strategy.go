@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strconv"
 
+	appsv1beta2 "k8s.io/api/apps/v1beta2"
 	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apivalidation "k8s.io/apimachinery/pkg/api/validation"
@@ -35,7 +36,7 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 	apistorage "k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/pod"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/apis/extensions/validation"
@@ -48,7 +49,7 @@ type rsStrategy struct {
 }
 
 // Strategy is the default logic that applies when creating and updating ReplicaSet objects.
-var Strategy = rsStrategy{legacyscheme.Scheme, names.SimpleNameGenerator}
+var Strategy = rsStrategy{api.Scheme, names.SimpleNameGenerator}
 
 // DefaultGarbageCollectionPolicy returns Orphan because that's the default
 // behavior before the server-side garbage collection is implemented.
@@ -126,9 +127,11 @@ func (rsStrategy) ValidateUpdate(ctx genericapirequest.Context, obj, old runtime
 		switch groupVersion {
 		case extensionsv1beta1.SchemeGroupVersion:
 			// no-op for compatibility
-		default:
+		case appsv1beta2.SchemeGroupVersion:
 			// disallow mutation of selector
 			allErrs = append(allErrs, apivalidation.ValidateImmutableField(newReplicaSet.Spec.Selector, oldReplicaSet.Spec.Selector, field.NewPath("spec").Child("selector"))...)
+		default:
+			panic(fmt.Sprintf("unexpected group/version: %v", groupVersion))
 		}
 	}
 

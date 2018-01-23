@@ -24,9 +24,8 @@ go_library(
         ],
         "//conditions:default": [],
     }),
-    importpath = "k8s.io/kubernetes/pkg/volume/azure_dd",
     deps = [
-        "//pkg/apis/core:go_default_library",
+        "//pkg/api:go_default_library",
         "//pkg/cloudprovider:go_default_library",
         "//pkg/cloudprovider/providers/azure:go_default_library",
         "//pkg/util/keymutex:go_default_library",
@@ -66,7 +65,6 @@ go_test(
         "azure_common_test.go",
         "azure_dd_test.go",
     ],
-    importpath = "k8s.io/kubernetes/pkg/volume/azure_dd",
     library = ":go_default_library",
     deps = [
         "//pkg/util/mount:go_default_library",

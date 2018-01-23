@@ -21,14 +21,13 @@ import (
 	"net/http"
 	"testing"
 
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest/fake"
+	"k8s.io/kubernetes/pkg/api"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 )
 
 func TestCreateSecretGeneric(t *testing.T) {
-	secretObject := &v1.Secret{
+	secretObject := &api.Secret{
 		Data: map[string][]byte{
 			"password": []byte("includes,comma"),
 			"username": []byte("test_user"),
@@ -38,7 +37,7 @@ func TestCreateSecretGeneric(t *testing.T) {
 	f, tf, codec, ns := cmdtesting.NewAPIFactory()
 	tf.Printer = &testPrinter{}
 	tf.Client = &fake.RESTClient{
-		GroupVersion:         schema.GroupVersion{Version: "v1"},
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			switch p, m := req.URL.Path, req.Method; {
@@ -64,12 +63,12 @@ func TestCreateSecretGeneric(t *testing.T) {
 }
 
 func TestCreateSecretDockerRegistry(t *testing.T) {
-	secretObject := &v1.Secret{}
+	secretObject := &api.Secret{}
 	secretObject.Name = "my-secret"
 	f, tf, codec, ns := cmdtesting.NewAPIFactory()
 	tf.Printer = &testPrinter{}
 	tf.Client = &fake.RESTClient{
-		GroupVersion:         schema.GroupVersion{Version: "v1"},
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			switch p, m := req.URL.Path, req.Method; {

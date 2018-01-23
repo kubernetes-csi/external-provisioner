@@ -502,8 +502,14 @@ func GetAllReplicaSets(deployment *extensions.Deployment, c extensionsv1beta1.Ex
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	oldRSes, allOldRSes := FindOldReplicaSets(deployment, rsList)
-	newRS := FindNewReplicaSet(deployment, rsList)
+	oldRSes, allOldRSes, err := FindOldReplicaSets(deployment, rsList)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	newRS, err := FindNewReplicaSet(deployment, rsList)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	return oldRSes, allOldRSes, newRS, nil
 }
 
@@ -514,8 +520,7 @@ func GetOldReplicaSets(deployment *extensions.Deployment, c extensionsv1beta1.Ex
 	if err != nil {
 		return nil, nil, err
 	}
-	oldRSes, allOldRSes := FindOldReplicaSets(deployment, rsList)
-	return oldRSes, allOldRSes, nil
+	return FindOldReplicaSets(deployment, rsList)
 }
 
 // GetNewReplicaSet returns a replica set that matches the intent of the given deployment; get ReplicaSetList from client interface.
@@ -525,7 +530,7 @@ func GetNewReplicaSet(deployment *extensions.Deployment, c extensionsv1beta1.Ext
 	if err != nil {
 		return nil, err
 	}
-	return FindNewReplicaSet(deployment, rsList), nil
+	return FindNewReplicaSet(deployment, rsList)
 }
 
 // RsListFromClient returns an rsListFunc that wraps the given client.
@@ -540,6 +545,13 @@ func RsListFromClient(c extensionsv1beta1.ExtensionsV1beta1Interface) RsListFunc
 			ret = append(ret, &rsList.Items[i])
 		}
 		return ret, err
+	}
+}
+
+// podListFromClient returns a podListFunc that wraps the given client.
+func podListFromClient(c clientset.Interface) podListFunc {
+	return func(namespace string, options metav1.ListOptions) (*v1.PodList, error) {
+		return c.Core().Pods(namespace).List(options)
 	}
 }
 
@@ -562,7 +574,7 @@ func ListReplicaSets(deployment *extensions.Deployment, getRSList RsListFunc) ([
 	options := metav1.ListOptions{LabelSelector: selector.String()}
 	all, err := getRSList(namespace, options)
 	if err != nil {
-		return nil, err
+		return all, err
 	}
 	// Only include those whose ControllerRef matches the Deployment.
 	owned := make([]*extensions.ReplicaSet, 0, len(all))
@@ -635,7 +647,7 @@ func ListPods(deployment *extensions.Deployment, rsList []*extensions.ReplicaSet
 // We ignore pod-template-hash because the hash result would be different upon podTemplateSpec API changes
 // (e.g. the addition of a new field will cause the hash code to change)
 // Note that we assume input podTemplateSpecs contain non-empty labels
-func EqualIgnoreHash(template1, template2 *v1.PodTemplateSpec) bool {
+func EqualIgnoreHash(template1, template2 *v1.PodTemplateSpec) (bool, error) {
 	t1Copy := template1.DeepCopy()
 	t2Copy := template2.DeepCopy()
 	// First, compare template.Labels (ignoring hash)
@@ -646,36 +658,43 @@ func EqualIgnoreHash(template1, template2 *v1.PodTemplateSpec) bool {
 	// We make sure len(labels2) >= len(labels1)
 	for k, v := range labels2 {
 		if labels1[k] != v && k != extensions.DefaultDeploymentUniqueLabelKey {
-			return false
+			return false, nil
 		}
 	}
 	// Then, compare the templates without comparing their labels
 	t1Copy.Labels, t2Copy.Labels = nil, nil
-	return apiequality.Semantic.DeepEqual(t1Copy, t2Copy)
+	return apiequality.Semantic.DeepEqual(t1Copy, t2Copy), nil
 }
 
 // FindNewReplicaSet returns the new RS this given deployment targets (the one with the same pod template).
-func FindNewReplicaSet(deployment *extensions.Deployment, rsList []*extensions.ReplicaSet) *extensions.ReplicaSet {
+func FindNewReplicaSet(deployment *extensions.Deployment, rsList []*extensions.ReplicaSet) (*extensions.ReplicaSet, error) {
 	sort.Sort(controller.ReplicaSetsByCreationTimestamp(rsList))
 	for i := range rsList {
-		if EqualIgnoreHash(&rsList[i].Spec.Template, &deployment.Spec.Template) {
+		equal, err := EqualIgnoreHash(&rsList[i].Spec.Template, &deployment.Spec.Template)
+		if err != nil {
+			return nil, err
+		}
+		if equal {
 			// In rare cases, such as after cluster upgrades, Deployment may end up with
 			// having more than one new ReplicaSets that have the same template as its template,
 			// see https://github.com/kubernetes/kubernetes/issues/40415
 			// We deterministically choose the oldest new ReplicaSet.
-			return rsList[i]
+			return rsList[i], nil
 		}
 	}
 	// new ReplicaSet does not exist.
-	return nil
+	return nil, nil
 }
 
 // FindOldReplicaSets returns the old replica sets targeted by the given Deployment, with the given slice of RSes.
 // Note that the first set of old replica sets doesn't include the ones with no pods, and the second set of old replica sets include all old replica sets.
-func FindOldReplicaSets(deployment *extensions.Deployment, rsList []*extensions.ReplicaSet) ([]*extensions.ReplicaSet, []*extensions.ReplicaSet) {
+func FindOldReplicaSets(deployment *extensions.Deployment, rsList []*extensions.ReplicaSet) ([]*extensions.ReplicaSet, []*extensions.ReplicaSet, error) {
 	var requiredRSs []*extensions.ReplicaSet
 	var allRSs []*extensions.ReplicaSet
-	newRS := FindNewReplicaSet(deployment, rsList)
+	newRS, err := FindNewReplicaSet(deployment, rsList)
+	if err != nil {
+		return nil, nil, err
+	}
 	for _, rs := range rsList {
 		// Filter out new replica set
 		if newRS != nil && rs.UID == newRS.UID {
@@ -686,7 +705,7 @@ func FindOldReplicaSets(deployment *extensions.Deployment, rsList []*extensions.
 			requiredRSs = append(requiredRSs, rs)
 		}
 	}
-	return requiredRSs, allRSs
+	return requiredRSs, allRSs, nil
 }
 
 // WaitForReplicaSetUpdated polls the replica set until it is updated.
@@ -721,7 +740,7 @@ func LabelPodsWithHash(podList *v1.PodList, c clientset.Interface, podLister cor
 		}
 		// Only label the pod that doesn't already have the new hash
 		if pod.Labels[extensions.DefaultDeploymentUniqueLabelKey] != hash {
-			_, err := UpdatePodWithRetries(c.CoreV1().Pods(namespace), podLister, pod.Namespace, pod.Name,
+			_, err := UpdatePodWithRetries(c.Core().Pods(namespace), podLister, pod.Namespace, pod.Name,
 				func(podToUpdate *v1.Pod) error {
 					// Precondition: the pod doesn't contain the new hash in its label.
 					if podToUpdate.Labels[extensions.DefaultDeploymentUniqueLabelKey] == hash {

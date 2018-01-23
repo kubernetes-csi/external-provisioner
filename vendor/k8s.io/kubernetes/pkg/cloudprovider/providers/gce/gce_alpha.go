@@ -29,16 +29,13 @@ const (
 	// tier to use. Currently supports "Standard" and "Premium" (default).
 	AlphaFeatureNetworkTiers = "NetworkTiers"
 
-	AlphaFeatureGCEDisk = "DiskAlphaAPI"
-
-	AlphaFeatureNetworkEndpointGroup = "NetworkEndpointGroup"
+	GCEDiskAlphaFeatureGate = "DiskAlphaAPI"
 )
 
 // All known alpha features
 var knownAlphaFeatures = map[string]bool{
-	AlphaFeatureNetworkTiers:         true,
-	AlphaFeatureGCEDisk:              true,
-	AlphaFeatureNetworkEndpointGroup: true,
+	AlphaFeatureNetworkTiers: true,
+	GCEDiskAlphaFeatureGate:  true,
 }
 
 type AlphaFeatureGate struct {
@@ -60,11 +57,4 @@ func NewAlphaFeatureGate(features []string) (*AlphaFeatureGate, error) {
 		}
 	}
 	return &AlphaFeatureGate{featureMap}, utilerrors.NewAggregate(errList)
-}
-
-func (gce *GCECloud) alphaFeatureEnabled(feature string) error {
-	if !gce.AlphaFeatureGate.Enabled(feature) {
-		return fmt.Errorf("alpha feature %q is not enabled.", feature)
-	}
-	return nil
 }

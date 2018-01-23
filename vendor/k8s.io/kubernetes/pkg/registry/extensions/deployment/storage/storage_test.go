@@ -31,13 +31,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/generic"
-	genericregistrytest "k8s.io/apiserver/pkg/registry/generic/testing"
 	"k8s.io/apiserver/pkg/registry/rest"
 	storeerr "k8s.io/apiserver/pkg/storage/errors"
 	etcdtesting "k8s.io/apiserver/pkg/storage/etcd/testing"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	"k8s.io/kubernetes/pkg/apis/autoscaling"
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/registry/registrytest"
 )
@@ -100,7 +97,7 @@ func TestCreate(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Deployment.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Deployment.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Deployment.Store)
 	deployment := validNewDeployment()
 	deployment.ObjectMeta = metav1.ObjectMeta{}
 	test.TestCreate(
@@ -120,7 +117,7 @@ func TestUpdate(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Deployment.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Deployment.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Deployment.Store)
 	test.TestUpdate(
 		// valid
 		validNewDeployment(),
@@ -153,7 +150,7 @@ func TestDelete(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Deployment.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Deployment.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Deployment.Store)
 	test.TestDelete(validNewDeployment())
 }
 
@@ -161,7 +158,7 @@ func TestGet(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Deployment.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Deployment.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Deployment.Store)
 	test.TestGet(validNewDeployment())
 }
 
@@ -169,7 +166,7 @@ func TestList(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Deployment.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Deployment.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Deployment.Store)
 	test.TestList(validNewDeployment())
 }
 
@@ -177,7 +174,7 @@ func TestWatch(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
 	defer storage.Deployment.Store.DestroyFunc()
-	test := genericregistrytest.New(t, storage.Deployment.Store, legacyscheme.Scheme)
+	test := registrytest.New(t, storage.Deployment.Store)
 	test.TestWatch(
 		validNewDeployment(),
 		// matching labels
@@ -210,11 +207,7 @@ func TestScaleGet(t *testing.T) {
 		t.Fatalf("error setting new deployment (key: %s) %v: %v", key, validDeployment, err)
 	}
 
-	selector, err := metav1.LabelSelectorAsSelector(validDeployment.Spec.Selector)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := &autoscaling.Scale{
+	want := &extensions.Scale{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
 			Namespace:         namespace,
@@ -222,19 +215,19 @@ func TestScaleGet(t *testing.T) {
 			ResourceVersion:   deployment.ResourceVersion,
 			CreationTimestamp: deployment.CreationTimestamp,
 		},
-		Spec: autoscaling.ScaleSpec{
+		Spec: extensions.ScaleSpec{
 			Replicas: validDeployment.Spec.Replicas,
 		},
-		Status: autoscaling.ScaleStatus{
+		Status: extensions.ScaleStatus{
 			Replicas: validDeployment.Status.Replicas,
-			Selector: selector.String(),
+			Selector: validDeployment.Spec.Selector,
 		},
 	}
 	obj, err := storage.Scale.Get(ctx, name, &metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("error fetching scale for %s: %v", name, err)
 	}
-	got := obj.(*autoscaling.Scale)
+	got := obj.(*extensions.Scale)
 	if !apiequality.Semantic.DeepEqual(want, got) {
 		t.Errorf("unexpected scale: %s", diff.ObjectDiff(want, got))
 	}
@@ -251,21 +244,21 @@ func TestScaleUpdate(t *testing.T) {
 		t.Fatalf("error setting new deployment (key: %s) %v: %v", key, validDeployment, err)
 	}
 	replicas := int32(12)
-	update := autoscaling.Scale{
+	update := extensions.Scale{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-		Spec: autoscaling.ScaleSpec{
+		Spec: extensions.ScaleSpec{
 			Replicas: replicas,
 		},
 	}
 
-	if _, _, err := storage.Scale.Update(ctx, update.Name, rest.DefaultUpdatedObjectInfo(&update), rest.ValidateAllObjectFunc, rest.ValidateAllObjectUpdateFunc); err != nil {
+	if _, _, err := storage.Scale.Update(ctx, update.Name, rest.DefaultUpdatedObjectInfo(&update, api.Scheme)); err != nil {
 		t.Fatalf("error updating scale %v: %v", update, err)
 	}
 	obj, err := storage.Scale.Get(ctx, name, &metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("error fetching scale for %s: %v", name, err)
 	}
-	scale := obj.(*autoscaling.Scale)
+	scale := obj.(*extensions.Scale)
 	if scale.Spec.Replicas != replicas {
 		t.Errorf("wrong replicas count expected: %d got: %d", replicas, deployment.Spec.Replicas)
 	}
@@ -273,7 +266,7 @@ func TestScaleUpdate(t *testing.T) {
 	update.ResourceVersion = deployment.ResourceVersion
 	update.Spec.Replicas = 15
 
-	if _, _, err = storage.Scale.Update(ctx, update.Name, rest.DefaultUpdatedObjectInfo(&update), rest.ValidateAllObjectFunc, rest.ValidateAllObjectUpdateFunc); err != nil && !errors.IsConflict(err) {
+	if _, _, err = storage.Scale.Update(ctx, update.Name, rest.DefaultUpdatedObjectInfo(&update, api.Scheme)); err != nil && !errors.IsConflict(err) {
 		t.Fatalf("unexpected error, expecting an update conflict but got %v", err)
 	}
 }
@@ -297,7 +290,7 @@ func TestStatusUpdate(t *testing.T) {
 		},
 	}
 
-	if _, _, err := storage.Status.Update(ctx, update.Name, rest.DefaultUpdatedObjectInfo(&update), rest.ValidateAllObjectFunc, rest.ValidateAllObjectUpdateFunc); err != nil {
+	if _, _, err := storage.Status.Update(ctx, update.Name, rest.DefaultUpdatedObjectInfo(&update, api.Scheme)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	obj, err := storage.Deployment.Get(ctx, name, &metav1.GetOptions{})
@@ -348,10 +341,10 @@ func TestEtcdCreateDeploymentRollback(t *testing.T) {
 		storage, server := newStorage(t)
 		rollbackStorage := storage.Rollback
 
-		if _, err := storage.Deployment.Create(ctx, validNewDeployment(), rest.ValidateAllObjectFunc, false); err != nil {
+		if _, err := storage.Deployment.Create(ctx, validNewDeployment(), false); err != nil {
 			t.Fatalf("%s: unexpected error: %v", k, err)
 		}
-		rollbackRespStatus, err := rollbackStorage.Create(ctx, &test.rollback, rest.ValidateAllObjectFunc, false)
+		rollbackRespStatus, err := rollbackStorage.Create(ctx, &test.rollback, false)
 		if !test.errOK(err) {
 			t.Errorf("%s: unexpected error: %v", k, err)
 		} else if err == nil {
@@ -388,7 +381,7 @@ func TestEtcdCreateDeploymentRollbackNoDeployment(t *testing.T) {
 		Name:               name,
 		UpdatedAnnotations: map[string]string{},
 		RollbackTo:         extensions.RollbackConfig{Revision: 1},
-	}, rest.ValidateAllObjectFunc, false)
+	}, false)
 	if err == nil {
 		t.Fatalf("Expected not-found-error but got nothing")
 	}

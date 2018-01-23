@@ -31,14 +31,14 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	core "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	"k8s.io/kubernetes/pkg/api"
+	_ "k8s.io/kubernetes/pkg/api/install"
 	_ "k8s.io/kubernetes/pkg/apis/apps/install"
 	_ "k8s.io/kubernetes/pkg/apis/authentication/install"
 	_ "k8s.io/kubernetes/pkg/apis/authorization/install"
 	_ "k8s.io/kubernetes/pkg/apis/autoscaling/install"
 	_ "k8s.io/kubernetes/pkg/apis/batch/install"
 	_ "k8s.io/kubernetes/pkg/apis/certificates/install"
-	_ "k8s.io/kubernetes/pkg/apis/core/install"
 	_ "k8s.io/kubernetes/pkg/apis/extensions/install"
 	_ "k8s.io/kubernetes/pkg/apis/policy/install"
 	_ "k8s.io/kubernetes/pkg/apis/rbac/install"
@@ -78,7 +78,7 @@ func newRSWithStatus(name string, specReplicas, statusReplicas int, selector map
 
 func newDeployment(name string, replicas int, revisionHistoryLimit *int32, maxSurge, maxUnavailable *intstr.IntOrString, selector map[string]string) *extensions.Deployment {
 	d := extensions.Deployment{
-		TypeMeta: metav1.TypeMeta{APIVersion: legacyscheme.Registry.GroupOrDie(extensions.GroupName).GroupVersion.String()},
+		TypeMeta: metav1.TypeMeta{APIVersion: api.Registry.GroupOrDie(extensions.GroupName).GroupVersion.String()},
 		ObjectMeta: metav1.ObjectMeta{
 			UID:         uuid.NewUUID(),
 			Name:        name,
@@ -187,13 +187,10 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
-func (f *fixture) newController() (*DeploymentController, informers.SharedInformerFactory, error) {
+func (f *fixture) newController() (*DeploymentController, informers.SharedInformerFactory) {
 	f.client = fake.NewSimpleClientset(f.objects...)
 	informers := informers.NewSharedInformerFactory(f.client, controller.NoResyncPeriodFunc())
-	c, err := NewDeploymentController(informers.Extensions().V1beta1().Deployments(), informers.Extensions().V1beta1().ReplicaSets(), informers.Core().V1().Pods(), f.client)
-	if err != nil {
-		return nil, nil, err
-	}
+	c := NewDeploymentController(informers.Extensions().V1beta1().Deployments(), informers.Extensions().V1beta1().ReplicaSets(), informers.Core().V1().Pods(), f.client)
 	c.eventRecorder = &record.FakeRecorder{}
 	c.dListerSynced = alwaysReady
 	c.rsListerSynced = alwaysReady
@@ -207,7 +204,7 @@ func (f *fixture) newController() (*DeploymentController, informers.SharedInform
 	for _, pod := range f.podLister {
 		informers.Core().V1().Pods().Informer().GetIndexer().Add(pod)
 	}
-	return c, informers, nil
+	return c, informers
 }
 
 func (f *fixture) runExpectError(deploymentName string, startInformers bool) {
@@ -219,17 +216,14 @@ func (f *fixture) run(deploymentName string) {
 }
 
 func (f *fixture) run_(deploymentName string, startInformers bool, expectError bool) {
-	c, informers, err := f.newController()
-	if err != nil {
-		f.t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	c, informers := f.newController()
 	if startInformers {
 		stopCh := make(chan struct{})
 		defer close(stopCh)
 		informers.Start(stopCh)
 	}
 
-	err = c.syncDeployment(deploymentName)
+	err := c.syncDeployment(deploymentName)
 	if !expectError && err != nil {
 		f.t.Errorf("error syncing deployment: %v", err)
 	} else if expectError && err == nil {
@@ -384,10 +378,7 @@ func TestPodDeletionEnqueuesRecreateDeployment(t *testing.T) {
 	f.rsLister = append(f.rsLister, rs)
 	f.objects = append(f.objects, foo, rs)
 
-	c, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	c, _ := f.newController()
 	enqueued := false
 	c.enqueueDeployment = func(d *extensions.Deployment) {
 		if d.Name == "foo" {
@@ -420,10 +411,7 @@ func TestPodDeletionDoesntEnqueueRecreateDeployment(t *testing.T) {
 	// return a non-empty list.
 	f.podLister = append(f.podLister, pod1, pod2)
 
-	c, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	c, _ := f.newController()
 	enqueued := false
 	c.enqueueDeployment = func(d *extensions.Deployment) {
 		if d.Name == "foo" {
@@ -456,10 +444,7 @@ func TestPodDeletionPartialReplicaSetOwnershipEnqueueRecreateDeployment(t *testi
 	f.rsLister = append(f.rsLister, rs1, rs2)
 	f.objects = append(f.objects, foo, rs1, rs2)
 
-	c, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	c, _ := f.newController()
 	enqueued := false
 	c.enqueueDeployment = func(d *extensions.Deployment) {
 		if d.Name == "foo" {
@@ -495,10 +480,7 @@ func TestPodDeletionPartialReplicaSetOwnershipDoesntEnqueueRecreateDeployment(t 
 	// return a non-empty list.
 	f.podLister = append(f.podLister, pod)
 
-	c, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	c, _ := f.newController()
 	enqueued := false
 	c.enqueueDeployment = func(d *extensions.Deployment) {
 		if d.Name == "foo" {
@@ -530,10 +512,7 @@ func TestGetReplicaSetsForDeployment(t *testing.T) {
 	f.objects = append(f.objects, d1, d2, rs1, rs2)
 
 	// Start the fixture.
-	c, informers, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	c, informers := f.newController()
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	informers.Start(stopCh)
@@ -580,10 +559,7 @@ func TestGetReplicaSetsForDeploymentAdoptRelease(t *testing.T) {
 	f.objects = append(f.objects, d, rsAdopt, rsRelease)
 
 	// Start the fixture.
-	c, informers, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	c, informers := f.newController()
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	informers.Start(stopCh)
@@ -627,10 +603,7 @@ func TestGetPodMapForReplicaSets(t *testing.T) {
 	f.objects = append(f.objects, d, rs1, rs2, pod1, pod2, pod3, pod4)
 
 	// Start the fixture.
-	c, informers, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	c, informers := f.newController()
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	informers.Start(stopCh)
@@ -683,10 +656,7 @@ func TestAddReplicaSet(t *testing.T) {
 
 	// Create the fixture but don't start it,
 	// so nothing happens in the background.
-	dc, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	dc, _ := f.newController()
 
 	dc.addReplicaSet(rs1)
 	if got, want := dc.queue.Len(), 1; got != want {
@@ -733,10 +703,7 @@ func TestAddReplicaSetOrphan(t *testing.T) {
 
 	// Create the fixture but don't start it,
 	// so nothing happens in the background.
-	dc, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	dc, _ := f.newController()
 
 	dc.addReplicaSet(rs)
 	if got, want := dc.queue.Len(), 2; got != want {
@@ -761,10 +728,7 @@ func TestUpdateReplicaSet(t *testing.T) {
 
 	// Create the fixture but don't start it,
 	// so nothing happens in the background.
-	dc, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	dc, _ := f.newController()
 
 	prev := *rs1
 	next := *rs1
@@ -815,10 +779,7 @@ func TestUpdateReplicaSetOrphanWithNewLabels(t *testing.T) {
 
 	// Create the fixture but don't start it,
 	// so nothing happens in the background.
-	dc, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	dc, _ := f.newController()
 
 	// Change labels and expect all matching controllers to queue.
 	prev := *rs
@@ -845,10 +806,7 @@ func TestUpdateReplicaSetChangeControllerRef(t *testing.T) {
 
 	// Create the fixture but don't start it,
 	// so nothing happens in the background.
-	dc, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	dc, _ := f.newController()
 
 	// Change ControllerRef and expect both old and new to queue.
 	prev := *rs
@@ -875,10 +833,7 @@ func TestUpdateReplicaSetRelease(t *testing.T) {
 
 	// Create the fixture but don't start it,
 	// so nothing happens in the background.
-	dc, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	dc, _ := f.newController()
 
 	// Remove ControllerRef and expect all matching controller to sync orphan.
 	prev := *rs
@@ -908,10 +863,7 @@ func TestDeleteReplicaSet(t *testing.T) {
 
 	// Create the fixture but don't start it,
 	// so nothing happens in the background.
-	dc, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	dc, _ := f.newController()
 
 	dc.deleteReplicaSet(rs1)
 	if got, want := dc.queue.Len(), 1; got != want {
@@ -956,10 +908,7 @@ func TestDeleteReplicaSetOrphan(t *testing.T) {
 
 	// Create the fixture but don't start it,
 	// so nothing happens in the background.
-	dc, _, err := f.newController()
-	if err != nil {
-		t.Fatalf("error creating Deployment controller: %v", err)
-	}
+	dc, _ := f.newController()
 
 	dc.deleteReplicaSet(rs)
 	if got, want := dc.queue.Len(), 0; got != want {

@@ -36,21 +36,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/rest/fake"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
-	apitesting "k8s.io/kubernetes/pkg/api/testing"
-	api "k8s.io/kubernetes/pkg/apis/core"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/kubectl/scheme"
 	"k8s.io/kubernetes/pkg/printers"
 	printersinternal "k8s.io/kubernetes/pkg/printers/internalversion"
 	"k8s.io/kubernetes/pkg/util/strings"
 )
-
-// This init should be removed after switching this command and its tests to user external types.
-func init() {
-	api.AddToScheme(scheme.Scheme)
-}
 
 func initTestErrorHandler(t *testing.T) {
 	cmdutil.BehaviorOnFatal(func(str string, code int) {
@@ -68,9 +61,9 @@ func defaultClientConfig() *restclient.Config {
 	return &restclient.Config{
 		APIPath: "/api",
 		ContentConfig: restclient.ContentConfig{
-			NegotiatedSerializer: scheme.Codecs,
+			NegotiatedSerializer: api.Codecs,
 			ContentType:          runtime.ContentTypeJSON,
-			GroupVersion:         &schema.GroupVersion{Version: "v1"},
+			GroupVersion:         &api.Registry.GroupOrDie(api.GroupName).GroupVersion,
 		},
 	}
 }
@@ -79,57 +72,11 @@ func defaultClientConfigForVersion(version *schema.GroupVersion) *restclient.Con
 	return &restclient.Config{
 		APIPath: "/api",
 		ContentConfig: restclient.ContentConfig{
-			NegotiatedSerializer: scheme.Codecs,
+			NegotiatedSerializer: api.Codecs,
 			ContentType:          runtime.ContentTypeJSON,
 			GroupVersion:         version,
 		},
 	}
-}
-
-func testData() (*api.PodList, *api.ServiceList, *api.ReplicationControllerList) {
-	pods := &api.PodList{
-		ListMeta: metav1.ListMeta{
-			ResourceVersion: "15",
-		},
-		Items: []api.Pod{
-			{
-				ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "test", ResourceVersion: "10"},
-				Spec:       apitesting.DeepEqualSafePodSpec(),
-			},
-			{
-				ObjectMeta: metav1.ObjectMeta{Name: "bar", Namespace: "test", ResourceVersion: "11"},
-				Spec:       apitesting.DeepEqualSafePodSpec(),
-			},
-		},
-	}
-	svc := &api.ServiceList{
-		ListMeta: metav1.ListMeta{
-			ResourceVersion: "16",
-		},
-		Items: []api.Service{
-			{
-				ObjectMeta: metav1.ObjectMeta{Name: "baz", Namespace: "test", ResourceVersion: "12"},
-				Spec: api.ServiceSpec{
-					SessionAffinity: "None",
-					Type:            api.ServiceTypeClusterIP,
-				},
-			},
-		},
-	}
-	rc := &api.ReplicationControllerList{
-		ListMeta: metav1.ListMeta{
-			ResourceVersion: "17",
-		},
-		Items: []api.ReplicationController{
-			{
-				ObjectMeta: metav1.ObjectMeta{Name: "rc1", Namespace: "test", ResourceVersion: "18"},
-				Spec: api.ReplicationControllerSpec{
-					Replicas: 1,
-				},
-			},
-		},
-	}
-	return pods, svc, rc
 }
 
 type testPrinter struct {
@@ -215,6 +162,7 @@ func Example_printReplicationControllerWithNamespace() {
 	printersinternal.AddHandlers(p)
 	tf.Printer = p
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client:               nil,
 	}
@@ -267,6 +215,7 @@ func Example_printMultiContainersReplicationControllerWithWide() {
 	printersinternal.AddHandlers(p)
 	tf.Printer = p
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client:               nil,
 	}
@@ -320,6 +269,7 @@ func Example_printReplicationController() {
 	printersinternal.AddHandlers(p)
 	tf.Printer = p
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client:               nil,
 	}
@@ -374,6 +324,7 @@ func Example_printPodWithWideFormat() {
 	printersinternal.AddHandlers(p)
 	tf.Printer = p
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client:               nil,
 	}
@@ -416,6 +367,7 @@ func Example_printPodWithShowLabels() {
 	printersinternal.AddHandlers(p)
 	tf.Printer = p
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client:               nil,
 	}
@@ -552,6 +504,7 @@ func Example_printPodHideTerminated() {
 	printersinternal.AddHandlers(p)
 	tf.Printer = p
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client:               nil,
 	}
@@ -587,6 +540,7 @@ func Example_printPodShowAll() {
 	printersinternal.AddHandlers(p)
 	tf.Printer = p
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client:               nil,
 	}
@@ -615,6 +569,7 @@ func Example_printServiceWithNamespacesAndLabels() {
 	printersinternal.AddHandlers(p)
 	tf.Printer = p
 	tf.Client = &fake.RESTClient{
+		APIRegistry:          api.Registry,
 		NegotiatedSerializer: ns,
 		Client:               nil,
 	}

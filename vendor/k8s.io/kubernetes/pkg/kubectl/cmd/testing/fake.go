@@ -23,10 +23,10 @@ import (
 	"path/filepath"
 	"time"
 
+	swagger "github.com/emicklei/go-restful-swagger12"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -37,12 +37,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/rest/fake"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	fedclientset "k8s.io/kubernetes/federation/client/clientset_generated/federation_clientset"
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
-	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/kubectl"
-	"k8s.io/kubernetes/pkg/kubectl/categories"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/util/openapi"
 	"k8s.io/kubernetes/pkg/kubectl/plugins"
@@ -176,7 +175,7 @@ func versionErrIfFalse(b bool) error {
 	return versionErr
 }
 
-var ValidVersion = legacyscheme.Registry.GroupOrDie(api.GroupName).GroupVersion.Version
+var ValidVersion = api.Registry.GroupOrDie(api.GroupName).GroupVersion.Version
 var InternalGV = schema.GroupVersion{Group: "apitest", Version: runtime.APIVersionInternal}
 var UnlikelyGV = schema.GroupVersion{Group: "apitest", Version: "unlikelyversion"}
 var ValidVersionGV = schema.GroupVersion{Group: "apitest", Version: ValidVersion}
@@ -242,7 +241,7 @@ type TestFactory struct {
 	Err                error
 	Command            string
 	TmpDir             string
-	CategoryExpander   categories.CategoryExpander
+	CategoryExpander   resource.CategoryExpander
 
 	ClientForMappingFunc             func(mapping *meta.RESTMapping) (resource.RESTClient, error)
 	UnstructuredClientForMappingFunc func(mapping *meta.RESTMapping) (resource.RESTClient, error)
@@ -281,7 +280,7 @@ func (f *FakeFactory) FlagSet() *pflag.FlagSet {
 }
 
 func (f *FakeFactory) Object() (meta.RESTMapper, runtime.ObjectTyper) {
-	return legacyscheme.Registry.RESTMapper(), f.tf.Typer
+	return api.Registry.RESTMapper(), f.tf.Typer
 }
 
 func (f *FakeFactory) UnstructuredObject() (meta.RESTMapper, runtime.ObjectTyper, error) {
@@ -294,8 +293,8 @@ func (f *FakeFactory) UnstructuredObject() (meta.RESTMapper, runtime.ObjectTyper
 	return expander, typer, err
 }
 
-func (f *FakeFactory) CategoryExpander() categories.CategoryExpander {
-	return categories.LegacyCategoryExpander
+func (f *FakeFactory) CategoryExpander() resource.CategoryExpander {
+	return resource.LegacyCategoryExpander
 }
 
 func (f *FakeFactory) Decoder(bool) runtime.Decoder {
@@ -333,6 +332,12 @@ func (f *FakeFactory) ClientForMapping(mapping *meta.RESTMapping) (resource.REST
 	return f.tf.Client, f.tf.Err
 }
 
+func (f *FakeFactory) FederationClientSetForVersion(version *schema.GroupVersion) (fedclientset.Interface, error) {
+	return nil, nil
+}
+func (f *FakeFactory) FederationClientForVersion(version *schema.GroupVersion) (*restclient.RESTClient, error) {
+	return nil, nil
+}
 func (f *FakeFactory) ClientSetForVersion(requiredVersion *schema.GroupVersion) (internalclientset.Interface, error) {
 	return nil, nil
 }
@@ -353,20 +358,6 @@ func (f *FakeFactory) Describer(*meta.RESTMapping) (printers.Describer, error) {
 
 func (f *FakeFactory) PrinterForCommand(cmd *cobra.Command, isLocal bool, outputOpts *printers.OutputOptions, options printers.PrintOptions) (printers.ResourcePrinter, error) {
 	return f.tf.Printer, f.tf.Err
-}
-
-func (f *FakeFactory) PrintResourceInfoForCommand(cmd *cobra.Command, info *resource.Info, out io.Writer) error {
-	printer, err := f.PrinterForCommand(cmd, false, nil, printers.PrintOptions{})
-	if err != nil {
-		return err
-	}
-	if !printer.IsGeneric() {
-		printer, err = f.PrinterForMapping(cmd, false, nil, nil, false)
-		if err != nil {
-			return err
-		}
-	}
-	return printer.PrintObj(info.Object, out)
 }
 
 func (f *FakeFactory) Printer(mapping *meta.RESTMapping, options printers.PrintOptions) (printers.ResourcePrinter, error) {
@@ -425,8 +416,12 @@ func (f *FakeFactory) ResolveImage(name string) (string, error) {
 	return name, nil
 }
 
-func (f *FakeFactory) Validator(validate bool) (validation.Schema, error) {
+func (f *FakeFactory) Validator(validate bool, openapi bool, cacheDir string) (validation.Schema, error) {
 	return f.tf.Validator, f.tf.Err
+}
+
+func (f *FakeFactory) SwaggerSchema(schema.GroupVersionKind) (*swagger.ApiDeclaration, error) {
+	return nil, nil
 }
 
 func (f *FakeFactory) OpenAPISchema() (openapi.Resources, error) {
@@ -460,11 +455,7 @@ func (f *FakeFactory) AttachablePodForObject(ob runtime.Object, timeout time.Dur
 	return nil, nil
 }
 
-func (f *FakeFactory) ApproximatePodTemplateForObject(obj runtime.Object) (*api.PodTemplateSpec, error) {
-	return f.ApproximatePodTemplateForObject(obj)
-}
-
-func (f *FakeFactory) UpdatePodSpecForObject(obj runtime.Object, fn func(*v1.PodSpec) error) (bool, error) {
+func (f *FakeFactory) UpdatePodSpecForObject(obj runtime.Object, fn func(*api.PodSpec) error) (bool, error) {
 	return false, nil
 }
 
@@ -493,22 +484,21 @@ func (f *FakeFactory) PrinterForMapping(cmd *cobra.Command, isLocal bool, output
 	return f.tf.Printer, f.tf.Err
 }
 
-func (f *FakeFactory) NewBuilder() *resource.Builder {
-	mapper, typer := f.Object()
-	return resource.NewBuilder(mapper, f.CategoryExpander(), typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true))
+func (f *FakeFactory) NewBuilder(allowRemoteCalls bool) *resource.Builder {
+	return nil
 }
 
-func (f *FakeFactory) NewUnstructuredBuilder() *resource.Builder {
+func (f *FakeFactory) NewUnstructuredBuilder(allowRemoteCalls bool) (*resource.Builder, error) {
+	if !allowRemoteCalls {
+		return f.NewBuilder(allowRemoteCalls), nil
+	}
+
 	mapper, typer, err := f.UnstructuredObject()
 	if err != nil {
-		cmdutil.CheckErr(err)
+		return nil, err
 	}
-	return resource.NewBuilder(
-		mapper,
-		f.CategoryExpander(),
-		typer,
-		resource.ClientMapperFunc(f.UnstructuredClientForMapping),
-		unstructured.UnstructuredJSONScheme)
+
+	return resource.NewBuilder(mapper, f.CategoryExpander(), typer, resource.ClientMapperFunc(f.UnstructuredClientForMapping), unstructured.UnstructuredJSONScheme), nil
 }
 
 func (f *FakeFactory) DefaultResourceFilterOptions(cmd *cobra.Command, withNamespace bool) *printers.PrintOptions {
@@ -550,11 +540,11 @@ func (f *fakeMixedFactory) Object() (meta.RESTMapper, runtime.ObjectTyper) {
 			{Group: meta.AnyGroup, Version: "v1", Kind: meta.AnyKind},
 		},
 	}
-	return priorityRESTMapper, runtime.MultiObjectTyper{f.tf.Typer, legacyscheme.Scheme}
+	return priorityRESTMapper, runtime.MultiObjectTyper{f.tf.Typer, api.Scheme}
 }
 
 func (f *fakeMixedFactory) ClientForMapping(m *meta.RESTMapping) (resource.RESTClient, error) {
-	if m.ObjectConvertor == legacyscheme.Scheme {
+	if m.ObjectConvertor == api.Scheme {
 		return f.apiClient, f.tf.Err
 	}
 	if f.tf.ClientForMappingFunc != nil {
@@ -578,7 +568,7 @@ type fakeAPIFactory struct {
 }
 
 func (f *fakeAPIFactory) Object() (meta.RESTMapper, runtime.ObjectTyper) {
-	return testapi.Default.RESTMapper(), legacyscheme.Scheme
+	return testapi.Default.RESTMapper(), api.Scheme
 }
 
 func (f *fakeAPIFactory) UnstructuredObject() (meta.RESTMapper, runtime.ObjectTyper, error) {
@@ -665,7 +655,7 @@ func (f *fakeAPIFactory) DiscoveryClient() (discovery.CachedDiscoveryInterface, 
 	return cmdutil.NewCachedDiscoveryClient(discoveryClient, cacheDir, time.Duration(10*time.Minute)), nil
 }
 
-func (f *fakeAPIFactory) CategoryExpander() categories.CategoryExpander {
+func (f *fakeAPIFactory) CategoryExpander() resource.CategoryExpander {
 	if f.tf.CategoryExpander != nil {
 		return f.tf.CategoryExpander
 	}
@@ -698,20 +688,6 @@ func (f *fakeAPIFactory) PrinterForCommand(cmd *cobra.Command, isLocal bool, out
 	return f.tf.Printer, f.tf.Err
 }
 
-func (f *fakeAPIFactory) PrintResourceInfoForCommand(cmd *cobra.Command, info *resource.Info, out io.Writer) error {
-	printer, err := f.PrinterForCommand(cmd, false, nil, printers.PrintOptions{})
-	if err != nil {
-		return err
-	}
-	if !printer.IsGeneric() {
-		printer, err = f.PrinterForMapping(cmd, false, nil, nil, false)
-		if err != nil {
-			return err
-		}
-	}
-	return printer.PrintObj(info.Object, out)
-}
-
 func (f *fakeAPIFactory) Describer(*meta.RESTMapping) (printers.Describer, error) {
 	return f.tf.Describer, f.tf.Err
 }
@@ -734,7 +710,7 @@ func (f *fakeAPIFactory) LogsForObject(object, options runtime.Object, timeout t
 		}
 		return c.Core().Pods(f.tf.Namespace).GetLogs(t.Name, opts), nil
 	default:
-		fqKinds, _, err := legacyscheme.Scheme.ObjectKinds(object)
+		fqKinds, _, err := api.Scheme.ObjectKinds(object)
 		if err != nil {
 			return nil, err
 		}
@@ -747,7 +723,7 @@ func (f *fakeAPIFactory) AttachablePodForObject(object runtime.Object, timeout t
 	case *api.Pod:
 		return t, nil
 	default:
-		gvks, _, err := legacyscheme.Scheme.ObjectKinds(object)
+		gvks, _, err := api.Scheme.ObjectKinds(object)
 		if err != nil {
 			return nil, err
 		}
@@ -755,11 +731,7 @@ func (f *fakeAPIFactory) AttachablePodForObject(object runtime.Object, timeout t
 	}
 }
 
-func (f *fakeAPIFactory) ApproximatePodTemplateForObject(obj runtime.Object) (*api.PodTemplateSpec, error) {
-	return f.Factory.ApproximatePodTemplateForObject(obj)
-}
-
-func (f *fakeAPIFactory) Validator(validate bool) (validation.Schema, error) {
+func (f *fakeAPIFactory) Validator(validate bool, openapi bool, cacheDir string) (validation.Schema, error) {
 	return f.tf.Validator, f.tf.Err
 }
 
@@ -776,7 +748,7 @@ func (f *fakeAPIFactory) Generators(cmdName string) map[string]kubectl.Generator
 }
 
 func (f *fakeAPIFactory) PrintObject(cmd *cobra.Command, isLocal bool, mapper meta.RESTMapper, obj runtime.Object, out io.Writer) error {
-	gvks, _, err := legacyscheme.Scheme.ObjectKinds(obj)
+	gvks, _, err := api.Scheme.ObjectKinds(obj)
 	if err != nil {
 		return err
 	}
@@ -797,26 +769,31 @@ func (f *fakeAPIFactory) PrinterForMapping(cmd *cobra.Command, isLocal bool, out
 	return f.tf.Printer, f.tf.Err
 }
 
-func (f *fakeAPIFactory) NewBuilder() *resource.Builder {
+func (f *fakeAPIFactory) NewBuilder(allowRemoteCalls bool) *resource.Builder {
 	mapper, typer := f.Object()
+
 	return resource.NewBuilder(mapper, f.CategoryExpander(), typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true))
 }
 
-func (f *fakeAPIFactory) NewUnstructuredBuilder() *resource.Builder {
+func (f *fakeAPIFactory) NewUnstructuredBuilder(allowRemoteCalls bool) (*resource.Builder, error) {
+	if !allowRemoteCalls {
+		return f.NewBuilder(allowRemoteCalls), nil
+	}
+
 	mapper, typer, err := f.UnstructuredObject()
 	if err != nil {
-		cmdutil.CheckErr(err)
+		return nil, err
 	}
-	return resource.NewBuilder(
-		mapper,
-		f.CategoryExpander(),
-		typer,
-		resource.ClientMapperFunc(f.UnstructuredClientForMapping),
-		unstructured.UnstructuredJSONScheme)
+
+	return resource.NewBuilder(mapper, f.CategoryExpander(), typer, resource.ClientMapperFunc(f.UnstructuredClientForMapping), unstructured.UnstructuredJSONScheme), nil
 }
 
 func (f *fakeAPIFactory) SuggestedPodTemplateResources() []schema.GroupResource {
 	return []schema.GroupResource{}
+}
+
+func (f *fakeAPIFactory) SwaggerSchema(schema.GroupVersionKind) (*swagger.ApiDeclaration, error) {
+	return nil, nil
 }
 
 func (f *fakeAPIFactory) OpenAPISchema() (openapi.Resources, error) {

@@ -17,7 +17,7 @@ limitations under the License.
 package persistentvolume
 
 import (
-	api "k8s.io/kubernetes/pkg/apis/core"
+	"k8s.io/kubernetes/pkg/api"
 )
 
 func getClaimRefNamespace(pv *api.PersistentVolume) string {
@@ -64,26 +64,12 @@ func VisitPVSecretNames(pv *api.PersistentVolume, visitor Visitor) bool {
 			return false
 		}
 	case source.RBD != nil:
-		if source.RBD.SecretRef != nil {
-			// previously persisted PV objects use claimRef namespace
-			ns := getClaimRefNamespace(pv)
-			if len(source.RBD.SecretRef.Namespace) > 0 {
-				// use the secret namespace if namespace is set
-				ns = source.RBD.SecretRef.Namespace
-			}
-			if !visitor(ns, source.RBD.SecretRef.Name) {
-				return false
-			}
+		if source.RBD.SecretRef != nil && !visitor(getClaimRefNamespace(pv), source.RBD.SecretRef.Name) {
+			return false
 		}
 	case source.ScaleIO != nil:
-		if source.ScaleIO.SecretRef != nil {
-			ns := getClaimRefNamespace(pv)
-			if source.ScaleIO.SecretRef != nil && len(source.ScaleIO.SecretRef.Namespace) > 0 {
-				ns = source.ScaleIO.SecretRef.Namespace
-			}
-			if !visitor(ns, source.ScaleIO.SecretRef.Name) {
-				return false
-			}
+		if source.ScaleIO.SecretRef != nil && !visitor(getClaimRefNamespace(pv), source.ScaleIO.SecretRef.Name) {
+			return false
 		}
 	case source.ISCSI != nil:
 		if source.ISCSI.SecretRef != nil && !visitor(getClaimRefNamespace(pv), source.ISCSI.SecretRef.Name) {
