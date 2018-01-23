@@ -241,23 +241,23 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 
 	userCredentials := map[string]string{}
 	if storageClassName := options.PVC.Spec.StorageClassName; *storageClassName != "" {
-		fmt.Printf("><SB> provisioner was called for storage class: %s\n", *storageClassName)
+		fmt.Printf("><SB> provisioner was called for storage class: %s and for user: %s\n", *storageClassName, options.PVC.Spec.UserID)
 		storageClass, err := p.client.StorageV1().StorageClasses().Get(*storageClassName, metav1.GetOptions{})
 		if err != nil {
 			glog.Warningf("failed to retrieve information about the storage class: %s with error: %v", storageClassName, err)
 		} else {
 			if storageClass.SecretRefs != nil {
-				// Now we can extract user names and corresponding keys
-				// When PVC spec will carry UserID field, then the following loop will not be needed
-				// as PVC's UserID will be used as a key to get corresponding Secret object
-				for user, secret := range storageClass.SecretRefs {
+				// Now we can extract user's key for "create" action
+				if secret, found := storageClass.SecretRefs[options.PVC.Spec.UserID]; found {
 					key, err := getKeyFromSecret(secret.Name, secret.Namespace, "create", p.client)
-					if err != nil {
+					if err == nil {
+						userCredentials[options.PVC.Spec.UserID] = key
+						fmt.Printf("><SB> Extracted user name: %s secret name: %s secret namespace: %s key: %s \n", options.PVC.Spec.UserID, secret.Name, secret.Namespace, key)
+					} else {
 						glog.Warningf("failed to retrieve secret: %s/%s with error: %v", secret.Name, secret.Namespace, err)
-						continue
 					}
-					userCredentials[user] = key
-					fmt.Printf("><SB> Extracted user name: %s secret name: %s secret namespace: %s key: %s \n", user, secret.Name, secret.Namespace, key)
+				} else {
+					glog.Warningf("user: %s is not found in storageclass: %s/%s", options.PVC.Spec.UserID, secret.Name, secret.Namespace)
 				}
 			}
 		}
@@ -303,6 +303,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			Annotations: annotations,
 		},
 		Spec: v1.PersistentVolumeSpec{
+			UserID: options.PVC.Spec.UserID,
 			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
 			AccessModes:                   options.PVC.Spec.AccessModes,
 			Capacity: v1.ResourceList{
@@ -318,7 +319,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		},
 	}
 
-	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
+	glog.Infof("successfully created PV %+v for user: %s", pv.Spec.PersistentVolumeSource, pv.Spec.UserID)
 
 	return pv, nil
 }
