@@ -25,12 +25,12 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/pborman/uuid"
 
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -45,12 +45,14 @@ const (
 )
 
 type csiProvisioner struct {
-	client     kubernetes.Interface
-	csiClient  csi.ControllerClient
-	driverName string
-	timeout    time.Duration
-	identity   string
-	config     *rest.Config
+	client               kubernetes.Interface
+	csiClient            csi.ControllerClient
+	driverName           string
+	timeout              time.Duration
+	identity             string
+	volumeNamePrefix     string
+	volumeNameUUIDLength int
+	config               *rest.Config
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -166,7 +168,7 @@ func supportsControllerCreateVolume(conn *grpc.ClientConn, timeout time.Duration
 	return false, nil
 }
 
-func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connectionTimeout time.Duration, identity string) controller.Provisioner {
+func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connectionTimeout time.Duration, identity string, volumeNamePrefix string, volumeNameUUIDLength int) controller.Provisioner {
 	grpcClient, err := connect(csiEndpoint, connectionTimeout)
 	if err != nil || grpcClient == nil {
 		glog.Fatalf("failed to connect to csi endpoint :%v", err)
@@ -185,11 +187,13 @@ func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connecti
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
-		client:     client,
-		driverName: driver,
-		csiClient:  csiClient,
-		timeout:    connectionTimeout,
-		identity:   identity,
+		client:               client,
+		driverName:           driver,
+		csiClient:            csiClient,
+		timeout:              connectionTimeout,
+		identity:             identity,
+		volumeNamePrefix:     volumeNamePrefix,
+		volumeNameUUIDLength: volumeNameUUIDLength,
 	}
 	return provisioner
 }
@@ -199,7 +203,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, fmt.Errorf("claim Selector is not supported")
 	}
 	// create random share name
-	share := fmt.Sprintf("kubernetes-dynamic-pvc-%s", uuid.NewUUID())
+	share := fmt.Sprintf("%s-%s", p.volumeNamePrefix, strings.Replace(string(uuid.NewUUID()), "-", "", -1)[0:p.volumeNameUUIDLength])
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 

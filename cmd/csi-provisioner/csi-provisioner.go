@@ -35,11 +35,13 @@ import (
 )
 
 var (
-	provisioner       = flag.String("provisioner", "", "Name of the provisioner. The provisioner will only provision volumes for claims that request a StorageClass with a provisioner field set equal to this name.")
-	master            = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
-	kubeconfig        = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
-	csiEndpoint       = flag.String("csi-address", "", "The gRPC endpoint for Target CSI Volume")
-	connectionTimeout = flag.Duration("connection-timeout", 10*time.Second, "Timeout for waiting for CSI driver socket.")
+	provisioner          = flag.String("provisioner", "", "Name of the provisioner. The provisioner will only provision volumes for claims that request a StorageClass with a provisioner field set equal to this name.")
+	master               = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
+	kubeconfig           = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
+	csiEndpoint          = flag.String("csi-address", "", "The gRPC endpoint for Target CSI Volume")
+	connectionTimeout    = flag.Duration("connection-timeout", 10*time.Second, "Timeout for waiting for CSI driver socket.")
+	volumeNamePrefix     = flag.String("volume-name-prefix", "kubernetes-dynamic-pv", "Prefix to apply to the name of a created volume")
+	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", 16, "Length in characters for the generated uuid of a created volume")
 
 	provisionController *controller.ProvisionController
 )
@@ -87,7 +89,7 @@ func init() {
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *csiEndpoint, *connectionTimeout, identity)
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		*provisioner,
