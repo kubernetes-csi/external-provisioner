@@ -12,7 +12,7 @@ COPY ./examples/flex-debug.sh /opt/csi-provisioner/
 
 # install the go kube piece of provisioner
 
-COPY ./_output/csi-provisioner /opt/csi-provisioner/
+COPY ./bin/csi-provisioner /opt/csi-provisioner/
 
 
 ENTRYPOINT ["/opt/csi-provisioner/csi-provisioner"]
