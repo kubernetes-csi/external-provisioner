@@ -1,8 +1,15 @@
+sudo: true
 language: go
 matrix:
   include:
-  - go: 1.9.2
+  - go: 1.x
 script:
 - go fmt $(go list ./... | grep -v vendor) | wc -l | grep 0
 - go vet $(go list ./... | grep -v vendor)
 - go test $(go list ./... | grep -v vendor)
+after_success:
+  - if [ "${TRAVIS_BRANCH}" == "master" ] && [ "${TRAVIS_PULL_REQUEST}" == "false" ]; then
+      sudo ./hack/build-container.sh;
+      docker login -u "${DOCKER_USERNAME}" -p "${DOCKER_PASSWORD}" quay.io;
+      docker push quay.io/k8scsi/driver-registrar:canary;
+    fi
