@@ -44,12 +44,10 @@ deps:
 .PHONY: deps
 
 quick-container:
-	docker build -t $(IMAGE):$(VERSION) .
+	sudo ./hack/build-container.sh
+	@echo ""
+	@echo "Container quay.io/k8scsi/csi-provisioner:canary created"
 .PHONY: quick-container
-
-push-container:
-	docker push $(IMAGE):$(VERSION)
-.PHONY: push-container
 
 provisioner:
 	mkdir -p _output
