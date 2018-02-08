@@ -21,7 +21,7 @@
 #  version = "2.4.0"
 
 [[constraint]]
-  branch = "master"
+  version = "v0.1.0"
   name = "github.com/container-storage-interface/spec"
 
 [[constraint]]
@@ -46,7 +46,7 @@
 
 [[constraint]]
   name = "k8s.io/apimachinery"
-  branch = "release-1.8"
+  branch = "release-1.9"
 
 [[constraint]]
   name = "k8s.io/client-go"
@@ -55,3 +55,7 @@
 [[constraint]]
   name = "k8s.io/api"
   branch = "master"
+
+[[constraint]]
+  branch = "master"
+  name = "golang.org/x/time"
