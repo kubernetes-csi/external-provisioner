@@ -86,6 +86,12 @@ type PodStats struct {
 	// +patchMergeKey=name
 	// +patchStrategy=merge
 	Containers []ContainerStats `json:"containers" patchStrategy:"merge" patchMergeKey:"name"`
+	// Stats pertaining to CPU resources consumed by pod cgroup (which includes all containers' resource usage and pod overhead).
+	// +optional
+	CPU *CPUStats `json:"cpu,omitempty"`
+	// Stats pertaining to memory (RAM) resources consumed by pod cgroup (which includes all containers' resource usage and pod overhead).
+	// +optional
+	Memory *MemoryStats `json:"memory,omitempty"`
 	// Stats pertaining to network resources.
 	// +optional
 	Network *NetworkStats `json:"network,omitempty"`
@@ -95,6 +101,9 @@ type PodStats struct {
 	// +patchMergeKey=name
 	// +patchStrategy=merge
 	VolumeStats []VolumeStats `json:"volume,omitempty" patchStrategy:"merge" patchMergeKey:"name"`
+	// EphemeralStorage reports the total filesystem usage for the containers and emptyDir-backed volumes in the measured Pod.
+	// +optional
+	EphemeralStorage *FsStats `json:"ephemeral-storage,omitempty"`
 }
 
 // ContainerStats holds container-level unprocessed sample stats.
@@ -132,10 +141,10 @@ type PodReference struct {
 	UID       string `json:"uid"`
 }
 
-// NetworkStats contains data about network resources.
-type NetworkStats struct {
-	// The time at which these stats were updated.
-	Time metav1.Time `json:"time"`
+// InterfaceStats contains resource value data about interface.
+type InterfaceStats struct {
+	// The name of the interface
+	Name string `json:"name"`
 	// Cumulative count of bytes received.
 	// +optional
 	RxBytes *uint64 `json:"rxBytes,omitempty"`
@@ -148,6 +157,17 @@ type NetworkStats struct {
 	// Cumulative count of transmit errors encountered.
 	// +optional
 	TxErrors *uint64 `json:"txErrors,omitempty"`
+}
+
+// NetworkStats contains data about network resources.
+type NetworkStats struct {
+	// The time at which these stats were updated.
+	Time metav1.Time `json:"time"`
+
+	// Stats for the default interface, if found
+	InterfaceStats `json:",inline"`
+
+	Interfaces []InterfaceStats `json:"interfaces,omitempty"`
 }
 
 // CPUStats contains data about CPU usage.
@@ -203,15 +223,15 @@ type AcceleratorStats struct {
 
 	// Total accelerator memory.
 	// unit: bytes
-	MemoryTotal uint64 `json:"memory_total"`
+	MemoryTotal uint64 `json:"memoryTotal"`
 
 	// Total accelerator memory allocated.
 	// unit: bytes
-	MemoryUsed uint64 `json:"memory_used"`
+	MemoryUsed uint64 `json:"memoryUsed"`
 
 	// Percent of time over the past sample period (10s) during which
 	// the accelerator was actively processing.
-	DutyCycle uint64 `json:"duty_cycle"`
+	DutyCycle uint64 `json:"dutyCycle"`
 }
 
 // VolumeStats contains data about Volume filesystem usage.

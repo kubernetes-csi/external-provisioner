@@ -34,7 +34,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/kubernetes/pkg/api/v1/helper"
+	"k8s.io/kubernetes/pkg/apis/core/v1/helper"
 )
 
 const (
@@ -43,6 +43,7 @@ const (
 	provisionerIDAnn   = "cephFSProvisionerIdentity"
 	cephShareAnn       = "cephShare"
 	provisionerNameKey = "PROVISIONER_NAME"
+	secretNamespaceKey = "PROVISIONER_SECRET_NAMESPACE"
 )
 
 type provisionOutput struct {
@@ -57,16 +58,54 @@ type cephFSProvisioner struct {
 	// Identity of this cephFSProvisioner, generated. Used to identify "this"
 	// provisioner's PVs.
 	identity string
+	// Namespace secrets will be created in. If empty, secrets will be created in each PVC's namespace.
+	secretNamespace string
 }
 
-func newCephFSProvisioner(client kubernetes.Interface, id string) controller.Provisioner {
+func newCephFSProvisioner(client kubernetes.Interface, id string, secretNamespace string) controller.Provisioner {
 	return &cephFSProvisioner{
-		client:   client,
-		identity: id,
+		client:          client,
+		identity:        id,
+		secretNamespace: secretNamespace,
 	}
 }
 
 var _ controller.Provisioner = &cephFSProvisioner{}
+
+func generateSecretName(user string) string {
+	return "ceph-" + user + "-secret"
+}
+
+func getClaimRefNamespace(pv *v1.PersistentVolume) string {
+	if pv.Spec.ClaimRef != nil {
+		return pv.Spec.ClaimRef.Namespace
+	}
+	return ""
+}
+
+// getSecretFromCephFSPersistentVolume gets secret reference from CephFS PersistentVolume.
+// It fallbacks to use ClaimRef.Namespace if SecretRef.Namespace is
+// empty. See https://github.com/kubernetes/kubernetes/pull/49502.
+func getSecretFromCephFSPersistentVolume(pv *v1.PersistentVolume) (*v1.SecretReference, error) {
+	source := &pv.Spec.PersistentVolumeSource
+	if source.CephFS == nil {
+		return nil, errors.New("pv.Spec.PersistentVolumeSource.CephFS is nil")
+	}
+	if source.CephFS.SecretRef == nil {
+		return nil, errors.New("pv.Spec.PersistentVolumeSource.CephFS.SecretRef is nil")
+	}
+	if len(source.CephFS.SecretRef.Namespace) > 0 {
+		return source.CephFS.SecretRef, nil
+	}
+	ns := getClaimRefNamespace(pv)
+	if len(ns) <= 0 {
+		return nil, errors.New("both pv.Spec.SecretRef.Namespace and pv.Spec.ClaimRef.Namespace are empty")
+	}
+	return &v1.SecretReference{
+		Name:      source.CephFS.SecretRef.Name,
+		Namespace: ns,
+	}, nil
+}
 
 // Provision creates a storage asset and returns a PV object representing it.
 func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
@@ -102,9 +141,12 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 	if res.User == "" || res.Secret == "" || res.Path == "" {
 		return nil, fmt.Errorf("invalid provisioner output")
 	}
-	// create secret in PVC's namespace
-	nameSpace := options.PVC.Namespace
-	secretName := "ceph-" + user + "-secret"
+	nameSpace := p.secretNamespace
+	if nameSpace == "" {
+		// if empty, create secret in PVC's namespace
+		nameSpace = options.PVC.Namespace
+	}
+	secretName := generateSecretName(user)
 	secret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: nameSpace,
@@ -116,7 +158,7 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 		Type: "Opaque",
 	}
 
-	_, err = p.client.Core().Secrets(nameSpace).Create(secret)
+	_, err = p.client.CoreV1().Secrets(nameSpace).Create(secret)
 	if err != nil {
 		glog.Errorf("Cephfs Provisioner: create volume failed, err: %v", err)
 		return nil, fmt.Errorf("failed to create secret")
@@ -143,6 +185,7 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 					SecretRef: &v1.SecretReference{
 						Name: secretName,
 						// TODO https://github.com/kubernetes-incubator/external-storage/issues/309
+						Namespace: nameSpace,
 					},
 					User: user,
 				},
@@ -196,6 +239,18 @@ func (p *cephFSProvisioner) Delete(volume *v1.PersistentVolume) error {
 		return cmdErr
 	}
 
+	// Remove dynamic user secret
+	secretRef, err := getSecretFromCephFSPersistentVolume(volume)
+	if err != nil {
+		glog.Errorf("failed to get secret references, err: %v", err)
+		return err
+	}
+	err = p.client.CoreV1().Secrets(secretRef.Namespace).Delete(secretRef.Name, &metav1.DeleteOptions{})
+	if err != nil {
+		glog.Errorf("Cephfs Provisioner: delete secret failed, err: %v", err)
+		return fmt.Errorf("failed to delete secret")
+	}
+
 	return nil
 }
 
@@ -246,7 +301,7 @@ func (p *cephFSProvisioner) parsePVSecret(namespace, secretName string) (string,
 	if p.client == nil {
 		return "", fmt.Errorf("Cannot get kube client")
 	}
-	secrets, err := p.client.Core().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	secrets, err := p.client.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -259,9 +314,10 @@ func (p *cephFSProvisioner) parsePVSecret(namespace, secretName string) (string,
 }
 
 var (
-	master     = flag.String("master", "", "Master URL")
-	kubeconfig = flag.String("kubeconfig", "", "Absolute path to the kubeconfig")
-	id         = flag.String("id", "", "Unique provisioner identity")
+	master          = flag.String("master", "", "Master URL")
+	kubeconfig      = flag.String("kubeconfig", "", "Absolute path to the kubeconfig")
+	id              = flag.String("id", "", "Unique provisioner identity")
+	secretNamespace = flag.String("secret-namespace", "", "Namespace secrets will be created in (default: '', created in each PVC's namespace)")
 )
 
 func main() {
@@ -297,6 +353,11 @@ func main() {
 		prID = *id
 	}
 
+	secretNamespaceFromEnv := os.Getenv(secretNamespaceKey)
+	if secretNamespaceFromEnv != "" {
+		*secretNamespace = secretNamespaceFromEnv
+	}
+
 	// The controller needs to know what the server version is because out-of-tree
 	// provisioners aren't officially supported until 1.5
 	serverVersion, err := clientset.Discovery().ServerVersion()
@@ -306,8 +367,8 @@ func main() {
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	glog.Infof("Creating CephFS provisioner %s with identity: %s", prName, prID)
-	cephFSProvisioner := newCephFSProvisioner(clientset, prID)
+	glog.Infof("Creating CephFS provisioner %s with identity: %s, secret namespace: %s", prName, prID, *secretNamespace)
+	cephFSProvisioner := newCephFSProvisioner(clientset, prID, *secretNamespace)
 
 	// Start the provision controller which will dynamically provision cephFS
 	// PVs

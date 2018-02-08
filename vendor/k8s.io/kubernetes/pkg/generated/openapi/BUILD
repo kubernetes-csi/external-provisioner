@@ -21,8 +21,9 @@ openapi_library(
     tags = ["automanaged"],
     vendor_prefix = openapi_vendor_prefix,
     vendor_targets = [
-        "k8s.io/api/admission/v1alpha1",
+        "k8s.io/api/admission/v1beta1",
         "k8s.io/api/admissionregistration/v1alpha1",
+        "k8s.io/api/admissionregistration/v1beta1",
         "k8s.io/api/apps/v1",
         "k8s.io/api/apps/v1beta1",
         "k8s.io/api/apps/v1beta2",
@@ -37,6 +38,7 @@ openapi_library(
         "k8s.io/api/batch/v2alpha1",
         "k8s.io/api/certificates/v1beta1",
         "k8s.io/api/core/v1",
+        "k8s.io/api/events/v1beta1",
         "k8s.io/api/extensions/v1beta1",
         "k8s.io/api/imagepolicy/v1alpha1",
         "k8s.io/api/networking/v1",

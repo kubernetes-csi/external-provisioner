@@ -140,12 +140,6 @@ const (
 	// 'MemoryPressure', 'OutOfDisk' and 'DiskPressure'.
 	TaintNodesByCondition utilfeature.Feature = "TaintNodesByCondition"
 
-	// owner: @haibinxie
-	// alpha: v1.8
-	//
-	// Implement IPVS-based in-cluster service load balancing
-	SupportIPVSProxyMode utilfeature.Feature = "SupportIPVSProxyMode"
-
 	// owner: @jsafrane
 	// alpha: v1.8
 	//
@@ -180,7 +174,44 @@ const (
 	// alpha: v1.9
 	//
 	// Extend the default scheduler to be aware of PV topology and handle PV binding
+	// Before moving to beta, resolve Kubernetes issue #56180
 	VolumeScheduling utilfeature.Feature = "VolumeScheduling"
+
+	// owner: @vladimirvivien
+	// alpha: v1.9
+	//
+	// Enable mount/attachment of Container Storage Interface (CSI) backed PVs
+	CSIPersistentVolume utilfeature.Feature = "CSIPersistentVolume"
+
+	// owner @MrHohn
+	// alpha: v1.9
+	//
+	// Support configurable pod DNS parameters.
+	CustomPodDNS utilfeature.Feature = "CustomPodDNS"
+
+	// owner: @screeley44
+	// alpha: v1.9
+	//
+	// Enable Block volume support in containers.
+	BlockVolume utilfeature.Feature = "BlockVolume"
+
+	// owner: @pospispa
+	//
+	// alpha: v1.9
+	// Postpone deletion of a persistent volume claim in case it is used by a pod
+	PVCProtection utilfeature.Feature = "PVCProtection"
+
+	// owner: @aveshagarwal
+	// alpha: v1.9
+	//
+	// Enable resource limits priority function
+	ResourceLimitsPriorityFunction utilfeature.Feature = "ResourceLimitsPriorityFunction"
+
+	// owner: @m1093782566
+	// beta: v1.9
+	//
+	// Implement IPVS-based in-cluster service load balancing
+	SupportIPVSProxyMode utilfeature.Feature = "SupportIPVSProxyMode"
 )
 
 func init() {
@@ -215,6 +246,12 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	ServiceNodeExclusion:                        {Default: false, PreRelease: utilfeature.Alpha},
 	MountContainers:                             {Default: false, PreRelease: utilfeature.Alpha},
 	VolumeScheduling:                            {Default: false, PreRelease: utilfeature.Alpha},
+	CSIPersistentVolume:                         {Default: false, PreRelease: utilfeature.Alpha},
+	CustomPodDNS:                                {Default: false, PreRelease: utilfeature.Alpha},
+	BlockVolume:                                 {Default: false, PreRelease: utilfeature.Alpha},
+	PVCProtection:                               {Default: false, PreRelease: utilfeature.Alpha},
+	ResourceLimitsPriorityFunction:              {Default: false, PreRelease: utilfeature.Alpha},
+	SupportIPVSProxyMode:                        {Default: false, PreRelease: utilfeature.Beta},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
@@ -227,5 +264,4 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	// inherited features from apiextensions-apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
 	apiextensionsfeatures.CustomResourceValidation: {Default: true, PreRelease: utilfeature.Beta},
-	SupportIPVSProxyMode:                           {Default: false, PreRelease: utilfeature.Alpha},
 }
