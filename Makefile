@@ -13,19 +13,7 @@
 # limitations under the License.
 
 IMAGE = k8scsi/csi-provisioner
-
-VERSION :=
-TAG := $(shell git describe --abbrev=0 --tags HEAD 2>/dev/null)
-COMMIT := $(shell git rev-parse HEAD)
-ifeq ($(TAG),)
-    VERSION := latest
-else
-    ifeq ($(COMMIT), $(shell git rev-list -n1 $(TAG)))
-        VERSION := $(TAG)
-    else
-        VERSION := $(TAG)-$(COMMIT)
-    endif
-endif
+VERSION = v0.2.0
 
 container: build quick-container
 .PHONY: container

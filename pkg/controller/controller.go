@@ -61,7 +61,7 @@ var _ controller.Provisioner = &csiProvisioner{}
 var (
 	csiVersion = csi.Version{
 		Major: 0,
-		Minor: 1,
+		Minor: 2,
 		Patch: 0,
 	}
 	accessMode = &csi.VolumeCapability_AccessMode{
@@ -219,8 +219,8 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			},
 		},
 		CapacityRange: &csi.CapacityRange{
-			RequiredBytes: uint64(volSizeBytes),
-			LimitBytes:    uint64(volSizeBytes),
+			RequiredBytes: int64(volSizeBytes),
+			LimitBytes:    int64(volSizeBytes),
 		},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
@@ -230,14 +230,14 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	if err != nil {
 		return nil, err
 	}
-	if rep.VolumeInfo != nil {
-		glog.V(3).Infof("create volume rep: %+v", *rep.VolumeInfo)
+	if rep.Volume != nil {
+		glog.V(3).Infof("create volume rep: %+v", *rep.Volume)
 	}
 
 	annotations := map[string]string{provisionerIDAnn: p.identity}
-	attributesString, err := json.Marshal(rep.VolumeInfo.Attributes)
+	attributesString, err := json.Marshal(rep.Volume.Attributes)
 	if err != nil {
-		glog.V(2).Infof("fail parsing volume attributes: %+v", rep.VolumeInfo.Attributes)
+		glog.V(2).Infof("fail parsing volume attributes: %+v", rep.Volume.Attributes)
 	} else {
 		annotations[volumeAttributesAnnotation] = string(attributesString)
 	}
@@ -256,7 +256,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
 					Driver:       p.driverName,
-					VolumeHandle: p.volumeIdToHandle(rep.VolumeInfo.Id),
+					VolumeHandle: p.volumeIdToHandle(rep.Volume.Id),
 				},
 			},
 		},
