@@ -12,36 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-IMAGE = k8scsi/csi-provisioner
-VERSION = v0.2.0
+IMAGE_NAME = quay.io/k8scsi/csi-provisioner
+IMAGE_VERSION = v0.2.0
 
-container: build quick-container
-.PHONY: container
+ifdef V
+TESTARGS = -v -args -alsologtostderr -v 5
+else
+TESTARGS =
+endif
+
+all: csi-provisioner
+
+csi-provisioner:
+	mkdir -p bin
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o ./bin/csi-provisioner ./cmd/csi-provisioner 
 
 clean:
-	rm -f external-provisioner
-	rm -rf _output
-.PHONY: clean
+	rm -rf bin deploy/docker/csi-provisioner
 
-format:
-	 gofmt -w -s ./
-.PHONY: format
+container: csi-provisioner
+	cp bin/csi-provisioner deploy/docker
+	docker build -t $(IMAGE_NAME):$(IMAGE_VERSION) .
 
-deps:
-	dep ensure -update
-.PHONY: deps
+push: container
+	docker push $(IMAGE_NAME):$(IMAGE_VERSION)
 
-quick-container:
-	sudo ./hack/build-container.sh
-	@echo ""
-	@echo "Container quay.io/k8scsi/csi-provisioner:canary created"
-.PHONY: quick-container
-
-provisioner:
-	mkdir -p _output
-	go build -i -o _output/csi-provisioner ./cmd/csi-provisioner/
-.PHONY: provisioner
-
-all build: provisioner
-
-.PHONY: all build
+test:
+	go test `go list ./... | grep -v 'vendor'` $(TESTARGS)
+	go vet `go list ./... | grep -v vendor`

@@ -1,7 +1,8 @@
 #!/bin/sh
 
 NAME=csi-provisioner
-TAG=canary
+VER=$1
+TAG="${VER:-canary}"
 CONTAINER=quay.io/k8scsi/${NAME}:${TAG}
 APP=csi-provisioner
 
