@@ -18,13 +18,18 @@ package controller
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-test/driver"
+	"github.com/kubernetes-incubator/external-storage/lib/controller"
 	"google.golang.org/grpc"
+	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -382,5 +387,96 @@ func TestGetDriverName(t *testing.T) {
 		if err == nil && name != "csi/example" {
 			t.Errorf("got unexpected name: %q", name)
 		}
+	}
+}
+
+func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
+	// Set up mocks
+	var requestedBytes int64 = 100
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	csiProvisioner := NewCSIProvisioner(nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn)
+
+	// Requested PVC with requestedBytes storage
+	opts := controller.VolumeOptions{
+		PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+		PVName:     "test-name",
+		PVC:        createFakePVC(requestedBytes),
+		Parameters: map[string]string{},
+	}
+
+	// Drivers CreateVolume response with lower capacity bytes than request
+	out := &csi.CreateVolumeResponse{
+		Volume: &csi.Volume{
+			CapacityBytes: requestedBytes - 1,
+			Id:            "test-volume-id",
+		},
+	}
+
+	// Set up Mocks
+	provisionMockServerSetupExpectations(identityServer, controllerServer)
+	controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+	// Since capacity returned by driver is invalid, we expect the provision call to clean up the volume
+	controllerServer.EXPECT().DeleteVolume(gomock.Any(), &csi.DeleteVolumeRequest{
+		VolumeId: "test-volume-id",
+	}).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
+
+	// Call provision
+	_, err = csiProvisioner.Provision(opts)
+	if err == nil {
+		t.Errorf("Provision did not cause an error when one was expected")
+		return
+	}
+	t.Logf("Provision encountered an error: %v, expected: create volume capacity less than requested capacity", err)
+}
+
+func provisionMockServerSetupExpectations(identityServer *driver.MockIdentityServer, controllerServer *driver.MockControllerServer) {
+	identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(&csi.GetPluginCapabilitiesResponse{
+		Capabilities: []*csi.PluginCapability{
+			&csi.PluginCapability{
+				Type: &csi.PluginCapability_Service_{
+					Service: &csi.PluginCapability_Service{
+						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
+					},
+				},
+			},
+		},
+	}, nil).Times(1)
+	controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), gomock.Any()).Return(&csi.ControllerGetCapabilitiesResponse{
+		Capabilities: []*csi.ControllerServiceCapability{
+			&csi.ControllerServiceCapability{
+				Type: &csi.ControllerServiceCapability_Rpc{
+					Rpc: &csi.ControllerServiceCapability_RPC{
+						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+					},
+				},
+			},
+		},
+	}, nil).Times(1)
+	identityServer.EXPECT().GetPluginInfo(gomock.Any(), gomock.Any()).Return(&csi.GetPluginInfoResponse{
+		Name:          "test-driver",
+		VendorVersion: "test-vendor",
+	}, nil).Times(1)
+}
+
+// Minimal PVC required for tests to function
+func createFakePVC(requestBytes int64) *v1.PersistentVolumeClaim {
+	return &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			UID: "testid",
+		},
+		Spec: v1.PersistentVolumeClaimSpec{
+			Selector: nil, // Provisioner doesn't support selector
+			Resources: v1.ResourceRequirements{
+				Requests: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestBytes, 10)),
+				},
+			},
+		},
 	}
 }

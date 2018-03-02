@@ -23,6 +23,9 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+	_ "k8s.io/apimachinery/pkg/util/json"
+
 	"github.com/golang/glog"
 
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
@@ -289,7 +292,6 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		},
 		CapacityRange: &csi.CapacityRange{
 			RequiredBytes: int64(volSizeBytes),
-			LimitBytes:    int64(volSizeBytes),
 		},
 	}
 	rep := &csi.CreateVolumeResponse{}
@@ -336,6 +338,28 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	for k, v := range rep.Volume.Attributes {
 		volumeAttributes[k] = v
 	}
+	respCap := rep.GetVolume().GetCapacityBytes()
+	if respCap < volSizeBytes {
+		capErr := fmt.Errorf("created volume capacity %v less than requested capacity %v", respCap, volSizeBytes)
+		delReq := &csi.DeleteVolumeRequest{
+			VolumeId: rep.GetVolume().GetId(),
+		}
+		if options.Parameters != nil {
+			credentials, err := getCredentialsFromParameters(p.client, options.Parameters)
+			if err != nil {
+				return nil, err
+			}
+			delReq.ControllerDeleteSecrets = credentials
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
+		defer cancel()
+		_, err := p.csiClient.DeleteVolume(ctx, delReq)
+		if err != nil {
+			capErr = fmt.Errorf("%v. Cleanup of volume %s failed, volume is orphaned: %v", capErr, share, err)
+		}
+		return nil, capErr
+	}
+	repBytesString := fmt.Sprintf("%v", respCap)
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: share,
@@ -344,7 +368,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
 			AccessModes:                   options.PVC.Spec.AccessModes,
 			Capacity: v1.ResourceList{
-				v1.ResourceName(v1.ResourceStorage): options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
+				v1.ResourceName(v1.ResourceStorage): resource.MustParse(repBytesString),
 			},
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
