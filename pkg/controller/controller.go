@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	_ "k8s.io/apimachinery/pkg/util/json"
 	"net"
 	"strings"
 	"time"
@@ -28,14 +27,15 @@ import (
 
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
+	"k8s.io/kubernetes/pkg/volume/util"
 
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 )
@@ -242,6 +242,9 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	for k, v := range rep.Volume.Attributes {
 		volumeAttributes[k] = v
 	}
+	quantity := resource.Quantity{}
+	quantity.Set(rep.Volume.GetCapacityBytes())
+
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: share,
@@ -250,7 +253,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
 			AccessModes:                   options.PVC.Spec.AccessModes,
 			Capacity: v1.ResourceList{
-				v1.ResourceName(v1.ResourceStorage): options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
+				v1.ResourceName(v1.ResourceStorage): resource.MustParse(fmt.Sprintf("%dGi", util.RoundUpToGiB(quantity))),
 			},
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
