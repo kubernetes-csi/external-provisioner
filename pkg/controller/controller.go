@@ -255,15 +255,17 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:               p.driverName,
-					VolumeHandle:         p.volumeIdToHandle(rep.Volume.Id),
-					VolumeAttributes:     volumeAttributes,
-					NodePublishSecretRef: &secret,
+					Driver:           p.driverName,
+					VolumeHandle:     p.volumeIdToHandle(rep.Volume.Id),
+					VolumeAttributes: volumeAttributes,
 				},
 			},
 		},
 	}
 
+	if len(secret.Name) != 0 {
+		pv.Spec.PersistentVolumeSource.CSI.NodePublishSecretRef = &secret
+	}
 	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
 
 	return pv, nil
