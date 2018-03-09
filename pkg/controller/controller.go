@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	_ "k8s.io/apimachinery/pkg/util/json"
 	"net"
 	"strings"
 	"time"
@@ -198,25 +197,11 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 
-	controllerCreateSecrets := map[string]string{}
-	secret := v1.SecretReference{}
-	// get secrets if StorageClass specifies it
-	if sn, ok := options.Parameters[secretNameKey]; ok {
-		ns := "default"
-		if len(options.Parameters[secretNamespaceKey]) != 0 {
-			ns = options.Parameters[secretNamespaceKey]
-		}
-		controllerCreateSecrets = getCredentialsFromSecret(p.client, sn, ns)
-		secret.Name = sn
-		secret.Namespace = ns
-	}
-
 	// Create a CSI CreateVolumeRequest
 	req := csi.CreateVolumeRequest{
 
-		Name:                    share,
-		Parameters:              options.Parameters,
-		ControllerCreateSecrets: controllerCreateSecrets,
+		Name:       share,
+		Parameters: options.Parameters,
 		VolumeCapabilities: []*csi.VolumeCapability{
 			{
 				AccessType: accessType,
@@ -227,6 +212,11 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			RequiredBytes: int64(volSizeBytes),
 			LimitBytes:    int64(volSizeBytes),
 		},
+	}
+	secret := v1.SecretReference{}
+	if options.Parameters != nil {
+		req.ControllerCreateSecrets = getCredentialsFromParameters(p.client, options.Parameters)
+		secret.Name, secret.Namespace, _ = getSecretAndNamespaceFromParameters(options.Parameters)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
@@ -262,7 +252,6 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			},
 		},
 	}
-
 	if len(secret.Name) != 0 {
 		pv.Spec.PersistentVolumeSource.CSI.NodePublishSecretRef = &secret
 	}
@@ -276,14 +265,42 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 		return fmt.Errorf("invalid CSI PV")
 	}
 	volumeId := p.volumeHandleToId(volume.Spec.CSI.VolumeHandle)
+
 	req := csi.DeleteVolumeRequest{
 		VolumeId: volumeId,
+	}
+	// get secrets if StorageClass specifies it
+	storageClassName := volume.Spec.StorageClassName
+	if len(storageClassName) != 0 {
+		if storageClass, err := p.client.StorageV1().StorageClasses().Get(storageClassName, metav1.GetOptions{}); err == nil {
+			req.ControllerDeleteSecrets = getCredentialsFromParameters(p.client, storageClass.Parameters)
+		}
+
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
 	_, err := p.csiClient.DeleteVolume(ctx, &req)
+
 	return err
+}
+
+func getSecretAndNamespaceFromParameters(parameters map[string]string) (string, string, bool) {
+	if secretName, ok := parameters[secretNameKey]; ok {
+		namespace := "default"
+		if len(parameters[secretNamespaceKey]) != 0 {
+			namespace = parameters[secretNamespaceKey]
+		}
+		return secretName, namespace, true
+	}
+	return "", "", false
+}
+
+func getCredentialsFromParameters(k8s kubernetes.Interface, parameters map[string]string) map[string]string {
+	if secretName, namespace, found := getSecretAndNamespaceFromParameters(parameters); found {
+		return getCredentialsFromSecret(k8s, secretName, namespace)
+	}
+	return map[string]string{}
 }
 
 //TODO use a unique volume handle from and to Id
