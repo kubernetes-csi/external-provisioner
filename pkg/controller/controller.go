@@ -131,6 +131,33 @@ func getDriverName(conn *grpc.ClientConn, timeout time.Duration) (string, error)
 	return name, nil
 }
 
+func supportsPluginControllerService(conn *grpc.ClientConn, timeout time.Duration) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	client := csi.NewIdentityClient(conn)
+	req := csi.GetPluginCapabilitiesRequest{}
+
+	rsp, err := client.GetPluginCapabilities(ctx, &req)
+	if err != nil {
+		return false, err
+	}
+	caps := rsp.GetCapabilities()
+	for _, cap := range caps {
+		if cap == nil {
+			continue
+		}
+		service := cap.GetService()
+		if service == nil {
+			continue
+		}
+		if service.GetType() == csi.PluginCapability_Service_CONTROLLER_SERVICE {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func supportsControllerCreateVolume(conn *grpc.ClientConn, timeout time.Duration) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -163,7 +190,14 @@ func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connecti
 	if err != nil || grpcClient == nil {
 		glog.Fatalf("failed to connect to csi endpoint :%v", err)
 	}
-	ok, err := supportsControllerCreateVolume(grpcClient, connectionTimeout)
+	ok, err := supportsPluginControllerService(grpcClient, connectionTimeout)
+	if err != nil {
+		glog.Fatalf("failed to get support info :%v", err)
+	}
+	if !ok {
+		glog.Fatalf("no plugin controller service support detected")
+	}
+	ok, err = supportsControllerCreateVolume(grpcClient, connectionTimeout)
 	if err != nil {
 		glog.Fatalf("failed to get support info :%v", err)
 	}
