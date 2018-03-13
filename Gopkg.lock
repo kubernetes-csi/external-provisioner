@@ -41,9 +41,16 @@
   revision = "66deaeb636dff1ac7d938ce666d090556056a4b0"
 
 [[projects]]
+  name = "github.com/golang/mock"
+  packages = ["gomock"]
+  revision = "13f360950a79f5864a972c786a10a50e44b69541"
+  version = "v1.0.0"
+
+[[projects]]
   name = "github.com/golang/protobuf"
   packages = [
     "proto",
+    "protoc-gen-go/descriptor",
     "ptypes",
     "ptypes/any",
     "ptypes/duration",
@@ -81,7 +88,7 @@
     ".",
     "diskcache"
   ]
-  revision = "2bcd89a1743fd4b373f7370ce8ddc14dfbd18229"
+  revision = "9cad4c3443a7200dd6400aef47183728de563a38"
 
 [[projects]]
   branch = "master"
@@ -118,19 +125,28 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/kubernetes-csi/csi-test"
+  packages = [
+    "driver",
+    "utils"
+  ]
+  revision = "d2bc8013ab3c236876f5fd7f7133335c76e6327c"
+
+[[projects]]
+  branch = "master"
   name = "github.com/kubernetes-incubator/external-storage"
   packages = [
     "lib/controller",
     "lib/leaderelection",
     "lib/leaderelection/resourcelock"
   ]
-  revision = "1cc9d42bff12a188801f6e903d0a19bd517452a1"
+  revision = "06f19d7b39f17b83d3db6d52f826872c22e3273d"
 
 [[projects]]
   name = "github.com/modern-go/concurrent"
   packages = ["."]
-  revision = "938152ca6a933f501bb238954eebd3cbcbf489ff"
-  version = "1.0.2"
+  revision = "bacd9c7ef1dd9b15be4a9909b8ac7a4e313eec94"
+  version = "1.0.3"
 
 [[projects]]
   name = "github.com/modern-go/reflect2"
@@ -166,7 +182,7 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["ssh/terminal"]
-  revision = "91a49db82a88618983a78a06c1cbd4e00ab749ab"
+  revision = "182114d582623c1caa54f73de9c7224e23a48487"
 
 [[projects]]
   branch = "master"
@@ -180,7 +196,7 @@
     "lex/httplex",
     "trace"
   ]
-  revision = "22ae77b79946ea320088417e4d50825671d82d57"
+  revision = "ae89d30ce0c63142b652837da33d782e2b0a9b25"
 
 [[projects]]
   branch = "master"
@@ -189,7 +205,7 @@
     "unix",
     "windows"
   ]
-  revision = "dd2ff4accc098aceecb86b36eaa7829b2a17b1c9"
+  revision = "c28acc882ebcbfbe8ce9f0f14b9ac26ee138dd51"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -216,7 +232,7 @@
   branch = "master"
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
-  revision = "2c5e7ac708aaa719366570dd82bda44541ca2a63"
+  revision = "df60624c1e9b9d2973e889c7a1cff73155da81c4"
 
 [[projects]]
   name = "google.golang.org/grpc"
@@ -237,6 +253,8 @@
     "metadata",
     "naming",
     "peer",
+    "reflection",
+    "reflection/grpc_reflection_v1alpha",
     "resolver",
     "resolver/dns",
     "resolver/passthrough",
@@ -417,12 +435,12 @@
     "pkg/util/goroutinemap/exponentialbackoff",
     "pkg/util/version"
   ]
-  revision = "d2835416544f298c919e2ead3be3d0864b52323b"
-  version = "v1.9.3"
+  revision = "bee2d1505c4fe820744d26d41ecd3fdd4a3d6546"
+  version = "v1.9.4"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "dcef48d0f996b9ad79555efdea93b3c26dbb1b128eafa16337c677022a4ffd4c"
+  inputs-digest = "ca14bfaf19c3b8343f0892f1e77f6b9d856100b600186a9a3fde0f2658492aa3"
   solver-name = "gps-cdcl"
   solver-version = 1

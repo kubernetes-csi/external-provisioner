@@ -30,15 +30,7 @@
 
 [[constraint]]
   branch = "master"
-  name = "github.com/golang/protobuf"
-
-[[constraint]]
-  branch = "master"
   name = "github.com/kubernetes-incubator/external-storage"
-
-[[constraint]]
-  branch = "master"
-  name = "golang.org/x/net"
 
 [[constraint]]
   name = "google.golang.org/grpc"
