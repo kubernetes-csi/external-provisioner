@@ -260,3 +260,69 @@ func TestSupportsPluginControllerService(t *testing.T) {
 		}
 	}
 }
+
+func TestGetDriverName(t *testing.T) {
+	tests := []struct {
+		name        string
+		output      *csi.GetPluginInfoResponse
+		injectError bool
+		expectError bool
+	}{
+		{
+			name: "success",
+			output: &csi.GetPluginInfoResponse{
+				Name:          "csi/example",
+				VendorVersion: "0.2.0",
+				Manifest: map[string]string{
+					"hello": "world",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name:        "gRPC error",
+			output:      nil,
+			injectError: true,
+			expectError: true,
+		},
+		{
+			name: "empty name",
+			output: &csi.GetPluginInfoResponse{
+				Name: "",
+			},
+			expectError: true,
+		},
+	}
+
+	mockController, driver, identityServer, _, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	for _, test := range tests {
+
+		in := &csi.GetPluginInfoRequest{}
+
+		out := test.output
+		var injectedErr error = nil
+		if test.injectError {
+			injectedErr = fmt.Errorf("mock error")
+		}
+
+		// Setup expectation
+		identityServer.EXPECT().GetPluginInfo(gomock.Any(), in).Return(out, injectedErr).Times(1)
+
+		name, err := getDriverName(csiConn.conn, timeout)
+		if test.expectError && err == nil {
+			t.Errorf("test %q: Expected error, got none", test.name)
+		}
+		if !test.expectError && err != nil {
+			t.Errorf("test %q: got error: %v", test.name, err)
+		}
+		if err == nil && name != "csi/example" {
+			t.Errorf("got unexpected name: %q", name)
+		}
+	}
+}
