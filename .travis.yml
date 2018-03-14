@@ -14,7 +14,7 @@ script:
 - go test $(go list ./... | grep -v vendor)
 after_success:
   - if [ "${TRAVIS_BRANCH}" == "master" ] && [ "${TRAVIS_PULL_REQUEST}" == "false" ]; then
-      make container
+      make container;
       docker login -u "${DOCKER_USERNAME}" -p "${DOCKER_PASSWORD}" quay.io;
       docker push quay.io/k8scsi/csi-provisioner:canary;
     fi
