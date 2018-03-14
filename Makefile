@@ -13,7 +13,7 @@
 # limitations under the License.
 
 IMAGE_NAME = quay.io/k8scsi/csi-provisioner
-IMAGE_VERSION = v0.2.0
+IMAGE_VERSION = canary
 
 ifdef V
 TESTARGS = -v -args -alsologtostderr -v 5
@@ -25,7 +25,7 @@ all: csi-provisioner
 
 csi-provisioner:
 	mkdir -p bin
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o ./bin/csi-provisioner ./cmd/csi-provisioner 
+	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o ./bin/csi-provisioner ./cmd/csi-provisioner
 
 clean:
 	rm -rf bin deploy/docker/csi-provisioner
