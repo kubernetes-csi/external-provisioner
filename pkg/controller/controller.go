@@ -249,7 +249,11 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	}
 	secret := v1.SecretReference{}
 	if options.Parameters != nil {
-		req.ControllerCreateSecrets = getCredentialsFromParameters(p.client, options.Parameters)
+		credentials, err := getCredentialsFromParameters(p.client, options.Parameters)
+		if err != nil {
+			return nil, err
+		}
+		req.ControllerCreateSecrets = credentials
 		secret.Name, secret.Namespace, _ = getSecretAndNamespaceFromParameters(options.Parameters)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
@@ -307,7 +311,11 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	storageClassName := volume.Spec.StorageClassName
 	if len(storageClassName) != 0 {
 		if storageClass, err := p.client.StorageV1().StorageClasses().Get(storageClassName, metav1.GetOptions{}); err == nil {
-			req.ControllerDeleteSecrets = getCredentialsFromParameters(p.client, storageClass.Parameters)
+			credentials, err := getCredentialsFromParameters(p.client, storageClass.Parameters)
+			if err != nil {
+				return err
+			}
+			req.ControllerDeleteSecrets = credentials
 		}
 
 	}
@@ -330,11 +338,11 @@ func getSecretAndNamespaceFromParameters(parameters map[string]string) (string, 
 	return "", "", false
 }
 
-func getCredentialsFromParameters(k8s kubernetes.Interface, parameters map[string]string) map[string]string {
+func getCredentialsFromParameters(k8s kubernetes.Interface, parameters map[string]string) (map[string]string, error) {
 	if secretName, namespace, found := getSecretAndNamespaceFromParameters(parameters); found {
 		return getCredentialsFromSecret(k8s, secretName, namespace)
 	}
-	return map[string]string{}
+	return map[string]string{}, nil
 }
 
 //TODO use a unique volume handle from and to Id
@@ -346,19 +354,18 @@ func (p *csiProvisioner) volumeHandleToId(handle string) string {
 	return handle
 }
 
-func getCredentialsFromSecret(k8s kubernetes.Interface, secretName, nameSpace string) map[string]string {
+func getCredentialsFromSecret(k8s kubernetes.Interface, secretName, nameSpace string) (map[string]string, error) {
 	credentials := map[string]string{}
 	if len(secretName) == 0 {
-		return credentials
+		return credentials, nil
 	}
 	secret, err := k8s.CoreV1().Secrets(nameSpace).Get(secretName, metav1.GetOptions{})
 	if err != nil {
-		glog.Warningf("failed to find the secret %s in the namespace %s with error: %v\n", secretName, nameSpace, err)
-		return credentials
+		return credentials, fmt.Errorf("failed to find the secret %s in the namespace %s with error: %v\n", secretName, nameSpace, err)
 	}
 	for key, value := range secret.Data {
 		credentials[key] = string(value)
 	}
 
-	return credentials
+	return credentials, nil
 }
