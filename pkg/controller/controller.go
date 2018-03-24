@@ -44,10 +44,11 @@ const (
 	secretNamespaceKey = "csiProvisionerSecretNamespace"
 )
 
+// CSIProvisioner struct
 type csiProvisioner struct {
 	client               kubernetes.Interface
 	csiClient            csi.ControllerClient
-	driverName           string
+	grpcClient           *grpc.ClientConn
 	timeout              time.Duration
 	identity             string
 	volumeNamePrefix     string
@@ -80,7 +81,7 @@ func logGRPC(ctx context.Context, method string, req, reply interface{}, cc *grp
 	return err
 }
 
-func connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
+func Connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
 	glog.V(2).Infof("Connecting to %s", address)
 	dialOptions := []grpc.DialOption{
 		grpc.WithInsecure(),
@@ -102,7 +103,7 @@ func connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
 	for {
 		if !conn.WaitForStateChange(ctx, conn.GetState()) {
 			glog.V(4).Infof("Connection timed out")
-			return conn, nil // return nil, subsequent GetPluginInfo will show the real connection error
+			return conn, fmt.Errorf("Connection timed out")
 		}
 		if conn.GetState() == connectivity.Ready {
 			glog.V(3).Infof("Connected")
@@ -185,34 +186,19 @@ func supportsControllerCreateVolume(conn *grpc.ClientConn, timeout time.Duration
 	return false, nil
 }
 
-func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connectionTimeout time.Duration, identity string, volumeNamePrefix string, volumeNameUUIDLength int) controller.Provisioner {
-	grpcClient, err := connect(csiEndpoint, connectionTimeout)
-	if err != nil || grpcClient == nil {
-		glog.Fatalf("failed to connect to csi endpoint :%v", err)
-	}
-	ok, err := supportsPluginControllerService(grpcClient, connectionTimeout)
-	if err != nil {
-		glog.Fatalf("failed to get support info :%v", err)
-	}
-	if !ok {
-		glog.Fatalf("no plugin controller service support detected")
-	}
-	ok, err = supportsControllerCreateVolume(grpcClient, connectionTimeout)
-	if err != nil {
-		glog.Fatalf("failed to get support info :%v", err)
-	}
-	if !ok {
-		glog.Fatalf("no create/delete volume support detected")
-	}
-	driver, err := getDriverName(grpcClient, connectionTimeout)
-	if err != nil {
-		glog.Fatalf("failed to get driver info :%v", err)
-	}
+// NewCSIProvisioner creates new CSI provisioner
+func NewCSIProvisioner(client kubernetes.Interface,
+	csiEndpoint string,
+	connectionTimeout time.Duration,
+	identity string,
+	volumeNamePrefix string,
+	volumeNameUUIDLength int,
+	grpcClient *grpc.ClientConn) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
 		client:               client,
-		driverName:           driver,
+		grpcClient:           grpcClient,
 		csiClient:            csiClient,
 		timeout:              connectionTimeout,
 		identity:             identity,
@@ -222,9 +208,44 @@ func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connecti
 	return provisioner
 }
 
+// This function get called before any attepmt to communicate with the driver.
+// Before initiating Create/Delete API calls provisioner checks if Capabilities:
+// PluginControllerService,  ControllerCreateVolume sre supported and gets the  driver name.
+func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration) (string, error) {
+	ok, err := supportsPluginControllerService(grpcClient, timeout)
+	if err != nil {
+		glog.Errorf("failed to get support info :%v", err)
+		return "", err
+	}
+	if !ok {
+		glog.Errorf("no plugin controller service support detected")
+		return "", fmt.Errorf("no plugin controller service support detected")
+	}
+	ok, err = supportsControllerCreateVolume(grpcClient, timeout)
+	if err != nil {
+		glog.Errorf("failed to get support info :%v", err)
+		return "", err
+	}
+	if !ok {
+		glog.Error("no create/delete volume support detected")
+		return "", fmt.Errorf("no create/delete volume support detected")
+	}
+	driverName, err := getDriverName(grpcClient, timeout)
+	if err != nil {
+		glog.Errorf("failed to get driver info :%v", err)
+		return "", err
+	}
+	return driverName, nil
+}
+
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
 	if options.PVC.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim Selector is not supported")
+	}
+
+	driverName, err := checkDriverState(p.grpcClient, p.timeout)
+	if err != nil {
+		return nil, err
 	}
 	// create random share name
 	share := fmt.Sprintf("%s-%s", p.volumeNamePrefix, strings.Replace(string(uuid.NewUUID()), "-", "", -1)[0:p.volumeNameUUIDLength])
@@ -283,7 +304,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:           p.driverName,
+					Driver:           driverName,
 					VolumeHandle:     p.volumeIdToHandle(rep.Volume.Id),
 					VolumeAttributes: volumeAttributes,
 				},
@@ -304,6 +325,11 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	}
 	volumeId := p.volumeHandleToId(volume.Spec.CSI.VolumeHandle)
 
+	_, err := checkDriverState(p.grpcClient, p.timeout)
+	if err != nil {
+		return err
+	}
+
 	req := csi.DeleteVolumeRequest{
 		VolumeId: volumeId,
 	}
@@ -322,7 +348,7 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
-	_, err := p.csiClient.DeleteVolume(ctx, &req)
+	_, err = p.csiClient.DeleteVolume(ctx, &req)
 
 	return err
 }

@@ -36,7 +36,7 @@ type csiConnection struct {
 }
 
 func New(address string, timeout time.Duration) (csiConnection, error) {
-	conn, err := connect(address, timeout)
+	conn, err := Connect(address, timeout)
 	if err != nil {
 		return csiConnection{}, err
 	}
