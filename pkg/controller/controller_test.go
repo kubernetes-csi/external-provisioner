@@ -36,7 +36,7 @@ type csiConnection struct {
 }
 
 func New(address string, timeout time.Duration) (csiConnection, error) {
-	conn, err := connect(address, timeout)
+	conn, err := Connect(address, timeout)
 	if err != nil {
 		return csiConnection{}, err
 	}
@@ -68,6 +68,64 @@ func createMockServer(t *testing.T) (*gomock.Controller,
 	}
 
 	return mockController, drv, identityServer, controllerServer, csiConn, nil
+}
+
+func TestGetPluginName(t *testing.T) {
+	test := struct {
+		name   string
+		output []*csi.GetPluginInfoResponse
+	}{
+		name: "success",
+		output: []*csi.GetPluginInfoResponse{
+			{
+				Name:          "csi/example-1",
+				VendorVersion: "0.2.0",
+				Manifest: map[string]string{
+					"hello": "world",
+				},
+			},
+			{
+				Name:          "csi/example-2",
+				VendorVersion: "0.2.0",
+				Manifest: map[string]string{
+					"hello": "world",
+				},
+			},
+		},
+	}
+
+	mockController, driver, identityServer, _, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	in := &csi.GetPluginInfoRequest{}
+	out := test.output[0]
+
+	identityServer.EXPECT().GetPluginInfo(gomock.Any(), in).Return(out, nil).Times(1)
+	oldName, err := getDriverName(csiConn.conn, timeout)
+	if err != nil {
+		t.Errorf("test %q: Failed to get driver's name", test.name)
+	}
+	if oldName != test.output[0].Name {
+		t.Errorf("test %s: failed, expected %s got %s", test.name, test.output[0].Name, oldName)
+	}
+
+	out = test.output[1]
+	identityServer.EXPECT().GetPluginInfo(gomock.Any(), in).Return(out, nil).Times(1)
+	newName, err := getDriverName(csiConn.conn, timeout)
+	if err != nil {
+		t.Errorf("test %s: Failed to get driver's name", test.name)
+	}
+	if newName != test.output[1].Name {
+		t.Errorf("test %q: failed, expected %s got %s", test.name, test.output[1].Name, newName)
+	}
+
+	if oldName == newName {
+		t.Errorf("test: %s failed, driver's names should not match", test.name)
+	}
 }
 
 func TestSupportsControllerCreateVolume(t *testing.T) {

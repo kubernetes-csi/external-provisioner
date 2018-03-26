@@ -28,6 +28,8 @@ import (
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 
+	"google.golang.org/grpc"
+
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -38,7 +40,7 @@ var (
 	provisioner          = flag.String("provisioner", "", "Name of the provisioner. The provisioner will only provision volumes for claims that request a StorageClass with a provisioner field set equal to this name.")
 	master               = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
 	kubeconfig           = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
-	csiEndpoint          = flag.String("csi-address", "", "The gRPC endpoint for Target CSI Volume")
+	csiEndpoint          = flag.String("csi-address", "/run/csi/socket", "The gRPC endpoint for Target CSI Volume")
 	connectionTimeout    = flag.Duration("connection-timeout", 10*time.Second, "Timeout for waiting for CSI driver socket.")
 	volumeNamePrefix     = flag.String("volume-name-prefix", "kubernetes-dynamic-pv", "Prefix to apply to the name of a created volume")
 	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", 16, "Length in characters for the generated uuid of a created volume")
@@ -87,9 +89,21 @@ func init() {
 	timeStamp := time.Now().UnixNano() / int64(time.Millisecond)
 	identity := strconv.FormatInt(timeStamp, 10) + "-" + strconv.Itoa(rand.Intn(10000)) + "-" + *provisioner
 
+	// Provisioner will stay in Init until driver opens csi socket, once it's done
+	// controller will exit this loop and proceed normally.
+	socketDown := true
+	grpcClient := &grpc.ClientConn{}
+	for socketDown {
+		grpcClient, err = ctrl.Connect(*csiEndpoint, *connectionTimeout)
+		if err == nil {
+			socketDown = false
+			continue
+		}
+		time.Sleep(10 * time.Second)
+	}
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength)
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		*provisioner,
