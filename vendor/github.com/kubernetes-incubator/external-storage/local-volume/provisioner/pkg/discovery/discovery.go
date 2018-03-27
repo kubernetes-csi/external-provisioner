@@ -27,7 +27,7 @@ import (
 	esUtil "github.com/kubernetes-incubator/external-storage/lib/util"
 	"github.com/kubernetes-incubator/external-storage/local-volume/provisioner/pkg/deleter"
 	"k8s.io/api/core/v1"
-	"k8s.io/kubernetes/pkg/api/v1/helper"
+	"k8s.io/kubernetes/pkg/apis/core/v1/helper"
 )
 
 // Discoverer finds available volumes and creates PVs for them
@@ -111,6 +111,19 @@ func (d *Discoverer) discoverVolumesAtPath(class string, config common.MountConf
 		return
 	}
 
+	// Retreive list of mount points to iterate through discovered paths (aka files) below
+	mountPoints, mountPointsErr := d.RuntimeConfig.Mounter.List()
+	if mountPointsErr != nil {
+		glog.Errorf("Error retreiving mountpoints: %v", err)
+		return
+	}
+	// Put mount moints into set for faster checks below
+	type empty struct{}
+	mountPointMap := make(map[string]empty)
+	for _, mp := range mountPoints {
+		mountPointMap[mp.Path] = empty{}
+	}
+
 	for _, file := range files {
 		// Check if PV already exists for it
 		pvName := generatePVName(file, d.Node.Name, class)
@@ -154,6 +167,11 @@ func (d *Discoverer) discoverVolumesAtPath(class string, config common.MountConf
 			continue
 		}
 
+		// Validate that this path is an actual mountpoint
+		if _, isMntPnt := mountPointMap[filePath]; isMntPnt == false {
+			glog.Errorf("Path %q is not an actual mountpoint", filePath)
+			continue
+		}
 		d.createPV(file, class, config, capacityByte, volType)
 	}
 }

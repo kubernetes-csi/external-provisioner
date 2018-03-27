@@ -24,7 +24,6 @@ import (
 	"net/url"
 	"os"
 	"path"
-	goruntime "runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -218,7 +217,9 @@ type Builder func(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	registerSchedulable bool,
 	nonMasqueradeCIDR string,
 	keepTerminatedPodVolumes bool,
-	nodeLabels map[string]string) (Bootstrap, error)
+	nodeLabels map[string]string,
+	seccompProfileRoot string,
+	bootstrapCheckpointPath string) (Bootstrap, error)
 
 // Dependencies is a bin for things we might consider "injected dependencies" -- objects constructed
 // at runtime that are necessary for running the Kubelet. This is a temporary solution for grouping
@@ -271,7 +272,7 @@ type Dependencies struct {
 
 // makePodSourceConfig creates a config.PodConfig from the given
 // KubeletConfiguration or returns an error.
-func makePodSourceConfig(kubeCfg *kubeletconfiginternal.KubeletConfiguration, kubeDeps *Dependencies, nodeName types.NodeName) (*config.PodConfig, error) {
+func makePodSourceConfig(kubeCfg *kubeletconfiginternal.KubeletConfiguration, kubeDeps *Dependencies, nodeName types.NodeName, bootstrapCheckpointPath string) (*config.PodConfig, error) {
 	manifestURLHeader := make(http.Header)
 	if len(kubeCfg.ManifestURLHeader) > 0 {
 		for k, v := range kubeCfg.ManifestURLHeader {
@@ -286,7 +287,7 @@ func makePodSourceConfig(kubeCfg *kubeletconfiginternal.KubeletConfiguration, ku
 
 	// define file config source
 	if kubeCfg.PodManifestPath != "" {
-		glog.Infof("Adding manifest file: %v", kubeCfg.PodManifestPath)
+		glog.Infof("Adding manifest path: %v", kubeCfg.PodManifestPath)
 		config.NewSourceFile(kubeCfg.PodManifestPath, nodeName, kubeCfg.FileCheckFrequency.Duration, cfg.Channel(kubetypes.FileSource))
 	}
 
@@ -295,9 +296,22 @@ func makePodSourceConfig(kubeCfg *kubeletconfiginternal.KubeletConfiguration, ku
 		glog.Infof("Adding manifest url %q with HTTP header %v", kubeCfg.ManifestURL, manifestURLHeader)
 		config.NewSourceURL(kubeCfg.ManifestURL, manifestURLHeader, nodeName, kubeCfg.HTTPCheckFrequency.Duration, cfg.Channel(kubetypes.HTTPSource))
 	}
+
+	// Restore from the checkpoint path
+	// NOTE: This MUST happen before creating the apiserver source
+	// below, or the checkpoint would override the source of truth.
+	updatechannel := cfg.Channel(kubetypes.ApiserverSource)
+	if bootstrapCheckpointPath != "" {
+		glog.Infof("Adding checkpoint path: %v", bootstrapCheckpointPath)
+		err := cfg.Restore(bootstrapCheckpointPath, updatechannel)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if kubeDeps.KubeClient != nil {
 		glog.Infof("Watching apiserver")
-		config.NewSourceApiserver(kubeDeps.KubeClient, nodeName, cfg.Channel(kubetypes.ApiserverSource))
+		config.NewSourceApiserver(kubeDeps.KubeClient, nodeName, updatechannel)
 	}
 	return cfg, nil
 }
@@ -344,7 +358,9 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 	registerSchedulable bool,
 	nonMasqueradeCIDR string,
 	keepTerminatedPodVolumes bool,
-	nodeLabels map[string]string) (*Kubelet, error) {
+	nodeLabels map[string]string,
+	seccompProfileRoot string,
+	bootstrapCheckpointPath string) (*Kubelet, error) {
 	if rootDirectory == "" {
 		return nil, fmt.Errorf("invalid root directory %q", rootDirectory)
 	}
@@ -405,7 +421,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 
 	if kubeDeps.PodConfig == nil {
 		var err error
-		kubeDeps.PodConfig, err = makePodSourceConfig(kubeCfg, kubeDeps, nodeName)
+		kubeDeps.PodConfig, err = makePodSourceConfig(kubeCfg, kubeDeps, nodeName, bootstrapCheckpointPath)
 		if err != nil {
 			return nil, err
 		}
@@ -658,7 +674,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		runtime, err := kuberuntime.NewKubeGenericRuntimeManager(
 			kubecontainer.FilterEventRecorder(kubeDeps.Recorder),
 			klet.livenessManager,
-			kubeCfg.SeccompProfileRoot,
+			seccompProfileRoot,
 			containerRefManager,
 			machineInfo,
 			klet,
@@ -681,14 +697,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		klet.containerRuntime = runtime
 		klet.runner = runtime
 
-		// CRI integrations should get container metrics via CRI. Docker
-		// uses the built-in cadvisor to gather such metrics on Linux for
-		// historical reasons.
-		// cri-o relies on cadvisor as a temporary workaround. The code should
-		// be removed. Related issue:
-		// https://github.com/kubernetes/kubernetes/issues/51798
-		if (containerRuntime == kubetypes.DockerContainerRuntime &&
-			goruntime.GOOS == "linux") || remoteRuntimeEndpoint == "/var/run/crio.sock" {
+		if cadvisor.UsingLegacyCadvisorStats(containerRuntime, remoteRuntimeEndpoint) {
 			klet.StatsProvider = stats.NewCadvisorStatsProvider(
 				klet.cadvisor,
 				klet.resourceAnalyzer,
@@ -1310,7 +1319,7 @@ func (kl *Kubelet) initializeModules() error {
 		return fmt.Errorf("Kubelet failed to get node info: %v", err)
 	}
 
-	if err := kl.containerManager.Start(node, kl.GetActivePods, kl.statusManager, kl.runtimeService); err != nil {
+	if err := kl.containerManager.Start(node, kl.GetActivePods, kl.sourcesReady, kl.statusManager, kl.runtimeService); err != nil {
 		return fmt.Errorf("Failed to start ContainerManager %v", err)
 	}
 
@@ -1843,17 +1852,28 @@ func (kl *Kubelet) syncLoopIteration(configCh <-chan kubetypes.PodUpdate, handle
 			glog.V(2).Infof("SyncLoop (DELETE, %q): %q", u.Source, format.Pods(u.Pods))
 			// DELETE is treated as a UPDATE because of graceful deletion.
 			handler.HandlePodUpdates(u.Pods)
+		case kubetypes.RESTORE:
+			glog.V(2).Infof("SyncLoop (RESTORE, %q): %q", u.Source, format.Pods(u.Pods))
+			// These are pods restored from the checkpoint. Treat them as new
+			// pods.
+			handler.HandlePodAdditions(u.Pods)
 		case kubetypes.SET:
 			// TODO: Do we want to support this?
 			glog.Errorf("Kubelet does not support snapshot update")
 		}
 
-		// Mark the source ready after receiving at least one update from the
-		// source. Once all the sources are marked ready, various cleanup
-		// routines will start reclaiming resources. It is important that this
-		// takes place only after kubelet calls the update handler to process
-		// the update to ensure the internal pod cache is up-to-date.
-		kl.sourcesReady.AddSource(u.Source)
+		if u.Op != kubetypes.RESTORE {
+			// If the update type is RESTORE, it means that the update is from
+			// the pod checkpoints and may be incomplete. Do not mark the
+			// source as ready.
+
+			// Mark the source ready after receiving at least one update from the
+			// source. Once all the sources are marked ready, various cleanup
+			// routines will start reclaiming resources. It is important that this
+			// takes place only after kubelet calls the update handler to process
+			// the update to ensure the internal pod cache is up-to-date.
+			kl.sourcesReady.AddSource(u.Source)
+		}
 	case e := <-plegCh:
 		if isSyncPodWorthy(e) {
 			// PLEG event for a pod; sync it.

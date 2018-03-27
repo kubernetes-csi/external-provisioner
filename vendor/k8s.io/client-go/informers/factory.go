@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,10 @@ limitations under the License.
 package informers
 
 import (
+	reflect "reflect"
+	sync "sync"
+	time "time"
+
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -28,6 +32,7 @@ import (
 	batch "k8s.io/client-go/informers/batch"
 	certificates "k8s.io/client-go/informers/certificates"
 	core "k8s.io/client-go/informers/core"
+	events "k8s.io/client-go/informers/events"
 	extensions "k8s.io/client-go/informers/extensions"
 	internalinterfaces "k8s.io/client-go/informers/internalinterfaces"
 	networking "k8s.io/client-go/informers/networking"
@@ -38,9 +43,6 @@ import (
 	storage "k8s.io/client-go/informers/storage"
 	kubernetes "k8s.io/client-go/kubernetes"
 	cache "k8s.io/client-go/tools/cache"
-	reflect "reflect"
-	sync "sync"
-	time "time"
 )
 
 type sharedInformerFactory struct {
@@ -140,6 +142,7 @@ type SharedInformerFactory interface {
 	Batch() batch.Interface
 	Certificates() certificates.Interface
 	Core() core.Interface
+	Events() events.Interface
 	Extensions() extensions.Interface
 	Networking() networking.Interface
 	Policy() policy.Interface
@@ -171,6 +174,10 @@ func (f *sharedInformerFactory) Certificates() certificates.Interface {
 
 func (f *sharedInformerFactory) Core() core.Interface {
 	return core.New(f, f.namespace, f.tweakListOptions)
+}
+
+func (f *sharedInformerFactory) Events() events.Interface {
+	return events.New(f, f.namespace, f.tweakListOptions)
 }
 
 func (f *sharedInformerFactory) Extensions() extensions.Interface {

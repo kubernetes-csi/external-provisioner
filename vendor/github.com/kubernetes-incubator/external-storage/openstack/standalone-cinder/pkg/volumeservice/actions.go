@@ -17,7 +17,6 @@ limitations under the License.
 package volumeservice
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -25,12 +24,12 @@ import (
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack/blockstorage/extensions/volumeactions"
 	volumes_v2 "github.com/gophercloud/gophercloud/openstack/blockstorage/v2/volumes"
-	"github.com/kubernetes-incubator/external-storage/lib/controller"
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 const initiatorName = "iqn.1994-05.com.redhat:a13fc3d1cc22"
+const interval = 3 * time.Second
+const timeout = 60 * time.Second
 
 // VolumeConnectionDetails represent the type-specific values for a given
 // DriverVolumeType.  Depending on the volume type, fields may be absent or
@@ -65,38 +64,11 @@ type rcvVolumeConnection struct {
 }
 
 // CreateCinderVolume creates a new volume in cinder according to the PVC specifications
-func CreateCinderVolume(vs *gophercloud.ServiceClient, options controller.VolumeOptions) (string, error) {
-	name := fmt.Sprintf("cinder-dynamic-pvc-%s", uuid.NewUUID())
-	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
-	sizeBytes := capacity.Value()
-	// Cinder works with gigabytes, convert to GiB with rounding up
-	sizeGB := int((sizeBytes + 1024*1024*1024 - 1) / (1024 * 1024 * 1024))
-	volType := ""
-	availability := "nova"
-	// Apply ProvisionerParameters (case-insensitive). We leave validation of
-	// the values to the cloud provider.
-	for k, v := range options.Parameters {
-		switch strings.ToLower(k) {
-		case "type":
-			volType = v
-		case "availability":
-			availability = v
-		default:
-			return "", fmt.Errorf("invalid option %q", k)
-		}
-	}
-
-	opts := volumes_v2.CreateOpts{
-		Name:             name,
-		Size:             sizeGB,
-		VolumeType:       volType,
-		AvailabilityZone: availability,
-	}
-
-	vol, err := volumes_v2.Create(vs, &opts).Extract()
+func CreateCinderVolume(vs *gophercloud.ServiceClient, options volumes_v2.CreateOpts) (string, error) {
+	vol, err := volumes_v2.Create(vs, &options).Extract()
 
 	if err != nil {
-		glog.Errorf("Failed to create a %d GiB volume: %v", sizeGB, err)
+		glog.Errorf("Failed to create a %d GiB volume: %v", options.Size, err)
 		return "", err
 	}
 
@@ -108,12 +80,10 @@ func CreateCinderVolume(vs *gophercloud.ServiceClient, options controller.Volume
 // become available.  The connection information cannot be retrieved from cinder
 // until the volume is available.
 func WaitForAvailableCinderVolume(vs *gophercloud.ServiceClient, volumeID string) error {
-	// TODO: Implement proper polling instead of brain-dead timers
-	c := make(chan error)
-	go time.AfterFunc(5*time.Second, func() {
-		c <- nil
+	return wait.Poll(interval, timeout, func() (bool, error) {
+		status, err := GetCinderVolumeStatus(vs, volumeID)
+		return strings.ToLower(status) == "available", err
 	})
-	return <-c
 }
 
 // ReserveCinderVolume marks the volume as 'Attaching' in cinder.  This prevents
@@ -175,4 +145,14 @@ func DeleteCinderVolume(vs *gophercloud.ServiceClient, volumeID string) error {
 	}
 
 	return err
+}
+
+// GetCinderVolumeStatus get the given cinder volume status.
+func GetCinderVolumeStatus(vs *gophercloud.ServiceClient, volumeID string) (string, error) {
+	volume, err := volumes_v2.Get(vs, volumeID).Extract()
+	if err != nil {
+		glog.Errorf("Failed to get volume:%v ", volumeID)
+		return "", err
+	}
+	return volume.Status, nil
 }
