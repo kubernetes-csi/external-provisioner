@@ -173,7 +173,7 @@ https://docs.openshift.org/latest/install_config/persistent_storage/persistent_s
 First a [`StorageClass`](https://kubernetes.io/docs/user-guide/persistent-volumes/#storageclasses) for claims to ask for needs to be created.
 
 ```yaml
-apiVersion: storage.k8s.io/v1beta1
+apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: slow
@@ -277,3 +277,7 @@ The storage section size is a requirment because most other PersistentVolumes ne
 - Can I omit that part of the claim?
 
 No, you must list a size even though it's not used with EFS.
+
+- Can I create multiple StorageClasses for the same provisioner?
+
+Yes, you can create multiple StorageClasses for the same provisioner, each with their own `parameters` settings. Note that if two StorageClasses enable `gidAllocate` and the `gidMin`/`gidMax` ranges overlap, the same gid could be allocated twice.

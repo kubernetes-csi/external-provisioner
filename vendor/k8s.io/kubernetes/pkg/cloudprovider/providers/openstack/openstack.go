@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -440,7 +441,7 @@ func getAddressesByName(client *gophercloud.ServiceClient, name types.NodeName) 
 	return nodeAddresses(srv)
 }
 
-func getAddressByName(client *gophercloud.ServiceClient, name types.NodeName) (string, error) {
+func getAddressByName(client *gophercloud.ServiceClient, name types.NodeName, needIPv6 bool) (string, error) {
 	addrs, err := getAddressesByName(client, name)
 	if err != nil {
 		return "", err
@@ -449,12 +450,20 @@ func getAddressByName(client *gophercloud.ServiceClient, name types.NodeName) (s
 	}
 
 	for _, addr := range addrs {
-		if addr.Type == v1.NodeInternalIP {
+		isIPv6 := net.ParseIP(addr.Address).To4() == nil
+		if (addr.Type == v1.NodeInternalIP) && (isIPv6 == needIPv6) {
 			return addr.Address, nil
 		}
 	}
 
-	return addrs[0].Address, nil
+	for _, addr := range addrs {
+		isIPv6 := net.ParseIP(addr.Address).To4() == nil
+		if (addr.Type == v1.NodeExternalIP) && (isIPv6 == needIPv6) {
+			return addr.Address, nil
+		}
+	}
+	// It should never return an address from a different IP Address family than the one needed
+	return "", ErrNoAddressFound
 }
 
 // getAttachedInterfacesByID returns the node interfaces of the specified instance.
@@ -660,27 +669,36 @@ func (os *OpenStack) volumeService(forceVersion string) (volumeService, error) {
 		}
 		glog.V(3).Infof("Using Blockstorage API V2")
 		return &VolumesV2{sClient, os.bsOpts}, nil
-	case "auto":
-		// Currently kubernetes just support Cinder v1 and Cinder v2.
-		// Choose Cinder v2 firstly, if kubernetes can't initialize cinder v2 client, try to initialize cinder v1 client.
-		// Return appropriate message when kubernetes can't initialize them.
-		// TODO(FengyunPan): revisit 'auto' after supporting Cinder v3.
-		sClient, err := os.NewBlockStorageV2()
+	case "v3":
+		sClient, err := os.NewBlockStorageV3()
 		if err != nil {
-			sClient, err = os.NewBlockStorageV1()
-			if err != nil {
-				// Nothing suitable found, failed autodetection, just exit with appropriate message
-				err_txt := "BlockStorage API version autodetection failed. " +
-					"Please set it explicitly in cloud.conf in section [BlockStorage] with key `bs-version`"
-				return nil, errors.New(err_txt)
-			} else {
-				glog.V(3).Infof("Using Blockstorage API V1")
-				return &VolumesV1{sClient, os.bsOpts}, nil
-			}
-		} else {
+			return nil, err
+		}
+		glog.V(3).Infof("Using Blockstorage API V3")
+		return &VolumesV3{sClient, os.bsOpts}, nil
+	case "auto":
+		// Currently kubernetes support Cinder v1 / Cinder v2 / Cinder v3.
+		// Choose Cinder v3 firstly, if kubernetes can't initialize cinder v3 client, try to initialize cinder v2 client.
+		// If kubernetes can't initialize cinder v2 client, try to initialize cinder v1 client.
+		// Return appropriate message when kubernetes can't initialize them.
+		if sClient, err := os.NewBlockStorageV3(); err == nil {
+			glog.V(3).Infof("Using Blockstorage API V3")
+			return &VolumesV3{sClient, os.bsOpts}, nil
+		}
+
+		if sClient, err := os.NewBlockStorageV2(); err == nil {
 			glog.V(3).Infof("Using Blockstorage API V2")
 			return &VolumesV2{sClient, os.bsOpts}, nil
 		}
+
+		if sClient, err := os.NewBlockStorageV1(); err == nil {
+			glog.V(3).Infof("Using Blockstorage API V1")
+			return &VolumesV1{sClient, os.bsOpts}, nil
+		}
+
+		err_txt := "BlockStorage API version autodetection failed. " +
+			"Please set it explicitly in cloud.conf in section [BlockStorage] with key `bs-version`"
+		return nil, errors.New(err_txt)
 	default:
 		err_txt := fmt.Sprintf("Config error: unrecognised bs-version \"%v\"", os.bsOpts.BSVersion)
 		return nil, errors.New(err_txt)

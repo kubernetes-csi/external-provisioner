@@ -47,7 +47,55 @@ import (
 	containertest "k8s.io/kubernetes/pkg/kubelet/container/testing"
 	"k8s.io/kubernetes/pkg/kubelet/server/portforward"
 	"k8s.io/kubernetes/pkg/kubelet/server/remotecommand"
+	"k8s.io/kubernetes/pkg/util/mount"
+	volumetest "k8s.io/kubernetes/pkg/volume/testing"
 )
+
+func TestMakeAbsolutePath(t *testing.T) {
+	tests := []struct {
+		goos         string
+		path         string
+		expectedPath string
+		name         string
+	}{
+		{
+			goos:         "linux",
+			path:         "non-absolute/path",
+			expectedPath: "/non-absolute/path",
+			name:         "basic linux",
+		},
+		{
+			goos:         "windows",
+			path:         "some\\path",
+			expectedPath: "c:\\some\\path",
+			name:         "basic windows",
+		},
+		{
+			goos:         "windows",
+			path:         "/some/path",
+			expectedPath: "c:/some/path",
+			name:         "linux path on windows",
+		},
+		{
+			goos:         "windows",
+			path:         "\\some\\path",
+			expectedPath: "c:\\some\\path",
+			name:         "windows path no drive",
+		},
+		{
+			goos:         "windows",
+			path:         "\\:\\some\\path",
+			expectedPath: "\\:\\some\\path",
+			name:         "windows path with colon",
+		},
+	}
+	for _, test := range tests {
+		path := makeAbsolutePath(test.goos, test.path)
+		if path != test.expectedPath {
+			t.Errorf("[%s] Expected %s saw %s", test.name, test.expectedPath, path)
+		}
+	}
+}
 
 func TestMakeMounts(t *testing.T) {
 	bTrue := true
@@ -256,6 +304,7 @@ func TestMakeMounts(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
+			fm := &mount.FakeMounter{}
 			pod := v1.Pod{
 				Spec: v1.PodSpec{
 					HostNetwork: true,
@@ -268,7 +317,7 @@ func TestMakeMounts(t *testing.T) {
 				return
 			}
 
-			mounts, err := makeMounts(&pod, "/pod", &tc.container, "fakepodname", "", "", tc.podVolumes)
+			mounts, _, err := makeMounts(&pod, "/pod", &tc.container, "fakepodname", "", "", tc.podVolumes, fm)
 
 			// validate only the error if we expect an error
 			if tc.expectErr {
@@ -291,7 +340,7 @@ func TestMakeMounts(t *testing.T) {
 				t.Errorf("Failed to enable feature gate for MountPropagation: %v", err)
 				return
 			}
-			mounts, err = makeMounts(&pod, "/pod", &tc.container, "fakepodname", "", "", tc.podVolumes)
+			mounts, _, err = makeMounts(&pod, "/pod", &tc.container, "fakepodname", "", "", tc.podVolumes, fm)
 			if !tc.expectErr {
 				expectedPrivateMounts := []kubecontainer.Mount{}
 				for _, mount := range tc.expectedMounts {
@@ -302,6 +351,195 @@ func TestMakeMounts(t *testing.T) {
 				}
 				assert.Equal(t, expectedPrivateMounts, mounts, "mounts of container %+v", tc.container)
 			}
+		})
+	}
+}
+
+func TestDisabledSubpath(t *testing.T) {
+	fm := &mount.FakeMounter{}
+	pod := v1.Pod{
+		Spec: v1.PodSpec{
+			HostNetwork: true,
+		},
+	}
+	podVolumes := kubecontainer.VolumeMap{
+		"disk": kubecontainer.VolumeInfo{Mounter: &stubVolume{path: "/mnt/disk"}},
+	}
+
+	cases := map[string]struct {
+		container   v1.Container
+		expectError bool
+	}{
+		"subpath not specified": {
+			v1.Container{
+				VolumeMounts: []v1.VolumeMount{
+					{
+						MountPath: "/mnt/path3",
+						Name:      "disk",
+						ReadOnly:  true,
+					},
+				},
+			},
+			false,
+		},
+		"subpath specified": {
+			v1.Container{
+				VolumeMounts: []v1.VolumeMount{
+					{
+						MountPath: "/mnt/path3",
+						SubPath:   "/must/not/be/absolute",
+						Name:      "disk",
+						ReadOnly:  true,
+					},
+				},
+			},
+			true,
+		},
+	}
+
+	utilfeature.DefaultFeatureGate.Set("VolumeSubpath=false")
+	defer utilfeature.DefaultFeatureGate.Set("VolumeSubpath=true")
+
+	for name, test := range cases {
+		_, _, err := makeMounts(&pod, "/pod", &test.container, "fakepodname", "", "", podVolumes, fm)
+		if err != nil && !test.expectError {
+			t.Errorf("test %v failed: %v", name, err)
+		}
+		if err == nil && test.expectError {
+			t.Errorf("test %v failed: expected error", name)
+		}
+	}
+}
+
+func TestMakeBlockVolumes(t *testing.T) {
+	testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
+	defer testKubelet.Cleanup()
+	kubelet := testKubelet.kubelet
+	testCases := map[string]struct {
+		container       v1.Container
+		podVolumes      kubecontainer.VolumeMap
+		expectErr       bool
+		expectedErrMsg  string
+		expectedDevices []kubecontainer.DeviceInfo
+	}{
+		"valid volumeDevices in container": {
+			podVolumes: kubecontainer.VolumeMap{
+				"disk1": kubecontainer.VolumeInfo{BlockVolumeMapper: &stubBlockVolume{dirPath: "/dev/", volName: "sda"}},
+				"disk2": kubecontainer.VolumeInfo{BlockVolumeMapper: &stubBlockVolume{dirPath: "/dev/disk/by-path/", volName: "diskPath"}, ReadOnly: true},
+				"disk3": kubecontainer.VolumeInfo{BlockVolumeMapper: &stubBlockVolume{dirPath: "/dev/disk/by-id/", volName: "diskUuid"}},
+				"disk4": kubecontainer.VolumeInfo{BlockVolumeMapper: &stubBlockVolume{dirPath: "/var/lib/", volName: "rawdisk"}, ReadOnly: true},
+			},
+			container: v1.Container{
+				Name: "container1",
+				VolumeDevices: []v1.VolumeDevice{
+					{
+						DevicePath: "/dev/sda",
+						Name:       "disk1",
+					},
+					{
+						DevicePath: "/dev/xvda",
+						Name:       "disk2",
+					},
+					{
+						DevicePath: "/dev/xvdb",
+						Name:       "disk3",
+					},
+					{
+						DevicePath: "/mnt/rawdisk",
+						Name:       "disk4",
+					},
+				},
+			},
+			expectedDevices: []kubecontainer.DeviceInfo{
+				{
+					PathInContainer: "/dev/sda",
+					PathOnHost:      "/dev/sda",
+					Permissions:     "mrw",
+				},
+				{
+					PathInContainer: "/dev/xvda",
+					PathOnHost:      "/dev/disk/by-path/diskPath",
+					Permissions:     "r",
+				},
+				{
+					PathInContainer: "/dev/xvdb",
+					PathOnHost:      "/dev/disk/by-id/diskUuid",
+					Permissions:     "mrw",
+				},
+				{
+					PathInContainer: "/mnt/rawdisk",
+					PathOnHost:      "/var/lib/rawdisk",
+					Permissions:     "r",
+				},
+			},
+			expectErr: false,
+		},
+		"invalid absolute Path": {
+			podVolumes: kubecontainer.VolumeMap{
+				"disk": kubecontainer.VolumeInfo{BlockVolumeMapper: &stubBlockVolume{dirPath: "/dev/", volName: "sda"}},
+			},
+			container: v1.Container{
+				VolumeDevices: []v1.VolumeDevice{
+					{
+						DevicePath: "must/be/absolute",
+						Name:       "disk",
+					},
+				},
+			},
+			expectErr:      true,
+			expectedErrMsg: "error DevicePath `must/be/absolute` must be an absolute path",
+		},
+		"volume doesn't exist": {
+			podVolumes: kubecontainer.VolumeMap{},
+			container: v1.Container{
+				VolumeDevices: []v1.VolumeDevice{
+					{
+						DevicePath: "/dev/sdaa",
+						Name:       "disk",
+					},
+				},
+			},
+			expectErr:      true,
+			expectedErrMsg: "cannot find volume \"disk\" to pass into container \"\"",
+		},
+		"volume BlockVolumeMapper is nil": {
+			podVolumes: kubecontainer.VolumeMap{
+				"disk": kubecontainer.VolumeInfo{},
+			},
+			container: v1.Container{
+				VolumeDevices: []v1.VolumeDevice{
+					{
+						DevicePath: "/dev/sdzz",
+						Name:       "disk",
+					},
+				},
+			},
+			expectErr:      true,
+			expectedErrMsg: "cannot find volume \"disk\" to pass into container \"\"",
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			pod := v1.Pod{
+				Spec: v1.PodSpec{
+					HostNetwork: true,
+				},
+			}
+			blkutil := volumetest.NewBlockVolumePathHandler()
+			blkVolumes, err := kubelet.makeBlockVolumes(&pod, &tc.container, tc.podVolumes, blkutil)
+			// validate only the error if we expect an error
+			if tc.expectErr {
+				if err == nil || err.Error() != tc.expectedErrMsg {
+					t.Fatalf("expected error message `%s` but got `%v`", tc.expectedErrMsg, err)
+				}
+				return
+			}
+			// otherwise validate the devices
+			if err != nil {
+				t.Fatal(err)
+			}
+			assert.Equal(t, tc.expectedDevices, blkVolumes, "devices of container %+v", tc.container)
 		})
 	}
 }

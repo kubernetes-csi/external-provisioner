@@ -176,6 +176,18 @@ type nfsProvisioner struct {
 }
 
 var _ controller.Provisioner = &nfsProvisioner{}
+var _ controller.Qualifier = &nfsProvisioner{}
+
+// ShouldProvision returns whether provisioning should be attempted for the given
+// claim.
+func (p *nfsProvisioner) ShouldProvision(claim *v1.PersistentVolumeClaim) bool {
+	// As long as the export limit has not been reached we're ok to provision
+	ok := p.checkExportLimit()
+	if !ok {
+		glog.Infof("export limit reached. skipping claim %s/%s", claim.Namespace, claim.Name)
+	}
+	return ok
+}
 
 // Provision creates a volume i.e. the storage asset and returns a PV object for
 // the volume.
@@ -374,7 +386,7 @@ func (p *nfsProvisioner) getServer() (string, error) {
 	if namespace == "" {
 		return "", fmt.Errorf("service env %s is set but namespace env %s isn't; no way to get the service cluster IP", p.serviceEnv, p.namespaceEnv)
 	}
-	service, err := p.client.Core().Services(namespace).Get(serviceName, metav1.GetOptions{})
+	service, err := p.client.CoreV1().Services(namespace).Get(serviceName, metav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("error getting service %s=%s in namespace %s=%s", p.serviceEnv, serviceName, p.namespaceEnv, namespace)
 	}
@@ -391,7 +403,7 @@ func (p *nfsProvisioner) getServer() (string, error) {
 		{111, v1.ProtocolUDP}:   true,
 		{111, v1.ProtocolTCP}:   true,
 	}
-	endpoints, err := p.client.Core().Endpoints(namespace).Get(serviceName, metav1.GetOptions{})
+	endpoints, err := p.client.CoreV1().Endpoints(namespace).Get(serviceName, metav1.GetOptions{})
 	for _, subset := range endpoints.Subsets {
 		// One service can't have multiple nfs-provisioner endpoints. If it had, kubernetes would round-robin
 		// the request which would probably go to the wrong instance.
@@ -450,7 +462,11 @@ func (p *nfsProvisioner) createDirectory(directory, gid string) error {
 	}
 
 	if gid != "none" {
-		groupID, _ := strconv.ParseUint(gid, 10, 64)
+		groupID, err := strconv.ParseUint(gid, 10, 64)
+		if err != nil {
+			os.RemoveAll(path)
+			return fmt.Errorf("strconv.ParseUint failed with error: %v", err)
+		}
 		cmd := exec.Command("chgrp", strconv.FormatUint(groupID, 10), path)
 		out, err := cmd.CombinedOutput()
 		if err != nil {

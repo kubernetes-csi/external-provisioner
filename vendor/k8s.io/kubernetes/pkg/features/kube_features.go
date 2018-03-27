@@ -140,12 +140,6 @@ const (
 	// 'MemoryPressure', 'OutOfDisk' and 'DiskPressure'.
 	TaintNodesByCondition utilfeature.Feature = "TaintNodesByCondition"
 
-	// owner: @haibinxie
-	// alpha: v1.8
-	//
-	// Implement IPVS-based in-cluster service load balancing
-	SupportIPVSProxyMode utilfeature.Feature = "SupportIPVSProxyMode"
-
 	// owner: @jsafrane
 	// alpha: v1.8
 	//
@@ -170,6 +164,13 @@ const (
 	// Enable nodes to exclude themselves from service load balancers
 	ServiceNodeExclusion utilfeature.Feature = "ServiceNodeExclusion"
 
+	// owner @brendandburns
+	// deprecated: v1.10
+	//
+	// Enable the service proxy to contact external IP addresses. Note this feature is present
+	// only for backward compatability, it will be removed in the 1.11 release.
+	ServiceProxyAllowExternalIPs utilfeature.Feature = "ServiceProxyAllowExternalIPs"
+
 	// owner: @jsafrane
 	// alpha: v1.9
 	//
@@ -180,7 +181,58 @@ const (
 	// alpha: v1.9
 	//
 	// Extend the default scheduler to be aware of PV topology and handle PV binding
+	// Before moving to beta, resolve Kubernetes issue #56180
 	VolumeScheduling utilfeature.Feature = "VolumeScheduling"
+
+	// owner: @vladimirvivien
+	// alpha: v1.9
+	//
+	// Enable mount/attachment of Container Storage Interface (CSI) backed PVs
+	CSIPersistentVolume utilfeature.Feature = "CSIPersistentVolume"
+
+	// owner @MrHohn
+	// alpha: v1.9
+	//
+	// Support configurable pod DNS parameters.
+	CustomPodDNS utilfeature.Feature = "CustomPodDNS"
+
+	// owner: @screeley44
+	// alpha: v1.9
+	//
+	// Enable Block volume support in containers.
+	BlockVolume utilfeature.Feature = "BlockVolume"
+
+	// owner: @pospispa
+	//
+	// alpha: v1.9
+	// Postpone deletion of a persistent volume claim in case it is used by a pod
+	PVCProtection utilfeature.Feature = "PVCProtection"
+
+	// owner: @aveshagarwal
+	// alpha: v1.9
+	//
+	// Enable resource limits priority function
+	ResourceLimitsPriorityFunction utilfeature.Feature = "ResourceLimitsPriorityFunction"
+
+	// owner: @m1093782566
+	// beta: v1.9
+	//
+	// Implement IPVS-based in-cluster service load balancing
+	SupportIPVSProxyMode utilfeature.Feature = "SupportIPVSProxyMode"
+
+	// owner: @joelsmith
+	// deprecated: v1.10
+	//
+	// Mount secret, configMap, downwardAPI and projected volumes ReadOnly. Note: this feature
+	// gate is present only for backward compatability, it will be removed in the 1.11 release.
+	ReadOnlyAPIDataVolumes utilfeature.Feature = "ReadOnlyAPIDataVolumes"
+
+	// owner: @saad-ali
+	// ga
+	//
+	// Allow mounting a subpath of a volume in a container
+	// Do not remove this feature gate even though it's GA
+	VolumeSubpath utilfeature.Feature = "VolumeSubpath"
 )
 
 func init() {
@@ -215,6 +267,13 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	ServiceNodeExclusion:                        {Default: false, PreRelease: utilfeature.Alpha},
 	MountContainers:                             {Default: false, PreRelease: utilfeature.Alpha},
 	VolumeScheduling:                            {Default: false, PreRelease: utilfeature.Alpha},
+	CSIPersistentVolume:                         {Default: false, PreRelease: utilfeature.Alpha},
+	CustomPodDNS:                                {Default: false, PreRelease: utilfeature.Alpha},
+	BlockVolume:                                 {Default: false, PreRelease: utilfeature.Alpha},
+	PVCProtection:                               {Default: false, PreRelease: utilfeature.Alpha},
+	ResourceLimitsPriorityFunction:              {Default: false, PreRelease: utilfeature.Alpha},
+	SupportIPVSProxyMode:                        {Default: false, PreRelease: utilfeature.Beta},
+	VolumeSubpath:                               {Default: true, PreRelease: utilfeature.GA},
 
 	// inherited features from generic apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
@@ -227,5 +286,8 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	// inherited features from apiextensions-apiserver, relisted here to get a conflict if it is changed
 	// unintentionally on either side:
 	apiextensionsfeatures.CustomResourceValidation: {Default: true, PreRelease: utilfeature.Beta},
-	SupportIPVSProxyMode:                           {Default: false, PreRelease: utilfeature.Alpha},
+
+	// features that enable backwards compatability but are scheduled to be removed
+	ServiceProxyAllowExternalIPs: {Default: false, PreRelease: utilfeature.Deprecated},
+	ReadOnlyAPIDataVolumes:       {Default: true, PreRelease: utilfeature.Deprecated},
 }

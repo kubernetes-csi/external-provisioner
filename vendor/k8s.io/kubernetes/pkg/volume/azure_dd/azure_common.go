@@ -35,9 +35,10 @@ import (
 )
 
 const (
-	defaultFSType             = "ext4"
-	defaultStorageAccountType = storage.StandardLRS
-	defaultAzureDiskKind      = v1.AzureSharedBlobDisk
+	defaultFSType                   = "ext4"
+	defaultStorageAccountType       = storage.StandardLRS
+	defaultAzureDiskKind            = v1.AzureSharedBlobDisk
+	defaultAzureDataDiskCachingMode = v1.AzureDataDiskCachingNone
 )
 
 type dataDisk struct {
@@ -58,7 +59,7 @@ var (
 		string(api.AzureDedicatedBlobDisk),
 		string(api.AzureManagedDisk))
 
-	supportedStorageAccountTypes = sets.NewString("Premium_LRS", "Standard_LRS")
+	supportedStorageAccountTypes = sets.NewString("Premium_LRS", "Standard_LRS", "Standard_GRS", "Standard_RAGRS")
 )
 
 func getPath(uid types.UID, volName string, host volume.VolumeHost) string {
@@ -141,7 +142,7 @@ func normalizeStorageAccountType(storageAccountType string) (storage.SkuName, er
 
 func normalizeCachingMode(cachingMode v1.AzureDataDiskCachingMode) (v1.AzureDataDiskCachingMode, error) {
 	if cachingMode == "" {
-		return v1.AzureDataDiskCachingReadWrite, nil
+		return defaultAzureDataDiskCachingMode, nil
 	}
 
 	if !supportedCachingModes.Has(string(cachingMode)) {

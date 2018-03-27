@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/util/json"
 	"net"
 	"strings"
 	"time"
@@ -37,17 +36,19 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 )
 
 const (
-	volumeAttributesAnnotation = "csi.volume.kubernetes.io/volume-attributes"
+	secretNameKey      = "csiProvisionerSecretName"
+	secretNamespaceKey = "csiProvisionerSecretNamespace"
 )
 
+// CSIProvisioner struct
 type csiProvisioner struct {
 	client               kubernetes.Interface
 	csiClient            csi.ControllerClient
-	driverName           string
+	grpcClient           *grpc.ClientConn
 	timeout              time.Duration
 	identity             string
 	volumeNamePrefix     string
@@ -57,13 +58,7 @@ type csiProvisioner struct {
 
 var _ controller.Provisioner = &csiProvisioner{}
 
-// Version of CSI this client implements
 var (
-	csiVersion = csi.Version{
-		Major: 0,
-		Minor: 1,
-		Patch: 0,
-	}
 	accessMode = &csi.VolumeCapability_AccessMode{
 		Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 	}
@@ -72,7 +67,7 @@ var (
 	}
 	// Each provisioner have a identify string to distinguish with others. This
 	// identify string will be added in PV annoations under this key.
-	provisionerIDAnn = "csiProvisionerIdentity"
+	provisionerIDKey = "storage.kubernetes.io/csiProvisionerIdentity"
 )
 
 // from external-attacher/pkg/connection
@@ -86,7 +81,7 @@ func logGRPC(ctx context.Context, method string, req, reply interface{}, cc *grp
 	return err
 }
 
-func connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
+func Connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
 	glog.V(2).Infof("Connecting to %s", address)
 	dialOptions := []grpc.DialOption{
 		grpc.WithInsecure(),
@@ -108,7 +103,7 @@ func connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
 	for {
 		if !conn.WaitForStateChange(ctx, conn.GetState()) {
 			glog.V(4).Infof("Connection timed out")
-			return conn, nil // return nil, subsequent GetPluginInfo will show the real connection error
+			return conn, fmt.Errorf("Connection timed out")
 		}
 		if conn.GetState() == connectivity.Ready {
 			glog.V(3).Infof("Connected")
@@ -124,9 +119,7 @@ func getDriverName(conn *grpc.ClientConn, timeout time.Duration) (string, error)
 
 	client := csi.NewIdentityClient(conn)
 
-	req := csi.GetPluginInfoRequest{
-		Version: &csiVersion,
-	}
+	req := csi.GetPluginInfoRequest{}
 
 	rsp, err := client.GetPluginInfo(ctx, &req)
 	if err != nil {
@@ -139,14 +132,39 @@ func getDriverName(conn *grpc.ClientConn, timeout time.Duration) (string, error)
 	return name, nil
 }
 
+func supportsPluginControllerService(conn *grpc.ClientConn, timeout time.Duration) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	client := csi.NewIdentityClient(conn)
+	req := csi.GetPluginCapabilitiesRequest{}
+
+	rsp, err := client.GetPluginCapabilities(ctx, &req)
+	if err != nil {
+		return false, err
+	}
+	caps := rsp.GetCapabilities()
+	for _, cap := range caps {
+		if cap == nil {
+			continue
+		}
+		service := cap.GetService()
+		if service == nil {
+			continue
+		}
+		if service.GetType() == csi.PluginCapability_Service_CONTROLLER_SERVICE {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func supportsControllerCreateVolume(conn *grpc.ClientConn, timeout time.Duration) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	client := csi.NewControllerClient(conn)
-	req := csi.ControllerGetCapabilitiesRequest{
-		Version: &csiVersion,
-	}
+	req := csi.ControllerGetCapabilitiesRequest{}
 
 	rsp, err := client.ControllerGetCapabilities(ctx, &req)
 	if err != nil {
@@ -168,27 +186,19 @@ func supportsControllerCreateVolume(conn *grpc.ClientConn, timeout time.Duration
 	return false, nil
 }
 
-func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connectionTimeout time.Duration, identity string, volumeNamePrefix string, volumeNameUUIDLength int) controller.Provisioner {
-	grpcClient, err := connect(csiEndpoint, connectionTimeout)
-	if err != nil || grpcClient == nil {
-		glog.Fatalf("failed to connect to csi endpoint :%v", err)
-	}
-	ok, err := supportsControllerCreateVolume(grpcClient, connectionTimeout)
-	if err != nil {
-		glog.Fatalf("failed to get support info :%v", err)
-	}
-	if !ok {
-		glog.Fatalf("no create/delete volume support detected")
-	}
-	driver, err := getDriverName(grpcClient, connectionTimeout)
-	if err != nil {
-		glog.Fatalf("failed to get driver info :%v", err)
-	}
+// NewCSIProvisioner creates new CSI provisioner
+func NewCSIProvisioner(client kubernetes.Interface,
+	csiEndpoint string,
+	connectionTimeout time.Duration,
+	identity string,
+	volumeNamePrefix string,
+	volumeNameUUIDLength int,
+	grpcClient *grpc.ClientConn) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
 		client:               client,
-		driverName:           driver,
+		grpcClient:           grpcClient,
 		csiClient:            csiClient,
 		timeout:              connectionTimeout,
 		identity:             identity,
@@ -198,9 +208,44 @@ func NewCSIProvisioner(client kubernetes.Interface, csiEndpoint string, connecti
 	return provisioner
 }
 
+// This function get called before any attepmt to communicate with the driver.
+// Before initiating Create/Delete API calls provisioner checks if Capabilities:
+// PluginControllerService,  ControllerCreateVolume sre supported and gets the  driver name.
+func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration) (string, error) {
+	ok, err := supportsPluginControllerService(grpcClient, timeout)
+	if err != nil {
+		glog.Errorf("failed to get support info :%v", err)
+		return "", err
+	}
+	if !ok {
+		glog.Errorf("no plugin controller service support detected")
+		return "", fmt.Errorf("no plugin controller service support detected")
+	}
+	ok, err = supportsControllerCreateVolume(grpcClient, timeout)
+	if err != nil {
+		glog.Errorf("failed to get support info :%v", err)
+		return "", err
+	}
+	if !ok {
+		glog.Error("no create/delete volume support detected")
+		return "", fmt.Errorf("no create/delete volume support detected")
+	}
+	driverName, err := getDriverName(grpcClient, timeout)
+	if err != nil {
+		glog.Errorf("failed to get driver info :%v", err)
+		return "", err
+	}
+	return driverName, nil
+}
+
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
 	if options.PVC.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim Selector is not supported")
+	}
+
+	driverName, err := checkDriverState(p.grpcClient, p.timeout)
+	if err != nil {
+		return nil, err
 	}
 	// create random share name
 	share := fmt.Sprintf("%s-%s", p.volumeNamePrefix, strings.Replace(string(uuid.NewUUID()), "-", "", -1)[0:p.volumeNameUUIDLength])
@@ -209,8 +254,8 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 
 	// Create a CSI CreateVolumeRequest
 	req := csi.CreateVolumeRequest{
+
 		Name:       share,
-		Version:    &csiVersion,
 		Parameters: options.Parameters,
 		VolumeCapabilities: []*csi.VolumeCapability{
 			{
@@ -219,9 +264,18 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			},
 		},
 		CapacityRange: &csi.CapacityRange{
-			RequiredBytes: uint64(volSizeBytes),
-			LimitBytes:    uint64(volSizeBytes),
+			RequiredBytes: int64(volSizeBytes),
+			LimitBytes:    int64(volSizeBytes),
 		},
+	}
+	secret := v1.SecretReference{}
+	if options.Parameters != nil {
+		credentials, err := getCredentialsFromParameters(p.client, options.Parameters)
+		if err != nil {
+			return nil, err
+		}
+		req.ControllerCreateSecrets = credentials
+		secret.Name, secret.Namespace, _ = getSecretAndNamespaceFromParameters(options.Parameters)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
@@ -230,21 +284,16 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	if err != nil {
 		return nil, err
 	}
-	if rep.VolumeInfo != nil {
-		glog.V(3).Infof("create volume rep: %+v", *rep.VolumeInfo)
+	if rep.Volume != nil {
+		glog.V(3).Infof("create volume rep: %+v", *rep.Volume)
 	}
-
-	annotations := map[string]string{provisionerIDAnn: p.identity}
-	attributesString, err := json.Marshal(rep.VolumeInfo.Attributes)
-	if err != nil {
-		glog.V(2).Infof("fail parsing volume attributes: %+v", rep.VolumeInfo.Attributes)
-	} else {
-		annotations[volumeAttributesAnnotation] = string(attributesString)
+	volumeAttributes := map[string]string{provisionerIDKey: p.identity}
+	for k, v := range rep.Volume.Attributes {
+		volumeAttributes[k] = v
 	}
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        share,
-			Annotations: annotations,
+			Name: share,
 		},
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
@@ -255,13 +304,16 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:       p.driverName,
-					VolumeHandle: p.volumeIdToHandle(rep.VolumeInfo.Id),
+					Driver:           driverName,
+					VolumeHandle:     p.volumeIdToHandle(rep.Volume.Id),
+					VolumeAttributes: volumeAttributes,
 				},
 			},
 		},
 	}
-
+	if len(secret.Name) != 0 {
+		pv.Spec.PersistentVolumeSource.CSI.NodePublishSecretRef = &secret
+	}
 	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
 
 	return pv, nil
@@ -271,23 +323,52 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	if volume == nil || volume.Spec.CSI == nil {
 		return fmt.Errorf("invalid CSI PV")
 	}
-	ann, ok := volume.Annotations[provisionerIDAnn]
-	if !ok {
-		return fmt.Errorf("identity annotation not found on PV")
-	}
-	if ann != p.identity {
-		return &controller.IgnoredError{Reason: "identity annotation on PV does not match ours"}
-	}
 	volumeId := p.volumeHandleToId(volume.Spec.CSI.VolumeHandle)
+
+	_, err := checkDriverState(p.grpcClient, p.timeout)
+	if err != nil {
+		return err
+	}
+
 	req := csi.DeleteVolumeRequest{
-		Version:  &csiVersion,
 		VolumeId: volumeId,
+	}
+	// get secrets if StorageClass specifies it
+	storageClassName := volume.Spec.StorageClassName
+	if len(storageClassName) != 0 {
+		if storageClass, err := p.client.StorageV1().StorageClasses().Get(storageClassName, metav1.GetOptions{}); err == nil {
+			credentials, err := getCredentialsFromParameters(p.client, storageClass.Parameters)
+			if err != nil {
+				return err
+			}
+			req.ControllerDeleteSecrets = credentials
+		}
+
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
-	_, err := p.csiClient.DeleteVolume(ctx, &req)
+	_, err = p.csiClient.DeleteVolume(ctx, &req)
+
 	return err
+}
+
+func getSecretAndNamespaceFromParameters(parameters map[string]string) (string, string, bool) {
+	if secretName, ok := parameters[secretNameKey]; ok {
+		namespace := "default"
+		if len(parameters[secretNamespaceKey]) != 0 {
+			namespace = parameters[secretNamespaceKey]
+		}
+		return secretName, namespace, true
+	}
+	return "", "", false
+}
+
+func getCredentialsFromParameters(k8s kubernetes.Interface, parameters map[string]string) (map[string]string, error) {
+	if secretName, namespace, found := getSecretAndNamespaceFromParameters(parameters); found {
+		return getCredentialsFromSecret(k8s, secretName, namespace)
+	}
+	return map[string]string{}, nil
 }
 
 //TODO use a unique volume handle from and to Id
@@ -297,4 +378,20 @@ func (p *csiProvisioner) volumeIdToHandle(id string) string {
 
 func (p *csiProvisioner) volumeHandleToId(handle string) string {
 	return handle
+}
+
+func getCredentialsFromSecret(k8s kubernetes.Interface, secretName, nameSpace string) (map[string]string, error) {
+	credentials := map[string]string{}
+	if len(secretName) == 0 {
+		return credentials, nil
+	}
+	secret, err := k8s.CoreV1().Secrets(nameSpace).Get(secretName, metav1.GetOptions{})
+	if err != nil {
+		return credentials, fmt.Errorf("failed to find the secret %s in the namespace %s with error: %v\n", secretName, nameSpace, err)
+	}
+	for key, value := range secret.Data {
+		credentials[key] = string(value)
+	}
+
+	return credentials, nil
 }

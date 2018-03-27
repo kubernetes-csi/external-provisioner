@@ -34,6 +34,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/kubernetes/pkg/util/mount"
 )
 
 // StartLocalController starts the sync loop for the local PV discovery and deleter
@@ -43,18 +44,18 @@ func StartLocalController(client *kubernetes.Clientset, config *common.UserConfi
 	provisionerName := fmt.Sprintf("local-volume-provisioner-%v-%v", config.Node.Name, config.Node.UID)
 
 	broadcaster := record.NewBroadcaster()
-	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(client.Core().RESTClient()).Events("")})
+	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(client.CoreV1().RESTClient()).Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: provisionerName})
 
 	runtimeConfig := &common.RuntimeConfig{
-		UserConfig:    config,
-		Cache:         cache.NewVolumeCache(),
-		VolUtil:       util.NewVolumeUtil(),
-		APIUtil:       util.NewAPIUtil(client),
-		Client:        client,
-		Name:          provisionerName,
-		Recorder:      recorder,
-		BlockDisabled: true, // TODO: Block discovery currently disabled.
+		UserConfig: config,
+		Cache:      cache.NewVolumeCache(),
+		VolUtil:    util.NewVolumeUtil(),
+		APIUtil:    util.NewAPIUtil(client),
+		Client:     client,
+		Name:       provisionerName,
+		Recorder:   recorder,
+		Mounter:    mount.New("" /* default mount path */),
 	}
 
 	populator := populator.NewPopulator(runtimeConfig)
