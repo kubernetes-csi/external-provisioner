@@ -7,7 +7,7 @@ This is an example external provisioner for Kubernetes which provisions using CS
 # Build
 
 ```bash
-make provisioner
+make csi-provisioner
 ```
 
 # Test
@@ -23,13 +23,13 @@ Run a local kubernetes cluster built from latest master code
 Go to drivers and run:
 
 ```bash
-_output/hostpathplugin --drivername mydriver  --endpoint unix://tmp/csi.sock --nodeid foobar -v=5
+bin/hostpathplugin --drivername mydriver  --endpoint unix://tmp/csi.sock --nodeid foobar -v=5
 ```
 
 ### Start external provisioner
 
 ```bash
-_output/csi-provisioner -kubeconfig /var/run/kubernetes/admin.kubeconfig -alsologtostderr -provisioner csi-flex
+bin/csi-provisioner -kubeconfig /var/run/kubernetes/admin.kubeconfig -alsologtostderr -provisioner csi-flex
 ```
 
 ### Create Storage class, PVC, and Pod
