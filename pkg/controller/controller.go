@@ -29,12 +29,14 @@ import (
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/status"
 
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 )
@@ -42,6 +44,12 @@ import (
 const (
 	secretNameKey      = "csiProvisionerSecretName"
 	secretNamespaceKey = "csiProvisionerSecretNamespace"
+	// Defines parameters for ExponentialBackoff used for executing
+	// CSI CreateVolume API call, it gives approx 4 minutes for the CSI
+	// driver to complete a volume creation.
+	backoffDuration = time.Second * 5
+	backoffFactor   = 1.2
+	backoffSteps    = 10
 )
 
 // CSIProvisioner struct
@@ -238,6 +246,18 @@ func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration) (strin
 	return driverName, nil
 }
 
+func makeVolumeName(prefix, pvcUID string) (string, error) {
+	// create persistent name based on a volumeNamePrefix and volumeNameUUIDLength
+	// of PVC's UID
+	if len(prefix) == 0 {
+		return "", fmt.Errorf("Volume name prefix cannot be of length 0")
+	}
+	if len(pvcUID) == 0 {
+		return "", fmt.Errorf("corrupted PVC object, it is missing UID")
+	}
+	return fmt.Sprintf("%s-%s", prefix, pvcUID), nil
+}
+
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
 	if options.PVC.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim Selector is not supported")
@@ -247,12 +267,16 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	if err != nil {
 		return nil, err
 	}
-	// create random share name
-	share := fmt.Sprintf("%s-%s", p.volumeNamePrefix, strings.Replace(string(uuid.NewUUID()), "-", "", -1)[0:p.volumeNameUUIDLength])
+
+	share, err := makeVolumeName(p.volumeNamePrefix, fmt.Sprintf("%s", options.PVC.ObjectMeta.UID))
+	if err != nil {
+		return nil, err
+	}
+
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 
-	// Create a CSI CreateVolumeRequest
+	// Create a CSI CreateVolumeRequest and Response
 	req := csi.CreateVolumeRequest{
 
 		Name:       share,
@@ -268,6 +292,8 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			LimitBytes:    int64(volSizeBytes),
 		},
 	}
+	rep := &csi.CreateVolumeResponse{}
+
 	secret := v1.SecretReference{}
 	if options.Parameters != nil {
 		credentials, err := getCredentialsFromParameters(p.client, options.Parameters)
@@ -277,13 +303,32 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		req.ControllerCreateSecrets = credentials
 		secret.Name, secret.Namespace, _ = getSecretAndNamespaceFromParameters(options.Parameters)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
-	defer cancel()
 
-	rep, err := p.csiClient.CreateVolume(ctx, &req)
+	opts := wait.Backoff{Duration: backoffDuration, Factor: backoffFactor, Steps: backoffSteps}
+	err = wait.ExponentialBackoff(opts, func() (bool, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
+		defer cancel()
+		rep, err = p.csiClient.CreateVolume(ctx, &req)
+		if err == nil {
+			// CreateVolume has finished successfully
+			return true, nil
+		}
+
+		if status, ok := status.FromError(err); ok {
+			if status.Code() == codes.DeadlineExceeded {
+				// CreateVolume timed out, give it another chance to complete
+				glog.Warningf("CreateVolume timeout: %s has expired, operation will be retried", p.timeout.String())
+				return false, nil
+			}
+		}
+		// CreateVolume failed , no reason to retry, bailing from ExponentialBackoff
+		return false, err
+	})
+
 	if err != nil {
 		return nil, err
 	}
+
 	if rep.Volume != nil {
 		glog.V(3).Infof("create volume rep: %+v", *rep.Volume)
 	}
