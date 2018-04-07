@@ -75,10 +75,12 @@ spec:
       serviceAccount: csi-provisioner
       containers:
         - name: csi-provisioner
-          image: docker.io/k8scsi/csi-provisioner
+          image: quay.io/k8scsi/csi-provisioner
           args:
             - "--provisioner=csi-flex"
             - "--csi-address=$(ADDRESS)"
+            - "--volume-name-prefix=kubernetes-dynamic-pv"
+            - "--volume-name-uuid-length=16"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/mock.socket
@@ -88,7 +90,7 @@ spec:
               mountPath: /var/lib/csi/sockets/pluginproxy/
 
         - name: mock-driver
-          image: docker.io/k8scsi/mock-plugin
+          image: quay.io/k8scsi/mock-plugin
           env:
             - name: CSI_ENDPOINT
               value: /var/lib/csi/sockets/pluginproxy/mock.socket
