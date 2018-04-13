@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -521,5 +522,128 @@ func createFakePVC(requestBytes int64) *v1.PersistentVolumeClaim {
 				},
 			},
 		},
+	}
+}
+
+func TestGetSecretReference(t *testing.T) {
+	testcases := map[string]struct {
+		nameKey      string
+		namespaceKey string
+		params       map[string]string
+		pvName       string
+		pvc          *v1.PersistentVolumeClaim
+
+		expectRef *v1.SecretReference
+		expectErr error
+	}{
+		"no params": {
+			nameKey:      nodePublishSecretNameKey,
+			namespaceKey: nodePublishSecretNamespaceKey,
+			params:       nil,
+			expectRef:    nil,
+			expectErr:    nil,
+		},
+		"empty err": {
+			nameKey:      nodePublishSecretNameKey,
+			namespaceKey: nodePublishSecretNamespaceKey,
+			params:       map[string]string{nodePublishSecretNameKey: "", nodePublishSecretNamespaceKey: ""},
+			expectErr:    fmt.Errorf("csiNodePublishSecretName and csiNodePublishSecretNamespace parameters must be specified together"),
+		},
+		"name, no namespace": {
+			nameKey:      nodePublishSecretNameKey,
+			namespaceKey: nodePublishSecretNamespaceKey,
+			params:       map[string]string{nodePublishSecretNameKey: "foo"},
+			expectErr:    fmt.Errorf("csiNodePublishSecretName and csiNodePublishSecretNamespace parameters must be specified together"),
+		},
+		"namespace, no name": {
+			nameKey:      nodePublishSecretNameKey,
+			namespaceKey: nodePublishSecretNamespaceKey,
+			params:       map[string]string{nodePublishSecretNamespaceKey: "foo"},
+			expectErr:    fmt.Errorf("csiNodePublishSecretName and csiNodePublishSecretNamespace parameters must be specified together"),
+		},
+		"simple - valid": {
+			nameKey:      nodePublishSecretNameKey,
+			namespaceKey: nodePublishSecretNamespaceKey,
+			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "ns"},
+			pvc:          &v1.PersistentVolumeClaim{},
+			expectRef:    &v1.SecretReference{Name: "name", Namespace: "ns"},
+			expectErr:    nil,
+		},
+		"simple - valid, no pvc": {
+			nameKey:      provisionerSecretNameKey,
+			namespaceKey: provisionerSecretNamespaceKey,
+			params:       map[string]string{provisionerSecretNameKey: "name", provisionerSecretNamespaceKey: "ns"},
+			pvc:          nil,
+			expectRef:    &v1.SecretReference{Name: "name", Namespace: "ns"},
+			expectErr:    nil,
+		},
+		"simple - invalid name": {
+			nameKey:      nodePublishSecretNameKey,
+			namespaceKey: nodePublishSecretNamespaceKey,
+			params:       map[string]string{nodePublishSecretNameKey: "bad name", nodePublishSecretNamespaceKey: "ns"},
+			pvc:          &v1.PersistentVolumeClaim{},
+			expectRef:    nil,
+			expectErr:    fmt.Errorf(`csiNodePublishSecretName parameter "bad name" is not a valid secret name`),
+		},
+		"simple - invalid namespace": {
+			nameKey:      nodePublishSecretNameKey,
+			namespaceKey: nodePublishSecretNamespaceKey,
+			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "bad ns"},
+			pvc:          &v1.PersistentVolumeClaim{},
+			expectRef:    nil,
+			expectErr:    fmt.Errorf(`csiNodePublishSecretNamespace parameter "bad ns" is not a valid namespace name`),
+		},
+		"template - valid": {
+			nameKey:      nodePublishSecretNameKey,
+			namespaceKey: nodePublishSecretNamespaceKey,
+			params: map[string]string{
+				nodePublishSecretNameKey:      "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
+				nodePublishSecretNamespaceKey: "static-${pv.name}-${pvc.namespace}",
+			},
+			pvName: "pvname",
+			pvc: &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "pvcname",
+					Namespace:   "pvcnamespace",
+					Annotations: map[string]string{"akey": "avalue"},
+				},
+			},
+			expectRef: &v1.SecretReference{Name: "static-pvname-pvcnamespace-pvcname-avalue", Namespace: "static-pvname-pvcnamespace"},
+			expectErr: nil,
+		},
+		"template - invalid namespace tokens": {
+			nameKey:      nodePublishSecretNameKey,
+			namespaceKey: nodePublishSecretNamespaceKey,
+			params: map[string]string{
+				nodePublishSecretNameKey:      "myname",
+				nodePublishSecretNamespaceKey: "mynamespace${bar}",
+			},
+			pvc:       &v1.PersistentVolumeClaim{},
+			expectRef: nil,
+			expectErr: fmt.Errorf(`error resolving csiNodePublishSecretNamespace value "mynamespace${bar}": invalid tokens: ["bar"]`),
+		},
+		"template - invalid name tokens": {
+			nameKey:      nodePublishSecretNameKey,
+			namespaceKey: nodePublishSecretNamespaceKey,
+			params: map[string]string{
+				nodePublishSecretNameKey:      "myname${foo}",
+				nodePublishSecretNamespaceKey: "mynamespace",
+			},
+			pvc:       &v1.PersistentVolumeClaim{},
+			expectRef: nil,
+			expectErr: fmt.Errorf(`error resolving csiNodePublishSecretName value "myname${foo}": invalid tokens: ["foo"]`),
+		},
+	}
+
+	for k, tc := range testcases {
+		t.Run(k, func(t *testing.T) {
+			ref, err := getSecretReference(tc.nameKey, tc.namespaceKey, tc.params, tc.pvName, tc.pvc)
+			if !reflect.DeepEqual(err, tc.expectErr) {
+				t.Errorf("Expected %v, got %v", tc.expectErr, err)
+			}
+			if !reflect.DeepEqual(ref, tc.expectRef) {
+				t.Errorf("Expected %v, got %v", tc.expectRef, ref)
+			}
+		})
 	}
 }
