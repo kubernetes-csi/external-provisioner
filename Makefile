@@ -13,7 +13,7 @@
 # limitations under the License.
 
 IMAGE_NAME = quay.io/k8scsi/csi-provisioner
-IMAGE_VERSION = canary
+IMAGE_VERSION = v0.2.0
 
 ifdef V
 TESTARGS = -v -args -alsologtostderr -v 5
