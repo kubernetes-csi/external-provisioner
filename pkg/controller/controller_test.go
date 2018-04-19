@@ -390,6 +390,49 @@ func TestGetDriverName(t *testing.T) {
 	}
 }
 
+func TestBytesToQuantity(t *testing.T) {
+	tests := []struct {
+		testName    string
+		bytes       float64
+		quantString string
+	}{
+		{
+			"Gibibyte rounding up from above .5",
+			5.56 * 1024 * 1024 * 1024,
+			"6Gi",
+		},
+		{
+			"Gibibyte rounding up from below .5",
+			5.23 * 1024 * 1024 * 1024,
+			"6Gi",
+		},
+		{
+			"Gibibyte exact",
+			5 * 1024 * 1024 * 1024,
+			"5Gi",
+		},
+		{
+			"Mebibyte rounding up from below .5",
+			5.23 * 1024 * 1024,
+			"6Mi",
+		},
+		{
+			"Mebibyte/Gibibyte barrier (Quantity type rounds this)",
+			// (1024 * 1024 * 1024) - 1
+			1073741823,
+			"1Gi",
+		},
+	}
+
+	for _, test := range tests {
+		q := bytesToGiQuantity(int64(test.bytes))
+		if q.String() != test.quantString {
+			t.Errorf("test: %s, expected: %v, got: %v", test.testName, test.quantString, q.String())
+		}
+	}
+
+}
+
 func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	// Set up mocks
 	var requestedBytes int64 = 100
