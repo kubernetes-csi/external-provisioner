@@ -249,7 +249,7 @@ func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration) (strin
 	return driverName, nil
 }
 
-func makeVolumeName(prefix, pvcUID string) (string, error) {
+func makeVolumeName(prefix, pvcUID string, volumeNameUUIDLength int) (string, error) {
 	// create persistent name based on a volumeNamePrefix and volumeNameUUIDLength
 	// of PVC's UID
 	if len(prefix) == 0 {
@@ -258,7 +258,7 @@ func makeVolumeName(prefix, pvcUID string) (string, error) {
 	if len(pvcUID) == 0 {
 		return "", fmt.Errorf("corrupted PVC object, it is missing UID")
 	}
-	return fmt.Sprintf("%s-%s", prefix, pvcUID), nil
+	return fmt.Sprintf("%s-%s", prefix, strings.Replace(string(pvcUID), "-", "", -1)[0:volumeNameUUIDLength]), nil
 }
 
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
@@ -271,7 +271,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, err
 	}
 
-	share, err := makeVolumeName(p.volumeNamePrefix, fmt.Sprintf("%s", options.PVC.ObjectMeta.UID))
+	share, err := makeVolumeName(p.volumeNamePrefix, fmt.Sprintf("%s", options.PVC.ObjectMeta.UID), p.volumeNameUUIDLength)
 	if err != nil {
 		return nil, err
 	}
