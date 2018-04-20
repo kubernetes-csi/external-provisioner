@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"strings"
 	"time"
@@ -359,7 +360,6 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		}
 		return nil, capErr
 	}
-	repBytesString := fmt.Sprintf("%v", respCap)
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: share,
@@ -368,7 +368,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
 			AccessModes:                   options.PVC.Spec.AccessModes,
 			Capacity: v1.ResourceList{
-				v1.ResourceName(v1.ResourceStorage): resource.MustParse(repBytesString),
+				v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(respCap),
 			},
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
@@ -463,4 +463,24 @@ func getCredentialsFromSecret(k8s kubernetes.Interface, secretName, nameSpace st
 	}
 
 	return credentials, nil
+}
+
+func bytesToGiQuantity(bytes int64) resource.Quantity {
+	var num int64
+	var floatBytes, MiB, GiB float64
+	var suffix string
+	floatBytes = float64(bytes)
+	MiB = 1024 * 1024
+	GiB = MiB * 1024
+	// Need to give Quantity nice whole numbers or else it
+	// sometimes spits out the value in milibytes. We round up.
+	if floatBytes < GiB {
+		num = int64(math.Ceil(floatBytes / MiB))
+		suffix = "Mi"
+	} else {
+		num = int64(math.Ceil(floatBytes / GiB))
+		suffix = "Gi"
+	}
+	stringQuantity := fmt.Sprintf("%v%s", num, suffix)
+	return resource.MustParse(stringQuantity)
 }
