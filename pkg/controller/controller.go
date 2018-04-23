@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -33,6 +34,8 @@ import (
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -46,8 +49,18 @@ import (
 )
 
 const (
-	secretNameKey      = "csiProvisionerSecretName"
-	secretNamespaceKey = "csiProvisionerSecretNamespace"
+	provisionerSecretNameKey      = "csiProvisionerSecretName"
+	provisionerSecretNamespaceKey = "csiProvisionerSecretNamespace"
+
+	controllerPublishSecretNameKey      = "csiControllerPublishSecretName"
+	controllerPublishSecretNamespaceKey = "csiControllerPublishSecretNamespace"
+
+	nodeStageSecretNameKey      = "csiNodeStageSecretName"
+	nodeStageSecretNamespaceKey = "csiNodeStageSecretNamespace"
+
+	nodePublishSecretNameKey      = "csiNodePublishSecretName"
+	nodePublishSecretNamespaceKey = "csiNodePublishSecretNamespace"
+
 	// Defines parameters for ExponentialBackoff used for executing
 	// CSI CreateVolume API call, it gives approx 4 minutes for the CSI
 	// driver to complete a volume creation.
@@ -272,7 +285,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, err
 	}
 
-	share, err := makeVolumeName(p.volumeNamePrefix, fmt.Sprintf("%s", options.PVC.ObjectMeta.UID), p.volumeNameUUIDLength)
+	pvName, err := makeVolumeName(p.volumeNamePrefix, fmt.Sprintf("%s", options.PVC.ObjectMeta.UID), p.volumeNameUUIDLength)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +296,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	// Create a CSI CreateVolumeRequest and Response
 	req := csi.CreateVolumeRequest{
 
-		Name:       share,
+		Name:       pvName,
 		Parameters: options.Parameters,
 		VolumeCapabilities: []*csi.VolumeCapability{
 			{
@@ -297,14 +310,30 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	}
 	rep := &csi.CreateVolumeResponse{}
 
-	secret := v1.SecretReference{}
-	if options.Parameters != nil {
-		credentials, err := getCredentialsFromParameters(p.client, options.Parameters)
-		if err != nil {
-			return nil, err
-		}
-		req.ControllerCreateSecrets = credentials
-		secret.Name, secret.Namespace, _ = getSecretAndNamespaceFromParameters(options.Parameters)
+	// Resolve provision secret credentials.
+	// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
+	provisionerSecretRef, err := getSecretReference(provisionerSecretNameKey, provisionerSecretNamespaceKey, options.Parameters, pvName, nil)
+	if err != nil {
+		return nil, err
+	}
+	provisionerCredentials, err := getCredentials(p.client, provisionerSecretRef)
+	if err != nil {
+		return nil, err
+	}
+	req.ControllerCreateSecrets = provisionerCredentials
+
+	// Resolve controller publish, node stage, node publish secret references
+	controllerPublishSecretRef, err := getSecretReference(controllerPublishSecretNameKey, controllerPublishSecretNamespaceKey, options.Parameters, pvName, options.PVC)
+	if err != nil {
+		return nil, err
+	}
+	nodeStageSecretRef, err := getSecretReference(nodeStageSecretNameKey, nodeStageSecretNamespaceKey, options.Parameters, pvName, options.PVC)
+	if err != nil {
+		return nil, err
+	}
+	nodePublishSecretRef, err := getSecretReference(nodePublishSecretNameKey, nodePublishSecretNamespaceKey, options.Parameters, pvName, options.PVC)
+	if err != nil {
+		return nil, err
 	}
 
 	opts := wait.Backoff{Duration: backoffDuration, Factor: backoffFactor, Steps: backoffSteps}
@@ -345,24 +374,18 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		delReq := &csi.DeleteVolumeRequest{
 			VolumeId: rep.GetVolume().GetId(),
 		}
-		if options.Parameters != nil {
-			credentials, err := getCredentialsFromParameters(p.client, options.Parameters)
-			if err != nil {
-				return nil, err
-			}
-			delReq.ControllerDeleteSecrets = credentials
-		}
+		delReq.ControllerDeleteSecrets = provisionerCredentials
 		ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 		defer cancel()
 		_, err := p.csiClient.DeleteVolume(ctx, delReq)
 		if err != nil {
-			capErr = fmt.Errorf("%v. Cleanup of volume %s failed, volume is orphaned: %v", capErr, share, err)
+			capErr = fmt.Errorf("%v. Cleanup of volume %s failed, volume is orphaned: %v", capErr, pvName, err)
 		}
 		return nil, capErr
 	}
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: share,
+			Name: pvName,
 		},
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
@@ -373,16 +396,17 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:           driverName,
-					VolumeHandle:     p.volumeIdToHandle(rep.Volume.Id),
-					VolumeAttributes: volumeAttributes,
+					Driver:                     driverName,
+					VolumeHandle:               p.volumeIdToHandle(rep.Volume.Id),
+					VolumeAttributes:           volumeAttributes,
+					ControllerPublishSecretRef: controllerPublishSecretRef,
+					NodeStageSecretRef:         nodeStageSecretRef,
+					NodePublishSecretRef:       nodePublishSecretRef,
 				},
 			},
 		},
 	}
-	if len(secret.Name) != 0 {
-		pv.Spec.PersistentVolumeSource.CSI.NodePublishSecretRef = &secret
-	}
+
 	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
 
 	return pv, nil
@@ -406,7 +430,13 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	storageClassName := volume.Spec.StorageClassName
 	if len(storageClassName) != 0 {
 		if storageClass, err := p.client.StorageV1().StorageClasses().Get(storageClassName, metav1.GetOptions{}); err == nil {
-			credentials, err := getCredentialsFromParameters(p.client, storageClass.Parameters)
+			// Resolve provision secret credentials.
+			// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
+			provisionerSecretRef, err := getSecretReference(provisionerSecretNameKey, provisionerSecretNamespaceKey, storageClass.Parameters, volume.Name, nil)
+			if err != nil {
+				return err
+			}
+			credentials, err := getCredentials(p.client, provisionerSecretRef)
 			if err != nil {
 				return err
 			}
@@ -422,24 +452,6 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	return err
 }
 
-func getSecretAndNamespaceFromParameters(parameters map[string]string) (string, string, bool) {
-	if secretName, ok := parameters[secretNameKey]; ok {
-		namespace := "default"
-		if len(parameters[secretNamespaceKey]) != 0 {
-			namespace = parameters[secretNamespaceKey]
-		}
-		return secretName, namespace, true
-	}
-	return "", "", false
-}
-
-func getCredentialsFromParameters(k8s kubernetes.Interface, parameters map[string]string) (map[string]string, error) {
-	if secretName, namespace, found := getSecretAndNamespaceFromParameters(parameters); found {
-		return getCredentialsFromSecret(k8s, secretName, namespace)
-	}
-	return map[string]string{}, nil
-}
-
 //TODO use a unique volume handle from and to Id
 func (p *csiProvisioner) volumeIdToHandle(id string) string {
 	return id
@@ -449,19 +461,116 @@ func (p *csiProvisioner) volumeHandleToId(handle string) string {
 	return handle
 }
 
-func getCredentialsFromSecret(k8s kubernetes.Interface, secretName, nameSpace string) (map[string]string, error) {
-	credentials := map[string]string{}
-	if len(secretName) == 0 {
-		return credentials, nil
+// getSecretReference returns a reference to the secret specified in the given nameKey and namespaceKey parameters, or an error if the parameters are not specified correctly.
+// if neither the name or namespace parameter are set, a nil reference and no error is returned.
+// no lookup of the referenced secret is performed, and the secret may or may not exist.
+//
+// supported tokens for name resolution:
+// - ${pv.name}
+// - ${pvc.namespace}
+// - ${pvc.name}
+// - ${pvc.annotations['ANNOTATION_KEY']} (e.g. ${pvc.annotations['example.com/node-publish-secret-name']})
+//
+// supported tokens for namespace resolution:
+// - ${pv.name}
+// - ${pvc.namespace}
+//
+// an error is returned in the following situations:
+// - only one of name or namespace is provided
+// - the name or namespace parameter contains a token that cannot be resolved
+// - the resolved name is not a valid secret name
+// - the resolved namespace is not a valid namespace name
+func getSecretReference(nameKey, namespaceKey string, storageClassParams map[string]string, pvName string, pvc *v1.PersistentVolumeClaim) (*v1.SecretReference, error) {
+	nameTemplate, hasName := storageClassParams[nameKey]
+	namespaceTemplate, hasNamespace := storageClassParams[namespaceKey]
+
+	if !hasName && !hasNamespace {
+		return nil, nil
 	}
-	secret, err := k8s.CoreV1().Secrets(nameSpace).Get(secretName, metav1.GetOptions{})
+
+	if len(nameTemplate) == 0 || len(namespaceTemplate) == 0 {
+		return nil, fmt.Errorf("%s and %s parameters must be specified together", nameKey, namespaceKey)
+	}
+
+	ref := &v1.SecretReference{}
+
+	{
+		// Secret namespace template can make use of the PV name or the PVC namespace.
+		// Note that neither of those things are under the control of the PVC user.
+		namespaceParams := map[string]string{"pv.name": pvName}
+		if pvc != nil {
+			namespaceParams["pvc.namespace"] = pvc.Namespace
+		}
+
+		resolvedNamespace, err := resolveTemplate(namespaceTemplate, namespaceParams)
+		if err != nil {
+			return nil, fmt.Errorf("error resolving %s value %q: %v", namespaceKey, namespaceTemplate, err)
+		}
+		if len(validation.IsDNS1123Label(resolvedNamespace)) > 0 {
+			if namespaceTemplate != resolvedNamespace {
+				return nil, fmt.Errorf("%s parameter %q resolved to %q which is not a valid namespace name", namespaceKey, namespaceTemplate, resolvedNamespace)
+			}
+			return nil, fmt.Errorf("%s parameter %q is not a valid namespace name", namespaceKey, namespaceTemplate)
+		}
+		ref.Namespace = resolvedNamespace
+	}
+
+	{
+		// Secret name template can make use of the PV name, PVC name or namespace, or a PVC annotation.
+		// Note that PVC name and annotations are under the PVC user's control.
+		nameParams := map[string]string{"pv.name": pvName}
+		if pvc != nil {
+			nameParams["pvc.name"] = pvc.Name
+			nameParams["pvc.namespace"] = pvc.Namespace
+			for k, v := range pvc.Annotations {
+				nameParams["pvc.annotations['"+k+"']"] = v
+			}
+		}
+		resolvedName, err := resolveTemplate(nameTemplate, nameParams)
+		if err != nil {
+			return nil, fmt.Errorf("error resolving %s value %q: %v", nameKey, nameTemplate, err)
+		}
+		if len(validation.IsDNS1123Subdomain(resolvedName)) > 0 {
+			if nameTemplate != resolvedName {
+				return nil, fmt.Errorf("%s parameter %q resolved to %q which is not a valid secret name", nameKey, nameTemplate, resolvedName)
+			}
+			return nil, fmt.Errorf("%s parameter %q is not a valid secret name", nameKey, nameTemplate)
+		}
+		ref.Name = resolvedName
+	}
+
+	return ref, nil
+}
+
+func resolveTemplate(template string, params map[string]string) (string, error) {
+	missingParams := sets.NewString()
+	resolved := os.Expand(template, func(k string) string {
+		v, ok := params[k]
+		if !ok {
+			missingParams.Insert(k)
+		}
+		return v
+	})
+	if missingParams.Len() > 0 {
+		return "", fmt.Errorf("invalid tokens: %q", missingParams.List())
+	}
+	return resolved, nil
+}
+
+func getCredentials(k8s kubernetes.Interface, ref *v1.SecretReference) (map[string]string, error) {
+	if ref == nil {
+		return nil, nil
+	}
+
+	secret, err := k8s.CoreV1().Secrets(ref.Namespace).Get(ref.Name, metav1.GetOptions{})
 	if err != nil {
-		return credentials, fmt.Errorf("failed to find the secret %s in the namespace %s with error: %v\n", secretName, nameSpace, err)
+		return nil, fmt.Errorf("error getting secret %s in namespace %s: %v", ref.Name, ref.Namespace, err)
 	}
+
+	credentials := map[string]string{}
 	for key, value := range secret.Data {
 		credentials[key] = string(value)
 	}
-
 	return credentials, nil
 }
 
