@@ -67,6 +67,8 @@ const (
 	backoffDuration = time.Second * 5
 	backoffFactor   = 1.2
 	backoffSteps    = 10
+
+	defaultFSType = "ext4"
 )
 
 // CSIProvisioner struct
@@ -383,6 +385,17 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		}
 		return nil, capErr
 	}
+
+	fsType := ""
+	for k, v := range options.Parameters {
+		switch strings.ToLower(k) {
+		case "fstype":
+			fsType = v
+		}
+	}
+	if len(fsType) == 0 {
+		fsType = defaultFSType
+	}
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: pvName,
@@ -398,6 +411,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 				CSI: &v1.CSIPersistentVolumeSource{
 					Driver:                     driverName,
 					VolumeHandle:               p.volumeIdToHandle(rep.Volume.Id),
+					FSType:                     fsType,
 					VolumeAttributes:           volumeAttributes,
 					ControllerPublishSecretRef: controllerPublishSecretRef,
 					NodeStageSecretRef:         nodeStageSecretRef,
