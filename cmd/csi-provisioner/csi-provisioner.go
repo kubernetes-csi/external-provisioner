@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
@@ -44,8 +45,10 @@ var (
 	connectionTimeout    = flag.Duration("connection-timeout", 10*time.Second, "Timeout for waiting for CSI driver socket.")
 	volumeNamePrefix     = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume")
 	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", 16, "Length in characters for the generated uuid of a created volume")
+	showVersion          = flag.Bool("version", false, "Show version.")
 
 	provisionController *controller.ProvisionController
+	version             = "unknown"
 )
 
 func init() {
@@ -54,6 +57,12 @@ func init() {
 
 	flag.Parse()
 	flag.Set("logtostderr", "true")
+
+	if *showVersion {
+		fmt.Println(os.Args[0], version)
+		os.Exit(0)
+	}
+	glog.Infof("Version: %s", version)
 
 	// get the KUBECONFIG from env if specified (useful for local/debug cluster)
 	kubeconfigEnv := os.Getenv("KUBECONFIG")
