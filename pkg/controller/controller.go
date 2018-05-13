@@ -237,7 +237,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 
 // This function get called before any attepmt to communicate with the driver.
 // Before initiating Create/Delete API calls provisioner checks if Capabilities:
-// PluginControllerService,  ControllerCreateVolume sre supported and gets the  driver name.
+// PluginControllerService,  ControllerCreateVolume are supported and gets the driver name.
 func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration) (string, error) {
 	ok, err := supportsPluginControllerService(grpcClient, timeout)
 	if err != nil {
@@ -421,6 +421,10 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		},
 	}
 
+	if options.PVC.Spec.StorageClassName != nil {
+		pv.Spec.StorageClassName = *options.PVC.Spec.StorageClassName
+	}
+
 	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
 
 	return pv, nil
@@ -443,20 +447,22 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	// get secrets if StorageClass specifies it
 	storageClassName := volume.Spec.StorageClassName
 	if len(storageClassName) != 0 {
-		if storageClass, err := p.client.StorageV1().StorageClasses().Get(storageClassName, metav1.GetOptions{}); err == nil {
-			// Resolve provision secret credentials.
-			// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
-			provisionerSecretRef, err := getSecretReference(provisionerSecretNameKey, provisionerSecretNamespaceKey, storageClass.Parameters, volume.Name, nil)
-			if err != nil {
-				return err
-			}
-			credentials, err := getCredentials(p.client, provisionerSecretRef)
-			if err != nil {
-				return err
-			}
-			req.ControllerDeleteSecrets = credentials
+		storageClass, err := p.client.StorageV1beta1().StorageClasses().Get(storageClassName, metav1.GetOptions{})
+		if err != nil {
+			return err
 		}
 
+		// Resolve provision secret credentials.
+		// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
+		provisionerSecretRef, err := getSecretReference(provisionerSecretNameKey, provisionerSecretNamespaceKey, storageClass.Parameters, volume.Name, nil)
+		if err != nil {
+			return err
+		}
+		credentials, err := getCredentials(p.client, provisionerSecretRef)
+		if err != nil {
+			return err
+		}
+		req.ControllerDeleteSecrets = credentials
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()

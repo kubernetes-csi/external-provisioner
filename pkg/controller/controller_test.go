@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -29,8 +30,11 @@ import (
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 	"google.golang.org/grpc"
 	"k8s.io/api/core/v1"
+	"k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	fakeclientset "k8s.io/client-go/kubernetes/fake"
 )
 
 const (
@@ -645,5 +649,122 @@ func TestGetSecretReference(t *testing.T) {
 				t.Errorf("Expected %v, got %v", tc.expectRef, ref)
 			}
 		})
+	}
+}
+
+func TestDelete(t *testing.T) {
+	var requestedBytes int64 = 100
+	var storageClassName = "test-storageclass"
+
+	testcases := map[string]struct {
+		noVol               bool
+		noCSI               bool
+		ctrlDeleteErr       bool // Error from CSI Controller's DeleteVolume()
+		driverNotReady      bool
+		missingStorageClass bool // StorageClass object not found.
+		expectErr           bool
+	}{
+		"normal delete": {},
+		"no volume": {
+			noVol:     true,
+			expectErr: true,
+		},
+		"no CSI": {
+			noCSI:     true,
+			expectErr: true,
+		},
+		"error from controller": {
+			ctrlDeleteErr: true,
+			expectErr:     true,
+		},
+		"driver not ready": {
+			driverNotReady: true,
+			expectErr:      true,
+		},
+		"missing storageclass": {
+			missingStorageClass: true,
+			expectErr:           true,
+		},
+	}
+
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	for k, tc := range testcases {
+		var clientSet kubernetes.Interface
+
+		if tc.missingStorageClass {
+			clientSet = fakeclientset.NewSimpleClientset()
+		} else {
+			clientSet = fakeclientset.NewSimpleClientset(&v1beta1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: storageClassName,
+				},
+			})
+		}
+
+		csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn)
+
+		opts := controller.VolumeOptions{
+			PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+			PVName:     "test-name",
+			PVC:        createFakePVC(requestedBytes),
+			Parameters: map[string]string{},
+		}
+
+		opts.PVC.Spec.StorageClassName = &storageClassName
+
+		out := &csi.CreateVolumeResponse{
+			Volume: &csi.Volume{
+				CapacityBytes: requestedBytes,
+				Id:            "test-volume-id",
+			},
+		}
+
+		var pv *v1.PersistentVolume
+
+		if !tc.noVol {
+			// Set up Mocks
+			provisionMockServerSetupExpectations(identityServer, controllerServer)
+			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+
+			// Call provision
+			pv, err = csiProvisioner.Provision(opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if tc.noCSI {
+				pv.Spec.CSI = nil
+			} else {
+				if tc.driverNotReady {
+					identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(nil, errors.New("driver not ready")).Times(1)
+				} else {
+					provisionMockServerSetupExpectations(identityServer, controllerServer)
+				}
+
+				if tc.ctrlDeleteErr {
+					controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(nil, errors.New("failed to delete")).Times(1)
+				} else if tc.expectErr {
+					controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Times(0)
+				} else {
+					controllerServer.EXPECT().DeleteVolume(gomock.Any(), &csi.DeleteVolumeRequest{
+						VolumeId: "test-volume-id",
+					}).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
+				}
+			}
+		}
+
+		err = csiProvisioner.Delete(pv)
+		if tc.expectErr && err == nil {
+			t.Errorf("test %q: Expected error, got none", k)
+		}
+		if !tc.expectErr && err != nil {
+			t.Errorf("test %q: got error: %v", k, err)
+		}
 	}
 }
