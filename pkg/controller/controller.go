@@ -101,7 +101,6 @@ var (
 //TODO consolidate ane librarize
 func logGRPC(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	glog.V(5).Infof("GRPC call: %s", method)
-	glog.V(5).Infof("GRPC request: %+v", req)
 	err := invoker(ctx, method, req, reply, cc, opts...)
 	glog.V(5).Infof("GRPC response: %+v", reply)
 	glog.V(5).Infof("GRPC error: %v", err)
