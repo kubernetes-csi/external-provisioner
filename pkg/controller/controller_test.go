@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -31,6 +32,8 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	fakeclientset "k8s.io/client-go/kubernetes/fake"
 )
 
 const (
@@ -645,5 +648,286 @@ func TestGetSecretReference(t *testing.T) {
 				t.Errorf("Expected %v, got %v", tc.expectRef, ref)
 			}
 		})
+	}
+}
+
+func TestProvision(t *testing.T) {
+	var requestedBytes int64 = 100
+
+	type pvSpec struct {
+		Name          string
+		ReclaimPolicy v1.PersistentVolumeReclaimPolicy
+		AccessModes   []v1.PersistentVolumeAccessMode
+		Capacity      v1.ResourceList
+		CSIPVS        *v1.CSIPersistentVolumeSource
+	}
+
+	testcases := map[string]struct {
+		volOpts           controller.VolumeOptions
+		notNilSelector    bool
+		driverNotReady    bool
+		makeVolumeNameErr bool
+		getSecretRefErr   bool
+		getCredentialsErr bool
+		volWithLessCap    bool
+		expectedPVSpec    *pvSpec
+		withSecretRefs    bool
+		expectErr         bool
+	}{
+		"normal provision": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName: "test-name",
+				PVC:    createFakePVC(requestedBytes),
+				Parameters: map[string]string{
+					"fstype": "ext3",
+				},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext3",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"provision with access modes": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+					},
+				},
+				Parameters: map[string]string{},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"provision with secrets": {
+			volOpts: controller.VolumeOptions{
+				PVName:     "test-name",
+				PVC:        createFakePVC(requestedBytes),
+				Parameters: map[string]string{},
+			},
+			withSecretRefs: true,
+			expectedPVSpec: &pvSpec{
+				Name: "test-testi",
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+					ControllerPublishSecretRef: &v1.SecretReference{
+						Name:      "ctrlpublishsecret",
+						Namespace: "default",
+					},
+					NodeStageSecretRef: &v1.SecretReference{
+						Name:      "nodestagesecret",
+						Namespace: "default",
+					},
+					NodePublishSecretRef: &v1.SecretReference{
+						Name:      "nodepublishsecret",
+						Namespace: "default",
+					},
+				},
+			},
+		},
+		"fail to get secret reference": {
+			volOpts: controller.VolumeOptions{
+				PVName:     "test-name",
+				PVC:        createFakePVC(requestedBytes),
+				Parameters: map[string]string{},
+			},
+			getSecretRefErr: true,
+			expectErr:       true,
+		},
+		"fail not nil selector": {
+			volOpts: controller.VolumeOptions{
+				PVName: "test-name",
+				PVC:    createFakePVC(requestedBytes),
+			},
+			notNilSelector: true,
+			expectErr:      true,
+		},
+		"fail driver not ready": {
+			volOpts: controller.VolumeOptions{
+				PVName: "test-name",
+				PVC:    createFakePVC(requestedBytes),
+			},
+			driverNotReady: true,
+			expectErr:      true,
+		},
+		"fail to make volume name": {
+			volOpts: controller.VolumeOptions{
+				PVName: "test-name",
+				PVC:    createFakePVC(requestedBytes),
+			},
+			makeVolumeNameErr: true,
+			expectErr:         true,
+		},
+		"fail to get credentials": {
+			volOpts: controller.VolumeOptions{
+				PVName:     "test-name",
+				PVC:        createFakePVC(requestedBytes),
+				Parameters: map[string]string{},
+			},
+			getCredentialsErr: true,
+			expectErr:         true,
+		},
+		"fail vol with less capacity": {
+			volOpts: controller.VolumeOptions{
+				PVName:     "test-name",
+				PVC:        createFakePVC(requestedBytes),
+				Parameters: map[string]string{},
+			},
+			volWithLessCap: true,
+			expectErr:      true,
+		},
+	}
+
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	for k, tc := range testcases {
+		var clientSet kubernetes.Interface
+
+		if tc.withSecretRefs {
+			clientSet = fakeclientset.NewSimpleClientset(&v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ctrlpublishsecret",
+					Namespace: "default",
+				},
+			}, &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "nodestagesecret",
+					Namespace: "default",
+				},
+			}, &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "nodepublishsecret",
+					Namespace: "default",
+				},
+			})
+		} else {
+			clientSet = fakeclientset.NewSimpleClientset()
+		}
+
+		csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn)
+
+		out := &csi.CreateVolumeResponse{
+			Volume: &csi.Volume{
+				CapacityBytes: requestedBytes,
+				Id:            "test-volume-id",
+			},
+		}
+
+		if tc.withSecretRefs {
+			tc.volOpts.Parameters[controllerPublishSecretNameKey] = "ctrlpublishsecret"
+			tc.volOpts.Parameters[controllerPublishSecretNamespaceKey] = "default"
+			tc.volOpts.Parameters[nodeStageSecretNameKey] = "nodestagesecret"
+			tc.volOpts.Parameters[nodeStageSecretNamespaceKey] = "default"
+			tc.volOpts.Parameters[nodePublishSecretNameKey] = "nodepublishsecret"
+			tc.volOpts.Parameters[nodePublishSecretNamespaceKey] = "default"
+		}
+
+		if tc.notNilSelector {
+			tc.volOpts.PVC.Spec.Selector = &metav1.LabelSelector{}
+		} else if tc.driverNotReady {
+			identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(nil, errors.New("driver not ready")).Times(1)
+		} else if tc.makeVolumeNameErr {
+			tc.volOpts.PVC.ObjectMeta.UID = ""
+			provisionMockServerSetupExpectations(identityServer, controllerServer)
+		} else if tc.getSecretRefErr {
+			tc.volOpts.Parameters[provisionerSecretNameKey] = ""
+			provisionMockServerSetupExpectations(identityServer, controllerServer)
+		} else if tc.getCredentialsErr {
+			tc.volOpts.Parameters[provisionerSecretNameKey] = "secretx"
+			tc.volOpts.Parameters[provisionerSecretNamespaceKey] = "default"
+			provisionMockServerSetupExpectations(identityServer, controllerServer)
+		} else if tc.volWithLessCap {
+			out.Volume.CapacityBytes = int64(80)
+			provisionMockServerSetupExpectations(identityServer, controllerServer)
+			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+			controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
+		} else {
+			// Setup regular mock call expectations.
+			provisionMockServerSetupExpectations(identityServer, controllerServer)
+			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+		}
+
+		pv, err := csiProvisioner.Provision(tc.volOpts)
+		if tc.expectErr && err == nil {
+			t.Errorf("test %q: Expected error, got none", k)
+		}
+		if !tc.expectErr && err != nil {
+			t.Errorf("test %q: got error: %v", k, err)
+		}
+
+		if tc.expectedPVSpec != nil {
+			if pv.Name != tc.expectedPVSpec.Name {
+				t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
+			}
+
+			if pv.Spec.PersistentVolumeReclaimPolicy != tc.expectedPVSpec.ReclaimPolicy {
+				t.Errorf("test %q: expected reclaim policy: %v, got: %v", k, tc.expectedPVSpec.ReclaimPolicy, pv.Spec.PersistentVolumeReclaimPolicy)
+			}
+
+			if !reflect.DeepEqual(pv.Spec.AccessModes, tc.expectedPVSpec.AccessModes) {
+				t.Errorf("test %q: expected access modes: %v, got: %v", k, tc.expectedPVSpec.AccessModes, pv.Spec.AccessModes)
+			}
+
+			if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
+				t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
+			}
+
+			if tc.expectedPVSpec.CSIPVS != nil {
+				if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
+					t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+				}
+			}
+
+		}
 	}
 }
