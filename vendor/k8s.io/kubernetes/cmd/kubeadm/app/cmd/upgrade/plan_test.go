@@ -62,16 +62,27 @@ func TestSortedSliceFromStringIntMap(t *testing.T) {
 func TestPrintAvailableUpgrades(t *testing.T) {
 	featureGates := make(map[string]bool)
 	var tests = []struct {
+		name          string
 		upgrades      []upgrade.Upgrade
 		buf           *bytes.Buffer
 		expectedBytes []byte
+		externalEtcd  bool
 	}{
 		{
+			name:     "Up to date",
 			upgrades: []upgrade.Upgrade{},
 			expectedBytes: []byte(`Awesome, you're up-to-date! Enjoy!
 `),
 		},
 		{
+			name:         "Up to date external etcd",
+			externalEtcd: true,
+			upgrades:     []upgrade.Upgrade{},
+			expectedBytes: []byte(`Awesome, you're up-to-date! Enjoy!
+`),
+		},
+		{
+			name: "Patch version available",
 			upgrades: []upgrade.Upgrade{
 				{
 					Description: "version in the v1.8 series",
@@ -117,6 +128,7 @@ _____________________________________________________________________
 `),
 		},
 		{
+			name: "minor version available",
 			upgrades: []upgrade.Upgrade{
 				{
 					Description: "stable version",
@@ -132,8 +144,8 @@ _____________________________________________________________________
 					After: upgrade.ClusterState{
 						KubeVersion:    "v1.9.0",
 						KubeadmVersion: "v1.9.0",
-						DNSVersion:     "1.14.7",
-						EtcdVersion:    "3.1.11",
+						DNSVersion:     "1.14.8",
+						EtcdVersion:    "3.1.12",
 					},
 				},
 			},
@@ -148,8 +160,8 @@ API Server           v1.8.3    v1.9.0
 Controller Manager   v1.8.3    v1.9.0
 Scheduler            v1.8.3    v1.9.0
 Kube Proxy           v1.8.3    v1.9.0
-Kube DNS             1.14.5    1.14.7
-Etcd                 3.0.17    3.1.11
+Kube DNS             1.14.5    1.14.8
+Etcd                 3.0.17    3.1.12
 
 You can now apply the upgrade by executing the following command:
 
@@ -160,6 +172,7 @@ _____________________________________________________________________
 `),
 		},
 		{
+			name: "patch and minor version available",
 			upgrades: []upgrade.Upgrade{
 				{
 					Description: "version in the v1.8 series",
@@ -193,8 +206,8 @@ _____________________________________________________________________
 					After: upgrade.ClusterState{
 						KubeVersion:    "v1.9.0",
 						KubeadmVersion: "v1.9.0",
-						DNSVersion:     "1.14.7",
-						EtcdVersion:    "3.1.11",
+						DNSVersion:     "1.14.8",
+						EtcdVersion:    "3.1.12",
 					},
 				},
 			},
@@ -229,8 +242,8 @@ API Server           v1.8.3    v1.9.0
 Controller Manager   v1.8.3    v1.9.0
 Scheduler            v1.8.3    v1.9.0
 Kube Proxy           v1.8.3    v1.9.0
-Kube DNS             1.14.5    1.14.7
-Etcd                 3.0.17    3.1.11
+Kube DNS             1.14.5    1.14.8
+Etcd                 3.0.17    3.1.12
 
 You can now apply the upgrade by executing the following command:
 
@@ -243,6 +256,7 @@ _____________________________________________________________________
 `),
 		},
 		{
+			name: "experimental version available",
 			upgrades: []upgrade.Upgrade{
 				{
 					Description: "experimental version",
@@ -258,8 +272,8 @@ _____________________________________________________________________
 					After: upgrade.ClusterState{
 						KubeVersion:    "v1.9.0-beta.1",
 						KubeadmVersion: "v1.9.0-beta.1",
-						DNSVersion:     "1.14.7",
-						EtcdVersion:    "3.1.11",
+						DNSVersion:     "1.14.8",
+						EtcdVersion:    "3.1.12",
 					},
 				},
 			},
@@ -274,8 +288,8 @@ API Server           v1.8.5    v1.9.0-beta.1
 Controller Manager   v1.8.5    v1.9.0-beta.1
 Scheduler            v1.8.5    v1.9.0-beta.1
 Kube Proxy           v1.8.5    v1.9.0-beta.1
-Kube DNS             1.14.5    1.14.7
-Etcd                 3.0.17    3.1.11
+Kube DNS             1.14.5    1.14.8
+Etcd                 3.0.17    3.1.12
 
 You can now apply the upgrade by executing the following command:
 
@@ -288,6 +302,7 @@ _____________________________________________________________________
 `),
 		},
 		{
+			name: "release candidate available",
 			upgrades: []upgrade.Upgrade{
 				{
 					Description: "release candidate version",
@@ -303,8 +318,8 @@ _____________________________________________________________________
 					After: upgrade.ClusterState{
 						KubeVersion:    "v1.9.0-rc.1",
 						KubeadmVersion: "v1.9.0-rc.1",
-						DNSVersion:     "1.14.7",
-						EtcdVersion:    "3.1.11",
+						DNSVersion:     "1.14.8",
+						EtcdVersion:    "3.1.12",
 					},
 				},
 			},
@@ -319,8 +334,8 @@ API Server           v1.8.5    v1.9.0-rc.1
 Controller Manager   v1.8.5    v1.9.0-rc.1
 Scheduler            v1.8.5    v1.9.0-rc.1
 Kube Proxy           v1.8.5    v1.9.0-rc.1
-Kube DNS             1.14.5    1.14.7
-Etcd                 3.0.17    3.1.11
+Kube DNS             1.14.5    1.14.8
+Etcd                 3.0.17    3.1.12
 
 You can now apply the upgrade by executing the following command:
 
@@ -332,17 +347,69 @@ _____________________________________________________________________
 
 `),
 		},
+		{
+			name: "external etcd upgrade available",
+			upgrades: []upgrade.Upgrade{
+				{
+					Description: "version in the v1.9 series",
+					Before: upgrade.ClusterState{
+						KubeVersion: "v1.9.2",
+						KubeletVersions: map[string]uint16{
+							"v1.9.2": 1,
+						},
+						KubeadmVersion: "v1.9.2",
+						DNSVersion:     "1.14.5",
+						EtcdVersion:    "3.0.17",
+					},
+					After: upgrade.ClusterState{
+						KubeVersion:    "v1.9.3",
+						KubeadmVersion: "v1.9.3",
+						DNSVersion:     "1.14.8",
+						EtcdVersion:    "3.1.12",
+					},
+				},
+			},
+			externalEtcd: true,
+			expectedBytes: []byte(`External components that should be upgraded manually before you upgrade the control plane with 'kubeadm upgrade apply':
+COMPONENT   CURRENT   AVAILABLE
+Etcd        3.0.17    3.1.12
+
+Components that must be upgraded manually after you have upgraded the control plane with 'kubeadm upgrade apply':
+COMPONENT   CURRENT      AVAILABLE
+Kubelet     1 x v1.9.2   v1.9.3
+
+Upgrade to the latest version in the v1.9 series:
+
+COMPONENT            CURRENT   AVAILABLE
+API Server           v1.9.2    v1.9.3
+Controller Manager   v1.9.2    v1.9.3
+Scheduler            v1.9.2    v1.9.3
+Kube Proxy           v1.9.2    v1.9.3
+Kube DNS             1.14.5    1.14.8
+
+You can now apply the upgrade by executing the following command:
+
+	kubeadm upgrade apply v1.9.3
+
+Note: Before you can perform this upgrade, you have to update kubeadm to v1.9.3.
+
+_____________________________________________________________________
+
+`),
+		},
 	}
 	for _, rt := range tests {
-		rt.buf = bytes.NewBufferString("")
-		printAvailableUpgrades(rt.upgrades, rt.buf, featureGates)
-		actualBytes := rt.buf.Bytes()
-		if !bytes.Equal(actualBytes, rt.expectedBytes) {
-			t.Errorf(
-				"failed PrintAvailableUpgrades:\n\texpected: %q\n\t  actual: %q",
-				string(rt.expectedBytes),
-				string(actualBytes),
-			)
-		}
+		t.Run(rt.name, func(t *testing.T) {
+			rt.buf = bytes.NewBufferString("")
+			printAvailableUpgrades(rt.upgrades, rt.buf, featureGates, rt.externalEtcd)
+			actualBytes := rt.buf.Bytes()
+			if !bytes.Equal(actualBytes, rt.expectedBytes) {
+				t.Errorf(
+					"failed PrintAvailableUpgrades:\n\texpected: %q\n\t  actual: %q",
+					string(rt.expectedBytes),
+					string(actualBytes),
+				)
+			}
+		})
 	}
 }

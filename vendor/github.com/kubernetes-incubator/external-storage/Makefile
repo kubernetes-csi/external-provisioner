@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-all: aws/efs ceph/cephfs ceph/rbd flex gluster/block gluster/glusterfs iscsi/targetd local-volume/provisioner nfs-client nfs snapshot openstack/standalone-cinder
+all: aws/efs ceph/cephfs ceph/rbd flex gluster/block gluster/glusterfs gluster/file iscsi/targetd local-volume/provisioner nfs-client nfs snapshot openstack/standalone-cinder openstack-sharedfilesystems
 .PHONY: all
 
-clean: clean-aws/efs clean-ceph/cephfs clean-ceph/rbd clean-flex clean-gluster/block clean-gluster/glusterfs clean-iscsi/targetd clean-local-volume/provisioner clean-nfs-client clean-nfs clean-openebs clean-snapshot clean-openstack/standalone-cinder
+clean: clean-aws/efs clean-ceph/cephfs clean-ceph/rbd clean-flex clean-gluster/block clean-gluster/glusterfs clean-iscsi/targetd clean-local-volume/provisioner clean-nfs-client clean-nfs clean-openebs clean-snapshot clean-openstack/standalone-cinder clean-openstack-sharedfilesystems
 .PHONY: clean
 
 
-test: test-aws/efs test-local-volume/provisioner test-nfs test-snapshot test-openstack/standalone-cinder
+test: test-aws/efs test-local-volume/provisioner test-nfs test-snapshot test-openstack/standalone-cinder test-openstack-sharedfilesystems
 .PHONY: test
 
 verify:
@@ -92,6 +92,16 @@ clean-gluster/glusterfs:
 	make clean
 .PHONY: clean-gluster/glusterfs
 
+gluster/file:
+	cd gluster/file; \
+	make container
+.PHONY: gluster/file
+
+clean-gluster/file:
+	cd gluster/file; \
+	make clean
+.PHONY: clean-gluster/file
+
 iscsi/targetd:
 	cd iscsi/targetd; \
 	make container
@@ -132,15 +142,20 @@ clean-nfs-client:
 	rm -f nfs-client-provisioner
 .PHONY: clean-nfs-client
 
-nfs: 
+nfs:
 	cd nfs; \
 	make container
 .PHONY: nfs
 
-test-nfs: 
+test-nfs:
 	cd nfs; \
 	make test
 .PHONY: test-nfs
+
+test-nfs-all:
+	cd nfs; \
+	make test-all
+.PHONY: test-nfs-all
 
 clean-nfs:
 	cd nfs; \
@@ -187,6 +202,22 @@ test-snapshot:
 	make test
 .PHONY: test-snapshot
 
+openstack-sharedfilesystems:
+	cd openstack-sharedfilesystems; \
+	make container
+.PHONY: openstack-sharedfilesystems
+
+test-openstack-sharedfilesystems:
+	cd openstack-sharedfilesystems; \
+	make test
+.PHONY: test-openstack-sharedfilesystems
+
+clean-openstack-sharedfilesystems:
+	cd openstack-sharedfilesystems; \
+	make clean
+.PHONY: clean-openstack-sharedfilesystems
+
+
 push-cephfs-provisioner:
 	cd ceph/cephfs; \
 	make push
@@ -212,6 +243,11 @@ push-glusterfs-simple-provisioner:
 	make push
 .PHONY: push-glusterfs-simple-provisioner
 
+push-glusterfile-provisioner:
+	cd gluster/file; \
+	make push
+.PHONY: push-glusterfile-provisioner
+
 push-iscsi-controller:
 	cd iscsi/targetd; \
 	make push
@@ -236,6 +272,11 @@ push-openebs-provisioner:
 	cd openebs; \
 	make push
 .PHONY: push-openebs-provisioner
+
+push-openstack-sharedfilesystems:
+	cd openstack-sharedfilesystems; \
+	make push
+.PHONY: push-openstack-sharedfilesystems
 
 deploy-openebs-provisioner:
 	cd openebs; \

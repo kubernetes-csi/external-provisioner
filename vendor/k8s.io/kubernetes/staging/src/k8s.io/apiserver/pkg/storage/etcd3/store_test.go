@@ -326,6 +326,9 @@ func TestGetToList(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetToList failed: %v", err)
 		}
+		if len(out.ResourceVersion) == 0 {
+			t.Errorf("#%d: unset resourceVersion", i)
+		}
 		if len(out.Items) != len(tt.expectedOut) {
 			t.Errorf("#%d: length of list want=%d, get=%d", i, len(tt.expectedOut), len(out.Items))
 			continue
@@ -1186,14 +1189,14 @@ func testSetup(t *testing.T) (context.Context, *store, *integration.ClusterV3) {
 	return ctx, store, cluster
 }
 
-// testPropogateStore helps propogates store with objects, automates key generation, and returns
+// testPropogateStore helps propagates store with objects, automates key generation, and returns
 // keys and stored objects.
 func testPropogateStore(ctx context.Context, t *testing.T, store *store, obj *example.Pod) (string, *example.Pod) {
 	// Setup store with a key and grab the output for returning.
 	key := "/testkey"
 	err := store.unconditionalDelete(ctx, key, &example.Pod{})
 	if err != nil && !storage.IsNotFound(err) {
-		t.Fatal("Cleanup failed: %v", err)
+		t.Fatalf("Cleanup failed: %v", err)
 	}
 	setOutput := &example.Pod{}
 	if err := store.Create(ctx, key, obj, setOutput, 0); err != nil {

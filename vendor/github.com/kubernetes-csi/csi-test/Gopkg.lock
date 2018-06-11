@@ -4,14 +4,14 @@
 [[projects]]
   name = "github.com/container-storage-interface/spec"
   packages = ["lib/go/csi/v0"]
-  revision = "35d9f9d77954980e449e52c3f3e43c21bd8171f5"
-  version = "v0.2.0"
+  revision = "2178fdeea87f1150a17a63252eee28d4d8141f72"
+  version = "v0.3.0"
 
 [[projects]]
   name = "github.com/golang/mock"
   packages = ["gomock"]
-  revision = "13f360950a79f5864a972c786a10a50e44b69541"
-  version = "v1.0.0"
+  revision = "c34cdb4725f4c3844d095133c6e40e448b86589b"
+  version = "v1.1.1"
 
 [[projects]]
   name = "github.com/golang/protobuf"
@@ -21,10 +21,11 @@
     "ptypes",
     "ptypes/any",
     "ptypes/duration",
-    "ptypes/timestamp"
+    "ptypes/timestamp",
+    "ptypes/wrappers"
   ]
-  revision = "925541529c1fa6821df4e44ce2723319eb2be768"
-  version = "v1.0.0"
+  revision = "b4deda0973fb4c70b50d226b1af49f3da59f5265"
+  version = "v1.1.0"
 
 [[projects]]
   name = "github.com/onsi/ginkgo"
@@ -48,8 +49,8 @@
     "reporters/stenographer/support/go-isatty",
     "types"
   ]
-  revision = "9eda700730cba42af70d53180f9dcce9266bc2bc"
-  version = "v1.4.0"
+  revision = "fa5fabab2a1bfbd924faf4c067d07ae414e2aedf"
+  version = "v1.5.0"
 
 [[projects]]
   name = "github.com/onsi/gomega"
@@ -67,20 +68,20 @@
     "matchers/support/goraph/util",
     "types"
   ]
-  revision = "003f63b7f4cff3fc95357005358af2de0f5fe152"
-  version = "v1.3.0"
+  revision = "62bff4df71bdbc266561a0caee19f0594b17c240"
+  version = "v1.4.0"
 
 [[projects]]
   name = "github.com/sirupsen/logrus"
   packages = ["."]
-  revision = "d682213848ed68c0a260ca37d6dd5ace8423f5ba"
-  version = "v1.0.4"
+  revision = "c155da19408a8799da419ed3eeb0cb5db0ad5dbc"
+  version = "v1.0.5"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["ssh/terminal"]
-  revision = "91a49db82a88618983a78a06c1cbd4e00ab749ab"
+  revision = "8ac0e0d97ce45cd83d1d7243c060cb8461dda5e9"
 
 [[projects]]
   branch = "master"
@@ -90,14 +91,14 @@
     "html",
     "html/atom",
     "html/charset",
+    "http/httpguts",
     "http2",
     "http2/hpack",
     "idna",
     "internal/timeseries",
-    "lex/httplex",
     "trace"
   ]
-  revision = "22ae77b79946ea320088417e4d50825671d82d57"
+  revision = "1e491301e022f8f977054da4c2d852decd59571f"
 
 [[projects]]
   branch = "master"
@@ -106,7 +107,7 @@
     "unix",
     "windows"
   ]
-  revision = "dd2ff4accc098aceecb86b36eaa7829b2a17b1c9"
+  revision = "9527bec2660bd847c050fda93a0f0c6dee0800bb"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -145,7 +146,7 @@
   branch = "master"
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
-  revision = "2c5e7ac708aaa719366570dd82bda44541ca2a63"
+  revision = "32ee49c4dd805befd833990acba36cb75042378c"
 
 [[projects]]
   name = "google.golang.org/grpc"
@@ -154,6 +155,7 @@
     "balancer",
     "balancer/base",
     "balancer/roundrobin",
+    "channelz",
     "codes",
     "connectivity",
     "credentials",
@@ -176,18 +178,18 @@
     "tap",
     "transport"
   ]
-  revision = "8e4536a86ab602859c20df5ebfd0bd4228d08655"
-  version = "v1.10.0"
+  revision = "7a6a684ca69eb4cae85ad0a484f2e531598c047b"
+  version = "v1.12.2"
 
 [[projects]]
   name = "gopkg.in/yaml.v2"
   packages = ["."]
-  revision = "7f97868eec74b32b0982dd158a51a446d1da7eb5"
-  version = "v2.1.1"
+  revision = "5420a8b6744d3b0345ab293f6fcba19c978f1183"
+  version = "v2.2.1"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "d953393850efa90c442b607a076291db1b050e1c9523ce86fefc85fda0443b8f"
+  inputs-digest = "5dd480018adbb94025564b74bad8dd269cc516183b7b428317f6dd04b07726f4"
   solver-name = "gps-cdcl"
   solver-version = 1

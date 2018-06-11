@@ -18,47 +18,88 @@ package main
 
 import (
 	"flag"
+	"log"
+	"net/http"
 	"os"
 
 	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/external-storage/local-volume/provisioner/pkg/common"
 	"github.com/kubernetes-incubator/external-storage/local-volume/provisioner/pkg/controller"
+	"github.com/kubernetes-incubator/external-storage/local-volume/provisioner/pkg/deleter"
+	"github.com/kubernetes-incubator/external-storage/local-volume/provisioner/pkg/metrics"
+	"github.com/kubernetes-incubator/external-storage/local-volume/provisioner/pkg/metrics/collectors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
-var provisionerConfig common.ProvisionerConfiguration
+var (
+	optListenAddress string
+	optMetricsPath   string
+)
 
-func init() {
-	provisionerConfig = common.ProvisionerConfiguration{
+func main() {
+	flag.StringVar(&optListenAddress, "listen-address", ":8080", "address on which to expose metrics")
+	flag.StringVar(&optMetricsPath, "metrics-path", "/metrics", "path under which to expose metrics")
+	flag.Set("logtostderr", "true")
+	flag.Parse()
+
+	provisionerConfig := common.ProvisionerConfiguration{
 		StorageClassConfig: make(map[string]common.MountConfig),
 	}
-	if err := common.LoadProvisionerConfigs(&provisionerConfig); err != nil {
+	if err := common.LoadProvisionerConfigs(common.ProvisionerConfigPath, &provisionerConfig); err != nil {
 		glog.Fatalf("Error parsing Provisioner's configuration: %#v. Exiting...\n", err)
 	}
 	glog.Infof("Configuration parsing has been completed, ready to run...")
-}
-
-func main() {
-	flag.Set("logtostderr", "true")
-	flag.Parse()
 
 	nodeName := os.Getenv("MY_NODE_NAME")
 	if nodeName == "" {
 		glog.Fatalf("MY_NODE_NAME environment variable not set\n")
 	}
 
+	namespace := os.Getenv("MY_NAMESPACE")
+	if namespace == "" {
+		glog.Warningf("MY_NAMESPACE environment variable not set, will be set to default.\n")
+		namespace = "default"
+	}
+
+	jobImage := os.Getenv("JOB_CONTAINER_IMAGE")
+	if jobImage == "" {
+		glog.Warningf("JOB_CONTAINER_IMAGE environment variable not set.\n")
+	}
+
 	client := common.SetupClient()
 	node := getNode(client, nodeName)
 
 	glog.Info("Starting controller\n")
-	controller.StartLocalController(client, &common.UserConfig{
-		Node:            node,
-		DiscoveryMap:    provisionerConfig.StorageClassConfig,
-		NodeLabelsForPV: provisionerConfig.NodeLabelsForPV,
+	procTable := deleter.NewProcTable()
+	go controller.StartLocalController(client, procTable, &common.UserConfig{
+		Node:              node,
+		DiscoveryMap:      provisionerConfig.StorageClassConfig,
+		NodeLabelsForPV:   provisionerConfig.NodeLabelsForPV,
+		UseAlphaAPI:       provisionerConfig.UseAlphaAPI,
+		UseJobForCleaning: provisionerConfig.UseJobForCleaning,
+		Namespace:         namespace,
+		JobContainerImage: jobImage,
 	})
+
+	glog.Infof("Starting metrics server at %s\n", optListenAddress)
+	prometheus.MustRegister([]prometheus.Collector{
+		metrics.PersistentVolumeDiscoveryTotal,
+		metrics.PersistentVolumeDiscoveryDurationSeconds,
+		metrics.PersistentVolumeDeleteTotal,
+		metrics.PersistentVolumeDeleteDurationSeconds,
+		metrics.PersistentVolumeDeleteFailedTotal,
+		metrics.APIServerRequestsTotal,
+		metrics.APIServerRequestsFailedTotal,
+		metrics.APIServerRequestsDurationSeconds,
+		collectors.NewProcTableCollector(procTable),
+	}...)
+	http.Handle(optMetricsPath, promhttp.Handler())
+	log.Fatal(http.ListenAndServe(optListenAddress, nil))
 }
 
 func getNode(client *kubernetes.Clientset, name string) *v1.Node {

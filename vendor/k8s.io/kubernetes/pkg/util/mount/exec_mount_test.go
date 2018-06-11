@@ -19,6 +19,7 @@ limitations under the License.
 package mount
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -66,7 +67,7 @@ func TestBindMount(t *testing.T) {
 			expectedArgs = []string{"-t", fsType, "-o", "bind", sourcePath, destinationPath}
 		case 2:
 			// mount -t fstype -o "remount,opts" source target
-			expectedArgs = []string{"-t", fsType, "-o", "remount," + strings.Join(mountOptions, ","), sourcePath, destinationPath}
+			expectedArgs = []string{"-t", fsType, "-o", "bind,remount," + strings.Join(mountOptions, ","), sourcePath, destinationPath}
 		}
 		if !reflect.DeepEqual(expectedArgs, args) {
 			t.Errorf("expected arguments %q, got %q", strings.Join(expectedArgs, " "), strings.Join(args, " "))
@@ -162,4 +163,8 @@ func (fm *fakeMounter) CleanSubPaths(podDir string, volumeName string) error {
 
 func (fm *fakeMounter) SafeMakeDir(pathname string, base string, perm os.FileMode) error {
 	return nil
+}
+
+func (fm *fakeMounter) GetSELinuxSupport(pathname string) (bool, error) {
+	return false, errors.New("not implemented")
 }
