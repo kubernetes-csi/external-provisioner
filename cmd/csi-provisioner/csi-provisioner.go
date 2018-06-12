@@ -33,14 +33,17 @@ import (
 
 	"k8s.io/api/core/v1"
 
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
+	utilversion "k8s.io/kubernetes/pkg/util/version"
 )
 
 var (
@@ -56,8 +59,15 @@ var (
 	version   = "unknown"
 	Namespace = "default"
 
+	informerFactory     informers.SharedInformerFactory
 	resourceLock        resourcelock.Interface
 	provisionController *controller.ProvisionController
+)
+
+const (
+	resyncPeriod         = 1 * time.Millisecond
+	sharedResyncPeriod   = 1 * time.Second
+	defaultServerVersion = "v1.6.0"
 )
 
 func init() {
@@ -119,6 +129,17 @@ func init() {
 		}
 		time.Sleep(10 * time.Second)
 	}
+
+	informerFactory = informers.NewSharedInformerFactory(clientset, resyncPeriod)
+	claimInformer := informerFactory.Core().V1().PersistentVolumeClaims().Informer()
+	volumeInformer := informerFactory.Core().V1().PersistentVolumes().Informer()
+	classInformer := func() cache.SharedIndexInformer {
+		if utilversion.MustParseSemantic(serverVersion.GitVersion).AtLeast(utilversion.MustParseSemantic(defaultServerVersion)) {
+			return informerFactory.Storage().V1().StorageClasses().Informer()
+		}
+		return informerFactory.Storage().V1beta1().StorageClasses().Informer()
+	}()
+
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
 	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient)
@@ -127,6 +148,9 @@ func init() {
 		*provisioner,
 		csiProvisioner,
 		serverVersion.GitVersion,
+		controller.ClaimsInformer(claimInformer),
+		controller.VolumesInformer(volumeInformer),
+		controller.ClassesInformer(classInformer),
 	)
 
 	recorder := makeEventRecorder(clientset)
@@ -166,7 +190,19 @@ func makeEventRecorder(clientset kubernetes.Interface) record.EventRecorder {
 }
 
 func main() {
+
 	run := func(stopCh <-chan struct{}) {
+		go informerFactory.Start(stopCh)
+		informerFactory.WaitForCacheSync(stopCh)
+
+		synced := informerFactory.WaitForCacheSync(stopCh)
+		for tpy, sync := range synced {
+			if !sync {
+				glog.Errorf("Wait for shared cache %s sync timeout", tpy)
+				return
+			}
+		}
+
 		provisionController.Run(stopCh)
 	}
 
