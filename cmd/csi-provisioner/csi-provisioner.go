@@ -31,10 +31,19 @@ import (
 
 	"google.golang.org/grpc"
 
-	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/api/core/v1"
+
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/client-go/tools/record"
+	utilversion "k8s.io/kubernetes/pkg/util/version"
 )
 
 var (
@@ -47,8 +56,18 @@ var (
 	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", 16, "Length in characters for the generated uuid of a created volume")
 	showVersion          = flag.Bool("version", false, "Show version.")
 
+	version   = "unknown"
+	Namespace = "default"
+
+	informerFactory     informers.SharedInformerFactory
+	resourceLock        resourcelock.Interface
 	provisionController *controller.ProvisionController
-	version             = "unknown"
+)
+
+const (
+	resyncPeriod         = 1 * time.Millisecond
+	sharedResyncPeriod   = 1 * time.Second
+	defaultServerVersion = "v1.6.0"
 )
 
 func init() {
@@ -110,6 +129,17 @@ func init() {
 		}
 		time.Sleep(10 * time.Second)
 	}
+
+	informerFactory = informers.NewSharedInformerFactory(clientset, resyncPeriod)
+	claimInformer := informerFactory.Core().V1().PersistentVolumeClaims().Informer()
+	volumeInformer := informerFactory.Core().V1().PersistentVolumes().Informer()
+	classInformer := func() cache.SharedIndexInformer {
+		if utilversion.MustParseSemantic(serverVersion.GitVersion).AtLeast(utilversion.MustParseSemantic(defaultServerVersion)) {
+			return informerFactory.Storage().V1().StorageClasses().Informer()
+		}
+		return informerFactory.Storage().V1beta1().StorageClasses().Informer()
+	}()
+
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
 	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient)
@@ -118,9 +148,76 @@ func init() {
 		*provisioner,
 		csiProvisioner,
 		serverVersion.GitVersion,
+		controller.ClaimsInformer(claimInformer),
+		controller.VolumesInformer(volumeInformer),
+		controller.ClassesInformer(classInformer),
 	)
+
+	recorder := makeEventRecorder(clientset)
+
+	id, err := os.Hostname()
+	if err != nil {
+		glog.Fatalf("failed to get hostname: %v", err)
+	}
+
+	resourceLock, err = resourcelock.New(
+		resourcelock.ConfigMapsResourceLock,
+		"default",
+		*provisioner,
+		clientset.CoreV1(),
+		resourcelock.ResourceLockConfig{
+			Identity:      id,
+			EventRecorder: recorder,
+		},
+	)
+	if err != nil {
+		glog.Fatalf("error creating lock: %v", err)
+	}
+}
+
+func makeEventRecorder(clientset kubernetes.Interface) record.EventRecorder {
+	eventBroadcaster := record.NewBroadcaster()
+	Recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: *provisioner})
+	eventBroadcaster.StartLogging(glog.Infof)
+	if clientset != nil {
+		glog.V(4).Infof("Sending events to api server.")
+		eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(clientset.CoreV1().RESTClient()).Events(Namespace)})
+	} else {
+		glog.Warning("No api server defined - no events will be sent to API server.")
+		return nil
+	}
+	return Recorder
 }
 
 func main() {
-	provisionController.Run(wait.NeverStop)
+
+	run := func(stopCh <-chan struct{}) {
+		go informerFactory.Start(stopCh)
+		informerFactory.WaitForCacheSync(stopCh)
+
+		synced := informerFactory.WaitForCacheSync(stopCh)
+		for tpy, sync := range synced {
+			if !sync {
+				glog.Errorf("Wait for shared cache %s sync timeout", tpy)
+				return
+			}
+		}
+
+		provisionController.Run(stopCh)
+	}
+
+	leaderelection.RunOrDie(leaderelection.LeaderElectionConfig{
+		Lock:          resourceLock,
+		LeaseDuration: 15 * time.Second,
+		RenewDeadline: 10 * time.Second,
+		RetryPeriod:   2 * time.Second,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: run,
+			OnStoppedLeading: func() {
+				glog.Fatalf("leader election lost")
+			},
+		},
+	})
+
+	panic("unreached")
 }

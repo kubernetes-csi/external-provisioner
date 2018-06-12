@@ -1,3 +1,4 @@
+
 # This YAML file contains all API objects that are necessary to run external
 # CSI provisioner.
 #
@@ -30,6 +31,12 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "list", "watch", "create", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update"]
 
 ---
 kind: ClusterRoleBinding
@@ -98,4 +105,3 @@ spec:
       volumes:
         - name: socket-dir
           emptyDir:
-
