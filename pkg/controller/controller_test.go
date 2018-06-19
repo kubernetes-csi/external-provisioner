@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-test/driver"
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
@@ -32,6 +32,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 )
@@ -447,7 +448,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	defer mockController.Finish()
 	defer driver.Stop()
 
-	csiProvisioner := NewCSIProvisioner(nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn)
+	csiProvisioner := NewCSIProvisioner(nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, nil)
 
 	// Requested PVC with requestedBytes storage
 	opts := controller.VolumeOptions{
@@ -854,7 +855,9 @@ func TestProvision(t *testing.T) {
 			clientSet = fakeclientset.NewSimpleClientset()
 		}
 
-		csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn)
+		informerFactory := informers.NewSharedInformerFactory(clientSet, 15*time.Second)
+		secrets, classes := informerFactory.Core().V1().Secrets().Informer().GetStore(), informerFactory.Storage().V1().StorageClasses().Informer().GetStore()
+		csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, secrets, classes)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
