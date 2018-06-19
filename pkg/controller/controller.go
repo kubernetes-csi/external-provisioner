@@ -33,6 +33,7 @@ import (
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 
 	"k8s.io/api/core/v1"
+	apiv1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -46,6 +47,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"k8s.io/client-go/tools/cache"
 )
 
 const (
@@ -81,6 +83,8 @@ type csiProvisioner struct {
 	volumeNamePrefix     string
 	volumeNameUUIDLength int
 	config               *rest.Config
+	secrets              cache.Store
+	classes              cache.Store
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -220,7 +224,9 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	identity string,
 	volumeNamePrefix string,
 	volumeNameUUIDLength int,
-	grpcClient *grpc.ClientConn) controller.Provisioner {
+	grpcClient *grpc.ClientConn,
+	secrets cache.Store,
+	classes cache.Store) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
@@ -231,6 +237,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		identity:             identity,
 		volumeNamePrefix:     volumeNamePrefix,
 		volumeNameUUIDLength: volumeNameUUIDLength,
+		secrets:              secrets,
+		classes:              classes,
 	}
 	return provisioner
 }
@@ -318,7 +326,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	if err != nil {
 		return nil, err
 	}
-	provisionerCredentials, err := getCredentials(p.client, provisionerSecretRef)
+	provisionerCredentials, err := getCredentials(p.secrets, provisionerSecretRef)
 	if err != nil {
 		return nil, err
 	}
@@ -443,14 +451,20 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	// get secrets if StorageClass specifies it
 	storageClassName := volume.Spec.StorageClassName
 	if len(storageClassName) != 0 {
-		if storageClass, err := p.client.StorageV1().StorageClasses().Get(storageClassName, metav1.GetOptions{}); err == nil {
+		storageClassObject, exists, err := p.classes.GetByKey(storageClassName)
+		glog.Infof("%+v %+v", exists, err)
+		if err == nil && exists {
+			storageClass, ok := storageClassObject.(*apiv1.StorageClass)
+			if !ok {
+				return fmt.Errorf("error getting storageclass by storageclass name %s", storageClassName)
+			}
 			// Resolve provision secret credentials.
 			// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
 			provisionerSecretRef, err := getSecretReference(provisionerSecretNameKey, provisionerSecretNamespaceKey, storageClass.Parameters, volume.Name, nil)
 			if err != nil {
 				return err
 			}
-			credentials, err := getCredentials(p.client, provisionerSecretRef)
+			credentials, err := getCredentials(p.secrets, provisionerSecretRef)
 			if err != nil {
 				return err
 			}
@@ -571,13 +585,20 @@ func resolveTemplate(template string, params map[string]string) (string, error) 
 	return resolved, nil
 }
 
-func getCredentials(k8s kubernetes.Interface, ref *v1.SecretReference) (map[string]string, error) {
+func getCredentials(secrectsStore cache.Store, ref *v1.SecretReference) (map[string]string, error) {
 	if ref == nil {
 		return nil, nil
 	}
 
-	secret, err := k8s.CoreV1().Secrets(ref.Namespace).Get(ref.Name, metav1.GetOptions{})
+	secretObject, exists, err := secrectsStore.GetByKey(fmt.Sprintf("%s/%s", ref.Namespace, ref.Name))
 	if err != nil {
+		return nil, fmt.Errorf("error getting secret %s in namespace %s: %v", ref.Name, ref.Namespace, err)
+	} else if !exists {
+		return nil, fmt.Errorf("secret %s in namespace %s is not exists", ref.Name, ref.Namespace)
+	}
+
+	secret, ok := secretObject.(*v1.Secret)
+	if !ok {
 		return nil, fmt.Errorf("error getting secret %s in namespace %s: %v", ref.Name, ref.Namespace, err)
 	}
 
