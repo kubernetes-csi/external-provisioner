@@ -22,6 +22,19 @@ runTest()
 	fi
 }
 
+runTestWithCreds()
+{
+	CSI_ENDPOINT=$1 CSI_ENABLE_CREDS=true mock &
+	local pid=$!
+
+	csi-sanity $TESTARGS --csi.endpoint=$2 --csi.secrets=mock/mocksecret.yaml; ret=$?
+	kill -9 $pid
+
+	if [ $ret -ne 0 ] ; then
+		exit $ret
+	fi
+}
+
 go install ./mock || exit 1
 
 cd cmd/csi-sanity
@@ -29,6 +42,9 @@ cd cmd/csi-sanity
 cd ../..
 
 runTest "${UDS}" "${UDS}"
+rm -f $UDS
+
+runTestWithCreds "${UDS}" "${UDS}"
 rm -f $UDS
 
 exit 0

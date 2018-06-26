@@ -9,4 +9,5 @@
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+bin/mock
 cmd/csi-sanity/csi-sanity

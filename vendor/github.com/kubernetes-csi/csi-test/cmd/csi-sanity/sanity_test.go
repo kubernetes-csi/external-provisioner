@@ -29,16 +29,17 @@ const (
 )
 
 var (
-	VERSION    = "(dev)"
-	endpoint   string
-	mountPoint string
-	version    bool
+	VERSION = "(dev)"
+	version bool
+	config  sanity.Config
 )
 
 func init() {
-	flag.StringVar(&endpoint, prefix+"endpoint", "", "CSI endpoint")
+	flag.StringVar(&config.Address, prefix+"endpoint", "", "CSI endpoint")
 	flag.BoolVar(&version, prefix+"version", false, "Version of this program")
-	flag.StringVar(&mountPoint, prefix+"mountpoint", os.TempDir()+"/csi", "Mount point for NodePublish")
+	flag.StringVar(&config.TargetPath, prefix+"mountdir", os.TempDir()+"/csi", "Mount point for NodePublish")
+	flag.StringVar(&config.StagingPath, prefix+"stagingdir", os.TempDir()+"/csi", "Mount point for NodeStage if staging is supported")
+	flag.StringVar(&config.SecretsFile, prefix+"secrets", "", "CSI secrets file")
 	flag.Parse()
 }
 
@@ -47,8 +48,8 @@ func TestSanity(t *testing.T) {
 		fmt.Printf("Version = %s\n", VERSION)
 		return
 	}
-	if len(endpoint) == 0 {
+	if len(config.Address) == 0 {
 		t.Fatalf("--%sendpoint must be provided with an CSI endpoint", prefix)
 	}
-	sanity.Test(t, endpoint, mountPoint)
+	sanity.Test(t, &config)
 }

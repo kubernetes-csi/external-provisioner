@@ -24,6 +24,7 @@ go_library(
         "//cmd/kubeadm/app/util/apiclient:go_default_library",
         "//cmd/kubeadm/app/util/config:go_default_library",
         "//cmd/kubeadm/app/util/dryrun:go_default_library",
+        "//cmd/kubeadm/app/util/etcd:go_default_library",
         "//cmd/kubeadm/app/util/kubeconfig:go_default_library",
         "//pkg/api/legacyscheme:go_default_library",
         "//pkg/util/version:go_default_library",
@@ -42,8 +43,7 @@ go_test(
         "common_test.go",
         "plan_test.go",
     ],
-    importpath = "k8s.io/kubernetes/cmd/kubeadm/app/cmd/upgrade",
-    library = ":go_default_library",
+    embed = [":go_default_library"],
     deps = [
         "//cmd/kubeadm/app/apis/kubeadm/v1alpha1:go_default_library",
         "//cmd/kubeadm/app/phases/upgrade:go_default_library",

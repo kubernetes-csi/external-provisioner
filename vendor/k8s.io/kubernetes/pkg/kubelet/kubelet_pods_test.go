@@ -42,7 +42,7 @@ import (
 	// to "v1"?
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	_ "k8s.io/kubernetes/pkg/apis/core/install"
-	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
+	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	containertest "k8s.io/kubernetes/pkg/kubelet/container/testing"
 	"k8s.io/kubernetes/pkg/kubelet/server/portforward"
@@ -51,56 +51,11 @@ import (
 	volumetest "k8s.io/kubernetes/pkg/volume/testing"
 )
 
-func TestMakeAbsolutePath(t *testing.T) {
-	tests := []struct {
-		goos         string
-		path         string
-		expectedPath string
-		name         string
-	}{
-		{
-			goos:         "linux",
-			path:         "non-absolute/path",
-			expectedPath: "/non-absolute/path",
-			name:         "basic linux",
-		},
-		{
-			goos:         "windows",
-			path:         "some\\path",
-			expectedPath: "c:\\some\\path",
-			name:         "basic windows",
-		},
-		{
-			goos:         "windows",
-			path:         "/some/path",
-			expectedPath: "c:/some/path",
-			name:         "linux path on windows",
-		},
-		{
-			goos:         "windows",
-			path:         "\\some\\path",
-			expectedPath: "c:\\some\\path",
-			name:         "windows path no drive",
-		},
-		{
-			goos:         "windows",
-			path:         "\\:\\some\\path",
-			expectedPath: "\\:\\some\\path",
-			name:         "windows path with colon",
-		},
-	}
-	for _, test := range tests {
-		path := makeAbsolutePath(test.goos, test.path)
-		if path != test.expectedPath {
-			t.Errorf("[%s] Expected %s saw %s", test.name, test.expectedPath, path)
-		}
-	}
-}
-
 func TestMakeMounts(t *testing.T) {
 	bTrue := true
 	propagationHostToContainer := v1.MountPropagationHostToContainer
 	propagationBidirectional := v1.MountPropagationBidirectional
+	propagationNone := v1.MountPropagationNone
 
 	testCases := map[string]struct {
 		container      v1.Container
@@ -125,9 +80,10 @@ func TestMakeMounts(t *testing.T) {
 						MountPropagation: &propagationHostToContainer,
 					},
 					{
-						MountPath: "/mnt/path3",
-						Name:      "disk",
-						ReadOnly:  true,
+						MountPath:        "/mnt/path3",
+						Name:             "disk",
+						ReadOnly:         true,
+						MountPropagation: &propagationNone,
 					},
 					{
 						MountPath: "/mnt/path4",
@@ -156,7 +112,7 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/mnt/disk",
 					ReadOnly:       true,
 					SELinuxRelabel: false,
-					Propagation:    runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER,
+					Propagation:    runtimeapi.MountPropagation_PROPAGATION_PRIVATE,
 				},
 				{
 					Name:           "disk4",
@@ -164,7 +120,7 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/mnt/host",
 					ReadOnly:       false,
 					SELinuxRelabel: false,
-					Propagation:    runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER,
+					Propagation:    runtimeapi.MountPropagation_PROPAGATION_PRIVATE,
 				},
 				{
 					Name:           "disk5",
@@ -172,7 +128,7 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/var/lib/kubelet/podID/volumes/empty/disk5",
 					ReadOnly:       false,
 					SELinuxRelabel: false,
-					Propagation:    runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER,
+					Propagation:    runtimeapi.MountPropagation_PROPAGATION_PRIVATE,
 				},
 			},
 			expectErr: false,
@@ -231,7 +187,7 @@ func TestMakeMounts(t *testing.T) {
 					HostPath:       "/mnt/host",
 					ReadOnly:       false,
 					SELinuxRelabel: false,
-					Propagation:    runtimeapi.MountPropagation_PROPAGATION_HOST_TO_CONTAINER,
+					Propagation:    runtimeapi.MountPropagation_PROPAGATION_PRIVATE,
 				},
 			},
 			expectErr: false,
@@ -1903,7 +1859,7 @@ func TestPodPhaseWithRestartAlways(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		status := GetPhase(&test.pod.Spec, test.pod.Status.ContainerStatuses)
+		status := getPhase(&test.pod.Spec, test.pod.Status.ContainerStatuses)
 		assert.Equal(t, test.status, status, "[test %s]", test.test)
 	}
 }
@@ -2003,7 +1959,7 @@ func TestPodPhaseWithRestartNever(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		status := GetPhase(&test.pod.Spec, test.pod.Status.ContainerStatuses)
+		status := getPhase(&test.pod.Spec, test.pod.Status.ContainerStatuses)
 		assert.Equal(t, test.status, status, "[test %s]", test.test)
 	}
 }
@@ -2116,7 +2072,7 @@ func TestPodPhaseWithRestartOnFailure(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		status := GetPhase(&test.pod.Spec, test.pod.Status.ContainerStatuses)
+		status := getPhase(&test.pod.Spec, test.pod.Status.ContainerStatuses)
 		assert.Equal(t, test.status, status, "[test %s]", test.test)
 	}
 }
@@ -2326,25 +2282,6 @@ func TestPortForward(t *testing.T) {
 			assert.Error(t, err, description)
 		}
 	}
-}
-
-// Tests that identify the host port conflicts are detected correctly.
-func TestGetHostPortConflicts(t *testing.T) {
-	pods := []*v1.Pod{
-		{Spec: v1.PodSpec{Containers: []v1.Container{{Ports: []v1.ContainerPort{{HostPort: 80}}}}}},
-		{Spec: v1.PodSpec{Containers: []v1.Container{{Ports: []v1.ContainerPort{{HostPort: 81}}}}}},
-		{Spec: v1.PodSpec{Containers: []v1.Container{{Ports: []v1.ContainerPort{{HostPort: 82}}}}}},
-		{Spec: v1.PodSpec{Containers: []v1.Container{{Ports: []v1.ContainerPort{{HostPort: 83}}}}}},
-	}
-	// Pods should not cause any conflict.
-	assert.False(t, hasHostPortConflicts(pods), "Should not have port conflicts")
-
-	expected := &v1.Pod{
-		Spec: v1.PodSpec{Containers: []v1.Container{{Ports: []v1.ContainerPort{{HostPort: 81}}}}},
-	}
-	// The new pod should cause conflict and be reported.
-	pods = append(pods, expected)
-	assert.True(t, hasHostPortConflicts(pods), "Should have port conflicts")
 }
 
 func TestHasHostMountPVC(t *testing.T) {

@@ -19,6 +19,7 @@ limitations under the License.
 package mount
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -53,7 +54,9 @@ const (
 	// place for subpath mounts
 	containerSubPathDirectoryName = "volume-subpaths"
 	// syscall.Openat flags used to traverse directories not following symlinks
-	nofollowFlags = syscall.O_RDONLY | syscall.O_NOFOLLOW
+	nofollowFlags = unix.O_RDONLY | unix.O_NOFOLLOW
+	// flags for getting file descriptor without following the symlink
+	openFDFlags = unix.O_NOFOLLOW | unix.O_PATH
 )
 
 // Mounter provides the default implementation of mount.Interface
@@ -75,7 +78,7 @@ func New(mounterPath string) Interface {
 }
 
 // Mount mounts source to target as fstype with given options. 'source' and 'fstype' must
-// be an emtpy string in case it's not required, e.g. for remount, or for auto filesystem
+// be an empty string in case it's not required, e.g. for remount, or for auto filesystem
 // type, where kernel handles fstype for you. The mount 'options' is a list of options,
 // currently come from mount(8), e.g. "ro", "remount", "bind", etc. If no more option is
 // required, call Mount with an empty string list or nil.
@@ -271,7 +274,7 @@ func (mounter *Mounter) IsLikelyNotMountPoint(file string) (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	rootStat, err := os.Lstat(file + "/..")
+	rootStat, err := os.Lstat(filepath.Dir(strings.TrimSuffix(file, "/")))
 	if err != nil {
 		return true, err
 	}
@@ -319,7 +322,7 @@ func exclusiveOpenFailsOnDevice(pathname string) (bool, error) {
 	}
 
 	if !isDevice {
-		glog.Errorf("Path %q is not refering to a device.", pathname)
+		glog.Errorf("Path %q is not referring to a device.", pathname)
 		return false, nil
 	}
 	fd, errno := unix.Open(pathname, unix.O_RDONLY|unix.O_EXCL, 0)
@@ -420,31 +423,7 @@ func (mounter *Mounter) MakeRShared(path string) error {
 }
 
 func (mounter *Mounter) GetFileType(pathname string) (FileType, error) {
-	var pathType FileType
-	finfo, err := os.Stat(pathname)
-	if os.IsNotExist(err) {
-		return pathType, fmt.Errorf("path %q does not exist", pathname)
-	}
-	// err in call to os.Stat
-	if err != nil {
-		return pathType, err
-	}
-
-	mode := finfo.Sys().(*syscall.Stat_t).Mode
-	switch mode & syscall.S_IFMT {
-	case syscall.S_IFSOCK:
-		return FileTypeSocket, nil
-	case syscall.S_IFBLK:
-		return FileTypeBlockDev, nil
-	case syscall.S_IFCHR:
-		return FileTypeBlockDev, nil
-	case syscall.S_IFDIR:
-		return FileTypeDirectory, nil
-	case syscall.S_IFREG:
-		return FileTypeFile, nil
-	}
-
-	return pathType, fmt.Errorf("only recognise file, directory, socket, block device and character device")
+	return getFileType(pathname)
 }
 
 func (mounter *Mounter) MakeDir(pathname string) error {
@@ -478,23 +457,33 @@ func (mounter *Mounter) ExistsPath(pathname string) bool {
 
 // formatAndMount uses unix utils to format and mount the given disk
 func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, fstype string, options []string) error {
+	readOnly := false
+	for _, option := range options {
+		if option == "ro" {
+			readOnly = true
+			break
+		}
+	}
+
 	options = append(options, "defaults")
 
-	// Run fsck on the disk to fix repairable issues
-	glog.V(4).Infof("Checking for issues with fsck on disk: %s", source)
-	args := []string{"-a", source}
-	out, err := mounter.Exec.Run("fsck", args...)
-	if err != nil {
-		ee, isExitError := err.(utilexec.ExitError)
-		switch {
-		case err == utilexec.ErrExecutableNotFound:
-			glog.Warningf("'fsck' not found on system; continuing mount without running 'fsck'.")
-		case isExitError && ee.ExitStatus() == fsckErrorsCorrected:
-			glog.Infof("Device %s has errors which were corrected by fsck.", source)
-		case isExitError && ee.ExitStatus() == fsckErrorsUncorrected:
-			return fmt.Errorf("'fsck' found errors on device %s but could not correct them: %s.", source, string(out))
-		case isExitError && ee.ExitStatus() > fsckErrorsUncorrected:
-			glog.Infof("`fsck` error %s", string(out))
+	if !readOnly {
+		// Run fsck on the disk to fix repairable issues, only do this for volumes requested as rw.
+		glog.V(4).Infof("Checking for issues with fsck on disk: %s", source)
+		args := []string{"-a", source}
+		out, err := mounter.Exec.Run("fsck", args...)
+		if err != nil {
+			ee, isExitError := err.(utilexec.ExitError)
+			switch {
+			case err == utilexec.ErrExecutableNotFound:
+				glog.Warningf("'fsck' not found on system; continuing mount without running 'fsck'.")
+			case isExitError && ee.ExitStatus() == fsckErrorsCorrected:
+				glog.Infof("Device %s has errors which were corrected by fsck.", source)
+			case isExitError && ee.ExitStatus() == fsckErrorsUncorrected:
+				return fmt.Errorf("'fsck' found errors on device %s but could not correct them: %s.", source, string(out))
+			case isExitError && ee.ExitStatus() > fsckErrorsUncorrected:
+				glog.Infof("`fsck` error %s", string(out))
+			}
 		}
 	}
 
@@ -509,8 +498,13 @@ func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, 
 			return err
 		}
 		if existingFormat == "" {
+			if readOnly {
+				// Don't attempt to format if mounting as readonly, return an error to reflect this.
+				return errors.New("failed to mount unformatted volume as read only")
+			}
+
 			// Disk is unformatted so format it.
-			args = []string{source}
+			args := []string{source}
 			// Use 'ext4' as the default
 			if len(fstype) == 0 {
 				fstype = "ext4"
@@ -542,57 +536,65 @@ func (mounter *SafeFormatAndMount) formatAndMount(source string, target string, 
 	return mountErr
 }
 
-// GetDiskFormat uses 'lsblk' to see if the given disk is unformated
+// GetDiskFormat uses 'blkid' to see if the given disk is unformated
 func (mounter *SafeFormatAndMount) GetDiskFormat(disk string) (string, error) {
-	args := []string{"-n", "-o", "FSTYPE", disk}
-	glog.V(4).Infof("Attempting to determine if disk %q is formatted using lsblk with args: (%v)", disk, args)
-	dataOut, err := mounter.Exec.Run("lsblk", args...)
+	args := []string{"-p", "-s", "TYPE", "-s", "PTTYPE", "-o", "export", disk}
+	glog.V(4).Infof("Attempting to determine if disk %q is formatted using blkid with args: (%v)", disk, args)
+	dataOut, err := mounter.Exec.Run("blkid", args...)
 	output := string(dataOut)
-	glog.V(4).Infof("Output: %q", output)
+	glog.V(4).Infof("Output: %q, err: %v", output, err)
 
 	if err != nil {
+		if exit, ok := err.(utilexec.ExitError); ok {
+			if exit.ExitStatus() == 2 {
+				// Disk device is unformatted.
+				// For `blkid`, if the specified token (TYPE/PTTYPE, etc) was
+				// not found, or no (specified) devices could be identified, an
+				// exit code of 2 is returned.
+				return "", nil
+			}
+		}
 		glog.Errorf("Could not determine if disk %q is formatted (%v)", disk, err)
 		return "", err
 	}
 
-	// Split lsblk output into lines. Unformatted devices should contain only
-	// "\n". Beware of "\n\n", that's a device with one empty partition.
-	output = strings.TrimSuffix(output, "\n") // Avoid last empty line
+	var fstype, pttype string
+
 	lines := strings.Split(output, "\n")
-	if lines[0] != "" {
-		// The device is formatted
-		return lines[0], nil
+	for _, l := range lines {
+		if len(l) <= 0 {
+			// Ignore empty line.
+			continue
+		}
+		cs := strings.Split(l, "=")
+		if len(cs) != 2 {
+			return "", fmt.Errorf("blkid returns invalid output: %s", output)
+		}
+		// TYPE is filesystem type, and PTTYPE is partition table type, according
+		// to https://www.kernel.org/pub/linux/utils/util-linux/v2.21/libblkid-docs/.
+		if cs[0] == "TYPE" {
+			fstype = cs[1]
+		} else if cs[0] == "PTTYPE" {
+			pttype = cs[1]
+		}
 	}
 
-	if len(lines) == 1 {
-		// The device is unformatted and has no dependent devices
-		return "", nil
+	if len(pttype) > 0 {
+		glog.V(4).Infof("Disk %s detected partition table type: %s", pttype)
+		// Returns a special non-empty string as filesystem type, then kubelet
+		// will not format it.
+		return "unknown data, probably partitions", nil
 	}
 
-	// The device has dependent devices, most probably partitions (LVM, LUKS
-	// and MD RAID are reported as FSTYPE and caught above).
-	return "unknown data, probably partitions", nil
+	return fstype, nil
 }
 
 // isShared returns true, if given path is on a mount point that has shared
 // mount propagation.
-func isShared(path string, filename string) (bool, error) {
-	infos, err := parseMountInfo(filename)
+func isShared(mount string, mountInfoPath string) (bool, error) {
+	info, err := findMountInfo(mount, mountInfoPath)
 	if err != nil {
 		return false, err
-	}
-
-	// process /proc/xxx/mountinfo in backward order and find the first mount
-	// point that is prefix of 'path' - that's the mount where path resides
-	var info *mountInfo
-	for i := len(infos) - 1; i >= 0; i-- {
-		if strings.HasPrefix(path, infos[i].mountPoint) {
-			info = &infos[i]
-			break
-		}
-	}
-	if info == nil {
-		return false, fmt.Errorf("cannot find mount point for %q", path)
 	}
 
 	// parse optional parameters
@@ -609,6 +611,10 @@ type mountInfo struct {
 	mountPoint string
 	// list of "optional parameters", mount propagation is one of them
 	optional []string
+	// mount options
+	mountOptions []string
+	// super options: per-superblock options.
+	superOptions []string
 }
 
 // parseMountInfo parses /proc/xxx/mountinfo.
@@ -627,20 +633,44 @@ func parseMountInfo(filename string) ([]mountInfo, error) {
 		}
 		// See `man proc` for authoritative description of format of the file.
 		fields := strings.Fields(line)
-		if len(fields) < 7 {
-			return nil, fmt.Errorf("wrong number of fields in (expected %d, got %d): %s", 8, len(fields), line)
+		if len(fields) < 10 {
+			return nil, fmt.Errorf("wrong number of fields in (expected %d, got %d): %s", 10, len(fields), line)
 		}
 		info := mountInfo{
-			mountPoint: fields[4],
-			optional:   []string{},
+			mountPoint:   fields[4],
+			mountOptions: strings.Split(fields[5], ","),
+			optional:     []string{},
 		}
 		// All fields until "-" are "optional fields".
 		for i := 6; i < len(fields) && fields[i] != "-"; i++ {
 			info.optional = append(info.optional, fields[i])
 		}
+		superOpts := fields[len(fields)-1]
+		info.superOptions = strings.Split(superOpts, ",")
 		infos = append(infos, info)
 	}
 	return infos, nil
+}
+
+func findMountInfo(path, mountInfoPath string) (mountInfo, error) {
+	infos, err := parseMountInfo(mountInfoPath)
+	if err != nil {
+		return mountInfo{}, err
+	}
+
+	// process /proc/xxx/mountinfo in backward order and find the first mount
+	// point that is prefix of 'path' - that's the mount where path resides
+	var info *mountInfo
+	for i := len(infos) - 1; i >= 0; i-- {
+		if pathWithinBase(path, infos[i].mountPoint) {
+			info = &infos[i]
+			break
+		}
+	}
+	if info == nil {
+		return mountInfo{}, fmt.Errorf("cannot find mount point for %q", path)
+	}
+	return *info, nil
 }
 
 // doMakeRShared is common implementation of MakeRShared on Linux. It checks if
@@ -669,6 +699,27 @@ func doMakeRShared(path string, mountInfoFilename string) error {
 	}
 
 	return nil
+}
+
+// getSELinuxSupport is common implementation of GetSELinuxSupport on Linux.
+func getSELinuxSupport(path string, mountInfoFilename string) (bool, error) {
+	info, err := findMountInfo(path, mountInfoFilename)
+	if err != nil {
+		return false, err
+	}
+
+	// "seclabel" can be both in mount options and super options.
+	for _, opt := range info.superOptions {
+		if opt == "seclabel" {
+			return true, nil
+		}
+	}
+	for _, opt := range info.mountOptions {
+		if opt == "seclabel" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (mounter *Mounter) PrepareSafeSubpath(subPath Subpath) (newHostPath string, cleanupAction func(), err error) {
@@ -762,8 +813,9 @@ func doBindSubPath(mounter Interface, subpath Subpath, kubeletPid int) (hostPath
 	mountSource := fmt.Sprintf("/proc/%d/fd/%v", kubeletPid, fd)
 
 	// Do the bind mount
+	options := []string{"bind"}
 	glog.V(5).Infof("bind mounting %q at %q", mountSource, bindPathTarget)
-	if err = mounter.Mount(mountSource, bindPathTarget, "" /*fstype*/, []string{"bind"}); err != nil {
+	if err = mounter.Mount(mountSource, bindPathTarget, "" /*fstype*/, options); err != nil {
 		return "", fmt.Errorf("error mounting %s: %s", subpath.Path, err)
 	}
 
@@ -778,9 +830,10 @@ func (mounter *Mounter) CleanSubPaths(podDir string, volumeName string) error {
 
 // This implementation is shared between Linux and NsEnterMounter
 func doCleanSubPaths(mounter Interface, podDir string, volumeName string) error {
-	glog.V(4).Infof("Cleaning up subpath mounts for %s", podDir)
 	// scan /var/lib/kubelet/pods/<uid>/volume-subpaths/<volume>/*
 	subPathDir := filepath.Join(podDir, containerSubPathDirectoryName, volumeName)
+	glog.V(4).Infof("Cleaning up subpath mounts for %s", subPathDir)
+
 	containerDirs, err := ioutil.ReadDir(subPathDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -905,6 +958,10 @@ func (mounter *Mounter) SafeMakeDir(pathname string, base string, perm os.FileMo
 	return doSafeMakeDir(pathname, base, perm)
 }
 
+func (mounter *Mounter) GetSELinuxSupport(pathname string) (bool, error) {
+	return getSELinuxSupport(pathname, procMountInfoPath)
+}
+
 // This implementation is shared between Linux and NsEnterMounter
 func doSafeMakeDir(pathname string, base string, perm os.FileMode) error {
 	glog.V(4).Infof("Creating directory %q within base %q", pathname, base)
@@ -995,7 +1052,19 @@ func doSafeMakeDir(pathname string, base string, perm os.FileMode) error {
 	// so user can read/write it. This is the behavior of previous code.
 	// TODO: chmod all created directories, not just the last one.
 	// parentFD is the last created directory.
-	if err = syscall.Fchmod(parentFD, uint32(perm)&uint32(os.ModePerm)); err != nil {
+
+	// Translate perm (os.FileMode) to uint32 that fchmod() expects
+	kernelPerm := uint32(perm & os.ModePerm)
+	if perm&os.ModeSetgid > 0 {
+		kernelPerm |= syscall.S_ISGID
+	}
+	if perm&os.ModeSetuid > 0 {
+		kernelPerm |= syscall.S_ISUID
+	}
+	if perm&os.ModeSticky > 0 {
+		kernelPerm |= syscall.S_ISVTX
+	}
+	if err = syscall.Fchmod(parentFD, kernelPerm); err != nil {
 		return fmt.Errorf("chmod %q failed: %s", currentPath, err)
 	}
 	return nil
@@ -1024,7 +1093,9 @@ func findExistingPrefix(base, pathname string) (string, []string, error) {
 		}
 	}()
 	for i, dir := range dirs {
-		childFD, err := syscall.Openat(fd, dir, syscall.O_RDONLY, 0)
+		// Using O_PATH here will prevent hangs in case user replaces directory with
+		// fifo
+		childFD, err := syscall.Openat(fd, dir, unix.O_PATH, 0)
 		if err != nil {
 			if os.IsNotExist(err) {
 				return currentPath, dirs[i:], nil
@@ -1086,9 +1157,19 @@ func doSafeOpen(pathname string, base string) (int, error) {
 		}
 
 		glog.V(5).Infof("Opening path %s", currentPath)
-		childFD, err = syscall.Openat(parentFD, seg, nofollowFlags, 0)
+		childFD, err = syscall.Openat(parentFD, seg, openFDFlags, 0)
 		if err != nil {
 			return -1, fmt.Errorf("cannot open %s: %s", currentPath, err)
+		}
+
+		var deviceStat unix.Stat_t
+		err := unix.Fstat(childFD, &deviceStat)
+		if err != nil {
+			return -1, fmt.Errorf("Error running fstat on %s with %v", currentPath, err)
+		}
+		fileFmt := deviceStat.Mode & syscall.S_IFMT
+		if fileFmt == syscall.S_IFLNK {
+			return -1, fmt.Errorf("Unexpected symlink found %s", currentPath)
 		}
 
 		// Close parentFD

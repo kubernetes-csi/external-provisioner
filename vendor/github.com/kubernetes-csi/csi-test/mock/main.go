@@ -47,6 +47,12 @@ func main() {
 	}
 	d := driver.NewCSIDriver(servers)
 
+	// If creds is enabled, set the default creds.
+	setCreds := os.Getenv("CSI_ENABLE_CREDS")
+	if len(setCreds) > 0 && setCreds == "true" {
+		d.SetDefaultCreds()
+	}
+
 	// Listen
 	os.Remove(endpoint)
 	l, err := net.Listen("unix", endpoint)
