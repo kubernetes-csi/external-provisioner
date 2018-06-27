@@ -17,7 +17,7 @@ IMAGE_NAME=csi-provisioner
 IMAGE_VERSION=canary
 IMAGE_TAG=$(REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_VERSION)
 
-REV=$(shell git describe --long --match='v*' --dirty)
+REV=$(shell git describe --long --tags --match='v*' --dirty)
 
 ifdef V
 TESTARGS = -v -args -alsologtostderr -v 5
