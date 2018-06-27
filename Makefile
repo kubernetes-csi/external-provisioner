@@ -14,10 +14,10 @@
 
 REGISTRY_NAME=quay.io/k8scsi
 IMAGE_NAME=csi-provisioner
-IMAGE_VERSION=canary
+IMAGE_VERSION=v0.3.0
 IMAGE_TAG=$(REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_VERSION)
 
-REV=$(shell git describe --long --match='v*' --dirty)
+REV=$(shell git describe --long --tag --match='v*' --dirty)
 
 ifdef V
 TESTARGS = -v -args -alsologtostderr -v 5
