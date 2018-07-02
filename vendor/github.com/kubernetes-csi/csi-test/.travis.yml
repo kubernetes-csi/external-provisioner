@@ -7,3 +7,8 @@ script:
 - go vet $(go list ./... | grep -v vendor)
 - go test $(go list ./... | grep -v vendor | grep -v "cmd/csi-sanity")
 - ./hack/e2e.sh
+after_success:
+  - if [ "${TRAVIS_BRANCH}" == "master" ] && [ "${TRAVIS_PULL_REQUEST}" == "false" ]; then
+      docker login -u "${DOCKER_USERNAME}" -p "${DOCKER_PASSWORD}" quay.io;
+      make push;
+    fi

@@ -57,7 +57,7 @@ func (m *execMounter) Mount(source string, target string, fstype string, options
 	return m.doExecMount(source, target, fstype, options)
 }
 
-// doExecMount calls exec(mount <waht> <where>) using given exec interface.
+// doExecMount calls exec(mount <what> <where>) using given exec interface.
 func (m *execMounter) doExecMount(source, target, fstype string, options []string) error {
 	glog.V(5).Infof("Exec Mounting %s %s %s %v", source, target, fstype, options)
 	mountArgs := makeMountArgs(source, target, fstype, options)
@@ -150,4 +150,8 @@ func (m *execMounter) CleanSubPaths(podDir string, volumeName string) error {
 
 func (m *execMounter) SafeMakeDir(pathname string, base string, perm os.FileMode) error {
 	return m.wrappedMounter.SafeMakeDir(pathname, base, perm)
+}
+
+func (m *execMounter) GetSELinuxSupport(pathname string) (bool, error) {
+	return m.wrappedMounter.GetSELinuxSupport(pathname)
 }

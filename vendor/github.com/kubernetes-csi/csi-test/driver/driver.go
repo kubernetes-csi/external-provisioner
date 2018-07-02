@@ -19,18 +19,45 @@ limitations under the License.
 package driver
 
 import (
+	context "context"
+	"errors"
 	"net"
 	"sync"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
+var (
+	// ErrNoCredentials is the error when a secret is enabled but not passed in the request.
+	ErrNoCredentials = errors.New("secret must be provided")
+	// ErrAuthFailed is the error when the secret is incorrect.
+	ErrAuthFailed = errors.New("authentication failed")
+)
+
 type CSIDriverServers struct {
 	Controller csi.ControllerServer
 	Identity   csi.IdentityServer
 	Node       csi.NodeServer
+}
+
+// This is the key name in all the CSI secret objects.
+const secretField = "secretKey"
+
+// CSICreds is a driver specific secret type. Drivers can have a key-val pair of
+// secrets. This mock driver has a single string secret with secretField as the
+// key.
+type CSICreds struct {
+	CreateVolumeSecret              string
+	DeleteVolumeSecret              string
+	ControllerPublishVolumeSecret   string
+	ControllerUnpublishVolumeSecret string
+	NodeStageVolumeSecret           string
+	NodePublishVolumeSecret         string
 }
 
 type CSIDriver struct {
@@ -40,6 +67,7 @@ type CSIDriver struct {
 	wg       sync.WaitGroup
 	running  bool
 	lock     sync.Mutex
+	creds    *CSICreds
 }
 
 func NewCSIDriver(servers *CSIDriverServers) *CSIDriver {
@@ -71,7 +99,9 @@ func (c *CSIDriver) Start(l net.Listener) error {
 	c.listener = l
 
 	// Create a new grpc server
-	c.server = grpc.NewServer()
+	c.server = grpc.NewServer(
+		grpc.UnaryInterceptor(c.authInterceptor),
+	)
 
 	// Register Mock servers
 	if c.servers.Controller != nil {
@@ -114,4 +144,88 @@ func (c *CSIDriver) IsRunning() bool {
 	defer c.lock.Unlock()
 
 	return c.running
+}
+
+// SetDefaultCreds sets the default secrets for CSI creds.
+func (c *CSIDriver) SetDefaultCreds() {
+	c.creds = &CSICreds{
+		CreateVolumeSecret:              "secretval1",
+		DeleteVolumeSecret:              "secretval2",
+		ControllerPublishVolumeSecret:   "secretval3",
+		ControllerUnpublishVolumeSecret: "secretval4",
+		NodeStageVolumeSecret:           "secretval5",
+		NodePublishVolumeSecret:         "secretval6",
+	}
+}
+
+func (c *CSIDriver) authInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	if c.creds != nil {
+		authenticated, authErr := isAuthenticated(req, c.creds)
+		if !authenticated {
+			if authErr == ErrNoCredentials {
+				return nil, status.Error(codes.InvalidArgument, authErr.Error())
+			}
+			if authErr == ErrAuthFailed {
+				return nil, status.Error(codes.Unauthenticated, authErr.Error())
+			}
+		}
+	}
+
+	h, err := handler(ctx, req)
+
+	return h, err
+}
+
+func isAuthenticated(req interface{}, creds *CSICreds) (bool, error) {
+	switch r := req.(type) {
+	case *csi.CreateVolumeRequest:
+		return authenticateCreateVolume(r, creds)
+	case *csi.DeleteVolumeRequest:
+		return authenticateDeleteVolume(r, creds)
+	case *csi.ControllerPublishVolumeRequest:
+		return authenticateControllerPublishVolume(r, creds)
+	case *csi.ControllerUnpublishVolumeRequest:
+		return authenticateControllerUnpublishVolume(r, creds)
+	case *csi.NodeStageVolumeRequest:
+		return authenticateNodeStageVolume(r, creds)
+	case *csi.NodePublishVolumeRequest:
+		return authenticateNodePublishVolume(r, creds)
+	default:
+		return true, nil
+	}
+}
+
+func authenticateCreateVolume(req *csi.CreateVolumeRequest, creds *CSICreds) (bool, error) {
+	return credsCheck(req.GetControllerCreateSecrets(), creds.CreateVolumeSecret)
+}
+
+func authenticateDeleteVolume(req *csi.DeleteVolumeRequest, creds *CSICreds) (bool, error) {
+	return credsCheck(req.GetControllerDeleteSecrets(), creds.DeleteVolumeSecret)
+}
+
+func authenticateControllerPublishVolume(req *csi.ControllerPublishVolumeRequest, creds *CSICreds) (bool, error) {
+	return credsCheck(req.GetControllerPublishSecrets(), creds.ControllerPublishVolumeSecret)
+}
+
+func authenticateControllerUnpublishVolume(req *csi.ControllerUnpublishVolumeRequest, creds *CSICreds) (bool, error) {
+	return credsCheck(req.GetControllerUnpublishSecrets(), creds.ControllerUnpublishVolumeSecret)
+}
+
+func authenticateNodeStageVolume(req *csi.NodeStageVolumeRequest, creds *CSICreds) (bool, error) {
+	return credsCheck(req.GetNodeStageSecrets(), creds.NodeStageVolumeSecret)
+}
+
+func authenticateNodePublishVolume(req *csi.NodePublishVolumeRequest, creds *CSICreds) (bool, error) {
+	return credsCheck(req.GetNodePublishSecrets(), creds.NodePublishVolumeSecret)
+}
+
+func credsCheck(secrets map[string]string, secretVal string) (bool, error) {
+	if len(secrets) == 0 {
+		return false, ErrNoCredentials
+	}
+
+	if secrets[secretField] != secretVal {
+		return false, ErrAuthFailed
+	}
+	return true, nil
 }

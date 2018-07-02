@@ -19,6 +19,30 @@ For verbose type:
 $ csi-sanity --ginkgo.v --csi.endpoint=<your csi driver endpoint>
 ```
 
+For csi-credentials, create a secrets file with all the secrets in it:
+```yaml
+CreateVolumeSecret:
+  secretKey: secretval1
+DeleteVolumeSecret:
+  secretKey: secretval2
+ControllerPublishVolumeSecret:
+  secretKey: secretval3
+ControllerUnpublishVolumeSecret:
+  secretKey: secretval4
+NodeStageVolumeSecret:
+  secretKey: secretval5
+NodePublishVolumeSecret:
+  secretKey: secretval6
+```
+
+Pass the file path to csi-sanity as:
+```
+$ csi-sanity --csi.endpoint=<your csi driver endpoint> --csi.secrets=<path to secrets file>
+```
+
+Replace the keys and values of the credentials appropriately. Since the whole
+secret is passed in the request, multiple key-val pairs can be used.
+
 ### Help
 The full Ginkgo and golang unit test parameters are available. Type
 

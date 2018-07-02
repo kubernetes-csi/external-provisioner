@@ -49,16 +49,13 @@ $(PACKAGE): $(APP_NAME)
 linux_amd64_dist:
 	GOOS=linux GOARCH=amd64 $(MAKE) dist
 
-linux_arm_dist:
-	GOOS=linux GOARCH=arm $(MAKE) dist
-
 linux_arm64_dist:
 	GOOS=linux GOARCH=arm64 $(MAKE) dist
 
 darwin_amd64_dist:
 	GOOS=darwin GOARCH=amd64 $(MAKE) dist
 
-release: dist-clean darwin_amd64_dist linux_arm_dist linux_amd64_dist linux_arm64_dist
+release: dist-clean darwin_amd64_dist linux_amd64_dist linux_arm64_dist
 
 .PHONY: release darwin_amd64_dist linux_arm64_dist linux_amd64_dist \
 	    linux_arm_dist linux_amd64_dist clean dist-clean

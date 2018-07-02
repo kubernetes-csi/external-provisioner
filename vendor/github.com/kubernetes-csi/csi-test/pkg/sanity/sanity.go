@@ -18,11 +18,13 @@ package sanity
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"sync"
 	"testing"
 
 	"github.com/kubernetes-csi/csi-test/utils"
+	yaml "gopkg.in/yaml.v2"
 
 	"google.golang.org/grpc"
 
@@ -30,20 +32,37 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+// CSISecrets consists of secrets used in CSI credentials.
+type CSISecrets struct {
+	CreateVolumeSecret              map[string]string `yaml:"CreateVolumeSecret"`
+	DeleteVolumeSecret              map[string]string `yaml:"DeleteVolumeSecret"`
+	ControllerPublishVolumeSecret   map[string]string `yaml:"ControllerPublishVolumeSecret"`
+	ControllerUnpublishVolumeSecret map[string]string `yaml:"ControllerUnpublishVolumeSecret"`
+	NodeStageVolumeSecret           map[string]string `yaml:"NodeStageVolumeSecret"`
+	NodePublishVolumeSecret         map[string]string `yaml:"NodePublishVolumeSecret"`
+}
+
 var (
-	driverAddress string
-	csiTargetPath string
-	conn          *grpc.ClientConn
-	lock          sync.Mutex
+	config  *Config
+	conn    *grpc.ClientConn
+	lock    sync.Mutex
+	secrets *CSISecrets
 )
 
+// Config provides the configuration for the sanity tests
+type Config struct {
+	TargetPath  string
+	StagingPath string
+	Address     string
+	SecretsFile string
+}
+
 // Test will test the CSI driver at the specified address
-func Test(t *testing.T, address, mountPoint string) {
+func Test(t *testing.T, reqConfig *Config) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	driverAddress = address
-	csiTargetPath = mountPoint
+	config = reqConfig
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "CSI Driver Test Suite")
 }
@@ -51,24 +70,32 @@ func Test(t *testing.T, address, mountPoint string) {
 var _ = BeforeSuite(func() {
 	var err error
 
+	if len(config.SecretsFile) > 0 {
+		secrets, err = loadSecrets(config.SecretsFile)
+		Expect(err).NotTo(HaveOccurred())
+	}
+
 	By("connecting to CSI driver")
-	conn, err = utils.Connect(driverAddress)
+	conn, err = utils.Connect(config.Address)
 	Expect(err).NotTo(HaveOccurred())
 
-	By("creating mount directory")
-	err = createMountTargetLocation(csiTargetPath)
+	By("creating mount and staging directories")
+	err = createMountTargetLocation(config.TargetPath)
 	Expect(err).NotTo(HaveOccurred())
+	if len(config.StagingPath) > 0 {
+		err = createMountTargetLocation(config.StagingPath)
+		Expect(err).NotTo(HaveOccurred())
+	}
 })
 
 var _ = AfterSuite(func() {
 	conn.Close()
-	os.Remove(csiTargetPath)
 })
 
 func createMountTargetLocation(targetPath string) error {
 	fileInfo, err := os.Stat(targetPath)
 	if err != nil && os.IsNotExist(err) {
-		return os.Mkdir(targetPath, 0755)
+		return os.MkdirAll(targetPath, 0755)
 	} else if err != nil {
 		return err
 	}
@@ -77,4 +104,20 @@ func createMountTargetLocation(targetPath string) error {
 	}
 
 	return nil
+}
+
+func loadSecrets(path string) (*CSISecrets, error) {
+	var creds CSISecrets
+
+	yamlFile, err := ioutil.ReadFile(path)
+	if err != nil {
+		return &creds, fmt.Errorf("failed to read file %q: #%v", path, err)
+	}
+
+	err = yaml.Unmarshal(yamlFile, &creds)
+	if err != nil {
+		return &creds, fmt.Errorf("error unmarshaling yaml: #%v", err)
+	}
+
+	return &creds, nil
 }

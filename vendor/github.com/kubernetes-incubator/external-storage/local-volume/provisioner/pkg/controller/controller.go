@@ -30,6 +30,8 @@ import (
 	"github.com/kubernetes-incubator/external-storage/local-volume/provisioner/pkg/util"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -38,7 +40,7 @@ import (
 )
 
 // StartLocalController starts the sync loop for the local PV discovery and deleter
-func StartLocalController(client *kubernetes.Clientset, config *common.UserConfig) {
+func StartLocalController(client *kubernetes.Clientset, ptable deleter.ProcTable, config *common.UserConfig) {
 	glog.Info("Initializing volume cache\n")
 
 	provisionerName := fmt.Sprintf("local-volume-provisioner-%v-%v", config.Node.Name, config.Node.UID)
@@ -48,27 +50,50 @@ func StartLocalController(client *kubernetes.Clientset, config *common.UserConfi
 	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: provisionerName})
 
 	runtimeConfig := &common.RuntimeConfig{
-		UserConfig: config,
-		Cache:      cache.NewVolumeCache(),
-		VolUtil:    util.NewVolumeUtil(),
-		APIUtil:    util.NewAPIUtil(client),
-		Client:     client,
-		Name:       provisionerName,
-		Recorder:   recorder,
-		Mounter:    mount.New("" /* default mount path */),
+		UserConfig:      config,
+		Cache:           cache.NewVolumeCache(),
+		VolUtil:         util.NewVolumeUtil(),
+		APIUtil:         util.NewAPIUtil(client),
+		Client:          client,
+		Name:            provisionerName,
+		Recorder:        recorder,
+		Mounter:         mount.New("" /* default mount path */),
+		InformerFactory: informers.NewSharedInformerFactory(client, 0),
 	}
 
-	populator := populator.NewPopulator(runtimeConfig)
-	populator.Start()
+	populator.NewPopulator(runtimeConfig)
 
-	ptable := deleter.NewProcTable()
-	discoverer, err := discovery.NewDiscoverer(runtimeConfig, ptable)
+	var jobController deleter.JobController
+	var err error
+	if runtimeConfig.UseJobForCleaning {
+		labels := map[string]string{common.NodeNameLabel: config.Node.Name}
+		jobController, err = deleter.NewJobController(labels, runtimeConfig)
+		if err != nil {
+			glog.Fatalf("Error initializing jobController: %v", err)
+		}
+		glog.Infof("Enabling Jobs based cleaning.")
+	}
+	cleanupTracker := &deleter.CleanupStatusTracker{ProcTable: ptable, JobController: jobController}
+
+	discoverer, err := discovery.NewDiscoverer(runtimeConfig, cleanupTracker)
 	if err != nil {
-		glog.Fatalf("Error starting discoverer: %v", err)
+		glog.Fatalf("Error initializing discoverer: %v", err)
 	}
 
-	deleter := deleter.NewDeleter(runtimeConfig, ptable)
+	deleter := deleter.NewDeleter(runtimeConfig, cleanupTracker)
 
+	// Start informers after all event listeners are registered.
+	runtimeConfig.InformerFactory.Start(wait.NeverStop)
+	// Wait for all started informers' cache were synced.
+	for v, synced := range runtimeConfig.InformerFactory.WaitForCacheSync(wait.NeverStop) {
+		if !synced {
+			glog.Fatalf("Error syncing informer for %v", v)
+		}
+	}
+	// Run controller logic.
+	if jobController != nil {
+		go jobController.Run(wait.NeverStop)
+	}
 	glog.Info("Controller started\n")
 	for {
 		deleter.DeletePVs()

@@ -18,9 +18,12 @@ package util
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/kubernetes-incubator/external-storage/local-volume/provisioner/pkg/cache"
+	"github.com/kubernetes-incubator/external-storage/local-volume/provisioner/pkg/metrics"
 
+	batch_v1 "k8s.io/api/batch/v1"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,6 +37,12 @@ type APIUtil interface {
 
 	// Delete PersistentVolume object
 	DeletePV(pvName string) error
+
+	// CreateJob Creates a Job execution.
+	CreateJob(job *batch_v1.Job) error
+
+	// DeleteJob deletes specified Job by its name and namespace.
+	DeleteJob(jobName string, namespace string) error
 }
 
 var _ APIUtil = &apiUtil{}
@@ -49,31 +58,66 @@ func NewAPIUtil(client *kubernetes.Clientset) APIUtil {
 
 // CreatePV will create a PersistentVolume
 func (u *apiUtil) CreatePV(pv *v1.PersistentVolume) (*v1.PersistentVolume, error) {
-	return u.client.CoreV1().PersistentVolumes().Create(pv)
+	startTime := time.Now()
+	metrics.APIServerRequestsTotal.WithLabelValues(metrics.APIServerRequestCreate).Inc()
+	pv, err := u.client.CoreV1().PersistentVolumes().Create(pv)
+	metrics.APIServerRequestsDurationSeconds.WithLabelValues(metrics.APIServerRequestCreate).Observe(time.Since(startTime).Seconds())
+	if err != nil {
+		metrics.APIServerRequestsFailedTotal.WithLabelValues(metrics.APIServerRequestCreate).Inc()
+	}
+	return pv, err
 }
 
 // DeletePV will delete a PersistentVolume
 func (u *apiUtil) DeletePV(pvName string) error {
-	return u.client.CoreV1().PersistentVolumes().Delete(pvName, &metav1.DeleteOptions{})
+	startTime := time.Now()
+	metrics.APIServerRequestsTotal.WithLabelValues(metrics.APIServerRequestDelete).Inc()
+	err := u.client.CoreV1().PersistentVolumes().Delete(pvName, &metav1.DeleteOptions{})
+	metrics.APIServerRequestsDurationSeconds.WithLabelValues(metrics.APIServerRequestDelete).Observe(time.Since(startTime).Seconds())
+	if err != nil {
+		metrics.APIServerRequestsFailedTotal.WithLabelValues(metrics.APIServerRequestDelete).Inc()
+	}
+	return err
+}
+
+func (u *apiUtil) CreateJob(job *batch_v1.Job) error {
+	_, err := u.client.BatchV1().Jobs(job.Namespace).Create(job)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (u *apiUtil) DeleteJob(jobName string, namespace string) error {
+	deleteProp := metav1.DeletePropagationForeground
+	if err := u.client.BatchV1().Jobs(namespace).Delete(jobName, &metav1.DeleteOptions{PropagationPolicy: &deleteProp}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 var _ APIUtil = &FakeAPIUtil{}
 
 // FakeAPIUtil is a fake API wrapper for unit testing
 type FakeAPIUtil struct {
-	createdPVs map[string]*v1.PersistentVolume
-	deletedPVs map[string]*v1.PersistentVolume
-	shouldFail bool
-	cache      *cache.VolumeCache
+	createdPVs  map[string]*v1.PersistentVolume
+	deletedPVs  map[string]*v1.PersistentVolume
+	CreatedJobs map[string]*batch_v1.Job
+	DeletedJobs map[string]string
+	shouldFail  bool
+	cache       *cache.VolumeCache
 }
 
 // NewFakeAPIUtil returns an APIUtil object that can be used for unit testing
 func NewFakeAPIUtil(shouldFail bool, cache *cache.VolumeCache) *FakeAPIUtil {
 	return &FakeAPIUtil{
-		createdPVs: map[string]*v1.PersistentVolume{},
-		deletedPVs: map[string]*v1.PersistentVolume{},
-		shouldFail: shouldFail,
-		cache:      cache,
+		createdPVs:  map[string]*v1.PersistentVolume{},
+		deletedPVs:  map[string]*v1.PersistentVolume{},
+		CreatedJobs: map[string]*batch_v1.Job{},
+		DeletedJobs: map[string]string{},
+		shouldFail:  shouldFail,
+		cache:       cache,
 	}
 }
 
@@ -118,4 +162,16 @@ func (u *FakeAPIUtil) GetAndResetDeletedPVs() map[string]*v1.PersistentVolume {
 	deletedPVs := u.deletedPVs
 	u.deletedPVs = map[string]*v1.PersistentVolume{}
 	return deletedPVs
+}
+
+// CreateJob mocks job create method.
+func (u *FakeAPIUtil) CreateJob(job *batch_v1.Job) error {
+	u.CreatedJobs[job.Namespace+"/"+job.Name] = job
+	return nil
+}
+
+// DeleteJob mocks delete jon method.
+func (u *FakeAPIUtil) DeleteJob(jobName string, namespace string) error {
+	u.DeletedJobs[namespace+"/"+jobName] = jobName
+	return nil
 }

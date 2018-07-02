@@ -19,10 +19,10 @@ package csi
 import (
 	"errors"
 	"fmt"
-	"regexp"
+	"os"
+	"path"
 	"time"
 
-	csipb "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
 	api "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,8 +32,7 @@ import (
 )
 
 const (
-	csiPluginName              = "kubernetes.io/csi"
-	csiVolAttribsAnnotationKey = "csi.volume.kubernetes.io/volume-attributes"
+	csiPluginName = "kubernetes.io/csi"
 
 	// TODO (vladimirvivien) implement a more dynamic way to discover
 	// the unix domain socket path for each installed csi driver.
@@ -43,12 +42,6 @@ const (
 	csiTimeout      = 15 * time.Second
 	volNameSep      = "^"
 	volDataFileName = "vol_data.json"
-)
-
-var (
-	// csiVersion supported csi version
-	csiVersion     = &csipb.Version{Major: 0, Minor: 1, Patch: 0}
-	driverNameRexp = regexp.MustCompile(`^[A-Za-z]+(\.?-?_?[A-Za-z0-9-])+$`)
 )
 
 type csiPlugin struct {
@@ -85,12 +78,6 @@ func (p *csiPlugin) GetVolumeName(spec *volume.Spec) (string, error) {
 		return "", err
 	}
 
-	//TODO (vladimirvivien) this validation should be done at the API validation check
-	if !isDriverNameValid(csi.Driver) {
-		glog.Error(log("plugin.GetVolumeName failed to create volume name: invalid csi driver name %s", csi.Driver))
-		return "", errors.New("invalid csi driver name")
-	}
-
 	// return driverName<separator>volumeHandle
 	return fmt.Sprintf("%s%s%s", csi.Driver, volNameSep, csi.VolumeHandle), nil
 }
@@ -113,24 +100,18 @@ func (p *csiPlugin) NewMounter(
 	if err != nil {
 		return nil, err
 	}
-
-	// TODO (vladimirvivien) consider moving this check in API validation
-	// check Driver name to conform to CSI spec
-	if !isDriverNameValid(pvSource.Driver) {
-		glog.Error(log("driver name does not conform to CSI spec: %s", pvSource.Driver))
-		return nil, errors.New("driver name is invalid")
+	readOnly, err := getReadOnlyFromSpec(spec)
+	if err != nil {
+		return nil, err
 	}
-
-	// before it is used in any paths such as socket etc
-	addr := fmt.Sprintf(csiAddrTemplate, pvSource.Driver)
-	glog.V(4).Infof(log("setting up mounter for [volume=%v,driver=%v]", pvSource.VolumeHandle, pvSource.Driver))
-	client := newCsiDriverClient("unix", addr)
 
 	k8s := p.host.GetKubeClient()
 	if k8s == nil {
 		glog.Error(log("failed to get a kubernetes client"))
 		return nil, errors.New("failed to get a Kubernetes client")
 	}
+
+	csi := newCsiDriverClient(pvSource.Driver)
 
 	mounter := &csiMountMgr{
 		plugin:       p,
@@ -141,18 +122,66 @@ func (p *csiPlugin) NewMounter(
 		driverName:   pvSource.Driver,
 		volumeID:     pvSource.VolumeHandle,
 		specVolumeID: spec.Name(),
-		csiClient:    client,
+		csiClient:    csi,
+		readOnly:     readOnly,
 	}
+
+	// Save volume info in pod dir
+	dir := mounter.GetPath()
+	dataDir := path.Dir(dir) // dropoff /mount at end
+
+	if err := os.MkdirAll(dataDir, 0750); err != nil {
+		glog.Error(log("failed to create dir %#v:  %v", dataDir, err))
+		return nil, err
+	}
+	glog.V(4).Info(log("created path successfully [%s]", dataDir))
+
+	// persist volume info data for teardown
+	node := string(p.host.GetNodeName())
+	attachID := getAttachmentName(pvSource.VolumeHandle, pvSource.Driver, node)
+	volData := map[string]string{
+		volDataKey.specVolID:    spec.Name(),
+		volDataKey.volHandle:    pvSource.VolumeHandle,
+		volDataKey.driverName:   pvSource.Driver,
+		volDataKey.nodeName:     node,
+		volDataKey.attachmentID: attachID,
+	}
+
+	if err := saveVolumeData(dataDir, volDataFileName, volData); err != nil {
+		glog.Error(log("failed to save volume info data: %v", err))
+		if err := os.RemoveAll(dataDir); err != nil {
+			glog.Error(log("failed to remove dir after error [%s]: %v", dataDir, err))
+			return nil, err
+		}
+		return nil, err
+	}
+
+	glog.V(4).Info(log("mounter created successfully"))
+
 	return mounter, nil
 }
 
 func (p *csiPlugin) NewUnmounter(specName string, podUID types.UID) (volume.Unmounter, error) {
 	glog.V(4).Infof(log("setting up unmounter for [name=%v, podUID=%v]", specName, podUID))
+
 	unmounter := &csiMountMgr{
 		plugin:       p,
 		podUID:       podUID,
 		specVolumeID: specName,
 	}
+
+	// load volume info from file
+	dir := unmounter.GetPath()
+	dataDir := path.Dir(dir) // dropoff /mount at end
+	data, err := loadVolumeData(dataDir, volDataFileName)
+	if err != nil {
+		glog.Error(log("unmounter failed to load volume data file [%s]: %v", dir, err))
+		return nil, err
+	}
+	unmounter.driverName = data[volDataKey.driverName]
+	unmounter.volumeID = data[volDataKey.volHandle]
+	unmounter.csiClient = newCsiDriverClient(unmounter.driverName)
+
 	return unmounter, nil
 }
 
@@ -239,15 +268,16 @@ func getCSISourceFromSpec(spec *volume.Spec) (*api.CSIPersistentVolumeSource, er
 	return nil, fmt.Errorf("CSIPersistentVolumeSource not defined in spec")
 }
 
+func getReadOnlyFromSpec(spec *volume.Spec) (bool, error) {
+	if spec.PersistentVolume != nil &&
+		spec.PersistentVolume.Spec.CSI != nil {
+		return spec.ReadOnly, nil
+	}
+
+	return false, fmt.Errorf("CSIPersistentVolumeSource not defined in spec")
+}
+
 // log prepends log string with `kubernetes.io/csi`
 func log(msg string, parts ...interface{}) string {
 	return fmt.Sprintf(fmt.Sprintf("%s: %s", csiPluginName, msg), parts...)
-}
-
-// isDriverNameValid validates the driverName using CSI spec
-func isDriverNameValid(name string) bool {
-	if len(name) == 0 || len(name) > 63 {
-		return false
-	}
-	return driverNameRexp.MatchString(name)
 }

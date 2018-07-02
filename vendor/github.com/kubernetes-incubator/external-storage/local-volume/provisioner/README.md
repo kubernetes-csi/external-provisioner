@@ -28,7 +28,7 @@ make push
 ## Design
 
 There is one provisioner instance on each node in the cluster.  Each instance is
-reponsible for monitoring and managing the local volumes on its node.
+responsible for monitoring and managing the local volumes on its node.
 
 The basic components of the provisioner are as follows:
 
@@ -48,3 +48,22 @@ The basic components of the provisioner are as follows:
 - Controller: The controller runs a sync loop that coordinates the other components.
   The discovery and deleter run serially to simplify synchronization with the cache
   and create/delete operations.
+
+## Prometheus Metrics
+
+The metrics are exported through the Prometheus golang client on the HTTP
+endpoint `/metrics` on the listening port (default 8080).
+
+| Metric name                                                   | Metric type | Labels                                                                                                                                                                             |
+| ----------                                                    | ----------- | -----------                                                                                                                                                                        |
+| local_volume_provisioner_persistentvolume_discovery_total     | Counter     | `mode`=&lt;persistentvolume-mode&gt;                                                                                                                                               |
+| local_volume_provisioner_persistentvolume_discovery_duration_seconds   | Histogram   | `mode`=&lt;persistentvolume-mode&gt;                                                                                                                                               |
+| local_volume_provisioner_persistentvolume_delete_total        | Counter     | `mode`=&lt;persistentvolume-mode&gt; <br> `type`=&lt;process&#124;job&gt;                                                                                                          |
+| local_volume_provisioner_persistentvolume_delete_failed_total | Counter     | `mode`=&lt;persistentvolume-mode&gt; <br> `type`=&lt;process&#124;job&gt;                                                                                                          |
+| local_volume_provisioner_persistentvolume_delete_duration_seconds      | Histogram   | `mode`=&lt;persistentvolume-mode&gt; <br> `type`=&lt;process&#124;job&gt; <br> `capacity`=&lt;volume-capacity-breakdown-by-500G&gt; <br> `cleanup_command`=&lt;cleanup-command&gt; |
+| local_volume_provisioner_apiserver_requests_total             | Counter     | `method`=&lt;request-method&gt;                                                                                                                                                    |
+| local_volume_provisioner_apiserver_requests_failed_total      | Counter     | `method`=&lt;request-method&gt;                                                                                                                                                    |
+| local_volume_provisioner_apiserver_requests_duration_seconds           | Histogram   | `method`=&lt;request-method&gt;                                                                                                                                                    |
+| local_volume_provisioner_proctable_running                    | Gauge       |                                                                                                                                                                                    |
+| local_volume_provisioner_proctable_failed                     | Gauge       |                                                                                                                                                                                    |
+| local_volume_provisioner_proctable_succeeded                  | Gauge       |                                                                                                                                                                                    |
