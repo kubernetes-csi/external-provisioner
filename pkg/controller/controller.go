@@ -452,8 +452,13 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	storageClassName := volume.Spec.StorageClassName
 	if len(storageClassName) != 0 {
 		storageClassObject, exists, err := p.classes.GetByKey(storageClassName)
-		glog.Infof("%+v %+v", exists, err)
-		if err == nil && exists {
+		if err != nil {
+			return fmt.Errorf("error getting storageclass by storageclass name %s: %v", storageClassName, err)
+		} else {
+			if !exists {
+				return fmt.Errorf("storageclass by storageclass name %s does not exist", storageClassName)
+
+			}
 			storageClass, ok := storageClassObject.(*apiv1.StorageClass)
 			if !ok {
 				return fmt.Errorf("error getting storageclass by storageclass name %s", storageClassName)
@@ -594,7 +599,7 @@ func getCredentials(secrectsStore cache.Store, ref *v1.SecretReference) (map[str
 	if err != nil {
 		return nil, fmt.Errorf("error getting secret %s in namespace %s: %v", ref.Name, ref.Namespace, err)
 	} else if !exists {
-		return nil, fmt.Errorf("secret %s in namespace %s is not exists", ref.Name, ref.Namespace)
+		return nil, fmt.Errorf("secret %s in namespace %s does not exists", ref.Name, ref.Namespace)
 	}
 
 	secret, ok := secretObject.(*v1.Secret)

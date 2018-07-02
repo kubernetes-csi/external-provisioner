@@ -227,6 +227,4 @@ func main() {
 			},
 		},
 	})
-
-	panic("unreached")
 }
