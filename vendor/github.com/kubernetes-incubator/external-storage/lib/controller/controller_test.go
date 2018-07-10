@@ -25,7 +25,6 @@ import (
 	"testing"
 	"time"
 
-	rl "github.com/kubernetes-incubator/external-storage/lib/leaderelection/resourcelock"
 	"k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1"
 	storagebeta "k8s.io/api/storage/v1beta1"
@@ -33,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -223,8 +223,11 @@ func TestController(t *testing.T) {
 		stopCh := make(chan struct{})
 		go ctrl.Run(stopCh)
 
+		// When we shutdown while something is happening the fake client panics
+		// with send on closed channel...but the test passed, so ignore
+		utilruntime.ReallyCrash = false
+
 		time.Sleep(2 * resyncPeriod)
-		ctrl.runningOperations.Wait()
 
 		pvList, _ := client.CoreV1().PersistentVolumes().List(metav1.ListOptions{})
 		if !reflect.DeepEqual(test.expectedVolumes, pvList.Items) {
@@ -290,7 +293,7 @@ func TestMultipleControllers(t *testing.T) {
 		}
 
 		for i := 0; i < test.numControllers; i++ {
-			go ctrls[i].addClaim(newClaim("claim-1", "uid-1-1", "class-1", test.provisionerName, "", nil))
+			go ctrls[i].syncClaim(newClaim("claim-1", "uid-1-1", "class-1", test.provisionerName, "", nil))
 		}
 
 		// Sleep for 3 election retry periods
@@ -492,47 +495,89 @@ func TestShouldDelete(t *testing.T) {
 	}
 }
 
-func TestIsOnlyRecordUpdate(t *testing.T) {
+func TestCanProvision(t *testing.T) {
+	const (
+		provisionerName = "foo.bar/baz"
+		blockErrFormat  = "%s does not support block volume provisioning"
+	)
+
 	tests := []struct {
-		name       string
-		old        *v1.PersistentVolumeClaim
-		new        *v1.PersistentVolumeClaim
-		expectedIs bool
+		name             string
+		provisioner      Provisioner
+		claim            *v1.PersistentVolumeClaim
+		serverGitVersion string
+		expectedCan      error
 	}{
+		// volumeMode tests for provisioner w/o BlockProvisoner I/F
 		{
-			name:       "is only record update",
-			old:        newClaim("claim-1", "1-1", "class-1", "", "", map[string]string{rl.LeaderElectionRecordAnnotationKey: "a"}),
-			new:        newClaim("claim-1", "1-1", "class-1", "", "", map[string]string{rl.LeaderElectionRecordAnnotationKey: "b"}),
-			expectedIs: true,
+			name:        "Undefined volumeMode PV request to provisioner w/o BlockProvisoner I/F",
+			provisioner: newTestProvisioner(),
+			claim:       newClaim("claim-1", "1-1", "class-1", provisionerName, "", nil),
+			expectedCan: nil,
 		},
 		{
-			name:       "is seen as only record update, stayed exactly the same",
-			old:        newClaim("claim-1", "1-1", "class-1", "", "", map[string]string{rl.LeaderElectionRecordAnnotationKey: "a"}),
-			new:        newClaim("claim-1", "1-1", "class-1", "", "", map[string]string{rl.LeaderElectionRecordAnnotationKey: "a"}),
-			expectedIs: true,
+			name:        "FileSystem volumeMode PV request to provisioner w/o BlockProvisoner I/F",
+			provisioner: newTestProvisioner(),
+			claim:       newClaimWithVolumeMode("claim-1", "1-1", "class-1", provisionerName, "", nil, v1.PersistentVolumeFilesystem),
+			expectedCan: nil,
 		},
 		{
-			name:       "isn't only record update, class changed as well",
-			old:        newClaim("claim-1", "1-1", "class-1", "", "", map[string]string{rl.LeaderElectionRecordAnnotationKey: "a"}),
-			new:        newClaim("claim-1", "1-1", "class-2", "", "", map[string]string{rl.LeaderElectionRecordAnnotationKey: "b"}),
-			expectedIs: false,
+			name:        "Block volumeMode PV request to provisioner w/o BlockProvisoner I/F",
+			provisioner: newTestProvisioner(),
+			claim:       newClaimWithVolumeMode("claim-1", "1-1", "class-1", provisionerName, "", nil, v1.PersistentVolumeBlock),
+			expectedCan: fmt.Errorf(blockErrFormat, provisionerName),
+		},
+		// volumeMode tests for BlockProvisioner that returns false
+		{
+			name:        "Undefined volumeMode PV request to BlockProvisoner that returns false",
+			provisioner: newTestBlockProvisioner(false),
+			claim:       newClaim("claim-1", "1-1", "class-1", provisionerName, "", nil),
+			expectedCan: nil,
 		},
 		{
-			name:       "isn't only record update, only class changed",
-			old:        newClaim("claim-1", "1-1", "class-1", "", "", map[string]string{rl.LeaderElectionRecordAnnotationKey: "a"}),
-			new:        newClaim("claim-1", "1-1", "class-2", "", "", map[string]string{rl.LeaderElectionRecordAnnotationKey: "a"}),
-			expectedIs: false,
+			name:        "FileSystem volumeMode PV request to BlockProvisoner that returns false",
+			provisioner: newTestBlockProvisioner(false),
+			claim:       newClaimWithVolumeMode("claim-1", "1-1", "class-1", provisionerName, "", nil, v1.PersistentVolumeFilesystem),
+			expectedCan: nil,
+		},
+		{
+			name:        "Block volumeMode PV request to BlockProvisoner that returns false",
+			provisioner: newTestBlockProvisioner(false),
+			claim:       newClaimWithVolumeMode("claim-1", "1-1", "class-1", provisionerName, "", nil, v1.PersistentVolumeBlock),
+			expectedCan: fmt.Errorf(blockErrFormat, provisionerName),
+		},
+		// volumeMode tests for BlockProvisioner that returns true
+		{
+			name:        "Undefined volumeMode PV request to BlockProvisoner that returns true",
+			provisioner: newTestBlockProvisioner(true),
+			claim:       newClaim("claim-1", "1-1", "class-1", provisionerName, "", nil),
+			expectedCan: nil,
+		},
+		{
+			name:        "FileSystem volumeMode PV request to BlockProvisoner that returns true",
+			provisioner: newTestBlockProvisioner(true),
+			claim:       newClaimWithVolumeMode("claim-1", "1-1", "class-1", provisionerName, "", nil, v1.PersistentVolumeFilesystem),
+			expectedCan: nil,
+		},
+		{
+			name:        "Block volumeMode PV request to BlockProvisioner that returns true",
+			provisioner: newTestBlockProvisioner(true),
+			claim:       newClaimWithVolumeMode("claim-1", "1-1", "class-1", provisionerName, "", nil, v1.PersistentVolumeBlock),
+			expectedCan: nil,
 		},
 	}
 	for _, test := range tests {
-		client := fake.NewSimpleClientset()
-		provisioner := newTestProvisioner()
-		ctrl := newTestProvisionController(client, "foo.bar/baz", provisioner, "v1.5.0")
+		client := fake.NewSimpleClientset(test.claim)
+		serverVersion := defaultServerVersion
+		if test.serverGitVersion != "" {
+			serverVersion = test.serverGitVersion
+		}
+		ctrl := newTestProvisionController(client, provisionerName, test.provisioner, serverVersion)
 
-		is, _ := ctrl.isOnlyRecordUpdate(test.old, test.new)
-		if test.expectedIs != is {
+		can := ctrl.canProvision(test.claim)
+		if !reflect.DeepEqual(test.expectedCan, can) {
 			t.Logf("test case: %s", test.name)
-			t.Errorf("expected is only record update %v but got %v\n", test.expectedIs, is)
+			t.Errorf("expected can provision %v but got %v\n", test.expectedCan, can)
 		}
 	}
 }
@@ -593,9 +638,12 @@ func TestControllerSharedInformers(t *testing.T) {
 		go ctrl.Run(stopCh)
 		go informersFactory.Start(stopCh)
 
+		// When we shutdown while something is happening the fake client panics
+		// with send on closed channel...but the test passed, so ignore
+		utilruntime.ReallyCrash = false
+
 		informersFactory.WaitForCacheSync(stopCh)
 		time.Sleep(2 * sharedResyncPeriod)
-		ctrl.runningOperations.Wait()
 
 		pvList, _ := client.Core().PersistentVolumes().List(metav1.ListOptions{})
 		if (len(test.expectedVolumes) > 0 || len(pvList.Items) > 0) &&
@@ -619,7 +667,6 @@ func newTestProvisionController(
 		provisioner,
 		serverGitVersion,
 		ResyncPeriod(resyncPeriod),
-		ExponentialBackOffOnError(false),
 		CreateProvisionedPVInterval(10*time.Millisecond),
 		LeaseDuration(2*resyncPeriod),
 		RenewDeadline(resyncPeriod),
@@ -652,7 +699,6 @@ func newTestProvisionControllerSharedInformers(
 		provisioner,
 		serverGitVersion,
 		ResyncPeriod(resyncPeriod),
-		ExponentialBackOffOnError(false),
 		CreateProvisionedPVInterval(10*time.Millisecond),
 		LeaseDuration(2*resyncPeriod),
 		RenewDeadline(resyncPeriod),
@@ -722,6 +768,12 @@ func newClaim(name, claimUID, class, provisioner, volumeName string, annotations
 	for k, v := range annotations {
 		claim.Annotations[k] = v
 	}
+	return claim
+}
+
+func newClaimWithVolumeMode(name, claimUID, class, provisioner, volumeName string, annotations map[string]string, volumeMode v1.PersistentVolumeMode) *v1.PersistentVolumeClaim {
+	claim := newClaim(name, claimUID, class, provisioner, volumeName, annotations)
+	claim.Spec.VolumeMode = &volumeMode
 	return claim
 }
 
@@ -824,6 +876,22 @@ var _ Provisioner = &testQualifiedProvisioner{}
 var _ Qualifier = &testQualifiedProvisioner{}
 
 func (p *testQualifiedProvisioner) ShouldProvision(claim *v1.PersistentVolumeClaim) bool {
+	return p.answer
+}
+
+func newTestBlockProvisioner(answer bool) *testBlockProvisioner {
+	return &testBlockProvisioner{newTestProvisioner(), answer}
+}
+
+type testBlockProvisioner struct {
+	*testProvisioner
+	answer bool
+}
+
+var _ Provisioner = &testBlockProvisioner{}
+var _ BlockProvisioner = &testBlockProvisioner{}
+
+func (p *testBlockProvisioner) SupportsBlock() bool {
 	return p.answer
 }
 

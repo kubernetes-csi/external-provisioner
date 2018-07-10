@@ -12,18 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM centos:7
-MAINTAINER bradley childs, bchilds@gmail.com
-RUN yum update -y
-
-# install the shell flex script that the provisioner uses.
-RUN mkdir -p  /opt/storage_drivers
-COPY flex-provision.sh /opt/storage/flex-provision.sh
+FROM launcher.gcr.io/google/debian9
 
 # install the go kube piece of provisioner
 COPY flex-provisioner /opt/storage_drivers/flex-provisioner
 
-
 ENTRYPOINT ["/opt/storage_drivers/flex-provisioner"]
-
-# "github.com/kubernetes-incubator/external-storage/lib/controller"
