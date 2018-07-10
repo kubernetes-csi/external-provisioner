@@ -277,6 +277,44 @@ func makeVolumeName(prefix, pvcUID string, volumeNameUUIDLength int) (string, er
 	return fmt.Sprintf("%s-%s", prefix, strings.Replace(string(pvcUID), "-", "", -1)[0:volumeNameUUIDLength]), nil
 }
 
+func getVolumeCapabilities(pvc *v1.PersistentVolumeClaim) []*csi.VolumeCapability {
+	if len(pvc.Spec.AccessModes) == 0 {
+		return []*csi.VolumeCapability{
+			&csi.VolumeCapability{
+				AccessType: accessType,
+				AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+			},
+		}
+	}
+
+	m := map[v1.PersistentVolumeAccessMode]bool{}
+	for _, mode := range pvc.Spec.AccessModes {
+		m[mode] = true
+	}
+
+	var caps []*csi.VolumeCapability
+
+	if m[v1.ReadWriteMany] {
+		caps = append(caps, &csi.VolumeCapability{
+			AccessType: accessType,
+			AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER},
+		})
+	}
+	if m[v1.ReadWriteOnce] {
+		caps = append(caps, &csi.VolumeCapability{
+			AccessType: accessType,
+			AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+		})
+	}
+	if m[v1.ReadOnlyMany] {
+		caps = append(caps, &csi.VolumeCapability{
+			AccessType: accessType,
+			AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY},
+		})
+	}
+	return caps
+}
+
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
 	if options.PVC.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim Selector is not supported")
@@ -292,20 +330,16 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, err
 	}
 
+	capabilities := getVolumeCapabilities(options.PVC)
+
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 
 	// Create a CSI CreateVolumeRequest and Response
 	req := csi.CreateVolumeRequest{
-
-		Name:       pvName,
-		Parameters: options.Parameters,
-		VolumeCapabilities: []*csi.VolumeCapability{
-			{
-				AccessType: accessType,
-				AccessMode: accessMode,
-			},
-		},
+		Name:               pvName,
+		Parameters:         options.Parameters,
+		VolumeCapabilities: capabilities,
 		CapacityRange: &csi.CapacityRange{
 			RequiredBytes: int64(volSizeBytes),
 		},

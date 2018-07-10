@@ -651,6 +651,101 @@ func TestGetSecretReference(t *testing.T) {
 	}
 }
 
+func createVolumeCapabilities(modes []csi.VolumeCapability_AccessMode) []*csi.VolumeCapability {
+	var res []*csi.VolumeCapability
+	for i, _ := range modes {
+		res = append(res, &csi.VolumeCapability{
+			AccessType: &csi.VolumeCapability_Mount{
+				Mount: &csi.VolumeCapability_MountVolume{},
+			},
+			AccessMode: &modes[i],
+		})
+	}
+	return res
+}
+
+func TestGetVolumeCapabilities(t *testing.T) {
+	tests := []struct {
+		name                 string
+		modes                []v1.PersistentVolumeAccessMode
+		expectedCapabilities []*csi.VolumeCapability
+	}{
+		{
+			name:  "default",
+			modes: []v1.PersistentVolumeAccessMode{},
+			expectedCapabilities: createVolumeCapabilities([]csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+			}),
+		},
+		{
+			name:  "RWX",
+			modes: []v1.PersistentVolumeAccessMode{v1.ReadWriteMany},
+			expectedCapabilities: createVolumeCapabilities([]csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER},
+			}),
+		},
+		{
+			name:  "RWO",
+			modes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+			expectedCapabilities: createVolumeCapabilities([]csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+			}),
+		},
+		{
+			name:  "ROX",
+			modes: []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany},
+			expectedCapabilities: createVolumeCapabilities([]csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY},
+			}),
+		},
+		{
+			name:  "RWX+RWO+ROX",
+			modes: []v1.PersistentVolumeAccessMode{v1.ReadWriteMany, v1.ReadWriteOnce, v1.ReadOnlyMany},
+			expectedCapabilities: createVolumeCapabilities([]csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER},
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY},
+			}),
+		},
+		{
+			name:  "RWX+RWO",
+			modes: []v1.PersistentVolumeAccessMode{v1.ReadWriteMany, v1.ReadWriteOnce},
+			expectedCapabilities: createVolumeCapabilities([]csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER},
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+			}),
+		},
+		{
+			name:  "RWX+ROX",
+			modes: []v1.PersistentVolumeAccessMode{v1.ReadWriteMany, v1.ReadOnlyMany},
+			expectedCapabilities: createVolumeCapabilities([]csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER},
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY},
+			}),
+		},
+		{
+			name:  "RWO+ROX",
+			modes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce, v1.ReadOnlyMany},
+			expectedCapabilities: createVolumeCapabilities([]csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+				csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY},
+			}),
+		},
+	}
+	for _, test := range tests {
+		pvc := &v1.PersistentVolumeClaim{
+			Spec: v1.PersistentVolumeClaimSpec{
+				AccessModes: test.modes,
+			},
+		}
+		cap := getVolumeCapabilities(pvc)
+
+		if !reflect.DeepEqual(cap, test.expectedCapabilities) {
+			t.Errorf("test %s: unexpected VolumeCapability: %+v", test.name, cap)
+		}
+	}
+}
+
 func TestProvision(t *testing.T) {
 	var requestedBytes int64 = 100
 
