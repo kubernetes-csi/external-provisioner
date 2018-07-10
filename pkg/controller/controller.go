@@ -31,6 +31,7 @@ import (
 	"github.com/golang/glog"
 
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
+	"github.com/kubernetes-incubator/external-storage/lib/util"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -89,8 +90,19 @@ var (
 	accessMode = &csi.VolumeCapability_AccessMode{
 		Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 	}
-	accessType = &csi.VolumeCapability_Mount{
+	accessTypeMount = &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{},
+	}
+	accessTypeBlock = &csi.VolumeCapability_Block{
+		Block: &csi.VolumeCapability_BlockVolume{},
+	}
+	volumeCapabilityMountSingle = &csi.VolumeCapability{
+		AccessType: accessTypeMount,
+		AccessMode: accessMode,
+	}
+	volumeCapabilityBlockSingle = &csi.VolumeCapability{
+		AccessType: accessTypeBlock,
+		AccessMode: accessMode,
 	}
 	// Each provisioner have a identify string to distinguish with others. This
 	// identify string will be added in PV annoations under this key.
@@ -295,21 +307,27 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 
+	volumeCapabilities := []*csi.VolumeCapability{
+		volumeCapabilityMountSingle,
+	}
+
+	if util.CheckPersistentVolumeClaimModeBlock(options.PVC) {
+		volumeCapabilities = []*csi.VolumeCapability{
+			volumeCapabilityBlockSingle,
+		}
+	}
+
 	// Create a CSI CreateVolumeRequest and Response
 	req := csi.CreateVolumeRequest{
 
-		Name:       pvName,
-		Parameters: options.Parameters,
-		VolumeCapabilities: []*csi.VolumeCapability{
-			{
-				AccessType: accessType,
-				AccessMode: accessMode,
-			},
-		},
+		Name:               pvName,
+		Parameters:         options.Parameters,
+		VolumeCapabilities: volumeCapabilities,
 		CapacityRange: &csi.CapacityRange{
 			RequiredBytes: int64(volSizeBytes),
 		},
 	}
+
 	rep := &csi.CreateVolumeResponse{}
 
 	// Resolve provision secret credentials.
@@ -411,7 +429,6 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 				CSI: &v1.CSIPersistentVolumeSource{
 					Driver:                     driverName,
 					VolumeHandle:               p.volumeIdToHandle(rep.Volume.Id),
-					FSType:                     fsType,
 					VolumeAttributes:           volumeAttributes,
 					ControllerPublishSecretRef: controllerPublishSecretRef,
 					NodeStageSecretRef:         nodeStageSecretRef,
@@ -419,6 +436,16 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 				},
 			},
 		},
+	}
+
+	// Set VolumeMode to PV if it is passed via PVC spec when Block feature is enabled
+	if options.PVC.Spec.VolumeMode != nil {
+		pv.Spec.VolumeMode = options.PVC.Spec.VolumeMode
+	}
+
+	// Set FSType if PV is not Block Volume
+	if !util.CheckPersistentVolumeClaimModeBlock(options.PVC) {
+		pv.Spec.PersistentVolumeSource.CSI.FSType = fsType
 	}
 
 	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
@@ -464,6 +491,25 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	_, err = p.csiClient.DeleteVolume(ctx, &req)
 
 	return err
+}
+
+func (p *csiProvisioner) SupportsBlock() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
+	defer cancel()
+
+	client := csi.NewControllerClient(p.grpcClient)
+	req := csi.ValidateVolumeCapabilitiesRequest{
+		VolumeCapabilities: []*csi.VolumeCapability{
+			volumeCapabilityBlockSingle,
+		},
+	}
+
+	rsp, err := client.ValidateVolumeCapabilities(ctx, &req)
+	if err != nil {
+		return false
+	}
+
+	return rsp.Supported
 }
 
 //TODO use a unique volume handle from and to Id
