@@ -274,7 +274,14 @@ func makeVolumeName(prefix, pvcUID string, volumeNameUUIDLength int) (string, er
 	if len(pvcUID) == 0 {
 		return "", fmt.Errorf("corrupted PVC object, it is missing UID")
 	}
-	return fmt.Sprintf("%s-%s", prefix, strings.Replace(string(pvcUID), "-", "", -1)[0:volumeNameUUIDLength]), nil
+	if volumeNameUUIDLength == -1 {
+		// Default behavior is to not truncate or remove dashes
+		return fmt.Sprintf("%s-%s", prefix, pvcUID), nil
+	} else {
+		// Else we remove all dashes from UUID and truncate to volumeNameUUIDLength
+		return fmt.Sprintf("%s-%s", prefix, strings.Replace(string(pvcUID), "-", "", -1)[0:volumeNameUUIDLength]), nil
+	}
+
 }
 
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
