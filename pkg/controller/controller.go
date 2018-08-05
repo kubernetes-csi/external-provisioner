@@ -317,6 +317,21 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			RequiredBytes: int64(volSizeBytes),
 		},
 	}
+
+	if options.PVC.Spec.DataSourceRef != nil {
+		snapshotSource := csi.VolumeContentSource_Snapshot{
+			Snapshot: &csi.VolumeContentSource_SnapshotSource{
+				Id: options.PVC.Spec.DataSourceRef.Name,
+			},
+		}
+
+		req.VolumeContentSource = &csi.VolumeContentSource{
+			Type: &snapshotSource,
+		}
+	}
+
+	glog.Infof("CreateVolumeRequest %+v", req)
+
 	rep := &csi.CreateVolumeResponse{}
 
 	// Resolve provision secret credentials.
