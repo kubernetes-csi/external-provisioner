@@ -10,6 +10,7 @@
 package unix
 
 import (
+	"syscall"
 	"unsafe"
 )
 
@@ -53,7 +54,6 @@ func Pipe2(p []int, flags int) (err error) {
 //sys	Fadvise(fd int, offset int64, length int64, advice int) (err error) = SYS_FADVISE64_64
 //sys	Fchown(fd int, uid int, gid int) (err error) = SYS_FCHOWN32
 //sys	Fstat(fd int, stat *Stat_t) (err error) = SYS_FSTAT64
-//sys	Fstatat(dirfd int, path string, stat *Stat_t, flags int) (err error) = SYS_FSTATAT64
 //sys	Ftruncate(fd int, length int64) (err error) = SYS_FTRUNCATE64
 //sysnb	Getegid() (egid int) = SYS_GETEGID32
 //sysnb	Geteuid() (euid int) = SYS_GETEUID32
@@ -156,6 +156,10 @@ func Setrlimit(resource int, rlim *Rlimit) (err error) {
 	return setrlimit(resource, &rl)
 }
 
+// Underlying system call writes to newoffset via pointer.
+// Implemented in assembly to avoid allocation.
+func seek(fd int, offset int64, whence int) (newoffset int64, err syscall.Errno)
+
 func Seek(fd int, offset int64, whence int) (newoffset int64, err error) {
 	newoffset, errno := seek(fd, offset, whence)
 	if errno != 0 {
@@ -200,6 +204,9 @@ const (
 	_RECVMMSG    = 19
 	_SENDMMSG    = 20
 )
+
+func socketcall(call int, a0, a1, a2, a3, a4, a5 uintptr) (n int, err syscall.Errno)
+func rawsocketcall(call int, a0, a1, a2, a3, a4, a5 uintptr) (n int, err syscall.Errno)
 
 func accept(s int, rsa *RawSockaddrAny, addrlen *_Socklen) (fd int, err error) {
 	fd, e := socketcall(_ACCEPT, uintptr(s), uintptr(unsafe.Pointer(rsa)), uintptr(unsafe.Pointer(addrlen)), 0, 0, 0)

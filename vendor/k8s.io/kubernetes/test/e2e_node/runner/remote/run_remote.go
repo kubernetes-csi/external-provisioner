@@ -61,7 +61,7 @@ var buildOnly = flag.Bool("build-only", false, "If true, build e2e_node_test.tar
 var instanceMetadata = flag.String("instance-metadata", "", "key/value metadata for instances separated by '=' or '<', 'k=v' means the key is 'k' and the value is 'v'; 'k<p' means the key is 'k' and the value is extracted from the local path 'p', e.g. k1=v1,k2<p2")
 var gubernator = flag.Bool("gubernator", false, "If true, output Gubernator link to view logs")
 var ginkgoFlags = flag.String("ginkgo-flags", "", "Passed to ginkgo to specify additional flags such as --skip=.")
-var systemSpecName = flag.String("system-spec-name", "", "The name of the system spec used for validating the image in the node conformance test. The specs are at test/e2e_node/system/specs/. If unspecified, the default built-in spec (system.DefaultSpec) will be used.")
+var systemSpecName = flag.String("system-spec-name", "", "The name of the system spec used for validating the image in the node conformance test. The specs are at k8s.io/kubernetes/cmd/kubeadm/app/util/system/specs/. If unspecified, the default built-in spec (system.DefaultSpec) will be used.")
 
 // envs is the type used to collect all node envs. The key is the env name,
 // and the value is the env value
@@ -134,7 +134,7 @@ type ImageConfig struct {
 
 type Accelerator struct {
 	Type  string `json:"type,omitempty"`
-	Count int64  `json:"count, omitempty"`
+	Count int64  `json:"count,omitempty"`
 }
 
 type Resources struct {
@@ -142,19 +142,19 @@ type Resources struct {
 }
 
 type GCEImage struct {
-	Image      string `json:"image, omitempty"`
-	ImageDesc  string `json:"image_description, omitempty"`
+	Image      string `json:"image,omitempty"`
+	ImageDesc  string `json:"image_description,omitempty"`
 	Project    string `json:"project"`
 	Metadata   string `json:"metadata"`
-	ImageRegex string `json:"image_regex, omitempty"`
+	ImageRegex string `json:"image_regex,omitempty"`
 	// Defaults to using only the latest image. Acceptable values are [0, # of images that match the regex).
 	// If the number of existing previous images is lesser than what is desired, the test will use that is available.
-	PreviousImages int `json:"previous_images, omitempty"`
+	PreviousImages int `json:"previous_images,omitempty"`
 
-	Machine   string    `json:"machine, omitempty"`
-	Resources Resources `json:"resources, omitempty"`
+	Machine   string    `json:"machine,omitempty"`
+	Resources Resources `json:"resources,omitempty"`
 	// This test is for benchmark (no limit verification, more result log, node name has format 'machine-image-uuid') if 'Tests' is non-empty.
-	Tests []string `json:"tests, omitempty"`
+	Tests []string `json:"tests,omitempty"`
 }
 
 type internalImageConfig struct {

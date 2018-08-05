@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Copyright 2014 The Kubernetes Authors.
 #
@@ -23,6 +23,7 @@ kube::util::wait_for_url() {
   local prefix=${2:-}
   local wait=${3:-1}
   local times=${4:-30}
+  local maxtime=${5:-1}
 
   which curl >/dev/null || {
     kube::log::usage "curl must be installed"
@@ -32,7 +33,7 @@ kube::util::wait_for_url() {
   local i
   for i in $(seq 1 "$times"); do
     local out
-    if out=$(curl --max-time 1 -gkfs "$url" 2>/dev/null); then
+    if out=$(curl --max-time "$maxtime" -gkfs "$url" 2>/dev/null); then
       kube::log::status "On try ${i}, ${prefix}: ${out}"
       return 0
     fi
@@ -275,9 +276,6 @@ kube::util::group-version-to-pkg-path() {
     meta/v1beta1)
       echo "vendor/k8s.io/apimachinery/pkg/apis/meta/v1beta1"
       ;;
-    unversioned)
-      echo "pkg/api/unversioned"
-      ;;
     *.k8s.io)
       echo "pkg/apis/${group_version%.*k8s.io}"
       ;;
@@ -310,7 +308,7 @@ kube::util::gv-to-swagger-name() {
 # Assumed vars:
 # SWAGGER_API_PATH: Base path for swaggerapi on apiserver. Ex:
 # http://localhost:8080/swaggerapi.
-# SWAGGER_ROOT_DIR: Root dir where we want to to save the fetched spec.
+# SWAGGER_ROOT_DIR: Root dir where we want to save the fetched spec.
 # VERSIONS: Array of group versions to include in swagger spec.
 kube::util::fetch-swagger-spec() {
   for ver in ${VERSIONS}; do
@@ -430,20 +428,27 @@ kube::util::ensure_clean_working_dir() {
 # Ensure that the given godep version is installed and in the path.  Almost
 # nobody should use any version but the default.
 kube::util::ensure_godep_version() {
-  GODEP_VERSION=${1:-"v79"} # this version is known to work
+  GODEP_VERSION=${1:-"v80"} # this version is known to work
 
   if [[ "$(godep version 2>/dev/null)" == *"godep ${GODEP_VERSION}"* ]]; then
     return
   fi
 
   kube::log::status "Installing godep version ${GODEP_VERSION}"
-  go install ./vendor/github.com/tools/godep/
-  GP="$(echo $GOPATH | cut -f1 -d:)"
-  hash -r # force bash to clear PATH cache
-  PATH="${GP}/bin:${PATH}"
+  go install k8s.io/kubernetes/vendor/github.com/tools/godep/
+  if ! which godep >/dev/null 2>&1; then
+    kube::log::error "Can't find godep - is your GOPATH 'bin' in your PATH?"
+    kube::log::error "  GOPATH: ${GOPATH}"
+    kube::log::error "  PATH:   ${PATH}"
+    return 1
+  fi
 
   if [[ "$(godep version 2>/dev/null)" != *"godep ${GODEP_VERSION}"* ]]; then
-    kube::log::error "Expected godep ${GODEP_VERSION}, got $(godep version)"
+    kube::log::error "Wrong godep version - is your GOPATH 'bin' in your PATH?"
+    kube::log::error "  expected: godep ${GODEP_VERSION}"
+    kube::log::error "  got:      $(godep version)"
+    kube::log::error "  GOPATH: ${GOPATH}"
+    kube::log::error "  PATH:   ${PATH}"
     return 1
   fi
 }
@@ -467,23 +472,6 @@ kube::util::ensure_no_staging_repos_in_gopath() {
   if [ "${error}" = "1" ]; then
     exit 1
   fi
-}
-
-# Installs the specified go package at a particular commit.
-kube::util::go_install_from_commit() {
-  local -r pkg=$1
-  local -r commit=$2
-
-  kube::util::ensure-temp-dir
-  mkdir -p "${KUBE_TEMP}/go/src"
-  GOPATH="${KUBE_TEMP}/go" go get -d -u "${pkg}"
-  (
-    cd "${KUBE_TEMP}/go/src/${pkg}"
-    git checkout -q "${commit}"
-    GOPATH="${KUBE_TEMP}/go" go install "${pkg}"
-  )
-  PATH="${KUBE_TEMP}/go/bin:${PATH}"
-  hash -r # force bash to clear PATH cache
 }
 
 # Checks that the GOPATH is simple, i.e. consists only of one directory, not multiple.
@@ -551,7 +539,14 @@ function kube::util::test_openssl_installed {
     if [ "$?" != "0" ]; then
       echo "Failed to run openssl. Please ensure openssl is installed"
       exit 1
+    elif [ "$(openssl version | cut -d\  -f1)" == "LibreSSL" ]; then
+      echo "LibreSSL is not supported. Please ensure openssl points to an OpenSSL binary"
+      if [ "$(uname -s)" == "Darwin" ]; then
+        echo 'On macOS we recommend using homebrew and adding "$(brew --prefix openssl)/bin" to your PATH'
+      fi
+      exit 1
     fi
+
     OPENSSL_BIN=$(command -v openssl)
 }
 
@@ -566,7 +561,7 @@ function kube::util::create_signing_certkey {
     local id=$3
     local purpose=$4
     # Create client ca
-    ${sudo} /bin/bash -e <<EOF
+    ${sudo} /usr/bin/env bash -e <<EOF
     rm -f "${dest_dir}/${id}-ca.crt" "${dest_dir}/${id}-ca.key"
     ${OPENSSL_BIN} req -x509 -sha256 -new -nodes -days 365 -newkey rsa:2048 -keyout "${dest_dir}/${id}-ca.key" -out "${dest_dir}/${id}-ca.crt" -subj "/C=xx/ST=x/L=x/O=x/OU=x/CN=ca/emailAddress=x/"
     echo '{"signing":{"default":{"expiry":"43800h","usages":["signing","key encipherment",${purpose}]}}}' > "${dest_dir}/${id}-ca-config.json"
@@ -588,7 +583,7 @@ function kube::util::create_client_certkey {
         SEP=","
         shift 1
     done
-    ${sudo} /bin/bash -e <<EOF
+    ${sudo} /usr/bin/env bash -e <<EOF
     cd ${dest_dir}
     echo '{"CN":"${cn}","names":[${groups}],"hosts":[""],"key":{"algo":"rsa","size":2048}}' | ${CFSSL_BIN} gencert -ca=${ca}.crt -ca-key=${ca}.key -config=${ca}-config.json - | ${CFSSLJSON_BIN} -bare client-${id}
     mv "client-${id}-key.pem" "client-${id}.key"
@@ -612,7 +607,7 @@ function kube::util::create_serving_certkey {
         SEP=","
         shift 1
     done
-    ${sudo} /bin/bash -e <<EOF
+    ${sudo} /usr/bin/env bash -e <<EOF
     cd ${dest_dir}
     echo '{"CN":"${cn}","hosts":[${hosts}],"key":{"algo":"rsa","size":2048}}' | ${CFSSL_BIN} gencert -ca=${ca}.crt -ca-key=${ca}.key -config=${ca}-config.json - | ${CFSSLJSON_BIN} -bare serving-${id}
     mv "serving-${id}-key.pem" "serving-${id}.key"
@@ -654,7 +649,7 @@ EOF
 
     # flatten the kubeconfig files to make them self contained
     username=$(whoami)
-    ${sudo} /bin/bash -e <<EOF
+    ${sudo} /usr/bin/env bash -e <<EOF
     $(kube::util::find-binary kubectl) --kubeconfig="${dest_dir}/${client_id}.kubeconfig" config view --minify --flatten > "/tmp/${client_id}.kubeconfig"
     mv -f "/tmp/${client_id}.kubeconfig" "${dest_dir}/${client_id}.kubeconfig"
     chown ${username} "${dest_dir}/${client_id}.kubeconfig"
@@ -799,6 +794,8 @@ if [[ -z "${color_start-}" ]]; then
   declare -r color_red="${color_start}0;31m"
   declare -r color_yellow="${color_start}0;33m"
   declare -r color_green="${color_start}0;32m"
+  declare -r color_blue="${color_start}1;34m"
+  declare -r color_cyan="${color_start}1;36m"
   declare -r color_norm="${color_start}0m"
 fi
 

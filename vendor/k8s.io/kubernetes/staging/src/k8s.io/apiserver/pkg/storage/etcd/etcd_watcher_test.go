@@ -17,11 +17,12 @@ limitations under the License.
 package etcd
 
 import (
+	"context"
 	rt "runtime"
 	"testing"
 
+	apitesting "k8s.io/apimachinery/pkg/api/apitesting"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
-	apitesting "k8s.io/apimachinery/pkg/api/testing"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -35,7 +36,6 @@ import (
 	etcdtesting "k8s.io/apiserver/pkg/storage/etcd/testing"
 
 	etcd "github.com/coreos/etcd/client"
-	"golang.org/x/net/context"
 )
 
 var versioner = APIObjectVersioner{}

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	authenticationv1 "k8s.io/api/authentication/v1"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,11 +39,11 @@ import (
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	"k8s.io/kubernetes/pkg/controller"
 	"k8s.io/kubernetes/pkg/controller/volume/attachdetach/cache"
+	"k8s.io/kubernetes/pkg/controller/volume/attachdetach/metrics"
 	"k8s.io/kubernetes/pkg/controller/volume/attachdetach/populator"
 	"k8s.io/kubernetes/pkg/controller/volume/attachdetach/reconciler"
 	"k8s.io/kubernetes/pkg/controller/volume/attachdetach/statusupdater"
 	"k8s.io/kubernetes/pkg/controller/volume/attachdetach/util"
-	"k8s.io/kubernetes/pkg/util/io"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
@@ -135,7 +136,7 @@ func NewAttachDetachController(
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
-	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
+	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "attachdetach-controller"})
 	blkutil := volumepathhandler.NewBlockVolumePathHandler()
 
@@ -272,6 +273,7 @@ func (adc *attachDetachController) Run(stopCh <-chan struct{}) {
 	}
 	go adc.reconciler.Run(stopCh)
 	go adc.desiredStateOfWorldPopulator.Run(stopCh)
+	metrics.Register(adc.pvcLister, adc.pvLister, adc.podLister, &adc.volumePluginMgr)
 
 	<-stopCh
 }
@@ -502,7 +504,7 @@ func (adc *attachDetachController) processVolumesInUse(
 		err := adc.actualStateOfWorld.SetVolumeMountedByNode(attachedVolume.VolumeName, nodeName, mounted)
 		if err != nil {
 			glog.Warningf(
-				"SetVolumeMountedByNode(%q, %q, %q) returned an error: %v",
+				"SetVolumeMountedByNode(%q, %q, %v) returned an error: %v",
 				attachedVolume.VolumeName, nodeName, mounted, err)
 		}
 	}
@@ -519,6 +521,10 @@ func (adc *attachDetachController) GetPluginDir(podUID string) string {
 }
 
 func (adc *attachDetachController) GetVolumeDevicePluginDir(podUID string) string {
+	return ""
+}
+
+func (adc *attachDetachController) GetPodsDir() string {
 	return ""
 }
 
@@ -554,10 +560,6 @@ func (adc *attachDetachController) GetMounter(pluginName string) mount.Interface
 	return nil
 }
 
-func (adc *attachDetachController) GetWriter() io.Writer {
-	return nil
-}
-
 func (adc *attachDetachController) GetHostName() string {
 	return ""
 }
@@ -579,6 +581,12 @@ func (adc *attachDetachController) GetSecretFunc() func(namespace, name string) 
 func (adc *attachDetachController) GetConfigMapFunc() func(namespace, name string) (*v1.ConfigMap, error) {
 	return func(_, _ string) (*v1.ConfigMap, error) {
 		return nil, fmt.Errorf("GetConfigMap unsupported in attachDetachController")
+	}
+}
+
+func (adc *attachDetachController) GetServiceAccountTokenFunc() func(_, _ string, _ *authenticationv1.TokenRequest) (*authenticationv1.TokenRequest, error) {
+	return func(_, _ string, _ *authenticationv1.TokenRequest) (*authenticationv1.TokenRequest, error) {
+		return nil, fmt.Errorf("GetServiceAccountToken unsupported in attachDetachController")
 	}
 }
 
@@ -606,4 +614,8 @@ func (adc *attachDetachController) GetNodeLabels() (map[string]string, error) {
 
 func (adc *attachDetachController) GetNodeName() types.NodeName {
 	return ""
+}
+
+func (adc *attachDetachController) GetEventRecorder() record.EventRecorder {
+	return adc.recorder
 }

@@ -14,8 +14,8 @@ go_test(
     ],
     deps = [
         "//pkg/api/legacyscheme:go_default_library",
-        "//vendor/k8s.io/api/core/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
+        "//staging/src/k8s.io/api/core/v1:go_default_library",
+        "//staging/src/k8s.io/apimachinery/pkg/runtime:go_default_library",
     ],
 )
 
@@ -28,12 +28,14 @@ release_filegroup(
         "configure.sh",
         "master.yaml",
         "node.yaml",
+        "shutdown.sh",
     ],
     visibility = ["//visibility:public"],
 )
 
 pkg_tar(
     name = "gci-trusty-manifests",
+    srcs = glob(["gke-internal-configure-helper.sh"]),
     files = {
         "//cluster/gce/gci/mounter": "gci-mounter",
         "configure-helper.sh": "gci-configure-helper.sh",

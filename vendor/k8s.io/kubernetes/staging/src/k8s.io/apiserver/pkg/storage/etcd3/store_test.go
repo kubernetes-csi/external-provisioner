@@ -18,6 +18,7 @@ package etcd3
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -30,15 +31,15 @@ import (
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/integration"
 	"github.com/coreos/pkg/capnslog"
-	"golang.org/x/net/context"
+	apitesting "k8s.io/apimachinery/pkg/api/apitesting"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	apitesting "k8s.io/apimachinery/pkg/api/testing"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/diff"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/apis/example"
 	examplev1 "k8s.io/apiserver/pkg/apis/example/v1"
@@ -54,8 +55,8 @@ const defaultTestPrefix = "test!"
 
 func init() {
 	metav1.AddToGroupVersion(scheme, metav1.SchemeGroupVersion)
-	example.AddToScheme(scheme)
-	examplev1.AddToScheme(scheme)
+	utilruntime.Must(example.AddToScheme(scheme))
+	utilruntime.Must(examplev1.AddToScheme(scheme))
 
 	capnslog.SetGlobalLogLevel(capnslog.CRITICAL)
 }
@@ -1186,6 +1187,10 @@ func testSetup(t *testing.T) (context.Context, *store, *integration.ClusterV3) {
 	cluster := integration.NewClusterV3(t, &integration.ClusterConfig{Size: 1})
 	store := newStore(cluster.RandClient(), false, true, codec, "", prefixTransformer{prefix: []byte(defaultTestPrefix)})
 	ctx := context.Background()
+	// As 30s is the default timeout for testing in glboal configuration,
+	// we cannot wait longer than that in a single time: change it to 10
+	// for testing purposes. See apimachinery/pkg/util/wait/wait.go
+	store.leaseManager.setLeaseReuseDurationSeconds(1)
 	return ctx, store, cluster
 }
 

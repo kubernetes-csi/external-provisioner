@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	uexec "k8s.io/utils/exec"
 )
 
 type KubeletOpt string
@@ -41,6 +42,41 @@ const (
 // PodExec wraps RunKubectl to execute a bash cmd in target pod
 func PodExec(pod *v1.Pod, bashExec string) (string, error) {
 	return framework.RunKubectl("exec", fmt.Sprintf("--namespace=%s", pod.Namespace), pod.Name, "--", "/bin/sh", "-c", bashExec)
+}
+
+// VerifyExecInPodSucceed verifies bash cmd in target pod succeed
+func VerifyExecInPodSucceed(pod *v1.Pod, bashExec string) {
+	_, err := PodExec(pod, bashExec)
+	if err != nil {
+		if err, ok := err.(uexec.CodeExitError); ok {
+			exitCode := err.ExitStatus()
+			Expect(err).NotTo(HaveOccurred(),
+				"%q should succeed, but failed with exit code %d and error message %q",
+				bashExec, exitCode, err)
+		} else {
+			Expect(err).NotTo(HaveOccurred(),
+				"%q should succeed, but failed with error message %q",
+				bashExec, err)
+		}
+	}
+}
+
+// VerifyExecInPodFail verifies bash cmd in target pod fail with certain exit code
+func VerifyExecInPodFail(pod *v1.Pod, bashExec string, exitCode int) {
+	_, err := PodExec(pod, bashExec)
+	if err != nil {
+		if err, ok := err.(uexec.CodeExitError); ok {
+			actualExitCode := err.ExitStatus()
+			Expect(actualExitCode).To(Equal(exitCode),
+				"%q should fail with exit code %d, but failed with exit code %d and error message %q",
+				bashExec, exitCode, actualExitCode, err)
+		} else {
+			Expect(err).NotTo(HaveOccurred(),
+				"%q should fail with exit code %d, but failed with error message %q",
+				bashExec, exitCode, err)
+		}
+	}
+	Expect(err).To(HaveOccurred(), "%q should fail with exit code %d, but exit without error", bashExec, exitCode)
 }
 
 // KubeletCommand performs `start`, `restart`, or `stop` on the kubelet running on the node of the target pod and waits
@@ -162,7 +198,7 @@ func TestVolumeUnmountsFromDeletedPodWithForceOption(c clientset.Interface, f *f
 	nodeIP = nodeIP + ":22"
 
 	By("Expecting the volume mount to be found.")
-	result, err := framework.SSH(fmt.Sprintf("mount | grep %s | grep --invert-match volume-subpaths", clientPod.UID), nodeIP, framework.TestContext.Provider)
+	result, err := framework.SSH(fmt.Sprintf("mount | grep %s | grep -v volume-subpaths", clientPod.UID), nodeIP, framework.TestContext.Provider)
 	framework.LogSSHResult(result)
 	Expect(err).NotTo(HaveOccurred(), "Encountered SSH error.")
 	Expect(result.Code).To(BeZero(), fmt.Sprintf("Expected grep exit code of 0, got %d", result.Code))
@@ -204,7 +240,7 @@ func TestVolumeUnmountsFromDeletedPodWithForceOption(c clientset.Interface, f *f
 	}
 
 	By("Expecting the volume mount not to be found.")
-	result, err = framework.SSH(fmt.Sprintf("mount | grep %s | grep --invert-match volume-subpaths", clientPod.UID), nodeIP, framework.TestContext.Provider)
+	result, err = framework.SSH(fmt.Sprintf("mount | grep %s | grep -v volume-subpaths", clientPod.UID), nodeIP, framework.TestContext.Provider)
 	framework.LogSSHResult(result)
 	Expect(err).NotTo(HaveOccurred(), "Encountered SSH error.")
 	Expect(result.Stdout).To(BeEmpty(), "Expected grep stdout to be empty (i.e. no mount found).")
@@ -222,12 +258,12 @@ func TestVolumeUnmountsFromDeletedPodWithForceOption(c clientset.Interface, f *f
 
 // TestVolumeUnmountsFromDeletedPod tests that a volume unmounts if the client pod was deleted while the kubelet was down.
 func TestVolumeUnmountsFromDeletedPod(c clientset.Interface, f *framework.Framework, clientPod *v1.Pod) {
-	TestVolumeUnmountsFromDeletedPodWithForceOption(c, f, clientPod, false /* forceDelete */, false /* checkSubpath */)
+	TestVolumeUnmountsFromDeletedPodWithForceOption(c, f, clientPod, false, false)
 }
 
 // TestVolumeUnmountsFromFoceDeletedPod tests that a volume unmounts if the client pod was forcefully deleted while the kubelet was down.
 func TestVolumeUnmountsFromForceDeletedPod(c clientset.Interface, f *framework.Framework, clientPod *v1.Pod) {
-	TestVolumeUnmountsFromDeletedPodWithForceOption(c, f, clientPod, true /* forceDelete */, false /* checkSubpath */)
+	TestVolumeUnmountsFromDeletedPodWithForceOption(c, f, clientPod, true, false)
 }
 
 // RunInPodWithVolume runs a command in a pod with given claim mounted to /mnt directory.
