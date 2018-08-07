@@ -32,6 +32,8 @@ import (
 
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 
+	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
+
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -69,6 +71,8 @@ const (
 	backoffSteps    = 10
 
 	defaultFSType = "ext4"
+
+	snapshotKind = "VolumeSnapshot"
 )
 
 // CSIProvisioner struct
@@ -76,6 +80,7 @@ type csiProvisioner struct {
 	client               kubernetes.Interface
 	csiClient            csi.ControllerClient
 	grpcClient           *grpc.ClientConn
+	snapshotClient       snapclientset.Interface
 	timeout              time.Duration
 	identity             string
 	volumeNamePrefix     string
@@ -220,13 +225,15 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	identity string,
 	volumeNamePrefix string,
 	volumeNameUUIDLength int,
-	grpcClient *grpc.ClientConn) controller.Provisioner {
+	grpcClient *grpc.ClientConn,
+	snapshotClient snapclientset.Interface) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
 		client:               client,
 		grpcClient:           grpcClient,
 		csiClient:            csiClient,
+		snapshotClient:       snapshotClient,
 		timeout:              connectionTimeout,
 		identity:             identity,
 		volumeNamePrefix:     volumeNamePrefix,
@@ -319,11 +326,32 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	}
 
 	if options.PVC.Spec.DataSourceRef != nil {
+		// PVC.Spec.DataSourceRef.Name is the name of the
+		// VolumeSnapshot API object
+		if options.PVC.Spec.DataSourceRef.Name == "" {
+			return nil, fmt.Errorf("The PVC source not found for PVC %s", pvName)
+		}
+		if options.PVC.Spec.DataSourceRef.Kind != snapshotKind {
+			return nil, fmt.Errorf("The PVC source is not the right type. Expected %s, Got %s", snapshotKind, options.PVC.Spec.DataSourceRef.Kind)
+		}
+		snapshotObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshots(options.PVC.Namespace).Get(options.PVC.Spec.DataSourceRef.Name, metav1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("error get snapshot %s from api server: %v", options.PVC.Spec.DataSourceRef.Name, err)
+		}
+		glog.Infof("VolumeSnapshot %+v", snapshotObj)
+
+		snapContentObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshotContents().Get(snapshotObj.Spec.SnapshotContentName, metav1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("error get snapshot:snapshotcontent %s:%s from api server: %v", snapshotObj.Name, snapshotObj.Spec.SnapshotContentName, err)
+		}
+		glog.Infof("VolumeSnapshotContent %+v", snapContentObj)
+
 		snapshotSource := csi.VolumeContentSource_Snapshot{
 			Snapshot: &csi.VolumeContentSource_SnapshotSource{
-				Id: options.PVC.Spec.DataSourceRef.Name,
+				Id: snapContentObj.Spec.VolumeSnapshotSource.CSI.SnapshotHandle,
 			},
 		}
+		glog.Infof("VolumeContentSource_Snapshot %+v", snapshotSource)
 
 		req.VolumeContentSource = &csi.VolumeContentSource{
 			Type: &snapshotSource,
