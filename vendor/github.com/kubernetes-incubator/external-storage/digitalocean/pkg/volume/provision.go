@@ -17,9 +17,10 @@ limitations under the License.
 package volume
 
 import (
+	"context"
 	"fmt"
+
 	"github.com/digitalocean/godo"
-	"github.com/digitalocean/godo/context"
 	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 	"github.com/kubernetes-incubator/external-storage/lib/util"
@@ -110,7 +111,7 @@ func (p *digitaloceanProvisioner) Provision(options controller.VolumeOptions) (*
 			},
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 
-				FlexVolume: &v1.FlexVolumeSource{
+				FlexVolume: &v1.FlexPersistentVolumeSource{
 					Driver:   fmt.Sprintf("%s/%s", flexvolumeVendor, flexvolumeDriver),
 					Options:  map[string]string{},
 					ReadOnly: false,

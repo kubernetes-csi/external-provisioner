@@ -19,6 +19,31 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
+# This file is used by travisci to test PRs.
+# It installs several dependencies on the test machine that are
+# required to run the tests.
+
+function install_helm() {
+    local OS=$(uname | tr A-Z a-z)
+    local VERSION=v2.7.2
+    local ARCH=amd64
+    local HELM_URL=http://storage.googleapis.com/kubernetes-helm/helm-${VERSION}-${OS}-${ARCH}.tar.gz
+    curl -s "$HELM_URL" | sudo tar --strip-components 1 -C /usr/local/bin -zxf - ${OS}-${ARCH}/helm
+}
+
+# Skip duplicate build and test runs through the CI, that occur because we are now running on osx and linux.
+# Skipping these steps saves time and travis-ci resources.
+if [ "$TRAVIS_OS_NAME" = "osx" ]; then
+        if [ "$TEST_SUITE" != "osx" ]; then
+	        exit 0
+        fi
+fi
+if [ "$TRAVIS_OS_NAME" != "osx" ]; then
+        if [ "$TEST_SUITE" = "osx" ]; then
+	        exit 0
+        fi
+fi
+
 # Install glide, golint, cfssl
 curl https://glide.sh/get | sh
 go get -u github.com/golang/lint/golint
@@ -27,7 +52,19 @@ go get -u github.com/alecthomas/gometalinter
 gometalinter --install
 make verify
 
-if [ "$TEST_SUITE" = "nfs" ]; then
+if [ "$TRAVIS_OS_NAME" = "osx" ]; then
+        if [ "$TEST_SUITE" = "osx" ]; then
+                # Presently travis-ci does not support docker on osx.
+                echo '#!/bin/bash' > docker
+                echo 'echo "***docker not currently supported on osx travis-ci, skipping docker commands for osx***"' >> docker
+                chmod u+x docker
+                export PATH=$(pwd):${PATH}
+                make
+                make test
+                install_helm
+                make test-local-volume/helm
+        fi
+elif [ "$TEST_SUITE" = "linux-nfs" ]; then
 	# Install nfs, cfssl
 	sudo apt-get -qq update
 	sudo apt-get install -y nfs-common
@@ -72,7 +109,7 @@ if [ "$TEST_SUITE" = "nfs" ]; then
 	# Build nfs-provisioner and run tests
 	make nfs
 	make test-nfs-all
-elif [ "$TEST_SUITE" = "everything-else" ]; then
+elif [ "$TEST_SUITE" = "linux-everything-else" ]; then
 	pushd ./lib
 	go test ./controller
 	go test ./allocator
@@ -94,8 +131,9 @@ elif [ "$TEST_SUITE" = "everything-else" ]; then
 	make nfs-client
 	make snapshot
 	make test-snapshot
-	make test-openstack/standalone-cinder
-elif [ "$TEST_SUITE" = "local-volume" ]; then
+elif [ "$TEST_SUITE" = "linux-local-volume" ]; then
 	make local-volume/provisioner
 	make test-local-volume/provisioner
+	install_helm
+	make test-local-volume/helm
 fi

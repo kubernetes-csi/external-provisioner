@@ -528,6 +528,13 @@ func createFakePVC(requestBytes int64) *v1.PersistentVolumeClaim {
 	}
 }
 
+// createFakePVCWithVolumeMode returns PVC with VolumeMode
+func createFakePVCWithVolumeMode(requestBytes int64, volumeMode v1.PersistentVolumeMode) *v1.PersistentVolumeClaim {
+	claim := createFakePVC(requestBytes)
+	claim.Spec.VolumeMode = &volumeMode
+	return claim
+}
+
 func TestGetSecretReference(t *testing.T) {
 	testcases := map[string]struct {
 		nameKey      string
@@ -651,13 +658,67 @@ func TestGetSecretReference(t *testing.T) {
 	}
 }
 
+func TestSupportsBlock(t *testing.T) {
+	var (
+		volCapTrue = csi.ValidateVolumeCapabilitiesResponse{
+			Supported: true,
+		}
+		volCapFalse = csi.ValidateVolumeCapabilitiesResponse{
+			Supported: false,
+		}
+		generalError = fmt.Errorf("")
+	)
+
+	testcases := []struct {
+		name                string
+		volCapResp          csi.ValidateVolumeCapabilitiesResponse
+		volCapErr           error
+		expectSupportsBlock bool
+	}{
+		{"ValidateVolumeCapabilities returns (true, nil): expects true", volCapTrue, nil, true},
+		{"ValidateVolumeCapabilities returns (false, nil): expects false", volCapFalse, nil, false},
+		{"ValidateVolumeCapabilities returns (true, error): expects false", volCapTrue, generalError, false}, // This won't happen.
+		{"ValidateVolumeCapabilities returns (false, error): expects false", volCapFalse, generalError, false},
+	}
+
+	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	for _, tc := range testcases {
+		var clientSet kubernetes.Interface
+
+		clientSet = fakeclientset.NewSimpleClientset()
+		csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn)
+
+		controllerServer.EXPECT().ValidateVolumeCapabilities(gomock.Any(), gomock.Any()).Return(&tc.volCapResp, tc.volCapErr).Times(1)
+
+		if csiBlockProvisioner, ok := csiProvisioner.(controller.BlockProvisioner); ok {
+			supportsBlock := csiBlockProvisioner.SupportsBlock()
+			if tc.expectSupportsBlock != supportsBlock {
+				t.Errorf("test %q: Expected %v got %v", tc.name, tc.expectSupportsBlock, supportsBlock)
+			}
+		} else {
+			t.Errorf("test %q: Expected csiProvisioner implements BlockProvisioner interface got %v", tc.name, ok)
+		}
+	}
+}
+
 func TestProvision(t *testing.T) {
-	var requestedBytes int64 = 100
+	var (
+		requestedBytes       int64 = 100
+		volumeModeFileSystem       = v1.PersistentVolumeFilesystem
+		volumeModeBlock            = v1.PersistentVolumeBlock
+	)
 
 	type pvSpec struct {
 		Name          string
 		ReclaimPolicy v1.PersistentVolumeReclaimPolicy
 		AccessModes   []v1.PersistentVolumeAccessMode
+		VolumeMode    *v1.PersistentVolumeMode
 		Capacity      v1.ResourceList
 		CSIPVS        *v1.CSIPersistentVolumeSource
 	}
@@ -766,6 +827,49 @@ func TestProvision(t *testing.T) {
 					NodePublishSecretRef: &v1.SecretReference{
 						Name:      "nodepublishsecret",
 						Namespace: "default",
+					},
+				},
+			},
+		},
+		"provision with volume mode(Filesystem)": {
+			volOpts: controller.VolumeOptions{
+				PVName:     "test-name",
+				PVC:        createFakePVCWithVolumeMode(requestedBytes, volumeModeFileSystem),
+				Parameters: map[string]string{},
+			},
+			expectedPVSpec: &pvSpec{
+				Name: "test-testi",
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				VolumeMode: &volumeModeFileSystem,
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"provision with volume mode(Block)": {
+			volOpts: controller.VolumeOptions{
+				PVName:     "test-name",
+				PVC:        createFakePVCWithVolumeMode(requestedBytes, volumeModeBlock),
+				Parameters: map[string]string{},
+			},
+			expectedPVSpec: &pvSpec{
+				Name: "test-testi",
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				VolumeMode: &volumeModeBlock,
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
 					},
 				},
 			},
@@ -916,6 +1020,10 @@ func TestProvision(t *testing.T) {
 
 			if !reflect.DeepEqual(pv.Spec.AccessModes, tc.expectedPVSpec.AccessModes) {
 				t.Errorf("test %q: expected access modes: %v, got: %v", k, tc.expectedPVSpec.AccessModes, pv.Spec.AccessModes)
+			}
+
+			if !reflect.DeepEqual(pv.Spec.VolumeMode, tc.expectedPVSpec.VolumeMode) {
+				t.Errorf("test %q: expected volumeMode: %v, got: %v", k, tc.expectedPVSpec.VolumeMode, pv.Spec.VolumeMode)
 			}
 
 			if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {

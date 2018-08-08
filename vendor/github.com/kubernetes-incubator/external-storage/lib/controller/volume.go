@@ -47,6 +47,14 @@ type Qualifier interface {
 	ShouldProvision(*v1.PersistentVolumeClaim) bool
 }
 
+// BlockProvisioner is an optional interface implemented by provisioners to determine
+// whether it supports block volume.
+type BlockProvisioner interface {
+	Provisioner
+	// SupportsBlock returns whether provisioner supports block volume.
+	SupportsBlock() bool
+}
+
 // IgnoredError is the value for Delete to return to indicate that the call has
 // been ignored and no action taken. In case multiple provisioners are serving
 // the same storage class, provisioners may ignore PVs they are not responsible
@@ -68,6 +76,10 @@ type VolumeOptions struct {
 	// PV.Name of the appropriate PersistentVolume. Used to generate cloud
 	// volume name.
 	PVName string
+
+	// PV mount options. Not validated - mount of the PVs will simply fail if one is invalid.
+	MountOptions []string
+
 	// PVC is reference to the claim that lead to provisioning of a new PV.
 	// Provisioners *must* create a PV that would be matched by this PVC,
 	// i.e. with required capacity, accessMode, labels matching PVC.Selector and

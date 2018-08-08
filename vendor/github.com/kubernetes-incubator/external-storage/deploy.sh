@@ -25,6 +25,7 @@ docker login -u "${QUAY_USERNAME}" -p "${QUAY_PASSWORD}" quay.io
 provisioners=(
 efs-provisioner
 cephfs-provisioner
+flex-provisioner
 glusterblock-provisioner
 glusterfile-provisioner
 glusterfs-simple-provisioner
@@ -37,7 +38,7 @@ openebs-provisioner
 rbd-provisioner
 )
 
-regex="^($(IFS=\|; echo "${provisioners[*]}"))-(v[0-9]\.[0-9]\.[0-9])$"
+regex="^($(IFS=\|; echo "${provisioners[*]}"))-(v[0-9]+\.[0-9]+\.[0-9]+-k8s1.10)$"
 if [[ "${TRAVIS_TAG}" =~ $regex ]]; then
 	PROVISIONER="${BASH_REMATCH[1]}"
 	export VERSION="${BASH_REMATCH[2]}"
