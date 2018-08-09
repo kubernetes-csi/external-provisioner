@@ -312,8 +312,8 @@
     "storage/v1alpha1",
     "storage/v1beta1"
   ]
-  revision = "7aac3e00a1b32fa476b83078cebaaca606b2fb48"
-  version = "kubernetes-1.10.0-beta.1"
+  revision = "184e700b32b7f1b532b9fce8dd8c1f412d297c4b"
+  version = "kubernetes-1.11.0-beta.0"
 
 [[projects]]
   name = "k8s.io/apimachinery"
@@ -361,8 +361,8 @@
     "third_party/forked/golang/json",
     "third_party/forked/golang/reflect"
   ]
-  revision = "302974c03f7e50f16561ba237db776ab93594ef6"
-  version = "kubernetes-1.10.0"
+  revision = "3492ef8dace114d765f20d9c1a03f306449e5252"
+  version = "kubernetes-1.11.0-beta.0"
 
 [[projects]]
   name = "k8s.io/client-go"
@@ -474,6 +474,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "62fff1f86cb848d9337d9e57112b560d42d2ee9dc0c0a8b8a34fb2f68a4d03b0"
+  inputs-digest = "dc0758a2ae6e88adcbed6417daeae47e5d46a8e084dfae2d9e16f710ac5bfcde"
   solver-name = "gps-cdcl"
   solver-version = 1

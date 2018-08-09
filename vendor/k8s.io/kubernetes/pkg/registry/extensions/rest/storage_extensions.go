@@ -29,24 +29,34 @@ import (
 	replicasetstore "k8s.io/kubernetes/pkg/registry/apps/replicaset/storage"
 	expcontrollerstore "k8s.io/kubernetes/pkg/registry/extensions/controller/storage"
 	ingressstore "k8s.io/kubernetes/pkg/registry/extensions/ingress/storage"
-	pspstore "k8s.io/kubernetes/pkg/registry/extensions/podsecuritypolicy/storage"
 	networkpolicystore "k8s.io/kubernetes/pkg/registry/networking/networkpolicy/storage"
+	pspstore "k8s.io/kubernetes/pkg/registry/policy/podsecuritypolicy/storage"
 )
 
 type RESTStorageProvider struct{}
 
 func (p RESTStorageProvider) NewRESTStorage(apiResourceConfigSource serverstorage.APIResourceConfigSource, restOptionsGetter generic.RESTOptionsGetter) (genericapiserver.APIGroupInfo, bool) {
-	apiGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(extensions.GroupName, legacyscheme.Registry, legacyscheme.Scheme, legacyscheme.ParameterCodec, legacyscheme.Codecs)
+	apiGroupInfo := genericapiserver.NewDefaultAPIGroupInfo(extensions.GroupName, legacyscheme.Scheme, legacyscheme.ParameterCodec, legacyscheme.Codecs)
 	// If you add a version here, be sure to add an entry in `k8s.io/kubernetes/cmd/kube-apiserver/app/aggregator.go with specific priorities.
 	// TODO refactor the plumbing to provide the information in the APIGroupInfo
 
 	if apiResourceConfigSource.VersionEnabled(extensionsapiv1beta1.SchemeGroupVersion) {
 		apiGroupInfo.VersionedResourcesStorageMap[extensionsapiv1beta1.SchemeGroupVersion.Version] = p.v1beta1Storage(apiResourceConfigSource, restOptionsGetter)
-		apiGroupInfo.GroupMeta.GroupVersion = extensionsapiv1beta1.SchemeGroupVersion
 	}
 
 	return apiGroupInfo, true
 }
+
+type RollbackREST struct {
+	*deploymentstore.RollbackREST
+}
+
+// override RollbackREST.ProducesObject
+func (r *RollbackREST) ProducesObject(verb string) interface{} {
+	return extensionsapiv1beta1.DeploymentStatus{}
+}
+
+var _ = rest.StorageMetadata(&RollbackREST{})
 
 func (p RESTStorageProvider) v1beta1Storage(apiResourceConfigSource serverstorage.APIResourceConfigSource, restOptionsGetter generic.RESTOptionsGetter) map[string]rest.Storage {
 	storage := map[string]rest.Storage{}
@@ -66,7 +76,7 @@ func (p RESTStorageProvider) v1beta1Storage(apiResourceConfigSource serverstorag
 	deploymentStorage := deploymentstore.NewStorage(restOptionsGetter)
 	storage["deployments"] = deploymentStorage.Deployment.WithCategories(nil)
 	storage["deployments/status"] = deploymentStorage.Status
-	storage["deployments/rollback"] = deploymentStorage.Rollback
+	storage["deployments/rollback"] = &RollbackREST{deploymentStorage.Rollback}
 	storage["deployments/scale"] = deploymentStorage.Scale
 	// ingresses
 	ingressStorage, ingressStatusStorage := ingressstore.NewREST(restOptionsGetter)
@@ -74,8 +84,8 @@ func (p RESTStorageProvider) v1beta1Storage(apiResourceConfigSource serverstorag
 	storage["ingresses/status"] = ingressStatusStorage
 
 	// podsecuritypolicy
-	podSecurityExtensionsStorage := pspstore.NewREST(restOptionsGetter)
-	storage["podSecurityPolicies"] = podSecurityExtensionsStorage
+	podSecurityPolicyStorage := pspstore.NewREST(restOptionsGetter)
+	storage["podSecurityPolicies"] = podSecurityPolicyStorage
 
 	// replicasets
 	replicaSetStorage := replicasetstore.NewStorage(restOptionsGetter)

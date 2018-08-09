@@ -17,6 +17,7 @@ limitations under the License.
 package etcd
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"reflect"
@@ -26,8 +27,9 @@ import (
 	"time"
 
 	etcd "github.com/coreos/etcd/client"
-	"golang.org/x/net/context"
-	apitesting "k8s.io/apimachinery/pkg/api/testing"
+	"github.com/stretchr/testify/require"
+
+	apitesting "k8s.io/apimachinery/pkg/api/apitesting"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/apimachinery/pkg/fields"
@@ -77,9 +79,9 @@ func testScheme(t *testing.T) (*runtime.Scheme, serializer.CodecFactory) {
 	scheme := runtime.NewScheme()
 	scheme.Log(t)
 	scheme.AddKnownTypes(schema.GroupVersion{Version: runtime.APIVersionInternal}, &storagetesting.TestResource{})
-	example.AddToScheme(scheme)
-	examplev1.AddToScheme(scheme)
-	if err := scheme.AddConversionFuncs(
+	require.NoError(t, example.AddToScheme(scheme))
+	require.NoError(t, examplev1.AddToScheme(scheme))
+	require.NoError(t, scheme.AddConversionFuncs(
 		func(in *storagetesting.TestResource, out *storagetesting.TestResource, s conversion.Scope) error {
 			*out = *in
 			return nil
@@ -88,23 +90,13 @@ func testScheme(t *testing.T) (*runtime.Scheme, serializer.CodecFactory) {
 			*out = *in
 			return nil
 		},
-	); err != nil {
-		panic(err)
-	}
+	))
 	codecs := serializer.NewCodecFactory(scheme)
 	return scheme, codecs
 }
 
 func newEtcdHelper(client etcd.Client, codec runtime.Codec, prefix string) etcdHelper {
 	return *NewEtcdStorage(client, codec, prefix, false, etcdtest.DeserializationCacheSize, prefixTransformer{prefix: "test!"}).(*etcdHelper)
-}
-
-// Returns an encoded version of example.Pod with the given name.
-func getEncodedPod(name string, codec runtime.Codec) string {
-	pod, _ := runtime.Encode(codec, &examplev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-	})
-	return string(pod)
 }
 
 func createObj(t *testing.T, helper etcdHelper, name string, obj, out runtime.Object, ttl uint64) error {

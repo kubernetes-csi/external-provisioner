@@ -23,17 +23,16 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
-	"os"
 
-	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 
+	"github.com/golang/glog"
 	kmsapi "k8s.io/apiserver/pkg/storage/value/encrypt/envelope/v1beta1"
 )
 
 const (
 	kmsAPIVersion = "v1beta1"
-	sockFile      = "/tmp/kms-provider.sock"
+	sockFile      = "@kms-provider.sock"
 	unixProtocol  = "unix"
 )
 
@@ -45,18 +44,14 @@ type base64Plugin struct {
 
 	// Allow users of the plugin to sense requests that were passed to KMS.
 	encryptRequest chan *kmsapi.EncryptRequest
-	decryptRequest chan *kmsapi.DecryptRequest
 }
 
 func NewBase64Plugin() (*base64Plugin, error) {
-	if err := cleanSockFile(); err != nil {
-		return nil, err
-	}
-
 	listener, err := net.Listen(unixProtocol, sockFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen on the unix socket, error: %v", err)
 	}
+	glog.Infof("Listening on %s", sockFile)
 
 	server := grpc.NewServer()
 
@@ -64,7 +59,6 @@ func NewBase64Plugin() (*base64Plugin, error) {
 		grpcServer:     server,
 		listener:       listener,
 		encryptRequest: make(chan *kmsapi.EncryptRequest, 1),
-		decryptRequest: make(chan *kmsapi.DecryptRequest, 1),
 	}
 
 	kmsapi.RegisterKeyManagementServiceServer(server, result)
@@ -75,7 +69,6 @@ func NewBase64Plugin() (*base64Plugin, error) {
 func (s *base64Plugin) cleanUp() {
 	s.grpcServer.Stop()
 	s.listener.Close()
-	cleanSockFile()
 }
 
 var testProviderAPIVersion = kmsAPIVersion
@@ -85,7 +78,8 @@ func (s *base64Plugin) Version(ctx context.Context, request *kmsapi.VersionReque
 }
 
 func (s *base64Plugin) Decrypt(ctx context.Context, request *kmsapi.DecryptRequest) (*kmsapi.DecryptResponse, error) {
-	s.decryptRequest <- request
+	glog.Infof("Received Decrypt Request for DEK: %s", string(request.Cipher))
+
 	buf := make([]byte, base64.StdEncoding.DecodedLen(len(request.Cipher)))
 	n, err := base64.StdEncoding.Decode(buf, request.Cipher)
 	if err != nil {
@@ -96,18 +90,11 @@ func (s *base64Plugin) Decrypt(ctx context.Context, request *kmsapi.DecryptReque
 }
 
 func (s *base64Plugin) Encrypt(ctx context.Context, request *kmsapi.EncryptRequest) (*kmsapi.EncryptResponse, error) {
+	glog.Infof("Received Encrypt Request for DEK: %x", request.Plain)
 	s.encryptRequest <- request
 
 	buf := make([]byte, base64.StdEncoding.EncodedLen(len(request.Plain)))
 	base64.StdEncoding.Encode(buf, request.Plain)
 
 	return &kmsapi.EncryptResponse{Cipher: buf}, nil
-}
-
-func cleanSockFile() error {
-	err := unix.Unlink(sockFile)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to delete the socket file, error: %v", err)
-	}
-	return nil
 }

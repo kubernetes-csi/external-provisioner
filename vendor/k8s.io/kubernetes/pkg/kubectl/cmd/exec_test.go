@@ -29,13 +29,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/rest/fake"
 	"k8s.io/client-go/tools/remotecommand"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	api "k8s.io/kubernetes/pkg/apis/core"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
+	"k8s.io/kubernetes/pkg/kubectl/genericclioptions"
 	"k8s.io/kubernetes/pkg/kubectl/scheme"
 	"k8s.io/kubernetes/pkg/kubectl/util/term"
 )
@@ -131,21 +131,20 @@ func TestPodAndContainer(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
-			ns := legacyscheme.Codecs
+			ns := scheme.Codecs
 
 			tf.Client = &fake.RESTClient{
 				NegotiatedSerializer: ns,
 				Client:               fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) { return nil, nil }),
 			}
-			tf.Namespace = "test"
 			tf.ClientConfigVal = defaultClientConfig()
 
 			cmd := &cobra.Command{}
 			options := test.p
-			options.Err = bytes.NewBuffer([]byte{})
+			options.ErrOut = bytes.NewBuffer([]byte{})
 			err := options.Complete(tf, cmd, test.args, test.argsLenAtDash)
 			if test.expectError && err == nil {
 				t.Errorf("%s: unexpected non-error", test.name)
@@ -173,7 +172,7 @@ func TestExec(t *testing.T) {
 	version := "v1"
 	tests := []struct {
 		name, podPath, execPath string
-		pod                     *api.Pod
+		pod                     *corev1.Pod
 		execErr                 bool
 	}{
 		{
@@ -192,11 +191,11 @@ func TestExec(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
-			codec := legacyscheme.Codecs.LegacyCodec(scheme.Versions...)
-			ns := legacyscheme.Codecs
+			codec := scheme.Codecs.LegacyCodec(scheme.Scheme.PrioritizedVersionsAllGroups()...)
+			ns := scheme.Codecs
 
 			tf.Client = &fake.RESTClient{
 				NegotiatedSerializer: ns,
@@ -206,17 +205,12 @@ func TestExec(t *testing.T) {
 						body := objBody(codec, test.pod)
 						return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: body}, nil
 					default:
-						// Ensures no GET is performed when deleting by name
 						t.Errorf("%s: unexpected request: %s %#v\n%#v", test.name, req.Method, req.URL, req)
 						return nil, fmt.Errorf("unexpected request")
 					}
 				}),
 			}
-			tf.Namespace = "test"
 			tf.ClientConfigVal = defaultClientConfig()
-			bufOut := bytes.NewBuffer([]byte{})
-			bufErr := bytes.NewBuffer([]byte{})
-			bufIn := bytes.NewBuffer([]byte{})
 			ex := &fakeRemoteExecutor{}
 			if test.execErr {
 				ex.execErr = fmt.Errorf("exec error")
@@ -225,9 +219,7 @@ func TestExec(t *testing.T) {
 				StreamOptions: StreamOptions{
 					PodName:       "foo",
 					ContainerName: "bar",
-					In:            bufIn,
-					Out:           bufOut,
-					Err:           bufErr,
+					IOStreams:     genericclioptions.NewTestIOStreamsDiscard(),
 				},
 				Executor: ex,
 			}
@@ -259,35 +251,33 @@ func TestExec(t *testing.T) {
 	}
 }
 
-func execPod() *api.Pod {
-	return &api.Pod{
+func execPod() *corev1.Pod {
+	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "test", ResourceVersion: "10"},
-		Spec: api.PodSpec{
-			RestartPolicy: api.RestartPolicyAlways,
-			DNSPolicy:     api.DNSClusterFirst,
-			Containers: []api.Container{
+		Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyAlways,
+			DNSPolicy:     corev1.DNSClusterFirst,
+			Containers: []corev1.Container{
 				{
 					Name: "bar",
 				},
 			},
 		},
-		Status: api.PodStatus{
-			Phase: api.PodRunning,
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
 		},
 	}
 }
 
 func TestSetupTTY(t *testing.T) {
-	stderr := &bytes.Buffer{}
+	streams, _, _, stderr := genericclioptions.NewTestIOStreams()
 
 	// test 1 - don't attach stdin
 	o := &StreamOptions{
 		// InterruptParent: ,
-		Stdin: false,
-		In:    &bytes.Buffer{},
-		Out:   &bytes.Buffer{},
-		Err:   stderr,
-		TTY:   true,
+		Stdin:     false,
+		IOStreams: streams,
+		TTY:       true,
 	}
 
 	tty := o.setupTTY()
@@ -335,7 +325,7 @@ func TestSetupTTY(t *testing.T) {
 	// test 3 - request a TTY, but stdin is not a terminal
 	o.Stdin = true
 	o.In = &bytes.Buffer{}
-	o.Err = stderr
+	o.ErrOut = stderr
 	o.TTY = true
 
 	tty = o.setupTTY()

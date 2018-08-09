@@ -44,4 +44,5 @@ flycheck_*.el
 
 # ignore build directory
 _output/
+/bin/
 

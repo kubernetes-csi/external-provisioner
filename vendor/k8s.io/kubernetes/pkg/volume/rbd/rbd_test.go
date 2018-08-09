@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -37,6 +38,60 @@ import (
 	"k8s.io/kubernetes/pkg/volume"
 	volumetest "k8s.io/kubernetes/pkg/volume/testing"
 )
+
+const (
+	testVolName    = "vol-1234"
+	testRBDImage   = "volume-a4b47414-a675-47dc-a9cc-c223f13439b0"
+	testRBDPool    = "volumes"
+	testGlobalPath = "plugins/kubernetes.io/rbd/volumeDevices/volumes-image-volume-a4b47414-a675-47dc-a9cc-c223f13439b0"
+)
+
+func TestGetVolumeSpecFromGlobalMapPath(t *testing.T) {
+	// make our test path for fake GlobalMapPath
+	// /tmp symbolized our pluginDir
+	// /tmp/testGlobalPathXXXXX/plugins/kubernetes.io/rbd/volumeDevices/pdVol1
+	tmpVDir, err := utiltesting.MkTmpdir("rbdBlockTest")
+	if err != nil {
+		t.Fatalf("can't make a temp dir: %v", err)
+	}
+	//deferred clean up
+	defer os.RemoveAll(tmpVDir)
+
+	expectedGlobalPath := filepath.Join(tmpVDir, testGlobalPath)
+
+	//Bad Path
+	badspec, err := getVolumeSpecFromGlobalMapPath("", testVolName)
+	if badspec != nil || err == nil {
+		t.Fatalf("Expected not to get spec from GlobalMapPath but did")
+	}
+
+	// Good Path
+	spec, err := getVolumeSpecFromGlobalMapPath(expectedGlobalPath, testVolName)
+	if spec == nil || err != nil {
+		t.Fatalf("Failed to get spec from GlobalMapPath: %v", err)
+	}
+
+	if spec.PersistentVolume.Name != testVolName {
+		t.Errorf("Invalid spec name for GlobalMapPath spec: %s", spec.PersistentVolume.Name)
+	}
+
+	if spec.PersistentVolume.Spec.RBD.RBDPool != testRBDPool {
+		t.Errorf("Invalid RBDPool from GlobalMapPath spec: %s", spec.PersistentVolume.Spec.RBD.RBDPool)
+	}
+
+	if spec.PersistentVolume.Spec.RBD.RBDImage != testRBDImage {
+		t.Errorf("Invalid RBDImage from GlobalMapPath spec: %s", spec.PersistentVolume.Spec.RBD.RBDImage)
+	}
+
+	block := v1.PersistentVolumeBlock
+	specMode := spec.PersistentVolume.Spec.VolumeMode
+	if &specMode == nil {
+		t.Errorf("Invalid volumeMode from GlobalMapPath spec: %v - %v", &specMode, block)
+	}
+	if *specMode != block {
+		t.Errorf("Invalid volumeMode from GlobalMapPath spec: %v - %v", *specMode, block)
+	}
+}
 
 func TestCanSupport(t *testing.T) {
 	tmpDir, err := utiltesting.MkTmpdir("rbd_test")
@@ -328,6 +383,7 @@ func TestPlugin(t *testing.T) {
 					RBDPool:      "pool1",
 					RBDImage:     "image1",
 					FSType:       "ext4",
+					ReadOnly:     true,
 				},
 			},
 		}),
@@ -357,6 +413,7 @@ func TestPlugin(t *testing.T) {
 						FSType:       "ext4",
 					},
 				},
+				AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany},
 			},
 		}, false),
 		root: tmpDir,
@@ -532,6 +589,9 @@ func TestGetDeviceMountPath(t *testing.T) {
 
 // https://github.com/kubernetes/kubernetes/issues/57744
 func TestConstructVolumeSpec(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skipf("TestConstructVolumeSpec is not supported on GOOS=%s", runtime.GOOS)
+	}
 	tmpDir, err := utiltesting.MkTmpdir("rbd_test")
 	if err != nil {
 		t.Fatalf("error creating temp dir: %v", err)

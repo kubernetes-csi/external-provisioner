@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Copyright 2015 The Kubernetes Authors.
 #
@@ -520,14 +520,16 @@ function compute-kube-apiserver-params {
 	if [[ -n "${STORAGE_MEDIA_TYPE:-}" ]]; then
 		params+=" --storage-media-type=${STORAGE_MEDIA_TYPE}"
 	fi
-	if [[ -n "${ETCD_QUORUM_READ:-}" ]]; then
-		params+=" --etcd-quorum-read=${ETCD_QUORUM_READ}"
-	fi
   if [[ -n "${ETCD_COMPACTION_INTERVAL_SEC:-}" ]]; then
     params+=" --etcd-compaction-interval=${ETCD_COMPACTION_INTERVAL_SEC}s"
   fi
 	if [[ -n "${KUBE_APISERVER_REQUEST_TIMEOUT:-}" ]]; then
 		params+=" --min-request-timeout=${KUBE_APISERVER_REQUEST_TIMEOUT}"
+	fi
+	if [[ "${NUM_NODES}" -ge 3000 ]]; then
+		params+=" --max-requests-inflight=3000 --max-mutating-requests-inflight=1000"
+	elif [[ "${NUM_NODES}" -ge 1000 ]]; then
+		params+=" --max-requests-inflight=1500 --max-mutating-requests-inflight=500"
 	fi
 	if [[ -n "${RUNTIME_CONFIG:-}" ]]; then
 		params+=" --runtime-config=${RUNTIME_CONFIG}"

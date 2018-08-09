@@ -31,21 +31,23 @@ import (
 
 	"github.com/spf13/cobra"
 
+	corev1 "k8s.io/api/core/v1"
 	kubeerr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	sptest "k8s.io/apimachinery/pkg/util/strategicpatch/testing"
+	dynamicfakeclient "k8s.io/client-go/dynamic/fake"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/rest/fake"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
+	clienttesting "k8s.io/client-go/testing"
 	"k8s.io/kubernetes/pkg/api/testapi"
-	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/util/openapi"
+	"k8s.io/kubernetes/pkg/kubectl/genericclioptions"
 	"k8s.io/kubernetes/pkg/kubectl/scheme"
 )
 
@@ -65,13 +67,10 @@ var (
 )
 
 func TestApplyExtraArgsFail(t *testing.T) {
-	buf := bytes.NewBuffer([]byte{})
-	errBuf := bytes.NewBuffer([]byte{})
-
 	f := cmdtesting.NewTestFactory()
 	defer f.Cleanup()
 
-	c := NewCmdApply("kubectl", f, buf, errBuf)
+	c := NewCmdApply("kubectl", f, genericclioptions.NewTestIOStreamsDiscard())
 	if validateApplyArgs(c, []string{"rc"}) == nil {
 		t.Fatalf("unexpected non-error")
 	}
@@ -85,6 +84,7 @@ func validateApplyArgs(cmd *cobra.Command, args []string) error {
 }
 
 const (
+	filenameCM                = "../../../test/fixtures/pkg/kubectl/cmd/apply/cm.yaml"
 	filenameRC                = "../../../test/fixtures/pkg/kubectl/cmd/apply/rc.yaml"
 	filenameRCArgs            = "../../../test/fixtures/pkg/kubectl/cmd/apply/rc-args.yaml"
 	filenameRCLastAppliedArgs = "../../../test/fixtures/pkg/kubectl/cmd/apply/rc-lastapplied-args.yaml"
@@ -100,6 +100,21 @@ const (
 	filenameWidgetClientside = "../../../test/fixtures/pkg/kubectl/cmd/apply/widget-clientside.yaml"
 	filenameWidgetServerside = "../../../test/fixtures/pkg/kubectl/cmd/apply/widget-serverside.yaml"
 )
+
+func readConfigMapList(t *testing.T, filename string) []byte {
+	data := readBytesFromFile(t, filename)
+	cmList := corev1.ConfigMapList{}
+	if err := runtime.DecodeInto(testapi.Default.Codec(), data, &cmList); err != nil {
+		t.Fatal(err)
+	}
+
+	cmListBytes, err := runtime.Encode(testapi.Default.Codec(), &cmList)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return cmListBytes
+}
 
 func readBytesFromFile(t *testing.T, filename string) []byte {
 	file, err := os.Open(filename)
@@ -130,9 +145,9 @@ func readReplicationController(t *testing.T, filenameRC string) (string, []byte)
 	return metaAccessor.GetName(), rcBytes
 }
 
-func readReplicationControllerFromFile(t *testing.T, filename string) *api.ReplicationController {
+func readReplicationControllerFromFile(t *testing.T, filename string) *corev1.ReplicationController {
 	data := readBytesFromFile(t, filename)
-	rc := api.ReplicationController{}
+	rc := corev1.ReplicationController{}
 	if err := runtime.DecodeInto(testapi.Default.Codec(), data, &rc); err != nil {
 		t.Fatal(err)
 	}
@@ -149,9 +164,9 @@ func readUnstructuredFromFile(t *testing.T, filename string) *unstructured.Unstr
 	return &unst
 }
 
-func readServiceFromFile(t *testing.T, filename string) *api.Service {
+func readServiceFromFile(t *testing.T, filename string) *corev1.Service {
 	data := readBytesFromFile(t, filename)
-	svc := api.Service{}
+	svc := corev1.Service{}
 	if err := runtime.DecodeInto(testapi.Default.Codec(), data, &svc); err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +189,7 @@ func annotateRuntimeObject(t *testing.T, originalObj, currentObj runtime.Object,
 	originalLabels := originalAccessor.GetLabels()
 	originalLabels["DELETE_ME"] = "DELETE_ME"
 	originalAccessor.SetLabels(originalLabels)
-	original, err := runtime.Encode(testapi.Default.Codec(), originalObj)
+	original, err := runtime.Encode(unstructured.JSONFallbackEncoder{Encoder: testapi.Default.Codec()}, originalObj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,9 +203,9 @@ func annotateRuntimeObject(t *testing.T, originalObj, currentObj runtime.Object,
 	if currentAnnotations == nil {
 		currentAnnotations = make(map[string]string)
 	}
-	currentAnnotations[api.LastAppliedConfigAnnotation] = string(original)
+	currentAnnotations[corev1.LastAppliedConfigAnnotation] = string(original)
 	currentAccessor.SetAnnotations(currentAnnotations)
-	current, err := runtime.Encode(testapi.Default.Codec(), currentObj)
+	current, err := runtime.Encode(unstructured.JSONFallbackEncoder{Encoder: testapi.Default.Codec()}, currentObj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +243,7 @@ func validatePatchApplication(t *testing.T, req *http.Request) {
 	}
 
 	annotationsMap := walkMapPath(t, patchMap, []string{"metadata", "annotations"})
-	if _, ok := annotationsMap[api.LastAppliedConfigAnnotation]; !ok {
+	if _, ok := annotationsMap[corev1.LastAppliedConfigAnnotation]; !ok {
 		t.Fatalf("patch does not contain annotation:\n%s\n", patch)
 	}
 
@@ -249,6 +264,46 @@ func walkMapPath(t *testing.T, start map[string]interface{}, path []string) map[
 	}
 
 	return finish
+}
+
+func TestRunApplyPrintsValidObjectList(t *testing.T) {
+	initTestErrorHandler(t)
+	cmBytes := readConfigMapList(t, filenameCM)
+	pathCM := "/namespaces/test/configmaps"
+
+	tf := cmdtesting.NewTestFactory().WithNamespace("test")
+	defer tf.Cleanup()
+
+	tf.UnstructuredClient = &fake.RESTClient{
+		NegotiatedSerializer: unstructuredSerializer,
+		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+			switch p, m := req.URL.Path, req.Method; {
+			case strings.HasPrefix(p, pathCM) && m != "GET":
+				pod := ioutil.NopCloser(bytes.NewReader(cmBytes))
+				return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: pod}, nil
+			case strings.HasPrefix(p, pathCM) && m != "PATCH":
+				pod := ioutil.NopCloser(bytes.NewReader(cmBytes))
+				return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: pod}, nil
+			default:
+				t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
+				return nil, nil
+			}
+		}),
+	}
+	tf.ClientConfigVal = defaultClientConfig()
+
+	ioStreams, _, buf, _ := genericclioptions.NewTestIOStreams()
+	cmd := NewCmdApply("kubectl", tf, ioStreams)
+	cmd.Flags().Set("filename", filenameCM)
+	cmd.Flags().Set("output", "json")
+	cmd.Flags().Set("dry-run", "true")
+	cmd.Run(cmd, []string{})
+
+	// ensure that returned list can be unmarshaled back into a configmap list
+	cmList := corev1.List{}
+	if err := runtime.DecodeInto(testapi.Default.Codec(), buf.Bytes(), &cmList); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestRunApplyViewLastApplied(t *testing.T) {
@@ -299,7 +354,7 @@ func TestRunApplyViewLastApplied(t *testing.T) {
 			expectedErr:  "error: Unexpected -o output mode: wide, the flag 'output' must be one of yaml|json\nSee 'view-last-applied -h' for help and examples.",
 			expectedOut:  "",
 			selector:     "",
-			args:         []string{"rc", "test-rc"},
+			args:         []string{"replicationcontroller", "test-rc"},
 			respBytes:    rcBytesWithConfig,
 		},
 		{
@@ -309,7 +364,7 @@ func TestRunApplyViewLastApplied(t *testing.T) {
 			expectedErr:  "",
 			expectedOut:  "test: 1234\n",
 			selector:     "name=test-rc",
-			args:         []string{"rc"},
+			args:         []string{"replicationcontroller"},
 			respBytes:    rcBytesWithConfig,
 		},
 		{
@@ -319,7 +374,7 @@ func TestRunApplyViewLastApplied(t *testing.T) {
 			expectedErr:  "error: no last-applied-configuration annotation found on resource: test-rc",
 			expectedOut:  "",
 			selector:     "",
-			args:         []string{"rc", "test-rc"},
+			args:         []string{"replicationcontroller", "test-rc"},
 			respBytes:    rcBytes,
 		},
 		{
@@ -329,16 +384,16 @@ func TestRunApplyViewLastApplied(t *testing.T) {
 			expectedErr:  "Error from server (NotFound): the server could not find the requested resource (get replicationcontrollers no-match)",
 			expectedOut:  "",
 			selector:     "",
-			args:         []string{"rc", "no-match"},
+			args:         []string{"replicationcontroller", "no-match"},
 			respBytes:    nil,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
-			codec := legacyscheme.Codecs.LegacyCodec(scheme.Versions...)
+			codec := scheme.Codecs.LegacyCodec(scheme.Scheme.PrioritizedVersionsAllGroups()...)
 
 			tf.UnstructuredClient = &fake.RESTClient{
 				GroupVersion:         schema.GroupVersion{Version: "v1"},
@@ -352,18 +407,16 @@ func TestRunApplyViewLastApplied(t *testing.T) {
 						bodyRC := ioutil.NopCloser(bytes.NewReader(test.respBytes))
 						return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: bodyRC}, nil
 					case p == "/namespaces/test/replicationcontrollers/no-match" && m == "GET":
-						return &http.Response{StatusCode: 404, Header: defaultHeader(), Body: objBody(codec, &api.Pod{})}, nil
+						return &http.Response{StatusCode: 404, Header: defaultHeader(), Body: objBody(codec, &corev1.Pod{})}, nil
 					case p == "/api/v1/namespaces/test" && m == "GET":
-						return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &api.Namespace{})}, nil
+						return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &corev1.Namespace{})}, nil
 					default:
 						t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
 						return nil, nil
 					}
 				}),
 			}
-			tf.Namespace = "test"
 			tf.ClientConfigVal = defaultClientConfig()
-			buf, errBuf := bytes.NewBuffer([]byte{}), bytes.NewBuffer([]byte{})
 
 			cmdutil.BehaviorOnFatal(func(str string, code int) {
 				if str != test.expectedErr {
@@ -371,7 +424,8 @@ func TestRunApplyViewLastApplied(t *testing.T) {
 				}
 			})
 
-			cmd := NewCmdApplyViewLastApplied(tf, buf, errBuf)
+			ioStreams, _, buf, _ := genericclioptions.NewTestIOStreams()
+			cmd := NewCmdApplyViewLastApplied(tf, ioStreams)
 			if test.filePath != "" {
 				cmd.Flags().Set("filename", test.filePath)
 			}
@@ -395,7 +449,7 @@ func TestApplyObjectWithoutAnnotation(t *testing.T) {
 	nameRC, rcBytes := readReplicationController(t, filenameRC)
 	pathRC := "/namespaces/test/replicationcontrollers/" + nameRC
 
-	tf := cmdtesting.NewTestFactory()
+	tf := cmdtesting.NewTestFactory().WithNamespace("test")
 	defer tf.Cleanup()
 
 	tf.UnstructuredClient = &fake.RESTClient{
@@ -414,12 +468,10 @@ func TestApplyObjectWithoutAnnotation(t *testing.T) {
 			}
 		}),
 	}
-	tf.Namespace = "test"
 	tf.ClientConfigVal = defaultClientConfig()
-	buf := bytes.NewBuffer([]byte{})
-	errBuf := bytes.NewBuffer([]byte{})
 
-	cmd := NewCmdApply("kubectl", tf, buf, errBuf)
+	ioStreams, _, buf, errBuf := genericclioptions.NewTestIOStreams()
+	cmd := NewCmdApply("kubectl", tf, ioStreams)
 	cmd.Flags().Set("filename", filenameRC)
 	cmd.Flags().Set("output", "name")
 	cmd.Run(cmd, []string{})
@@ -442,7 +494,7 @@ func TestApplyObject(t *testing.T) {
 
 	for _, fn := range testingOpenAPISchemaFns {
 		t.Run("test apply when a local object is specified", func(t *testing.T) {
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
 			tf.UnstructuredClient = &fake.RESTClient{
@@ -463,11 +515,10 @@ func TestApplyObject(t *testing.T) {
 				}),
 			}
 			tf.OpenAPISchemaFunc = fn
-			tf.Namespace = "test"
-			buf := bytes.NewBuffer([]byte{})
-			errBuf := bytes.NewBuffer([]byte{})
+			tf.ClientConfigVal = defaultClientConfig()
 
-			cmd := NewCmdApply("kubectl", tf, buf, errBuf)
+			ioStreams, _, buf, errBuf := genericclioptions.NewTestIOStreams()
+			cmd := NewCmdApply("kubectl", tf, ioStreams)
 			cmd.Flags().Set("filename", filenameRC)
 			cmd.Flags().Set("output", "name")
 			cmd.Run(cmd, []string{})
@@ -507,7 +558,7 @@ func TestApplyObjectOutput(t *testing.T) {
 
 	for _, fn := range testingOpenAPISchemaFns {
 		t.Run("test apply returns correct output", func(t *testing.T) {
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
 			tf.UnstructuredClient = &fake.RESTClient{
@@ -528,11 +579,10 @@ func TestApplyObjectOutput(t *testing.T) {
 				}),
 			}
 			tf.OpenAPISchemaFunc = fn
-			tf.Namespace = "test"
-			buf := bytes.NewBuffer([]byte{})
-			errBuf := bytes.NewBuffer([]byte{})
+			tf.ClientConfigVal = defaultClientConfig()
 
-			cmd := NewCmdApply("kubectl", tf, buf, errBuf)
+			ioStreams, _, buf, errBuf := genericclioptions.NewTestIOStreams()
+			cmd := NewCmdApply("kubectl", tf, ioStreams)
 			cmd.Flags().Set("filename", filenameRC)
 			cmd.Flags().Set("output", "yaml")
 			cmd.Run(cmd, []string{})
@@ -560,7 +610,7 @@ func TestApplyRetry(t *testing.T) {
 			firstPatch := true
 			retry := false
 			getCount := 0
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
 			tf.UnstructuredClient = &fake.RESTClient{
@@ -590,11 +640,10 @@ func TestApplyRetry(t *testing.T) {
 				}),
 			}
 			tf.OpenAPISchemaFunc = fn
-			tf.Namespace = "test"
-			buf := bytes.NewBuffer([]byte{})
-			errBuf := bytes.NewBuffer([]byte{})
+			tf.ClientConfigVal = defaultClientConfig()
 
-			cmd := NewCmdApply("kubectl", tf, buf, errBuf)
+			ioStreams, _, buf, errBuf := genericclioptions.NewTestIOStreams()
+			cmd := NewCmdApply("kubectl", tf, ioStreams)
 			cmd.Flags().Set("filename", filenameRC)
 			cmd.Flags().Set("output", "name")
 			cmd.Run(cmd, []string{})
@@ -620,7 +669,7 @@ func TestApplyNonExistObject(t *testing.T) {
 	pathRC := "/namespaces/test/replicationcontrollers"
 	pathNameRC := pathRC + "/" + nameRC
 
-	tf := cmdtesting.NewTestFactory()
+	tf := cmdtesting.NewTestFactory().WithNamespace("test")
 	defer tf.Cleanup()
 
 	tf.UnstructuredClient = &fake.RESTClient{
@@ -640,11 +689,10 @@ func TestApplyNonExistObject(t *testing.T) {
 			}
 		}),
 	}
-	tf.Namespace = "test"
-	buf := bytes.NewBuffer([]byte{})
-	errBuf := bytes.NewBuffer([]byte{})
+	tf.ClientConfigVal = defaultClientConfig()
 
-	cmd := NewCmdApply("kubectl", tf, buf, errBuf)
+	ioStreams, _, buf, _ := genericclioptions.NewTestIOStreams()
+	cmd := NewCmdApply("kubectl", tf, ioStreams)
 	cmd.Flags().Set("filename", filenameRC)
 	cmd.Flags().Set("output", "name")
 	cmd.Run(cmd, []string{})
@@ -666,7 +714,7 @@ func TestApplyEmptyPatch(t *testing.T) {
 
 	var body []byte
 
-	tf := cmdtesting.NewTestFactory()
+	tf := cmdtesting.NewTestFactory().WithNamespace("test")
 	defer tf.Cleanup()
 
 	tf.UnstructuredClient = &fake.RESTClient{
@@ -693,13 +741,11 @@ func TestApplyEmptyPatch(t *testing.T) {
 			}
 		}),
 	}
-	tf.Namespace = "test"
+	tf.ClientConfigVal = defaultClientConfig()
 
 	// 1. apply non exist object
-	buf := bytes.NewBuffer([]byte{})
-	errBuf := bytes.NewBuffer([]byte{})
-
-	cmd := NewCmdApply("kubectl", tf, buf, errBuf)
+	ioStreams, _, buf, _ := genericclioptions.NewTestIOStreams()
+	cmd := NewCmdApply("kubectl", tf, ioStreams)
 	cmd.Flags().Set("filename", filenameRC)
 	cmd.Flags().Set("output", "name")
 	cmd.Run(cmd, []string{})
@@ -713,10 +759,8 @@ func TestApplyEmptyPatch(t *testing.T) {
 	}
 
 	// 2. test apply already exist object, will not send empty patch request
-	buf = bytes.NewBuffer([]byte{})
-	errBuf = bytes.NewBuffer([]byte{})
-
-	cmd = NewCmdApply("kubectl", tf, buf, errBuf)
+	ioStreams, _, buf, _ = genericclioptions.NewTestIOStreams()
+	cmd = NewCmdApply("kubectl", tf, ioStreams)
 	cmd.Flags().Set("filename", filenameRC)
 	cmd.Flags().Set("output", "name")
 	cmd.Run(cmd, []string{})
@@ -743,7 +787,7 @@ func testApplyMultipleObjects(t *testing.T, asList bool) {
 
 	for _, fn := range testingOpenAPISchemaFns {
 		t.Run("test apply on multiple objects", func(t *testing.T) {
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
 			tf.UnstructuredClient = &fake.RESTClient{
@@ -771,11 +815,10 @@ func testApplyMultipleObjects(t *testing.T, asList bool) {
 				}),
 			}
 			tf.OpenAPISchemaFunc = fn
-			tf.Namespace = "test"
-			buf := bytes.NewBuffer([]byte{})
-			errBuf := bytes.NewBuffer([]byte{})
+			tf.ClientConfigVal = defaultClientConfig()
 
-			cmd := NewCmdApply("kubectl", tf, buf, errBuf)
+			ioStreams, _, buf, errBuf := genericclioptions.NewTestIOStreams()
+			cmd := NewCmdApply("kubectl", tf, ioStreams)
 			if asList {
 				cmd.Flags().Set("filename", filenameRCSVC)
 			} else {
@@ -830,7 +873,7 @@ func TestApplyNULLPreservation(t *testing.T) {
 
 	for _, fn := range testingOpenAPISchemaFns {
 		t.Run("test apply preserves NULL fields", func(t *testing.T) {
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
 			tf.UnstructuredClient = &fake.RESTClient{
@@ -851,7 +894,7 @@ func TestApplyNULLPreservation(t *testing.T) {
 							t.Fatal(err)
 						}
 						annotationMap := walkMapPath(t, patchMap, []string{"metadata", "annotations"})
-						if _, ok := annotationMap[api.LastAppliedConfigAnnotation]; !ok {
+						if _, ok := annotationMap[corev1.LastAppliedConfigAnnotation]; !ok {
 							t.Fatalf("patch does not contain annotation:\n%s\n", patch)
 						}
 						strategy := walkMapPath(t, patchMap, []string{"spec", "strategy"})
@@ -872,11 +915,10 @@ func TestApplyNULLPreservation(t *testing.T) {
 				}),
 			}
 			tf.OpenAPISchemaFunc = fn
-			tf.Namespace = "test"
-			buf := bytes.NewBuffer([]byte{})
-			errBuf := bytes.NewBuffer([]byte{})
+			tf.ClientConfigVal = defaultClientConfig()
 
-			cmd := NewCmdApply("kubectl", tf, buf, errBuf)
+			ioStreams, _, buf, errBuf := genericclioptions.NewTestIOStreams()
+			cmd := NewCmdApply("kubectl", tf, ioStreams)
 			cmd.Flags().Set("filename", filenameDeployObjClientside)
 			cmd.Flags().Set("output", "name")
 
@@ -906,7 +948,7 @@ func TestUnstructuredApply(t *testing.T) {
 
 	for _, fn := range testingOpenAPISchemaFns {
 		t.Run("test apply works correctly with unstructured objects", func(t *testing.T) {
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
 			tf.UnstructuredClient = &fake.RESTClient{
@@ -939,11 +981,10 @@ func TestUnstructuredApply(t *testing.T) {
 				}),
 			}
 			tf.OpenAPISchemaFunc = fn
-			tf.Namespace = "test"
-			buf := bytes.NewBuffer([]byte{})
-			errBuf := bytes.NewBuffer([]byte{})
+			tf.ClientConfigVal = defaultClientConfig()
 
-			cmd := NewCmdApply("kubectl", tf, buf, errBuf)
+			ioStreams, _, buf, errBuf := genericclioptions.NewTestIOStreams()
+			cmd := NewCmdApply("kubectl", tf, ioStreams)
 			cmd.Flags().Set("filename", filenameWidgetClientside)
 			cmd.Flags().Set("output", "name")
 			cmd.Run(cmd, []string{})
@@ -967,17 +1008,15 @@ func TestUnstructuredIdempotentApply(t *testing.T) {
 	initTestErrorHandler(t)
 
 	serversideObject := readUnstructuredFromFile(t, filenameWidgetServerside)
-	serversideData, err := runtime.Encode(testapi.Default.Codec(), serversideObject)
+	serversideData, err := runtime.Encode(unstructured.JSONFallbackEncoder{Encoder: testapi.Default.Codec()}, serversideObject)
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := "/namespaces/test/widgets/widget"
 
-	verifiedPatch := false
-
 	for _, fn := range testingOpenAPISchemaFns {
 		t.Run("test repeated apply operations on an unstructured object", func(t *testing.T) {
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
 			tf.UnstructuredClient = &fake.RESTClient{
@@ -991,41 +1030,15 @@ func TestUnstructuredIdempotentApply(t *testing.T) {
 							Header:     defaultHeader(),
 							Body:       body}, nil
 					case p == path && m == "PATCH":
-						// In idempotent updates, kubectl sends a logically empty
-						// request body with the PATCH request.
-						// Should look like this:
-						// Request Body: {"metadata":{"annotations":{}}}
+						// In idempotent updates, kubectl will resolve to an empty patch and not send anything to the server
+						// Thus, if we reach this branch, kubectl is unnecessarily sending a patch.
 
 						patch, err := ioutil.ReadAll(req.Body)
 						if err != nil {
 							t.Fatal(err)
 						}
-
-						contentType := req.Header.Get("Content-Type")
-						if contentType != "application/merge-patch+json" {
-							t.Fatalf("Unexpected Content-Type: %s", contentType)
-						}
-
-						patchMap := map[string]interface{}{}
-						if err := json.Unmarshal(patch, &patchMap); err != nil {
-							t.Fatal(err)
-						}
-						if len(patchMap) != 1 {
-							t.Fatalf("Unexpected Patch. Has more than 1 entry. path: %s", patch)
-						}
-
-						annotationsMap := walkMapPath(t, patchMap, []string{"metadata", "annotations"})
-						if len(annotationsMap) != 0 {
-							t.Fatalf("Unexpected Patch. Found unexpected annotation: %s", patch)
-						}
-
-						verifiedPatch = true
-
-						body := ioutil.NopCloser(bytes.NewReader(serversideData))
-						return &http.Response{
-							StatusCode: 200,
-							Header:     defaultHeader(),
-							Body:       body}, nil
+						t.Fatalf("Unexpected Patch: %s", patch)
+						return nil, nil
 					default:
 						t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
 						return nil, nil
@@ -1033,11 +1046,10 @@ func TestUnstructuredIdempotentApply(t *testing.T) {
 				}),
 			}
 			tf.OpenAPISchemaFunc = fn
-			tf.Namespace = "test"
-			buf := bytes.NewBuffer([]byte{})
-			errBuf := bytes.NewBuffer([]byte{})
+			tf.ClientConfigVal = defaultClientConfig()
 
-			cmd := NewCmdApply("kubectl", tf, buf, errBuf)
+			ioStreams, _, buf, errBuf := genericclioptions.NewTestIOStreams()
+			cmd := NewCmdApply("kubectl", tf, ioStreams)
 			cmd.Flags().Set("filename", filenameWidgetClientside)
 			cmd.Flags().Set("output", "name")
 			cmd.Run(cmd, []string{})
@@ -1048,9 +1060,6 @@ func TestUnstructuredIdempotentApply(t *testing.T) {
 			}
 			if errBuf.String() != "" {
 				t.Fatalf("unexpected error output: %s", errBuf.String())
-			}
-			if !verifiedPatch {
-				t.Fatal("No server-side patch call detected")
 			}
 		})
 	}
@@ -1087,7 +1096,7 @@ func TestRunApplySetLastApplied(t *testing.T) {
 		{
 			name:        "set for the annotation does not exist on the live object",
 			filePath:    filenameRCNoAnnotation,
-			expectedErr: "error: no last-applied-configuration annotation found on resource: no-annotation, to create the annotation, run the command with --create-annotation\nSee 'set-last-applied -h' for help and examples.",
+			expectedErr: "error: no last-applied-configuration annotation found on resource: no-annotation, to create the annotation, run the command with --create-annotation",
 			expectedOut: "",
 			output:      "name",
 		},
@@ -1108,10 +1117,10 @@ func TestRunApplySetLastApplied(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
-			codec := legacyscheme.Codecs.LegacyCodec(scheme.Versions...)
+			codec := scheme.Codecs.LegacyCodec(scheme.Scheme.PrioritizedVersionsAllGroups()...)
 
 			tf.UnstructuredClient = &fake.RESTClient{
 				GroupVersion:         schema.GroupVersion{Version: "v1"},
@@ -1125,22 +1134,20 @@ func TestRunApplySetLastApplied(t *testing.T) {
 						bodyRC := ioutil.NopCloser(bytes.NewReader(noAnnotationRC))
 						return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: bodyRC}, nil
 					case p == noExistPath && m == "GET":
-						return &http.Response{StatusCode: 404, Header: defaultHeader(), Body: objBody(codec, &api.Pod{})}, nil
+						return &http.Response{StatusCode: 404, Header: defaultHeader(), Body: objBody(codec, &corev1.Pod{})}, nil
 					case p == pathRC && m == "PATCH":
 						checkPatchString(t, req)
 						bodyRC := ioutil.NopCloser(bytes.NewReader(currentRC))
 						return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: bodyRC}, nil
 					case p == "/api/v1/namespaces/test" && m == "GET":
-						return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &api.Namespace{})}, nil
+						return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &corev1.Namespace{})}, nil
 					default:
 						t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
 						return nil, nil
 					}
 				}),
 			}
-			tf.Namespace = "test"
 			tf.ClientConfigVal = defaultClientConfig()
-			buf, errBuf := bytes.NewBuffer([]byte{}), bytes.NewBuffer([]byte{})
 
 			cmdutil.BehaviorOnFatal(func(str string, code int) {
 				if str != test.expectedErr {
@@ -1148,7 +1155,8 @@ func TestRunApplySetLastApplied(t *testing.T) {
 				}
 			})
 
-			cmd := NewCmdApplySetLastApplied(tf, buf, errBuf)
+			ioStreams, _, buf, _ := genericclioptions.NewTestIOStreams()
+			cmd := NewCmdApplySetLastApplied(tf, ioStreams)
 			cmd.Flags().Set("filename", test.filePath)
 			cmd.Flags().Set("output", test.output)
 			cmd.Run(cmd, []string{})
@@ -1174,7 +1182,7 @@ func checkPatchString(t *testing.T, req *http.Request) {
 	}
 
 	annotationsMap := walkMapPath(t, patchMap, []string{"metadata", "annotations"})
-	if _, ok := annotationsMap[api.LastAppliedConfigAnnotation]; !ok {
+	if _, ok := annotationsMap[corev1.LastAppliedConfigAnnotation]; !ok {
 		t.Fatalf("patch does not contain annotation:\n%s\n", patch)
 	}
 
@@ -1186,16 +1194,16 @@ func checkPatchString(t *testing.T, req *http.Request) {
 
 func TestForceApply(t *testing.T) {
 	initTestErrorHandler(t)
+	scheme := runtime.NewScheme()
 	nameRC, currentRC := readAndAnnotateReplicationController(t, filenameRC)
 	pathRC := "/namespaces/test/replicationcontrollers/" + nameRC
 	pathRCList := "/namespaces/test/replicationcontrollers"
 	expected := map[string]int{
-		"getOk":       10,
+		"getOk":       6,
 		"getNotFound": 1,
-		"getList":     1,
+		"getList":     0,
 		"patch":       6,
 		"delete":      1,
-		"put":         1,
 		"post":        1,
 	}
 
@@ -1204,9 +1212,10 @@ func TestForceApply(t *testing.T) {
 			deleted := false
 			isScaledDownToZero := false
 			counts := map[string]int{}
-			tf := cmdtesting.NewTestFactory()
+			tf := cmdtesting.NewTestFactory().WithNamespace("test")
 			defer tf.Cleanup()
 
+			tf.ClientConfigVal = defaultClientConfig()
 			tf.UnstructuredClient = &fake.RESTClient{
 				NegotiatedSerializer: unstructuredSerializer,
 				Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
@@ -1220,7 +1229,7 @@ func TestForceApply(t *testing.T) {
 						var bodyRC io.ReadCloser
 						if isScaledDownToZero {
 							rcObj := readReplicationControllerFromFile(t, filenameRC)
-							rcObj.Spec.Replicas = 0
+							rcObj.Spec.Replicas = int32ptr(0)
 							rcBytes, err := runtime.Encode(testapi.Default.Codec(), rcObj)
 							if err != nil {
 								t.Fatal(err)
@@ -1256,10 +1265,6 @@ func TestForceApply(t *testing.T) {
 						}
 						t.Fatalf("unexpected request: %#v after %v tries\n%#v", req.URL, counts["patch"], req)
 						return nil, nil
-					case strings.HasSuffix(p, pathRC) && m == "DELETE":
-						counts["delete"]++
-						deleted = true
-						return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: ioutil.NopCloser(bytes.NewReader([]byte{}))}, nil
 					case strings.HasSuffix(p, pathRC) && m == "PUT":
 						counts["put"]++
 						bodyRC := ioutil.NopCloser(bytes.NewReader(currentRC))
@@ -1277,14 +1282,24 @@ func TestForceApply(t *testing.T) {
 					}
 				}),
 			}
+			fakeDynamicClient := dynamicfakeclient.NewSimpleDynamicClient(scheme)
+			fakeDynamicClient.PrependReactor("delete", "replicationcontrollers", func(action clienttesting.Action) (bool, runtime.Object, error) {
+				if deleteAction, ok := action.(clienttesting.DeleteAction); ok {
+					if deleteAction.GetName() == nameRC {
+						counts["delete"]++
+						deleted = true
+						return true, nil, nil
+					}
+				}
+				return false, nil, nil
+			})
+			tf.FakeDynamicClient = fakeDynamicClient
 			tf.OpenAPISchemaFunc = fn
 			tf.Client = tf.UnstructuredClient
 			tf.ClientConfigVal = &restclient.Config{}
-			tf.Namespace = "test"
-			buf := bytes.NewBuffer([]byte{})
-			errBuf := bytes.NewBuffer([]byte{})
 
-			cmd := NewCmdApply("kubectl", tf, buf, errBuf)
+			ioStreams, _, buf, errBuf := genericclioptions.NewTestIOStreams()
+			cmd := NewCmdApply("kubectl", tf, ioStreams)
 			cmd.Flags().Set("filename", filenameRC)
 			cmd.Flags().Set("output", "name")
 			cmd.Flags().Set("force", "true")

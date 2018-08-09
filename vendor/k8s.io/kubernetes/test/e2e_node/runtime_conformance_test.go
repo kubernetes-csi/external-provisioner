@@ -46,7 +46,12 @@ var _ = framework.KubeDescribe("Container Runtime Conformance Test", func() {
 
 	Describe("container runtime conformance blackbox test", func() {
 		Context("when starting a container that exits", func() {
-			framework.ConformanceIt("it should run with the expected status", func() {
+			/*
+				Release : v1.9
+				Testname: Container Runtime, restart policy
+				Description:  If the restart policy is set to ‘Always’, Pod MUST be started when terminated, If restart policy is ‘OnFailure’, Pod MUST be started only if it is terminated with non-zero exit code. If the restart policy is ‘Never’, Pod MUST never be restarted. All these three test cases MUST verify the restart counts accordingly.
+			*/
+			framework.ConformanceIt("it should run with the expected status [NodeConformance]", func() {
 				restartCountVolumeName := "restart-count"
 				restartCountVolumePath := "/restart-count"
 				testContainer := v1.Container{
@@ -127,7 +132,7 @@ while true; do sleep 1; done
 					By("it should get the expected 'State'")
 					Expect(GetContainerState(status.State)).To(Equal(testCase.State))
 
-					By("it should be possible to delete [Conformance]")
+					By("it should be possible to delete [Conformance][NodeConformance]")
 					Expect(terminateContainer.Delete()).To(Succeed())
 					Eventually(terminateContainer.Present, retryTimeout, pollInterval).Should(BeFalse())
 				}
@@ -142,7 +147,7 @@ while true; do sleep 1; done
 				message   gomegatypes.GomegaMatcher
 			}{
 				{
-					name: "if TerminationMessagePath is set [Conformance]",
+					name: "if TerminationMessagePath is set [Conformance][NodeConformance]",
 					container: v1.Container{
 						Image:   busyboxImage,
 						Command: []string{"/bin/sh", "-c"},
@@ -157,7 +162,7 @@ while true; do sleep 1; done
 				},
 
 				{
-					name: "if TerminationMessagePath is set as non-root user and at a non-default path [Conformance]",
+					name: "if TerminationMessagePath is set as non-root user and at a non-default path [Conformance][NodeConformance]",
 					container: v1.Container{
 						Image:   busyboxImage,
 						Command: []string{"/bin/sh", "-c"},
@@ -172,7 +177,7 @@ while true; do sleep 1; done
 				},
 
 				{
-					name: "from log output if TerminationMessagePolicy FallbackToLogOnError is set [Conformance]",
+					name: "from log output if TerminationMessagePolicy FallbackToLogOnError is set [Conformance][NodeConformance]",
 					container: v1.Container{
 						Image:   busyboxImage,
 						Command: []string{"/bin/sh", "-c"},
@@ -185,7 +190,7 @@ while true; do sleep 1; done
 				},
 
 				{
-					name: "as empty when pod succeeds and TerminationMessagePolicy FallbackToLogOnError is set",
+					name: "as empty when pod succeeds and TerminationMessagePolicy FallbackToLogOnError is set [NodeConformance]",
 					container: v1.Container{
 						Image:   busyboxImage,
 						Command: []string{"/bin/sh", "-c"},
@@ -198,7 +203,7 @@ while true; do sleep 1; done
 				},
 
 				{
-					name: "from file when pod succeeds and TerminationMessagePolicy FallbackToLogOnError is set [Conformance]",
+					name: "from file when pod succeeds and TerminationMessagePolicy FallbackToLogOnError is set [Conformance][NodeConformance]",
 					container: v1.Container{
 						Image:   busyboxImage,
 						Command: []string{"/bin/sh", "-c"},
@@ -313,7 +318,7 @@ while true; do sleep 1; done
 				},
 			} {
 				testCase := testCase
-				It(testCase.description+" [Conformance]", func() {
+				It(testCase.description+" [Conformance][NodeConformance]", func() {
 					name := "image-pull-test"
 					command := []string{"/bin/sh", "-c", "while true; do sleep 1; done"}
 					container := ConformanceContainer{

@@ -29,7 +29,7 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	corev1 "k8s.io/kubernetes/pkg/apis/core/v1"
-	utilpointer "k8s.io/kubernetes/pkg/util/pointer"
+	utilpointer "k8s.io/utils/pointer"
 
 	// enforce that all types are installed
 	_ "k8s.io/kubernetes/pkg/api/testapi"
@@ -1030,20 +1030,6 @@ func TestSetDefaultPodSpecHostNetwork(t *testing.T) {
 	hostPortNum = s2.InitContainers[0].Ports[0].HostPort
 	if hostPortNum != portNum {
 		t.Errorf("Expected container port to be defaulted, was made %d instead of %d", hostPortNum, portNum)
-	}
-}
-
-func TestSetDefaultNodeExternalID(t *testing.T) {
-	name := "node0"
-	n := &v1.Node{}
-	n.Name = name
-	obj2 := roundTrip(t, runtime.Object(n))
-	n2 := obj2.(*v1.Node)
-	if n2.Spec.ExternalID != name {
-		t.Errorf("Expected default External ID: %s, got: %s", name, n2.Spec.ExternalID)
-	}
-	if n2.Spec.ProviderID != "" {
-		t.Errorf("Expected empty default Cloud Provider ID, got: %s", n2.Spec.ProviderID)
 	}
 }
 
