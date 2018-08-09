@@ -14209,9 +14209,9 @@ func schema_k8sio_api_core_v1_PersistentVolumeClaimSpec(ref common.ReferenceCall
 							Format:      "",
 						},
 					},
-					"dataSourceRef": {
+					"dataSource": {
 						SchemaProps: spec.SchemaProps{
-							Description: "If specified, volume will be prepopulated with data from the DataSourceRef.",
+							Description: "If specified, volume will be prepopulated with data from the DataSource.",
 							Ref:         ref("k8s.io/api/core/v1.TypedLocalObjectReference"),
 						},
 					},
@@ -14724,9 +14724,9 @@ func schema_k8sio_api_core_v1_PersistentVolumeSpec(ref common.ReferenceCallback)
 							Ref:         ref("k8s.io/api/core/v1.VolumeNodeAffinity"),
 						},
 					},
-					"dataSourceRef": {
+					"dataSource": {
 						SchemaProps: spec.SchemaProps{
-							Description: "If specified, volume will be prepopulated with data from the DataSourceRef.",
+							Description: "If specified, volume will be prepopulated with data from the DataSource.",
 							Ref:         ref("k8s.io/api/core/v1.TypedLocalObjectReference"),
 						},
 					},
