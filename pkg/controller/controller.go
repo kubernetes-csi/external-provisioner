@@ -325,18 +325,17 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		},
 	}
 
-	if options.PVC.Spec.DataSourceRef != nil {
-		// PVC.Spec.DataSourceRef.Name is the name of the
-		// VolumeSnapshot API object
-		if options.PVC.Spec.DataSourceRef.Name == "" {
+	if options.PVC.Spec.DataSource != nil {
+		// PVC.Spec.DataSource.Name is the name of the VolumeSnapshot API object
+		if options.PVC.Spec.DataSource.Name == "" {
 			return nil, fmt.Errorf("The PVC source not found for PVC %s", pvName)
 		}
-		if options.PVC.Spec.DataSourceRef.Kind != snapshotKind {
-			return nil, fmt.Errorf("The PVC source is not the right type. Expected %s, Got %s", snapshotKind, options.PVC.Spec.DataSourceRef.Kind)
+		if options.PVC.Spec.DataSource.Kind != snapshotKind {
+			return nil, fmt.Errorf("The PVC source is not the right type. Expected %s, Got %s", snapshotKind, options.PVC.Spec.DataSource.Kind)
 		}
-		snapshotObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshots(options.PVC.Namespace).Get(options.PVC.Spec.DataSourceRef.Name, metav1.GetOptions{})
+		snapshotObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshots(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
 		if err != nil {
-			return nil, fmt.Errorf("error get snapshot %s from api server: %v", options.PVC.Spec.DataSourceRef.Name, err)
+			return nil, fmt.Errorf("error get snapshot %s from api server: %v", options.PVC.Spec.DataSource.Name, err)
 		}
 		glog.Infof("VolumeSnapshot %+v", snapshotObj)
 
