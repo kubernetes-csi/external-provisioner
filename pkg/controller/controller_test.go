@@ -27,13 +27,19 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-test/driver"
+	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
+	"github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake"
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 	"google.golang.org/grpc"
 	"k8s.io/api/core/v1"
+	storage "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 const (
@@ -231,6 +237,109 @@ func TestSupportsControllerCreateVolume(t *testing.T) {
 
 		controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), in).Return(out, injectedErr).Times(1)
 		ok, err := supportsControllerCreateVolume(csiConn.conn, timeout)
+		if err != nil && !test.expectError {
+			t.Errorf("test fail with error: %v\n", err)
+		}
+		if err == nil && test.expectResult != ok {
+			t.Errorf("test fail expected result %t but got %t\n", test.expectResult, ok)
+		}
+	}
+}
+
+func TestSupportsControllerCreateSnapshot(t *testing.T) {
+
+	tests := []struct {
+		name         string
+		output       *csi.ControllerGetCapabilitiesResponse
+		injectError  bool
+		expectError  bool
+		expectResult bool
+	}{
+		{
+			name: "controller create snapshot",
+			output: &csi.ControllerGetCapabilitiesResponse{
+				Capabilities: []*csi.ControllerServiceCapability{
+					{
+						Type: &csi.ControllerServiceCapability_Rpc{
+							Rpc: &csi.ControllerServiceCapability_RPC{
+								Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+							},
+						},
+					},
+					{
+						Type: &csi.ControllerServiceCapability_Rpc{
+							Rpc: &csi.ControllerServiceCapability_RPC{
+								Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+							},
+						},
+					},
+				},
+			},
+			expectError:  false,
+			expectResult: true,
+		},
+		{
+			name: "no controller create snapshot",
+			output: &csi.ControllerGetCapabilitiesResponse{
+				Capabilities: []*csi.ControllerServiceCapability{
+					{
+						Type: &csi.ControllerServiceCapability_Rpc{
+							Rpc: &csi.ControllerServiceCapability_RPC{
+								Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+							},
+						},
+					},
+				},
+			},
+			expectError:  false,
+			expectResult: false,
+		},
+		{
+			name:         "gRPC error",
+			output:       nil,
+			injectError:  true,
+			expectError:  true,
+			expectResult: false,
+		},
+		{
+			name: "empty capability",
+			output: &csi.ControllerGetCapabilitiesResponse{
+				Capabilities: []*csi.ControllerServiceCapability{
+					{
+						Type: nil,
+					},
+				},
+			},
+			expectError:  false,
+			expectResult: false,
+		},
+		{
+			name: "no capabilities",
+			output: &csi.ControllerGetCapabilitiesResponse{
+				Capabilities: []*csi.ControllerServiceCapability{},
+			},
+			expectError:  false,
+			expectResult: false,
+		},
+	}
+	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+	for _, test := range tests {
+
+		in := &csi.ControllerGetCapabilitiesRequest{}
+
+		out := test.output
+		var injectedErr error
+		if test.injectError {
+			injectedErr = fmt.Errorf("mock error")
+		}
+
+		controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), in).Return(out, injectedErr).Times(1)
+		ok, err := supportsControllerCreateSnapshot(csiConn.conn, timeout)
 		if err != nil && !test.expectError {
 			t.Errorf("test fail with error: %v\n", err)
 		}
@@ -447,7 +556,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	defer mockController.Finish()
 	defer driver.Stop()
 
-	csiProvisioner := NewCSIProvisioner(nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn)
+	csiProvisioner := NewCSIProvisioner(nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
 
 	// Requested PVC with requestedBytes storage
 	opts := controller.VolumeOptions{
@@ -505,6 +614,42 @@ func provisionMockServerSetupExpectations(identityServer *driver.MockIdentitySer
 			},
 		},
 	}, nil).Times(1)
+	identityServer.EXPECT().GetPluginInfo(gomock.Any(), gomock.Any()).Return(&csi.GetPluginInfoResponse{
+		Name:          "test-driver",
+		VendorVersion: "test-vendor",
+	}, nil).Times(1)
+}
+
+func provisionFromSnapshotMockServerSetupExpectations(identityServer *driver.MockIdentityServer, controllerServer *driver.MockControllerServer) {
+	identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(&csi.GetPluginCapabilitiesResponse{
+		Capabilities: []*csi.PluginCapability{
+			&csi.PluginCapability{
+				Type: &csi.PluginCapability_Service_{
+					Service: &csi.PluginCapability_Service{
+						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
+					},
+				},
+			},
+		},
+	}, nil).Times(1)
+	controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), gomock.Any()).Return(&csi.ControllerGetCapabilitiesResponse{
+		Capabilities: []*csi.ControllerServiceCapability{
+			&csi.ControllerServiceCapability{
+				Type: &csi.ControllerServiceCapability_Rpc{
+					Rpc: &csi.ControllerServiceCapability_RPC{
+						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+					},
+				},
+			},
+			&csi.ControllerServiceCapability{
+				Type: &csi.ControllerServiceCapability_Rpc{
+					Rpc: &csi.ControllerServiceCapability_RPC{
+						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+					},
+				},
+			},
+		},
+	}, nil).Times(2)
 	identityServer.EXPECT().GetPluginInfo(gomock.Any(), gomock.Any()).Return(&csi.GetPluginInfoResponse{
 		Name:          "test-driver",
 		VendorVersion: "test-vendor",
@@ -854,7 +999,7 @@ func TestProvision(t *testing.T) {
 			clientSet = fakeclientset.NewSimpleClientset()
 		}
 
-		csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn)
+		csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -928,6 +1073,316 @@ func TestProvision(t *testing.T) {
 				}
 			}
 
+		}
+	}
+}
+
+// newSnapshot returns a new snapshot object
+func newSnapshot(name, className, boundToContent, snapshotUID, claimName string, ready bool, err *storage.VolumeError, creationTime *metav1.Time, size *resource.Quantity) *crdv1.VolumeSnapshot {
+	snapshot := crdv1.VolumeSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			Namespace:       "default",
+			UID:             types.UID(snapshotUID),
+			ResourceVersion: "1",
+			SelfLink:        "/apis/snapshot.storage.k8s.io/v1alpha1/namespaces/" + "default" + "/volumesnapshots/" + name,
+		},
+		Spec: crdv1.VolumeSnapshotSpec{
+			Source: &crdv1.TypedLocalObjectReference{
+				Name: claimName,
+				Kind: "PersistentVolumeClaim",
+			},
+			VolumeSnapshotClassName: &className,
+			SnapshotContentName:     boundToContent,
+		},
+		Status: crdv1.VolumeSnapshotStatus{
+			CreationTime: creationTime,
+			Ready:        ready,
+			Error:        err,
+			RestoreSize:  size,
+		},
+	}
+
+	return &snapshot
+}
+
+// newContent returns a new content with given attributes
+func newContent(name, className, snapshotHandle, volumeUID, volumeName, boundToSnapshotUID, boundToSnapshotName string, size *resource.Quantity, creationTime *int64) *crdv1.VolumeSnapshotContent {
+	content := crdv1.VolumeSnapshotContent{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			ResourceVersion: "1",
+		},
+		Spec: crdv1.VolumeSnapshotContentSpec{
+			VolumeSnapshotSource: crdv1.VolumeSnapshotSource{
+				CSI: &crdv1.CSIVolumeSnapshotSource{
+					RestoreSize:    size,
+					Driver:         "test-driver",
+					SnapshotHandle: snapshotHandle,
+					CreationTime:   creationTime,
+				},
+			},
+			VolumeSnapshotClassName: &className,
+			PersistentVolumeRef: &v1.ObjectReference{
+				Kind:       "PersistentVolume",
+				APIVersion: "v1",
+				UID:        types.UID(volumeUID),
+				Name:       volumeName,
+			},
+		},
+	}
+	if boundToSnapshotName != "" {
+		content.Spec.VolumeSnapshotRef = &v1.ObjectReference{
+			Kind:       "VolumeSnapshot",
+			APIVersion: "snapshot.storage.k8s.io/v1alpha1",
+			UID:        types.UID(boundToSnapshotUID),
+			Namespace:  "default",
+			Name:       boundToSnapshotName,
+		}
+	}
+
+	return &content
+}
+
+// TestProvisionFromSnapshot tests create volume from snapshot
+func TestProvisionFromSnapshot(t *testing.T) {
+	var requestedBytes int64 = 1000
+	var snapName string = "test-snapshot"
+	var snapClassName string = "test-snapclass"
+	var timeNow = time.Now().UnixNano()
+	var metaTimeNowUnix = &metav1.Time{
+		Time: time.Unix(0, timeNow),
+	}
+
+	type pvSpec struct {
+		Name          string
+		ReclaimPolicy v1.PersistentVolumeReclaimPolicy
+		AccessModes   []v1.PersistentVolumeAccessMode
+		Capacity      v1.ResourceList
+		CSIPVS        *v1.CSIPersistentVolumeSource
+	}
+
+	testcases := map[string]struct {
+		volOpts              controller.VolumeOptions
+		restoredVolSizeSmall bool
+		wrongDataSource      bool
+		expectedPVSpec       *pvSpec
+		expectErr            bool
+	}{
+		"provision with volume snapshot data source": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: "snapshot.storage.k8s.io",
+						},
+					},
+				},
+				Parameters: map[string]string{},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"fail vol size less than snapshot size": {
+			volOpts: controller.VolumeOptions{
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(100, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: "snapshot.storage.k8s.io",
+						},
+					},
+				},
+				Parameters: map[string]string{},
+			},
+			restoredVolSizeSmall: true,
+			expectErr:            true,
+		},
+		"fail empty snapshot name": {
+			volOpts: controller.VolumeOptions{
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     "",
+							Kind:     "VolumeSnapshot",
+							APIGroup: "snapshot.storage.k8s.io",
+						},
+					},
+				},
+				Parameters: map[string]string{},
+			},
+			wrongDataSource: true,
+			expectErr:       true,
+		},
+		"fail unsupported datasource kind": {
+			volOpts: controller.VolumeOptions{
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     "",
+							Kind:     "UnsupportedKind",
+							APIGroup: "snapshot.storage.k8s.io",
+						},
+					},
+				},
+				Parameters: map[string]string{},
+			},
+			wrongDataSource: true,
+			expectErr:       true,
+		},
+		"fail unsupported apigroup": {
+			volOpts: controller.VolumeOptions{
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: "unsupported.group.io",
+						},
+					},
+				},
+				Parameters: map[string]string{},
+			},
+			wrongDataSource: true,
+			expectErr:       true,
+		},
+	}
+
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	for k, tc := range testcases {
+		var clientSet kubernetes.Interface
+		clientSet = fakeclientset.NewSimpleClientset()
+		client := &fake.Clientset{}
+
+		client.AddReactor("get", "volumesnapshots", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+			snap := newSnapshot(snapName, snapClassName, "snapcontent-snapuid", "snapuid", "claim", true, nil, metaTimeNowUnix, resource.NewQuantity(requestedBytes, resource.BinarySI))
+			return true, snap, nil
+		})
+
+		client.AddReactor("get", "volumesnapshotcontents", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+			content := newContent("snapcontent-snapuid", snapClassName, "sid", "pv-uid", "volume", "snapuid", snapName, resource.NewQuantity(requestedBytes, resource.BinarySI), &timeNow)
+			return true, content, nil
+		})
+
+		csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client)
+
+		out := &csi.CreateVolumeResponse{
+			Volume: &csi.Volume{
+				CapacityBytes: requestedBytes,
+				Id:            "test-volume-id",
+			},
+		}
+
+		// Setup mock call expectations.
+		if tc.wrongDataSource == false {
+			provisionFromSnapshotMockServerSetupExpectations(identityServer, controllerServer)
+		}
+		if tc.restoredVolSizeSmall == false && tc.wrongDataSource == false {
+			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+		}
+
+		pv, err := csiProvisioner.Provision(tc.volOpts)
+		if tc.expectErr && err == nil {
+			t.Errorf("test %q: Expected error, got none", k)
+		}
+
+		if !tc.expectErr && err != nil {
+			t.Errorf("test %q: got error: %v", k, err)
+		}
+
+		if tc.expectedPVSpec != nil {
+			if pv.Name != tc.expectedPVSpec.Name {
+				t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
+			}
+
+			if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
+				t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
+			}
+
+			if tc.expectedPVSpec.CSIPVS != nil {
+				if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
+					t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+				}
+			}
 		}
 	}
 }
