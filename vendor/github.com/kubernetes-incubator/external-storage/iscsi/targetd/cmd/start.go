@@ -80,14 +80,13 @@ var startcontrollerCmd = &cobra.Command{
 		iscsiProvisioner := provisioner.NewiscsiProvisioner(url)
 		log.Debugln("iscsi provisioner created")
 
-		pc := controller.NewProvisionController(kubernetesClientSet, viper.GetString("provisioner-name"), iscsiProvisioner, serverVersion.GitVersion)
+		pc := controller.NewProvisionController(kubernetesClientSet, viper.GetString("provisioner-name"), iscsiProvisioner, serverVersion.GitVersion, controller.Threadiness(1))
 		controller.ResyncPeriod(viper.GetDuration("resync-period"))
 		controller.ExponentialBackOffOnError(viper.GetBool("exponential-backoff-on-error"))
 		controller.FailedProvisionThreshold(viper.GetInt("fail-retry-threshold"))
 		controller.FailedDeleteThreshold(viper.GetInt("fail-retry-threshold"))
 		controller.LeaseDuration(viper.GetDuration("lease-period"))
 		controller.RenewDeadline(viper.GetDuration("renew-deadline"))
-		controller.TermLimit(viper.GetDuration("term-limit"))
 		controller.RetryPeriod(viper.GetDuration("retry-period"))
 		log.Debugln("iscsi controller created, running forever...")
 		pc.Run(wait.NeverStop)
@@ -96,7 +95,7 @@ var startcontrollerCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(startcontrollerCmd)
-	startcontrollerCmd.Flags().String("provisioner-name", "iscsi-provisioner", "name of this provisioner, must match what is passed int the storage class annotation")
+	startcontrollerCmd.Flags().String("provisioner-name", "iscsi-targetd", "name of this provisioner, must match what is passed in the storage class annotation")
 	viper.BindPFlag("provisioner-name", startcontrollerCmd.Flags().Lookup("provisioner-name"))
 	startcontrollerCmd.Flags().Duration("resync-period", controller.DefaultResyncPeriod, "how often to poll the master API for updates")
 	viper.BindPFlag("resync-period", startcontrollerCmd.Flags().Lookup("resync-period"))
@@ -110,8 +109,6 @@ func init() {
 	viper.BindPFlag("renew-deadline", startcontrollerCmd.Flags().Lookup("renew-deadline"))
 	startcontrollerCmd.Flags().Duration("retry-period", controller.DefaultRetryPeriod, "RetryPeriod is the duration the LeaderElector clients should wait between tries of actions")
 	viper.BindPFlag("retry-period", startcontrollerCmd.Flags().Lookup("retry-period"))
-	startcontrollerCmd.Flags().Duration("term-limit", controller.DefaultTermLimit, "TermLimit is the maximum duration that a leader may remain the leader to complete the task before it must give up its leadership. 0 for forever or indefinite.")
-	viper.BindPFlag("term-limit", startcontrollerCmd.Flags().Lookup("term-limit"))
 	startcontrollerCmd.Flags().String("targetd-scheme", "http", "scheme of the targetd connection, can be http or https")
 	viper.BindPFlag("targetd-scheme", startcontrollerCmd.Flags().Lookup("targetd-scheme"))
 	startcontrollerCmd.Flags().String("targetd-username", "admin", "username for the targetd connection")

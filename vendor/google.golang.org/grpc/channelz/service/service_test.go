@@ -25,16 +25,25 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc/channelz"
-	pb "google.golang.org/grpc/channelz/grpc_channelz_v1"
+	channelzpb "google.golang.org/grpc/channelz/grpc_channelz_v1"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/internal/channelz"
 )
 
 func init() {
 	channelz.TurnOn()
 }
+
+type protoToSocketOptFunc func([]*channelzpb.SocketOption) *channelz.SocketOptionData
+
+// protoToSocketOpt is used in function socketProtoToStruct to extract socket option
+// data from unmarshaled proto message.
+// It is only defined under linux, non-appengine environment on x86 architecture.
+var protoToSocketOpt protoToSocketOptFunc
 
 // emptyTime is used for detecting unset value of time.Time type.
 // For go1.7 and earlier, ptypes.Timestamp will fill in the loc field of time.Time
@@ -92,11 +101,11 @@ type dummySocket struct {
 	lastMessageReceivedTimestamp     time.Time
 	localFlowControlWindow           int64
 	remoteFlowControlWindow          int64
-	//socket options
-	localAddr  net.Addr
-	remoteAddr net.Addr
-	// Security
-	remoteName string
+	socketOptions                    *channelz.SocketOptionData
+	localAddr                        net.Addr
+	remoteAddr                       net.Addr
+	security                         credentials.ChannelzSecurityValue
+	remoteName                       string
 }
 
 func (d *dummySocket) ChannelzMetric() *channelz.SocketInternalMetric {
@@ -113,29 +122,29 @@ func (d *dummySocket) ChannelzMetric() *channelz.SocketInternalMetric {
 		LastMessageReceivedTimestamp:     d.lastMessageReceivedTimestamp,
 		LocalFlowControlWindow:           d.localFlowControlWindow,
 		RemoteFlowControlWindow:          d.remoteFlowControlWindow,
-		//socket options
-		LocalAddr:  d.localAddr,
-		RemoteAddr: d.remoteAddr,
-		// Security
-		RemoteName: d.remoteName,
+		SocketOptions:                    d.socketOptions,
+		LocalAddr:                        d.localAddr,
+		RemoteAddr:                       d.remoteAddr,
+		Security:                         d.security,
+		RemoteName:                       d.remoteName,
 	}
 }
 
-func channelProtoToStruct(c *pb.Channel) *dummyChannel {
+func channelProtoToStruct(c *channelzpb.Channel) *dummyChannel {
 	dc := &dummyChannel{}
 	pdata := c.GetData()
 	switch pdata.GetState().GetState() {
-	case pb.ChannelConnectivityState_UNKNOWN:
+	case channelzpb.ChannelConnectivityState_UNKNOWN:
 		// TODO: what should we set here?
-	case pb.ChannelConnectivityState_IDLE:
+	case channelzpb.ChannelConnectivityState_IDLE:
 		dc.state = connectivity.Idle
-	case pb.ChannelConnectivityState_CONNECTING:
+	case channelzpb.ChannelConnectivityState_CONNECTING:
 		dc.state = connectivity.Connecting
-	case pb.ChannelConnectivityState_READY:
+	case channelzpb.ChannelConnectivityState_READY:
 		dc.state = connectivity.Ready
-	case pb.ChannelConnectivityState_TRANSIENT_FAILURE:
+	case channelzpb.ChannelConnectivityState_TRANSIENT_FAILURE:
 		dc.state = connectivity.TransientFailure
-	case pb.ChannelConnectivityState_SHUTDOWN:
+	case channelzpb.ChannelConnectivityState_SHUTDOWN:
 		dc.state = connectivity.Shutdown
 	}
 	dc.target = pdata.GetTarget()
@@ -150,7 +159,7 @@ func channelProtoToStruct(c *pb.Channel) *dummyChannel {
 	return dc
 }
 
-func serverProtoToStruct(s *pb.Server) *dummyServer {
+func serverProtoToStruct(s *channelzpb.Server) *dummyServer {
 	ds := &dummyServer{}
 	pdata := s.GetData()
 	ds.callsStarted = pdata.CallsStarted
@@ -164,22 +173,7 @@ func serverProtoToStruct(s *pb.Server) *dummyServer {
 	return ds
 }
 
-func protoToAddr(a *pb.Address) net.Addr {
-	switch v := a.Address.(type) {
-	case *pb.Address_TcpipAddress:
-		if port := v.TcpipAddress.GetPort(); port != 0 {
-			return &net.TCPAddr{IP: v.TcpipAddress.GetIpAddress(), Port: int(port)}
-		}
-		return &net.IPAddr{IP: v.TcpipAddress.GetIpAddress()}
-	case *pb.Address_UdsAddress_:
-		return &net.UnixAddr{Name: v.UdsAddress.GetFilename(), Net: "unix"}
-	case *pb.Address_OtherAddress_:
-		// TODO:
-	}
-	return nil
-}
-
-func socketProtoToStruct(s *pb.Socket) *dummySocket {
+func socketProtoToStruct(s *channelzpb.Socket) *dummySocket {
 	ds := &dummySocket{}
 	pdata := s.GetData()
 	ds.streamsStarted = pdata.GetStreamsStarted()
@@ -214,6 +208,12 @@ func socketProtoToStruct(s *pb.Socket) *dummySocket {
 	if v := pdata.GetRemoteFlowControlWindow(); v != nil {
 		ds.remoteFlowControlWindow = v.Value
 	}
+	if v := pdata.GetOption(); v != nil && protoToSocketOpt != nil {
+		ds.socketOptions = protoToSocketOpt(v)
+	}
+	if v := s.GetSecurity(); v != nil {
+		ds.security = protoToSecurity(v)
+	}
 	if local := s.GetLocal(); local != nil {
 		ds.localAddr = protoToAddr(local)
 	}
@@ -224,12 +224,56 @@ func socketProtoToStruct(s *pb.Socket) *dummySocket {
 	return ds
 }
 
-func convertSocketRefSliceToMap(sktRefs []*pb.SocketRef) map[int64]string {
+func protoToSecurity(protoSecurity *channelzpb.Security) credentials.ChannelzSecurityValue {
+	switch v := protoSecurity.Model.(type) {
+	case *channelzpb.Security_Tls_:
+		return &credentials.TLSChannelzSecurityValue{StandardName: v.Tls.GetStandardName(), LocalCertificate: v.Tls.GetLocalCertificate(), RemoteCertificate: v.Tls.GetRemoteCertificate()}
+	case *channelzpb.Security_Other:
+		sv := &credentials.OtherChannelzSecurityValue{Name: v.Other.GetName()}
+		var x ptypes.DynamicAny
+		if err := ptypes.UnmarshalAny(v.Other.GetValue(), &x); err == nil {
+			sv.Value = x.Message
+		}
+		return sv
+	}
+	return nil
+}
+
+func protoToAddr(a *channelzpb.Address) net.Addr {
+	switch v := a.Address.(type) {
+	case *channelzpb.Address_TcpipAddress:
+		if port := v.TcpipAddress.GetPort(); port != 0 {
+			return &net.TCPAddr{IP: v.TcpipAddress.GetIpAddress(), Port: int(port)}
+		}
+		return &net.IPAddr{IP: v.TcpipAddress.GetIpAddress()}
+	case *channelzpb.Address_UdsAddress_:
+		return &net.UnixAddr{Name: v.UdsAddress.GetFilename(), Net: "unix"}
+	case *channelzpb.Address_OtherAddress_:
+		// TODO:
+	}
+	return nil
+}
+
+func convertSocketRefSliceToMap(sktRefs []*channelzpb.SocketRef) map[int64]string {
 	m := make(map[int64]string)
 	for _, sr := range sktRefs {
 		m[sr.SocketId] = sr.Name
 	}
 	return m
+}
+
+type OtherSecurityValue struct {
+	LocalCertificate  []byte `protobuf:"bytes,1,opt,name=local_certificate,json=localCertificate,proto3" json:"local_certificate,omitempty"`
+	RemoteCertificate []byte `protobuf:"bytes,2,opt,name=remote_certificate,json=remoteCertificate,proto3" json:"remote_certificate,omitempty"`
+}
+
+func (m *OtherSecurityValue) Reset()         { *m = OtherSecurityValue{} }
+func (m *OtherSecurityValue) String() string { return proto.CompactTextString(m) }
+func (*OtherSecurityValue) ProtoMessage()    {}
+
+func init() {
+	// Ad-hoc registering the proto type here to facilitate UnmarshalAny of OtherSecurityValue.
+	proto.RegisterType((*OtherSecurityValue)(nil), "grpc.credentials.OtherChannelzSecurityValue")
 }
 
 func TestGetTopChannels(t *testing.T) {
@@ -264,7 +308,7 @@ func TestGetTopChannels(t *testing.T) {
 		channelz.RegisterChannel(c, 0, "")
 	}
 	s := newCZServer()
-	resp, _ := s.GetTopChannels(context.Background(), &pb.GetTopChannelsRequest{StartChannelId: 0})
+	resp, _ := s.GetTopChannels(context.Background(), &channelzpb.GetTopChannelsRequest{StartChannelId: 0})
 	if !resp.GetEnd() {
 		t.Fatalf("resp.GetEnd() want true, got %v", resp.GetEnd())
 	}
@@ -276,7 +320,7 @@ func TestGetTopChannels(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		channelz.RegisterChannel(tcs[0], 0, "")
 	}
-	resp, _ = s.GetTopChannels(context.Background(), &pb.GetTopChannelsRequest{StartChannelId: 0})
+	resp, _ = s.GetTopChannels(context.Background(), &channelzpb.GetTopChannelsRequest{StartChannelId: 0})
 	if resp.GetEnd() {
 		t.Fatalf("resp.GetEnd() want false, got %v", resp.GetEnd())
 	}
@@ -308,7 +352,7 @@ func TestGetServers(t *testing.T) {
 		channelz.RegisterServer(s, "")
 	}
 	svr := newCZServer()
-	resp, _ := svr.GetServers(context.Background(), &pb.GetServersRequest{StartServerId: 0})
+	resp, _ := svr.GetServers(context.Background(), &channelzpb.GetServersRequest{StartServerId: 0})
 	if !resp.GetEnd() {
 		t.Fatalf("resp.GetEnd() want true, got %v", resp.GetEnd())
 	}
@@ -320,7 +364,7 @@ func TestGetServers(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		channelz.RegisterServer(ss[0], "")
 	}
-	resp, _ = svr.GetServers(context.Background(), &pb.GetServersRequest{StartServerId: 0})
+	resp, _ = svr.GetServers(context.Background(), &channelzpb.GetServersRequest{StartServerId: 0})
 	if resp.GetEnd() {
 		t.Fatalf("resp.GetEnd() want false, got %v", resp.GetEnd())
 	}
@@ -335,7 +379,7 @@ func TestGetServerSockets(t *testing.T) {
 	ids[1] = channelz.RegisterNormalSocket(&dummySocket{}, svrID, refNames[1])
 	ids[2] = channelz.RegisterNormalSocket(&dummySocket{}, svrID, refNames[2])
 	svr := newCZServer()
-	resp, _ := svr.GetServerSockets(context.Background(), &pb.GetServerSocketsRequest{ServerId: svrID, StartSocketId: 0})
+	resp, _ := svr.GetServerSockets(context.Background(), &channelzpb.GetServerSocketsRequest{ServerId: svrID, StartSocketId: 0})
 	if !resp.GetEnd() {
 		t.Fatalf("resp.GetEnd() want: true, got: %v", resp.GetEnd())
 	}
@@ -351,7 +395,7 @@ func TestGetServerSockets(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		channelz.RegisterNormalSocket(&dummySocket{}, svrID, "")
 	}
-	resp, _ = svr.GetServerSockets(context.Background(), &pb.GetServerSocketsRequest{ServerId: svrID, StartSocketId: 0})
+	resp, _ = svr.GetServerSockets(context.Background(), &channelzpb.GetServerSocketsRequest{ServerId: svrID, StartSocketId: 0})
 	if resp.GetEnd() {
 		t.Fatalf("resp.GetEnd() want false, got %v", resp.GetEnd())
 	}
@@ -366,22 +410,22 @@ func TestGetChannel(t *testing.T) {
 	ids[2] = channelz.RegisterSubChannel(&dummyChannel{}, ids[0], refNames[2])
 	ids[3] = channelz.RegisterChannel(&dummyChannel{}, ids[1], refNames[3])
 	svr := newCZServer()
-	resp, _ := svr.GetChannel(context.Background(), &pb.GetChannelRequest{ChannelId: ids[0]})
+	resp, _ := svr.GetChannel(context.Background(), &channelzpb.GetChannelRequest{ChannelId: ids[0]})
 	metrics := resp.GetChannel()
 	subChans := metrics.GetSubchannelRef()
 	if len(subChans) != 1 || subChans[0].GetName() != refNames[2] || subChans[0].GetSubchannelId() != ids[2] {
-		t.Fatalf("GetSubChannelRef() want %#v, got %#v", []*pb.SubchannelRef{{SubchannelId: ids[2], Name: refNames[2]}}, subChans)
+		t.Fatalf("GetSubChannelRef() want %#v, got %#v", []*channelzpb.SubchannelRef{{SubchannelId: ids[2], Name: refNames[2]}}, subChans)
 	}
 	nestedChans := metrics.GetChannelRef()
 	if len(nestedChans) != 1 || nestedChans[0].GetName() != refNames[1] || nestedChans[0].GetChannelId() != ids[1] {
-		t.Fatalf("GetChannelRef() want %#v, got %#v", []*pb.ChannelRef{{ChannelId: ids[1], Name: refNames[1]}}, nestedChans)
+		t.Fatalf("GetChannelRef() want %#v, got %#v", []*channelzpb.ChannelRef{{ChannelId: ids[1], Name: refNames[1]}}, nestedChans)
 	}
 
-	resp, _ = svr.GetChannel(context.Background(), &pb.GetChannelRequest{ChannelId: ids[1]})
+	resp, _ = svr.GetChannel(context.Background(), &channelzpb.GetChannelRequest{ChannelId: ids[1]})
 	metrics = resp.GetChannel()
 	nestedChans = metrics.GetChannelRef()
 	if len(nestedChans) != 1 || nestedChans[0].GetName() != refNames[3] || nestedChans[0].GetChannelId() != ids[3] {
-		t.Fatalf("GetChannelRef() want %#v, got %#v", []*pb.ChannelRef{{ChannelId: ids[3], Name: refNames[3]}}, nestedChans)
+		t.Fatalf("GetChannelRef() want %#v, got %#v", []*channelzpb.ChannelRef{{ChannelId: ids[3], Name: refNames[3]}}, nestedChans)
 	}
 }
 
@@ -394,7 +438,7 @@ func TestGetSubChannel(t *testing.T) {
 	ids[2] = channelz.RegisterNormalSocket(&dummySocket{}, ids[1], refNames[2])
 	ids[3] = channelz.RegisterNormalSocket(&dummySocket{}, ids[1], refNames[3])
 	svr := newCZServer()
-	resp, _ := svr.GetSubchannel(context.Background(), &pb.GetSubchannelRequest{SubchannelId: ids[1]})
+	resp, _ := svr.GetSubchannel(context.Background(), &channelzpb.GetSubchannelRequest{SubchannelId: ids[1]})
 	metrics := resp.GetSubchannel()
 	want := map[int64]string{
 		ids[2]: refNames[2],
@@ -460,6 +504,23 @@ func TestGetSocket(t *testing.T) {
 		{
 			localAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 10001},
 		},
+		{
+			security: &credentials.TLSChannelzSecurityValue{
+				StandardName:      "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+				RemoteCertificate: []byte{48, 130, 2, 156, 48, 130, 2, 5, 160},
+			},
+		},
+		{
+			security: &credentials.OtherChannelzSecurityValue{
+				Name: "XXXX",
+			},
+		},
+		{
+			security: &credentials.OtherChannelzSecurityValue{
+				Name:  "YYYY",
+				Value: &OtherSecurityValue{LocalCertificate: []byte{1, 2, 3}, RemoteCertificate: []byte{4, 5, 6}},
+			},
+		},
 	}
 	svr := newCZServer()
 	ids := make([]int64, len(ss))
@@ -468,10 +529,10 @@ func TestGetSocket(t *testing.T) {
 		ids[i] = channelz.RegisterNormalSocket(s, svrID, strconv.Itoa(i))
 	}
 	for i, s := range ss {
-		resp, _ := svr.GetSocket(context.Background(), &pb.GetSocketRequest{SocketId: ids[i]})
+		resp, _ := svr.GetSocket(context.Background(), &channelzpb.GetSocketRequest{SocketId: ids[i]})
 		metrics := resp.GetSocket()
-		if !reflect.DeepEqual(metrics.GetRef(), &pb.SocketRef{SocketId: ids[i], Name: strconv.Itoa(i)}) || !reflect.DeepEqual(socketProtoToStruct(metrics), s) {
-			t.Fatalf("resp.GetSocket() want: metrics.GetRef() = %#v and %#v, got: metrics.GetRef() = %#v and %#v", &pb.SocketRef{SocketId: ids[i], Name: strconv.Itoa(i)}, s, metrics.GetRef(), socketProtoToStruct(metrics))
+		if !reflect.DeepEqual(metrics.GetRef(), &channelzpb.SocketRef{SocketId: ids[i], Name: strconv.Itoa(i)}) || !reflect.DeepEqual(socketProtoToStruct(metrics), s) {
+			t.Fatalf("resp.GetSocket() want: metrics.GetRef() = %#v and %#v, got: metrics.GetRef() = %#v and %#v", &channelzpb.SocketRef{SocketId: ids[i], Name: strconv.Itoa(i)}, s, metrics.GetRef(), socketProtoToStruct(metrics))
 		}
 	}
 }

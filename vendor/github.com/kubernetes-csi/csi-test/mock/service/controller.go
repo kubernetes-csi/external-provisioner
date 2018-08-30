@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"path"
+	"reflect"
 	"strconv"
 
 	log "github.com/sirupsen/logrus"
@@ -16,6 +17,7 @@ import (
 
 const (
 	MaxStorageCapacity = tib
+	ReadOnlyKey        = "readonly"
 )
 
 func (s *service) CreateVolume(
@@ -135,21 +137,48 @@ func (s *service) ControllerPublishVolume(
 
 	// Check to see if the volume is already published.
 	if device := v.Attributes[devPathKey]; device != "" {
+		var volRo bool
+		var roVal string
+		if ro, ok := v.Attributes[ReadOnlyKey]; ok {
+			roVal = ro
+		}
+
+		if roVal == "true" {
+			volRo = true
+		} else {
+			volRo = false
+		}
+
+		// Check if readonly flag is compatible with the publish request.
+		if req.GetReadonly() != volRo {
+			return nil, status.Error(codes.AlreadyExists, "Volume published but has incompatible readonly flag")
+		}
+
 		return &csi.ControllerPublishVolumeResponse{
 			PublishInfo: map[string]string{
-				"device": device,
+				"device":   device,
+				"readonly": roVal,
 			},
 		}, nil
+	}
+
+	var roVal string
+	if req.GetReadonly() {
+		roVal = "true"
+	} else {
+		roVal = "false"
 	}
 
 	// Publish the volume.
 	device := "/dev/mock"
 	v.Attributes[devPathKey] = device
+	v.Attributes[ReadOnlyKey] = roVal
 	s.vols[i] = v
 
 	return &csi.ControllerPublishVolumeResponse{
 		PublishInfo: map[string]string{
-			"device": device,
+			"device":   device,
+			"readonly": roVal,
 		},
 	}, nil
 }
@@ -192,6 +221,7 @@ func (s *service) ControllerUnpublishVolume(
 
 	// Unpublish the volume.
 	delete(v.Attributes, devPathKey)
+	delete(v.Attributes, ReadOnlyKey)
 	s.vols[i] = v
 
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
@@ -338,21 +368,192 @@ func (s *service) ControllerGetCapabilities(
 					},
 				},
 			},
+			{
+				Type: &csi.ControllerServiceCapability_Rpc{
+					Rpc: &csi.ControllerServiceCapability_RPC{
+						Type: csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
+					},
+				},
+			},
+			{
+				Type: &csi.ControllerServiceCapability_Rpc{
+					Rpc: &csi.ControllerServiceCapability_RPC{
+						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+					},
+				},
+			},
 		},
 	}, nil
 }
 
 func (s *service) CreateSnapshot(ctx context.Context,
 	req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	return nil, status.Error(codes.InvalidArgument, "Not Implemented")
+	// Check arguments
+	if len(req.GetName()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Snapshot Name cannot be empty")
+	}
+	if len(req.GetSourceVolumeId()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Snapshot SourceVolumeId cannot be empty")
+	}
+
+	// Check to see if the snapshot already exists.
+	if i, v := s.snapshots.FindSnapshot("name", req.GetName()); i >= 0 {
+		// Requested snapshot name already exists
+		if v.SnapshotCSI.GetSourceVolumeId() != req.GetSourceVolumeId() || !reflect.DeepEqual(v.Parameters, req.GetParameters()) {
+			return nil, status.Error(codes.AlreadyExists,
+				fmt.Sprintf("Snapshot with name %s already exists", req.GetName()))
+		}
+		return &csi.CreateSnapshotResponse{Snapshot: &v.SnapshotCSI}, nil
+	}
+
+	// Create the snapshot and add it to the service's in-mem snapshot slice.
+	snapshot := s.newSnapshot(req.GetName(), req.GetSourceVolumeId(), req.GetParameters())
+	s.snapshots.Add(snapshot)
+
+	return &csi.CreateSnapshotResponse{Snapshot: &snapshot.SnapshotCSI}, nil
 }
 
 func (s *service) DeleteSnapshot(ctx context.Context,
 	req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	return nil, status.Error(codes.InvalidArgument, "Not Implemented")
+
+	//  If the snapshot is not specified, return error
+	if len(req.SnapshotId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Snapshot ID cannot be empty")
+	}
+
+	// If the snapshot does not exist then return an idempotent response.
+	i, _ := s.snapshots.FindSnapshot("id", req.SnapshotId)
+	if i < 0 {
+		return &csi.DeleteSnapshotResponse{}, nil
+	}
+
+	// This delete logic preserves order and prevents potential memory
+	// leaks. The slice's elements may not be pointers, but the structs
+	// themselves have fields that are.
+	s.snapshots.Delete(i)
+	log.WithField("SnapshotId", req.SnapshotId).Debug("mock delete snapshot")
+	return &csi.DeleteSnapshotResponse{}, nil
 }
 
 func (s *service) ListSnapshots(ctx context.Context,
 	req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	return nil, status.Error(codes.InvalidArgument, "Not Implemented")
+
+	// case 1: SnapshotId is not empty, return snapshots that match the snapshot id.
+	if len(req.GetSnapshotId()) != 0 {
+		return getSnapshotById(s, req)
+	}
+
+	// case 2: SourceVolumeId is not empty, return snapshots that match the source volume id.
+	if len(req.GetSourceVolumeId()) != 0 {
+		return getSnapshotByVolumeId(s, req)
+	}
+
+	// case 3: no parameter is set, so we return all the snapshots.
+	return getAllSnapshots(s, req)
+}
+
+func getSnapshotById(s *service, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+	if len(req.GetSnapshotId()) != 0 {
+		i, snapshot := s.snapshots.FindSnapshot("id", req.GetSnapshotId())
+		if i < 0 {
+			return &csi.ListSnapshotsResponse{}, nil
+		}
+
+		if len(req.GetSourceVolumeId()) != 0 {
+			if snapshot.SnapshotCSI.GetSourceVolumeId() != req.GetSourceVolumeId() {
+				return &csi.ListSnapshotsResponse{}, nil
+			}
+		}
+
+		return &csi.ListSnapshotsResponse{
+			Entries: []*csi.ListSnapshotsResponse_Entry{
+				{
+					Snapshot: &snapshot.SnapshotCSI,
+				},
+			},
+		}, nil
+	}
+	return nil, nil
+}
+
+func getSnapshotByVolumeId(s *service, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+	if len(req.GetSourceVolumeId()) != 0 {
+		i, snapshot := s.snapshots.FindSnapshot("sourceVolumeId", req.SourceVolumeId)
+		if i < 0 {
+			return &csi.ListSnapshotsResponse{}, nil
+		}
+		return &csi.ListSnapshotsResponse{
+			Entries: []*csi.ListSnapshotsResponse_Entry{
+				{
+					Snapshot: &snapshot.SnapshotCSI,
+				},
+			},
+		}, nil
+	}
+	return nil, nil
+}
+
+func getAllSnapshots(s *service, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+	// Copy the mock snapshots into a new slice in order to avoid
+	// locking the service's snapshot slice for the duration of the
+	// ListSnapshots RPC.
+	snapshots := s.snapshots.List(csi.SnapshotStatus_READY)
+
+	var (
+		ulenSnapshots = int32(len(snapshots))
+		maxEntries    = req.MaxEntries
+		startingToken int32
+	)
+
+	if v := req.StartingToken; v != "" {
+		i, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			return nil, status.Errorf(
+				codes.Aborted,
+				"startingToken=%d !< int32=%d",
+				startingToken, math.MaxUint32)
+		}
+		startingToken = int32(i)
+	}
+
+	if startingToken > ulenSnapshots {
+		return nil, status.Errorf(
+			codes.Aborted,
+			"startingToken=%d > len(snapshots)=%d",
+			startingToken, ulenSnapshots)
+	}
+
+	// Discern the number of remaining entries.
+	rem := ulenSnapshots - startingToken
+
+	// If maxEntries is 0 or greater than the number of remaining entries then
+	// set maxEntries to the number of remaining entries.
+	if maxEntries == 0 || maxEntries > rem {
+		maxEntries = rem
+	}
+
+	var (
+		i       int
+		j       = startingToken
+		entries = make(
+			[]*csi.ListSnapshotsResponse_Entry,
+			maxEntries)
+	)
+
+	for i = 0; i < len(entries); i++ {
+		entries[i] = &csi.ListSnapshotsResponse_Entry{
+			Snapshot: &snapshots[j],
+		}
+		j++
+	}
+
+	var nextToken string
+	if n := startingToken + int32(i); n < ulenSnapshots {
+		nextToken = fmt.Sprintf("%d", n)
+	}
+
+	return &csi.ListSnapshotsResponse{
+		Entries:   entries,
+		NextToken: nextToken,
+	}, nil
 }

@@ -16,6 +16,7 @@
 
 import os
 import rados
+import cephfs
 import getopt
 import sys
 import json
@@ -41,8 +42,15 @@ class CephFSNativeDriver(object):
     """
 
     def __init__(self, *args, **kwargs):
+        try:
+            os.environ["CEPH_NAMESPACE_ISOLATION_DISABLED"]
+            self.ceph_namespace_isolation_disabled = True
+        except KeyError:
+            self.ceph_namespace_isolation_disabled = False
         self._volume_client = None
-
+        # Default volume_prefix to None; the CephFSVolumeClient constructor uses a ternary operator on the input argument to default it to /volumes
+        self.volume_prefix = os.environ.get('CEPH_VOLUME_ROOT', None)
+        self.volume_group = os.environ.get('CEPH_VOLUME_GROUP', VOlUME_GROUP)
 
     def _create_conf(self, cluster_name, mons):
         """ Create conf using monitors
@@ -82,7 +90,7 @@ class CephFSNativeDriver(object):
             cluster_name = os.environ["CEPH_CLUSTER_NAME"]
         except KeyError:
             cluster_name = "ceph"
-        try:     
+        try:
             mons = os.environ["CEPH_MON"]
         except KeyError:
             raise ValueError("Missing CEPH_MON env")
@@ -90,7 +98,7 @@ class CephFSNativeDriver(object):
             auth_id = os.environ["CEPH_AUTH_ID"]
         except KeyError:
             raise ValueError("Missing CEPH_AUTH_ID")
-        try: 
+        try:
             auth_key = os.environ["CEPH_AUTH_KEY"]
         except:
             raise ValueError("Missing CEPH_AUTH_KEY")
@@ -99,7 +107,7 @@ class CephFSNativeDriver(object):
         self._create_keyring(cluster_name, auth_id, auth_key)
 
         self._volume_client = ceph_volume_client.CephFSVolumeClient(
-            auth_id, conf_path, cluster_name)
+            auth_id, conf_path, cluster_name, volume_prefix = self.volume_prefix)
         try:
             self._volume_client.connect(None)
         except Exception:
@@ -114,15 +122,23 @@ class CephFSNativeDriver(object):
         # First I need to work out what the data pool is for this share:
         # read the layout
         pool_name = self._volume_client._get_ancestor_xattr(path, "ceph.dir.layout.pool")
-        namespace = self._volume_client.fs.getxattr(path, "ceph.dir.layout.pool_namespace")
+        try:
+            namespace = self._volume_client.fs.getxattr(path, "ceph.dir.layout.pool_namespace")
+        except cephfs.NoData:
+            # ceph.dir.layout.pool_namespace is optional
+            namespace = None
 
         # Now construct auth capabilities that give the guest just enough
         # permissions to access the share
         client_entity = "client.{0}".format(auth_id)
         want_access_level = 'r' if readonly else 'rw'
         want_mds_cap = 'allow r,allow {0} path={1}'.format(want_access_level, path)
-        want_osd_cap = 'allow {0} pool={1} namespace={2}'.format(
-            want_access_level, pool_name, namespace)
+        if namespace:
+            want_osd_cap = 'allow {0} pool={1} namespace={2}'.format(
+                want_access_level, pool_name, namespace)
+        else:
+            want_osd_cap = 'allow {0} pool={1}'.format(
+                want_access_level, pool_name)
 
         try:
             existing = self._volume_client._rados_command(
@@ -150,8 +166,12 @@ class CephFSNativeDriver(object):
             # auth caps.
             unwanted_access_level = 'r' if want_access_level is 'rw' else 'rw'
             unwanted_mds_cap = 'allow {0} path={1}'.format(unwanted_access_level, path)
-            unwanted_osd_cap = 'allow {0} pool={1} namespace={2}'.format(
-                unwanted_access_level, pool_name, namespace)
+            if namespace:
+                unwanted_osd_cap = 'allow {0} pool={1} namespace={2}'.format(
+                    unwanted_access_level, pool_name, namespace)
+            else:
+                unwanted_osd_cap = 'allow {0} pool={1}'.format(
+                    unwanted_access_level, pool_name)
 
             def cap_update(orig, want, unwanted):
                 # Updates the existing auth caps such that there is a single
@@ -202,10 +222,10 @@ class CephFSNativeDriver(object):
     def create_share(self, path, user_id, size=None):
         """Create a CephFS volume.
         """
-        volume_path = ceph_volume_client.VolumePath(VOlUME_GROUP, path)
+        volume_path = ceph_volume_client.VolumePath(self.volume_group, path)
 
         # Create the CephFS volume
-        volume = self.volume_client.create_volume(volume_path, size=size)
+        volume = self.volume_client.create_volume(volume_path, size=size, namespace_isolated=not self.ceph_namespace_isolation_disabled)
 
         # To mount this you need to know the mon IPs and the path to the volume
         mon_addrs = self.volume_client.get_mon_addrs()
@@ -237,18 +257,27 @@ class CephFSNativeDriver(object):
         """
         client_entity = "client.{0}".format(auth_id)
         path = self.volume_client._get_path(volume_path)
-        path = self.volume_client._get_path(volume_path)
         pool_name = self.volume_client._get_ancestor_xattr(path, "ceph.dir.layout.pool")
-        namespace = self.volume_client.fs.getxattr(path, "ceph.dir.layout.pool_namespace")
+        try:
+            namespace = self.volume_client.fs.getxattr(path, "ceph.dir.layout.pool_namespace")
+        except cephfs.NoData:
+            # ceph.dir.layout.pool_namespace is optional
+            namespace = None
 
         # The auth_id might have read-only or read-write mount access for the
         # volume path.
         access_levels = ('r', 'rw')
         want_mds_caps = {'allow {0} path={1}'.format(access_level, path)
                          for access_level in access_levels}
-        want_osd_caps = {'allow {0} pool={1} namespace={2}'.format(
-                         access_level, pool_name, namespace)
-                         for access_level in access_levels}
+        if namespace:
+            want_osd_caps = {'allow {0} pool={1} namespace={2}'.format(
+                             access_level, pool_name, namespace)
+                             for access_level in access_levels}
+        else:
+            want_osd_caps = {'allow {0} pool={1}'.format(
+                             access_level, pool_name)
+                             for access_level in access_levels}
+
 
         try:
             existing = self.volume_client._rados_command(
@@ -286,7 +315,7 @@ class CephFSNativeDriver(object):
             return
 
     def delete_share(self, path, user_id):
-        volume_path = ceph_volume_client.VolumePath(VOlUME_GROUP, path)
+        volume_path = ceph_volume_client.VolumePath(self.volume_group, path)
         self._deauthorize(volume_path, user_id)
         self.volume_client.delete_volume(volume_path)
         self.volume_client.purge_volume(volume_path)
@@ -296,15 +325,19 @@ class CephFSNativeDriver(object):
             self._volume_client.disconnect()
             self._volume_client = None
 
+def usage():
+    print "Usage: " + sys.argv[0] + " --remove -n share_name -u ceph_user_id -s size"
+
 def main():
     create = True
     share = ""
     user = ""
+    size = None
     cephfs = CephFSNativeDriver()
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "rn:u:", ["remove"])
+        opts, args = getopt.getopt(sys.argv[1:], "rn:u:s:", ["remove"])
     except getopt.GetoptError:
-        print "Usage: " + sys.argv[0] + " --remove -n share_name -u ceph_user_id"
+        usage()
         sys.exit(1)
 
     for opt, arg in opts:
@@ -312,18 +345,20 @@ def main():
             share = arg
         elif opt == '-u':
             user = arg
+        elif opt == '-s':
+            size = arg
         elif opt in ("-r", "--remove"):
             create = False
 
     if share == "" or user == "":
-        print "Usage: " + sys.argv[0] + " --remove -n share_name -u ceph_user_id"
+        usage()
         sys.exit(1)
 
-    if create == True:
-        print cephfs.create_share(share, user)    
+    if create:
+        print cephfs.create_share(share, user, size=size)
     else:
-        cephfs.delete_share(share, user)    
-        
-        
+        cephfs.delete_share(share, user)
+
+
 if __name__ == "__main__":
     main()

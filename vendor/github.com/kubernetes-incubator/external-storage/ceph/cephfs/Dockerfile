@@ -14,10 +14,11 @@
 
 FROM centos:7
 
-ENV CEPH_VERSION "luminous"
-RUN rpm -Uvh https://download.ceph.com/rpm-$CEPH_VERSION/el7/noarch/ceph-release-1-1.el7.noarch.rpm && \
+ENV CEPH_VERSION "mimic"
+RUN rpm --import 'https://download.ceph.com/keys/release.asc' && \
+  rpm -Uvh https://download.ceph.com/rpm-$CEPH_VERSION/el7/noarch/ceph-release-1-1.el7.noarch.rpm && \
   yum install -y epel-release && \
-  yum install -y --nogpgcheck ceph-common python-cephfs && \
+  yum install -y ceph-common python-cephfs && \
   yum clean all
 
 COPY cephfs-provisioner /usr/local/bin/cephfs-provisioner

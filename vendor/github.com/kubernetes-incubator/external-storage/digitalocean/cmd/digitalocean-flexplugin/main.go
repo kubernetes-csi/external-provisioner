@@ -17,17 +17,18 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/digitalocean/godo"
-	"github.com/digitalocean/godo/context"
-	"golang.org/x/oauth2"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/digitalocean/godo"
+	"golang.org/x/oauth2"
 )
 
 // Stolen from: https://github.com/digitalocean/digitalocean-cloud-controller-manager/blob/5a64f9a0729ece886c65c59dcc2a0ecbe7f3b6eb/do/cloud.go#L47
@@ -110,7 +111,7 @@ func (c *cloud) findNode(nodeName string) (int, error) {
 }
 
 func (c *cloud) getVolumeByName(volumeName string) (string, error) {
-	opt := &godo.ListVolumeParams{ListOptions: &godo.ListOptions{}}
+	opt := &godo.ListVolumeParams{ListOptions: &godo.ListOptions{PerPage: 200}}
 	// get all volumes by looping over pages
 	for {
 		volumes, resp, err := c.client.Storage.ListVolumes(c.ctx, opt)

@@ -36,7 +36,7 @@ all build:
 		-v $$(pwd):/go/bin \
 		-v $$(pwd)/.go/stdlib:/usr/local/go/pkg/linux_amd64_asdf \
 		-w /go/src/github.com/kubernetes-incubator/external-storage/iscsi/targetd \
-		golang:1.8.3-alpine \
+		golang:1.10.3-alpine \
 		go install -installsuffix "asdf" .
 .PHONY: all build
 
@@ -44,7 +44,6 @@ container: build quick-container
 .PHONY: container
 
 quick-container:
-	mv targetd iscsi-controller
 	docker build -t $(MUTABLE_IMAGE) .
 	docker tag $(MUTABLE_IMAGE) $(IMAGE)
 .PHONY: quick-container

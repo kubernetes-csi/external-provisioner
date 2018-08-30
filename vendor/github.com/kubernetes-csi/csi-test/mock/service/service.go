@@ -5,8 +5,10 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/kubernetes-csi/csi-test/mock/cache"
 	"golang.org/x/net/context"
 )
 
@@ -15,7 +17,7 @@ const (
 	Name = "io.kubernetes.storage.mock"
 
 	// VendorVersion is the version returned by GetPluginInfo.
-	VendorVersion = "0.2.0"
+	VendorVersion = "0.3.0"
 )
 
 // Manifest is the SP's manifest.
@@ -32,10 +34,12 @@ type Service interface {
 
 type service struct {
 	sync.Mutex
-	nodeID  string
-	vols    []csi.Volume
-	volsRWL sync.RWMutex
-	volsNID uint64
+	nodeID       string
+	vols         []csi.Volume
+	volsRWL      sync.RWMutex
+	volsNID      uint64
+	snapshots    cache.SnapshotCache
+	snapshotsNID uint64
 }
 
 type Volume struct {
@@ -53,12 +57,18 @@ var MockVolumes map[string]Volume
 // New returns a new Service.
 func New() Service {
 	s := &service{nodeID: Name}
+	s.snapshots = cache.NewSnapshotCache()
 	s.vols = []csi.Volume{
 		s.newVolume("Mock Volume 1", gib100),
 		s.newVolume("Mock Volume 2", gib100),
 		s.newVolume("Mock Volume 3", gib100),
 	}
 	MockVolumes = map[string]Volume{}
+
+	s.snapshots.Add(s.newSnapshot("Mock Snapshot 1", "1", map[string]string{"Description": "snapshot 1"}))
+	s.snapshots.Add(s.newSnapshot("Mock Snapshot 2", "2", map[string]string{"Description": "snapshot 2"}))
+	s.snapshots.Add(s.newSnapshot("Mock Snapshot 3", "3", map[string]string{"Description": "snapshot 3"}))
+
 	return s
 }
 
@@ -108,4 +118,20 @@ func (s *service) findVolByName(
 	ctx context.Context, name string) (int, csi.Volume) {
 
 	return s.findVol("name", name)
+}
+
+func (s *service) newSnapshot(name, sourceVolumeId string, parameters map[string]string) cache.Snapshot {
+	return cache.Snapshot{
+		Name:       name,
+		Parameters: parameters,
+		SnapshotCSI: csi.Snapshot{
+			Id:             fmt.Sprintf("%d", atomic.AddUint64(&s.snapshotsNID, 1)),
+			CreatedAt:      time.Now().UnixNano(),
+			SourceVolumeId: sourceVolumeId,
+			Status: &csi.SnapshotStatus{
+				Type:    csi.SnapshotStatus_READY,
+				Details: "snapshot ready",
+			},
+		},
+	}
 }

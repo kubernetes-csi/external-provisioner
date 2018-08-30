@@ -11,10 +11,10 @@ CSI_MOCK_VERSION="master"
 #      See https://github.com/grpc/grpc/blob/master/doc/naming.md
 runTest()
 {
-	CSI_ENDPOINT=$1 mock &
+	CSI_ENDPOINT=$1 ./bin/mock &
 	local pid=$!
 
-	csi-sanity $TESTARGS --csi.endpoint=$2; ret=$?
+	./cmd/csi-sanity/csi-sanity $TESTARGS --csi.endpoint=$2; ret=$?
 	kill -9 $pid
 
 	if [ $ret -ne 0 ] ; then
@@ -24,10 +24,10 @@ runTest()
 
 runTestWithCreds()
 {
-	CSI_ENDPOINT=$1 CSI_ENABLE_CREDS=true mock &
+	CSI_ENDPOINT=$1 CSI_ENABLE_CREDS=true ./bin/mock &
 	local pid=$!
 
-	csi-sanity $TESTARGS --csi.endpoint=$2 --csi.secrets=mock/mocksecret.yaml; ret=$?
+	./cmd/csi-sanity/csi-sanity $TESTARGS --csi.endpoint=$2 --csi.secrets=mock/mocksecret.yaml; ret=$?
 	kill -9 $pid
 
 	if [ $ret -ne 0 ] ; then
@@ -35,7 +35,7 @@ runTestWithCreds()
 	fi
 }
 
-go install ./mock || exit 1
+go build -o bin/mock ./mock || exit 1
 
 cd cmd/csi-sanity
   make clean install || exit 1

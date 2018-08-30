@@ -19,15 +19,51 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-# Install glide, golint, cfssl
-curl https://glide.sh/get | sh
+# This file is used by travisci to test PRs.
+# It installs several dependencies on the test machine that are
+# required to run the tests.
+
+function install_helm() {
+    local OS=$(uname | tr A-Z a-z)
+    local VERSION=v2.7.2
+    local ARCH=amd64
+    local HELM_URL=http://storage.googleapis.com/kubernetes-helm/helm-${VERSION}-${OS}-${ARCH}.tar.gz
+    curl -s "$HELM_URL" | sudo tar --strip-components 1 -C /usr/local/bin -zxf - ${OS}-${ARCH}/helm
+}
+
+# Skip duplicate build and test runs through the CI, that occur because we are now running on osx and linux.
+# Skipping these steps saves time and travis-ci resources.
+if [ "$TRAVIS_OS_NAME" = "osx" ]; then
+        if [ "$TEST_SUITE" != "osx" ]; then
+	        exit 0
+        fi
+fi
+if [ "$TRAVIS_OS_NAME" != "osx" ]; then
+        if [ "$TEST_SUITE" = "osx" ]; then
+	        exit 0
+        fi
+fi
+
+# Install golint, cfssl
 go get -u github.com/golang/lint/golint
 export PATH=$PATH:$GOPATH/bin
 go get -u github.com/alecthomas/gometalinter
 gometalinter --install
 make verify
 
-if [ "$TEST_SUITE" = "nfs" ]; then
+if [ "$TRAVIS_OS_NAME" = "osx" ]; then
+        if [ "$TEST_SUITE" = "osx" ]; then
+                # Presently travis-ci does not support docker on osx.
+                echo '#!/bin/bash' > docker
+                echo 'echo "***docker not currently supported on osx travis-ci, skipping docker commands for osx***"' >> docker
+                chmod u+x docker
+                export PATH=$(pwd):${PATH}
+                make
+                make test
+                install_helm
+                make test-local-volume/helm
+        fi
+elif [ "$TEST_SUITE" = "linux-nfs" ]; then
 	# Install nfs, cfssl
 	sudo apt-get -qq update
 	sudo apt-get install -y nfs-common
@@ -48,15 +84,20 @@ if [ "$TEST_SUITE" = "nfs" ]; then
 	# Start kubernetes
 	mkdir -p $HOME/.kube
 	sudo chmod -R 777 $HOME/.kube
-	sudo "PATH=$PATH" KUBECTL=$HOME/kubernetes/server/bin/kubectl ALLOW_SECURITY_CONTEXT=true API_HOST_IP=0.0.0.0 $HOME/kubernetes-${KUBE_VERSION}/hack/local-up-cluster.sh -o $HOME/kubernetes/server/bin >/tmp/local-up-cluster.log 2>&1 &
+	if [ "$KUBE_VERSION" = "1.5.8" ]; then
+	    sudo "PATH=$PATH" KUBECTL=$HOME/kubernetes/server/bin/kubectl ENABLE_RBAC=true  ALLOW_SECURITY_CONTEXT=true API_HOST_IP=0.0.0.0 $HOME/kubernetes-${KUBE_VERSION}/hack/local-up-cluster.sh -o $HOME/kubernetes/server/bin >/tmp/local-up-cluster.log 2>&1 &
+	else
+	    sudo "PATH=$PATH" KUBECTL=$HOME/kubernetes/server/bin/kubectl ALLOW_SECURITY_CONTEXT=true $HOME/kubernetes-${KUBE_VERSION}/hack/local-up-cluster.sh -o $HOME/kubernetes/server/bin >/tmp/local-up-cluster.log 2>&1 &
+	fi
 	touch /tmp/local-up-cluster.log
-	timeout 30 grep -q "Local Kubernetes cluster is running." <(tail -f /tmp/local-up-cluster.log)
-	if [ $? == 124 ]; then
+	ret=0
+	timeout 60 grep -q "Local Kubernetes cluster is running." <(tail -f /tmp/local-up-cluster.log) || ret=$?
+	if [ $ret == 124 ]; then
 		cat /tmp/local-up-cluster.log
 		exit 1
 	fi
 	KUBECTL=$HOME/kubernetes/server/bin/kubectl
-	if [ "$KUBE_VERSION" = "1.5.4" ]; then
+	if [ "$KUBE_VERSION" = "1.5.8" ]; then
 		$KUBECTL config set-cluster local --server=https://localhost:6443 --certificate-authority=/var/run/kubernetes/apiserver.crt;
 		$KUBECTL config set-credentials myself --username=admin --password=admin;
 	else
@@ -65,14 +106,14 @@ if [ "$TEST_SUITE" = "nfs" ]; then
 	fi
 	$KUBECTL config set-context local --cluster=local --user=myself
 	$KUBECTL config use-context local
-	if [ "$KUBE_VERSION" != "1.5.4" ]; then
+	if [ "$KUBE_VERSION" != "1.5.8" ]; then
 		sudo chown -R $(logname) /var/run/kubernetes;
 	fi
 
 	# Build nfs-provisioner and run tests
 	make nfs
 	make test-nfs-all
-elif [ "$TEST_SUITE" = "everything-else" ]; then
+elif [ "$TEST_SUITE" = "linux-everything-else" ]; then
 	pushd ./lib
 	go test ./controller
 	go test ./allocator
@@ -94,8 +135,9 @@ elif [ "$TEST_SUITE" = "everything-else" ]; then
 	make nfs-client
 	make snapshot
 	make test-snapshot
-	make test-openstack/standalone-cinder
-elif [ "$TEST_SUITE" = "local-volume" ]; then
+elif [ "$TEST_SUITE" = "linux-local-volume" ]; then
 	make local-volume/provisioner
 	make test-local-volume/provisioner
+	install_helm
+	make test-local-volume/helm
 fi

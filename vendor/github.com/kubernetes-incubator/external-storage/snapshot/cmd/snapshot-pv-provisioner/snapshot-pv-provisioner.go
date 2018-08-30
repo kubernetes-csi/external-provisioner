@@ -69,31 +69,12 @@ func newSnapshotProvisioner(client kubernetes.Interface, crdclient *rest.RESTCli
 
 var _ controller.Provisioner = &snapshotProvisioner{}
 
-func (p *snapshotProvisioner) getPVFromVolumeSnapshotDataSpec(snapshotDataSpec *crdv1.VolumeSnapshotDataSpec) (*v1.PersistentVolume, error) {
-	if snapshotDataSpec.PersistentVolumeRef == nil {
-		return nil, fmt.Errorf("VolumeSnapshotDataSpec is not bound to any PV")
-	}
-	pvName := snapshotDataSpec.PersistentVolumeRef.Name
-	if pvName == "" {
-		return nil, fmt.Errorf("The PV name is not specified in snapshotdata %#v", *snapshotDataSpec)
-	}
-	pv, err := p.client.CoreV1().PersistentVolumes().Get(pvName, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("Failed to retrieve PV %s from the API server: %q", pvName, err)
-	}
-	return pv, nil
-}
-
 func (p *snapshotProvisioner) snapshotRestore(snapshotName string, snapshotData crdv1.VolumeSnapshotData, options controller.VolumeOptions) (*v1.PersistentVolumeSource, map[string]string, error) {
 	// validate the PV supports snapshot and restore
 	spec := &snapshotData.Spec
-	pv, err := p.getPVFromVolumeSnapshotDataSpec(spec)
-	if err != nil {
-		return nil, nil, err
-	}
-	volumeType := crdv1.GetSupportedVolumeFromPVSpec(&pv.Spec)
+	volumeType := crdv1.GetSupportedVolumeFromSnapshotDataSpec(spec)
 	if len(volumeType) == 0 {
-		return nil, nil, fmt.Errorf("unsupported volume type found in PV %#v", *spec)
+		return nil, nil, fmt.Errorf("unsupported volume type found in SnapshotData %#v", *spec)
 	}
 	plugin, ok := volumePlugins[volumeType]
 	if !ok {
@@ -282,13 +263,13 @@ func buildVolumePlugins() {
 				gcePlugin := gcepd.RegisterPlugin()
 				gcePlugin.Init(cloud)
 				volumePlugins[gcepd.GetPluginName()] = gcePlugin
-				glog.Info("Register cloudprovider %s", gcepd.GetPluginName())
+				glog.Infof("Register cloudprovider %s", gcepd.GetPluginName())
 			}
 			if *cloudProvider == openstack.ProviderName {
 				cinderPlugin := cinder.RegisterPlugin()
 				cinderPlugin.Init(cloud)
 				volumePlugins[cinder.GetPluginName()] = cinderPlugin
-				glog.Info("Register cloudprovider %s", cinder.GetPluginName())
+				glog.Infof("Register cloudprovider %s", cinder.GetPluginName())
 			}
 		} else {
 			glog.Warningf("failed to initialize aws cloudprovider: %v, supported cloudproviders are %#v", err, cloudprovider.CloudProviders())
