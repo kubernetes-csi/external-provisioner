@@ -1166,6 +1166,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		volOpts              controller.VolumeOptions
 		restoredVolSizeSmall bool
 		wrongDataSource      bool
+		validSnapshotStatus  bool
 		expectedPVSpec       *pvSpec
 		expectErr            bool
 	}{
@@ -1194,6 +1195,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				},
 				Parameters: map[string]string{},
 			},
+			validSnapshotStatus: true,
 			expectedPVSpec: &pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
@@ -1236,6 +1238,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				Parameters: map[string]string{},
 			},
 			restoredVolSizeSmall: true,
+			validSnapshotStatus:  true,
 			expectErr:            true,
 		},
 		"fail empty snapshot name": {
@@ -1319,6 +1322,33 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			wrongDataSource: true,
 			expectErr:       true,
 		},
+		"fail invalid snapshot status": {
+			volOpts: controller.VolumeOptions{
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(100, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: "snapshot.storage.k8s.io",
+						},
+					},
+				},
+				Parameters: map[string]string{},
+			},
+			validSnapshotStatus: false,
+			expectErr:           true,
+		},
 	}
 
 	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
@@ -1334,7 +1364,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		client := &fake.Clientset{}
 
 		client.AddReactor("get", "volumesnapshots", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-			snap := newSnapshot(snapName, snapClassName, "snapcontent-snapuid", "snapuid", "claim", true, nil, metaTimeNowUnix, resource.NewQuantity(requestedBytes, resource.BinarySI))
+			snap := newSnapshot(snapName, snapClassName, "snapcontent-snapuid", "snapuid", "claim", tc.validSnapshotStatus, nil, metaTimeNowUnix, resource.NewQuantity(requestedBytes, resource.BinarySI))
 			return true, snap, nil
 		})
 
@@ -1356,7 +1386,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		if tc.wrongDataSource == false {
 			provisionFromSnapshotMockServerSetupExpectations(identityServer, controllerServer)
 		}
-		if tc.restoredVolSizeSmall == false && tc.wrongDataSource == false {
+		if tc.restoredVolSizeSmall == false && tc.wrongDataSource == false && !tc.validSnapshotStatus {
 			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 		}
 

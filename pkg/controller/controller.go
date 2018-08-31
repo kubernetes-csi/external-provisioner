@@ -32,6 +32,7 @@ import (
 
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 
+	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 
 	"k8s.io/api/core/v1"
@@ -73,7 +74,7 @@ const (
 	defaultFSType = "ext4"
 
 	snapshotKind     = "VolumeSnapshot"
-	snapshotAPIGroup = "snapshot.storage.k8s.io"
+	snapshotAPIGroup = snapapi.GroupName // "snapshot.storage.k8s.io"
 )
 
 // CSIProvisioner struct
@@ -273,7 +274,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 // This function get called before any attepmt to communicate with the driver.
 // Before initiating Create/Delete API calls provisioner checks if Capabilities:
 // PluginControllerService,  ControllerCreateVolume sre supported and gets the  driver name.
-func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration, checkSnapshotSupport bool) (string, error) {
+func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration, needSnapshotSupport bool) (string, error) {
 	ok, err := supportsPluginControllerService(grpcClient, timeout)
 	if err != nil {
 		glog.Errorf("failed to get support info :%v", err)
@@ -293,7 +294,10 @@ func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration, checkS
 		return "", fmt.Errorf("no create/delete volume support detected")
 	}
 
-	if checkSnapshotSupport {
+	// If PVC.Spec.DataSource is not nil, it indicates the request is to create volume
+	// from snapshot and therefore we should check for snapshot support;
+	// otherwise we don't need to check for snapshot support.
+	if needSnapshotSupport {
 		// Check whether plugin supports create snapshot
 		// If not, create volume from snapshot cannot proceed
 		ok, err = supportsControllerCreateSnapshot(grpcClient, timeout)
@@ -339,7 +343,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, fmt.Errorf("claim Selector is not supported")
 	}
 
-	var checkSnapshotSupport bool
+	var needSnapshotSupport bool
 	if options.PVC.Spec.DataSource != nil {
 		// PVC.Spec.DataSource.Name is the name of the VolumeSnapshot API object
 		if options.PVC.Spec.DataSource.Name == "" {
@@ -351,9 +355,9 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		if options.PVC.Spec.DataSource.APIGroup != snapshotAPIGroup {
 			return nil, fmt.Errorf("the PVC source does not belong to the right APIGroup. Expected %s, Got %s", snapshotAPIGroup, options.PVC.Spec.DataSource.APIGroup)
 		}
-		checkSnapshotSupport = true
+		needSnapshotSupport = true
 	}
-	driverName, err := checkDriverState(p.grpcClient, p.timeout, checkSnapshotSupport)
+	driverName, err := checkDriverState(p.grpcClient, p.timeout, needSnapshotSupport)
 	if err != nil {
 		return nil, err
 	}
@@ -382,41 +386,12 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		},
 	}
 
-	if checkSnapshotSupport {
-		snapshotObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshots(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
+	if needSnapshotSupport {
+		volumeContentSource, err := p.getSnapshotHandle(options)
 		if err != nil {
-			return nil, fmt.Errorf("error get snapshot %s from api server: %v", options.PVC.Spec.DataSource.Name, err)
+			return nil, fmt.Errorf("error getting snapshot handle for snapshot %s: %v", options.PVC.Spec.DataSource.Name, err)
 		}
-		glog.V(5).Infof("VolumeSnapshot %+v", snapshotObj)
-
-		snapContentObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshotContents().Get(snapshotObj.Spec.SnapshotContentName, metav1.GetOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("error get snapshot:snapshotcontent %s:%s from api server: %v", snapshotObj.Name, snapshotObj.Spec.SnapshotContentName, err)
-		}
-		glog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
-
-		snapshotSource := csi.VolumeContentSource_Snapshot{
-			Snapshot: &csi.VolumeContentSource_SnapshotSource{
-				Id: snapContentObj.Spec.VolumeSnapshotSource.CSI.SnapshotHandle,
-			},
-		}
-		glog.V(5).Infof("VolumeContentSource_Snapshot %+v", snapshotSource)
-
-		if snapshotObj.Status.RestoreSize != nil {
-			glog.V(5).Infof("Requested volume size is %d and snapshot size is %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
-			// When restoring volume from a snapshot, the volume size should
-			// be equal to or larger than its snapshot size.
-			if int64(volSizeBytes) < int64(snapshotObj.Status.RestoreSize.Value()) {
-				return nil, fmt.Errorf("requested volume size %d is less than the size %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
-			}
-			if int64(volSizeBytes) > int64(snapshotObj.Status.RestoreSize.Value()) {
-				glog.Warningf("requested volume size %d is greater than the size %d for the source snapshot %s. Volume plugin needs to handle volume expansion.", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
-			}
-		}
-
-		req.VolumeContentSource = &csi.VolumeContentSource{
-			Type: &snapshotSource,
-		}
+		req.VolumeContentSource = volumeContentSource
 	}
 
 	glog.Infof("CreateVolumeRequest %+v", req)
@@ -535,6 +510,51 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
 
 	return pv, nil
+}
+
+func (p *csiProvisioner) getSnapshotHandle(options controller.VolumeOptions) (*csi.VolumeContentSource, error) {
+	snapshotObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshots(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error getting snapshot %s from api server: %v", options.PVC.Spec.DataSource.Name, err)
+	}
+	if snapshotObj.Status.Ready == false {
+		return nil, fmt.Errorf("snapshot %s is not Ready", options.PVC.Spec.DataSource.Name)
+	}
+
+	glog.V(5).Infof("VolumeSnapshot %+v", snapshotObj)
+
+	snapContentObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshotContents().Get(snapshotObj.Spec.SnapshotContentName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error getting snapshot:snapshotcontent %s:%s from api server: %v", snapshotObj.Name, snapshotObj.Spec.SnapshotContentName, err)
+	}
+	glog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
+
+	snapshotSource := csi.VolumeContentSource_Snapshot{
+		Snapshot: &csi.VolumeContentSource_SnapshotSource{
+			Id: snapContentObj.Spec.VolumeSnapshotSource.CSI.SnapshotHandle,
+		},
+	}
+	glog.V(5).Infof("VolumeContentSource_Snapshot %+v", snapshotSource)
+
+	if snapshotObj.Status.RestoreSize != nil {
+		capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+		volSizeBytes := capacity.Value()
+		glog.V(5).Infof("Requested volume size is %d and snapshot size is %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
+		// When restoring volume from a snapshot, the volume size should
+		// be equal to or larger than its snapshot size.
+		if int64(volSizeBytes) < int64(snapshotObj.Status.RestoreSize.Value()) {
+			return nil, fmt.Errorf("requested volume size %d is less than the size %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
+		}
+		if int64(volSizeBytes) > int64(snapshotObj.Status.RestoreSize.Value()) {
+			glog.Warningf("requested volume size %d is greater than the size %d for the source snapshot %s. Volume plugin needs to handle volume expansion.", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
+		}
+	}
+
+	volumeContentSource := &csi.VolumeContentSource{
+		Type: &snapshotSource,
+	}
+
+	return volumeContentSource, nil
 }
 
 func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
