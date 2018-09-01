@@ -1386,7 +1386,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		if tc.wrongDataSource == false {
 			provisionFromSnapshotMockServerSetupExpectations(identityServer, controllerServer)
 		}
-		if tc.restoredVolSizeSmall == false && tc.wrongDataSource == false && !tc.validSnapshotStatus {
+		if tc.restoredVolSizeSmall == false && tc.wrongDataSource == false && tc.validSnapshotStatus {
 			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 		}
 

@@ -387,7 +387,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	}
 
 	if needSnapshotSupport {
-		volumeContentSource, err := p.getSnapshotHandle(options)
+		volumeContentSource, err := p.getVolumeContentSource(options)
 		if err != nil {
 			return nil, fmt.Errorf("error getting snapshot handle for snapshot %s: %v", options.PVC.Spec.DataSource.Name, err)
 		}
@@ -512,7 +512,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	return pv, nil
 }
 
-func (p *csiProvisioner) getSnapshotHandle(options controller.VolumeOptions) (*csi.VolumeContentSource, error) {
+func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions) (*csi.VolumeContentSource, error) {
 	snapshotObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshots(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting snapshot %s from api server: %v", options.PVC.Spec.DataSource.Name, err)
