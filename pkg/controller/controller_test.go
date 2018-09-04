@@ -620,6 +620,8 @@ func provisionMockServerSetupExpectations(identityServer *driver.MockIdentitySer
 	}, nil).Times(1)
 }
 
+// provisionFromSnapshotMockServerSetupExpectations mocks plugin and controller capabilities reported
+// by a CSI plugin that supports the snapshot feature
 func provisionFromSnapshotMockServerSetupExpectations(identityServer *driver.MockIdentityServer, controllerServer *driver.MockControllerServer) {
 	identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(&csi.GetPluginCapabilitiesResponse{
 		Capabilities: []*csi.PluginCapability{
@@ -1166,7 +1168,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		volOpts              controller.VolumeOptions
 		restoredVolSizeSmall bool
 		wrongDataSource      bool
-		validSnapshotStatus  bool
+		snapshotStatusReady  bool
 		expectedPVSpec       *pvSpec
 		expectErr            bool
 	}{
@@ -1195,7 +1197,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				},
 				Parameters: map[string]string{},
 			},
-			validSnapshotStatus: true,
+			snapshotStatusReady: true,
 			expectedPVSpec: &pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
@@ -1238,7 +1240,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				Parameters: map[string]string{},
 			},
 			restoredVolSizeSmall: true,
-			validSnapshotStatus:  true,
+			snapshotStatusReady:  true,
 			expectErr:            true,
 		},
 		"fail empty snapshot name": {
@@ -1346,7 +1348,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				},
 				Parameters: map[string]string{},
 			},
-			validSnapshotStatus: false,
+			snapshotStatusReady: false,
 			expectErr:           true,
 		},
 	}
@@ -1364,7 +1366,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		client := &fake.Clientset{}
 
 		client.AddReactor("get", "volumesnapshots", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-			snap := newSnapshot(snapName, snapClassName, "snapcontent-snapuid", "snapuid", "claim", tc.validSnapshotStatus, nil, metaTimeNowUnix, resource.NewQuantity(requestedBytes, resource.BinarySI))
+			snap := newSnapshot(snapName, snapClassName, "snapcontent-snapuid", "snapuid", "claim", tc.snapshotStatusReady, nil, metaTimeNowUnix, resource.NewQuantity(requestedBytes, resource.BinarySI))
 			return true, snap, nil
 		})
 
@@ -1382,11 +1384,19 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			},
 		}
 
-		// Setup mock call expectations.
+		// Setup mock call expectations. If tc.wrongDataSource is false, DataSource is valid
+		// and the controller will proceed to check whether the plugin supports snapshot.
+		// So in this case, we need the plugin to report snapshot support capabilities;
+		// Otherwise, the controller will fail the operation so it won't check the capabilities.
 		if tc.wrongDataSource == false {
 			provisionFromSnapshotMockServerSetupExpectations(identityServer, controllerServer)
 		}
-		if tc.restoredVolSizeSmall == false && tc.wrongDataSource == false && tc.validSnapshotStatus {
+		// If tc.restoredVolSizeSmall is true, or tc.wrongDataSource is true, or
+		// tc.snapshotStatusReady is false,  create volume from snapshot operation will fail
+		// early and therefore CreateVolume is not expected to be called.
+		// When the following if condition is met, it is a valid create volume from snapshot
+		// operation and CreateVolume is expected to be called.
+		if tc.restoredVolSizeSmall == false && tc.wrongDataSource == false && tc.snapshotStatusReady {
 			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 		}
 

@@ -343,7 +343,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, fmt.Errorf("claim Selector is not supported")
 	}
 
-	var needSnapshotSupport bool
+	var needSnapshotSupport bool = false
 	if options.PVC.Spec.DataSource != nil {
 		// PVC.Spec.DataSource.Name is the name of the VolumeSnapshot API object
 		if options.PVC.Spec.DataSource.Name == "" {
@@ -394,7 +394,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		req.VolumeContentSource = volumeContentSource
 	}
 
-	glog.Infof("CreateVolumeRequest %+v", req)
+	glog.V(5).Infof("CreateVolumeRequest %+v", req)
 
 	rep := &csi.CreateVolumeResponse{}
 
@@ -529,6 +529,10 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions
 	}
 	glog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
 
+	if snapContentObj.Spec.VolumeSnapshotSource.CSI == nil {
+		return nil, fmt.Errorf("error getting snapshot source from snapshot:snapshotcontent %s:%s", snapshotObj.Name, snapshotObj.Spec.SnapshotContentName)
+	}
+
 	snapshotSource := csi.VolumeContentSource_Snapshot{
 		Snapshot: &csi.VolumeContentSource_SnapshotSource{
 			Id: snapContentObj.Spec.VolumeSnapshotSource.CSI.SnapshotHandle,
@@ -537,7 +541,10 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions
 	glog.V(5).Infof("VolumeContentSource_Snapshot %+v", snapshotSource)
 
 	if snapshotObj.Status.RestoreSize != nil {
-		capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+		capacity, exists := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+		if !exists {
+			return nil, fmt.Errorf("error getting capacity for PVC %s when creating snapshot %s", options.PVC.Name, snapshotObj.Name)
+		}
 		volSizeBytes := capacity.Value()
 		glog.V(5).Infof("Requested volume size is %d and snapshot size is %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
 		// When restoring volume from a snapshot, the volume size should

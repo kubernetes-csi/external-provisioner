@@ -87,6 +87,7 @@ func init() {
 	if err != nil {
 		glog.Fatalf("Failed to create client: %v", err)
 	}
+	// snapclientset.NewForConfig creates a new Clientset for VolumesnapshotV1alpha1Client
 	snapClient, err := snapclientset.NewForConfig(config)
 	if err != nil {
 		glog.Fatalf("Failed to create snapshot client: %v", err)
