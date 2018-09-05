@@ -23,7 +23,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kvol "k8s.io/kubernetes/pkg/volume"
+	kvol "k8s.io/kubernetes/pkg/volume/util"
 
 	"github.com/golang/glog"
 
@@ -78,6 +78,7 @@ func (a *awsEBSPlugin) SnapshotCreate(
 	return &crdv1.VolumeSnapshotDataSource{
 		AWSElasticBlockStore: &crdv1.AWSElasticBlockStoreVolumeSnapshotSource{
 			SnapshotID: snapshotID,
+			FSType:     spec.AWSElasticBlockStore.FSType,
 		},
 	}, convertAWSStatus(status), nil
 }
@@ -110,11 +111,7 @@ func (a *awsEBSPlugin) FindSnapshot(tags *map[string]string) (*crdv1.VolumeSnaps
 	glog.Infof("FindSnapshot by tags: %#v", *tags)
 
 	// TODO: Implement FindSnapshot
-	return &crdv1.VolumeSnapshotDataSource{
-		AWSElasticBlockStore: &crdv1.AWSElasticBlockStoreVolumeSnapshotSource{
-			SnapshotID: "",
-		},
-	}, nil, nil
+	return nil, nil, fmt.Errorf("Snapshot not found")
 }
 
 func (a *awsEBSPlugin) SnapshotRestore(snapshotData *crdv1.VolumeSnapshotData, pvc *v1.PersistentVolumeClaim, pvName string, parameters map[string]string) (*v1.PersistentVolumeSource, map[string]string, error) {
@@ -188,11 +185,11 @@ func (a *awsEBSPlugin) SnapshotRestore(snapshotData *crdv1.VolumeSnapshotData, p
 	pv := &v1.PersistentVolumeSource{
 		AWSElasticBlockStore: &v1.AWSElasticBlockStoreVolumeSource{
 			VolumeID:  string(volumeID),
-			FSType:    "ext4",
 			Partition: 0,
 			ReadOnly:  false,
 		},
 	}
+	pv.AWSElasticBlockStore.FSType = snapshotData.Spec.AWSElasticBlockStore.FSType
 
 	return pv, labels, nil
 

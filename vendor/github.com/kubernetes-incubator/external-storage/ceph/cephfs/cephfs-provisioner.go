@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/golang/glog"
@@ -60,13 +61,16 @@ type cephFSProvisioner struct {
 	identity string
 	// Namespace secrets will be created in. If empty, secrets will be created in each PVC's namespace.
 	secretNamespace string
+	// enable PVC quota
+	enableQuota bool
 }
 
-func newCephFSProvisioner(client kubernetes.Interface, id string, secretNamespace string) controller.Provisioner {
+func newCephFSProvisioner(client kubernetes.Interface, id string, secretNamespace string, enableQuota bool) controller.Provisioner {
 	return &cephFSProvisioner{
 		client:          client,
 		identity:        id,
 		secretNamespace: secretNamespace,
+		enableQuota:     enableQuota,
 	}
 }
 
@@ -112,23 +116,42 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 	if options.PVC.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim Selector is not supported")
 	}
-	cluster, adminID, adminSecret, mon, err := p.parseParameters(options.Parameters)
+	cluster, adminID, adminSecret, pvcRoot, mon, deterministicNames, err := p.parseParameters(options.Parameters)
 	if err != nil {
 		return nil, err
 	}
-	// create random share name
-	share := fmt.Sprintf("kubernetes-dynamic-pvc-%s", uuid.NewUUID())
-	// create random user id
-	user := fmt.Sprintf("kubernetes-dynamic-user-%s", uuid.NewUUID())
+	var share, user string
+	if deterministicNames {
+		share = fmt.Sprintf(options.PVC.Name)
+		user = fmt.Sprintf("k8s.%s.%s", options.PVC.Namespace, options.PVC.Name)
+	} else {
+		// create random share name
+		share = fmt.Sprintf("kubernetes-dynamic-pvc-%s", uuid.NewUUID())
+		// create random user id
+		user = fmt.Sprintf("kubernetes-dynamic-user-%s", uuid.NewUUID())
+	}
 	// provision share
 	// create cmd
-	cmd := exec.Command(provisionCmd, "-n", share, "-u", user)
+	args := []string{"-n", share, "-u", user}
+	if p.enableQuota {
+		capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+		requestBytes := strconv.FormatInt(capacity.Value(), 10)
+		args = append(args, "-s", requestBytes)
+	}
+	cmd := exec.Command(provisionCmd, args...)
 	// set env
 	cmd.Env = []string{
 		"CEPH_CLUSTER_NAME=" + cluster,
 		"CEPH_MON=" + strings.Join(mon[:], ","),
 		"CEPH_AUTH_ID=" + adminID,
-		"CEPH_AUTH_KEY=" + adminSecret}
+		"CEPH_AUTH_KEY=" + adminSecret,
+		"CEPH_VOLUME_ROOT=" + pvcRoot}
+	if deterministicNames {
+		cmd.Env = append(cmd.Env, "CEPH_VOLUME_GROUP="+options.PVC.Namespace)
+	}
+	if *disableCephNamespaceIsolation {
+		cmd.Env = append(cmd.Env, "CEPH_NAMESPACE_ISOLATION_DISABLED=true")
+	}
 
 	output, cmdErr := cmd.CombinedOutput()
 	if cmdErr != nil {
@@ -175,7 +198,11 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
 			AccessModes:                   options.PVC.Spec.AccessModes,
-			Capacity: v1.ResourceList{ //FIXME: kernel cephfs doesn't enforce quota, capacity is not meaningless here.
+			MountOptions:                  options.MountOptions,
+			Capacity: v1.ResourceList{
+				// Quotas are supported by the userspace client(ceph-fuse, libcephfs), or kernel client >= 4.17 but only on mimic clusters.
+				// In other cases capacity is meaningless here.
+				// If quota is enabled, provisioner will set ceph.quota.max_bytes on volume path.
 				v1.ResourceName(v1.ResourceStorage): options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
 			},
 			PersistentVolumeSource: v1.PersistentVolumeSource{
@@ -183,8 +210,7 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 					Monitors: mon,
 					Path:     res.Path[strings.Index(res.Path, "/"):],
 					SecretRef: &v1.SecretReference{
-						Name: secretName,
-						// TODO https://github.com/kubernetes-incubator/external-storage/issues/309
+						Name:      secretName,
 						Namespace: nameSpace,
 					},
 					User: user,
@@ -219,7 +245,7 @@ func (p *cephFSProvisioner) Delete(volume *v1.PersistentVolume) error {
 	if err != nil {
 		return err
 	}
-	cluster, adminID, adminSecret, mon, err := p.parseParameters(class.Parameters)
+	cluster, adminID, adminSecret, pvcRoot, mon, _, err := p.parseParameters(class.Parameters)
 	if err != nil {
 		return err
 	}
@@ -231,7 +257,11 @@ func (p *cephFSProvisioner) Delete(volume *v1.PersistentVolume) error {
 		"CEPH_CLUSTER_NAME=" + cluster,
 		"CEPH_MON=" + strings.Join(mon[:], ","),
 		"CEPH_AUTH_ID=" + adminID,
-		"CEPH_AUTH_KEY=" + adminSecret}
+		"CEPH_AUTH_KEY=" + adminSecret,
+		"CEPH_VOLUME_ROOT=" + pvcRoot}
+	if *disableCephNamespaceIsolation {
+		cmd.Env = append(cmd.Env, "CEPH_NAMESPACE_ISOLATION_DISABLED=true")
+	}
 
 	output, cmdErr := cmd.CombinedOutput()
 	if cmdErr != nil {
@@ -254,16 +284,19 @@ func (p *cephFSProvisioner) Delete(volume *v1.PersistentVolume) error {
 	return nil
 }
 
-func (p *cephFSProvisioner) parseParameters(parameters map[string]string) (string, string, string, []string, error) {
+func (p *cephFSProvisioner) parseParameters(parameters map[string]string) (string, string, string, string, []string, bool, error) {
 	var (
-		err                                                                  error
-		mon                                                                  []string
-		cluster, adminID, adminSecretName, adminSecretNamespace, adminSecret string
+		err                                                                           error
+		mon                                                                           []string
+		cluster, adminID, adminSecretName, adminSecretNamespace, adminSecret, pvcRoot string
+		deterministicNames                                                            bool
 	)
 
 	adminSecretNamespace = "default"
 	adminID = "admin"
 	cluster = "ceph"
+	pvcRoot = "/volumes/kubernetes"
+	deterministicNames = false
 
 	for k, v := range parameters {
 		switch strings.ToLower(k) {
@@ -280,21 +313,26 @@ func (p *cephFSProvisioner) parseParameters(parameters map[string]string) (strin
 			adminSecretName = v
 		case "adminsecretnamespace":
 			adminSecretNamespace = v
+		case "claimroot":
+			pvcRoot = v
+		case "deterministicnames":
+			// On error, strconv.ParseBool() returns false; leave that, as it is a perfectly fine default
+			deterministicNames, _ = strconv.ParseBool(v)
 		default:
-			return "", "", "", nil, fmt.Errorf("invalid option %q", k)
+			return "", "", "", "", nil, false, fmt.Errorf("invalid option %q", k)
 		}
 	}
 	// sanity check
 	if adminSecretName == "" {
-		return "", "", "", nil, fmt.Errorf("missing Ceph admin secret name")
+		return "", "", "", "", nil, false, fmt.Errorf("missing Ceph admin secret name")
 	}
 	if adminSecret, err = p.parsePVSecret(adminSecretNamespace, adminSecretName); err != nil {
-		return "", "", "", nil, fmt.Errorf("failed to get admin secret from [%q/%q]: %v", adminSecretNamespace, adminSecretName, err)
+		return "", "", "", "", nil, false, fmt.Errorf("failed to get admin secret from [%q/%q]: %v", adminSecretNamespace, adminSecretName, err)
 	}
 	if len(mon) < 1 {
-		return "", "", "", nil, fmt.Errorf("missing Ceph monitors")
+		return "", "", "", "", nil, false, fmt.Errorf("missing Ceph monitors")
 	}
-	return cluster, adminID, adminSecret, mon, nil
+	return cluster, adminID, adminSecret, pvcRoot, mon, deterministicNames, nil
 }
 
 func (p *cephFSProvisioner) parsePVSecret(namespace, secretName string) (string, error) {
@@ -314,10 +352,13 @@ func (p *cephFSProvisioner) parsePVSecret(namespace, secretName string) (string,
 }
 
 var (
-	master          = flag.String("master", "", "Master URL")
-	kubeconfig      = flag.String("kubeconfig", "", "Absolute path to the kubeconfig")
-	id              = flag.String("id", "", "Unique provisioner identity")
-	secretNamespace = flag.String("secret-namespace", "", "Namespace secrets will be created in (default: '', created in each PVC's namespace)")
+	master                        = flag.String("master", "", "Master URL")
+	kubeconfig                    = flag.String("kubeconfig", "", "Absolute path to the kubeconfig")
+	id                            = flag.String("id", "", "Unique provisioner identity")
+	secretNamespace               = flag.String("secret-namespace", "", "Namespace secrets will be created in (default: '', created in each PVC's namespace)")
+	enableQuota                   = flag.Bool("enable-quota", false, "Enable PVC quota")
+	metricsPort                   = flag.Int("metrics-port", 0, "The port of the metrics server (set to non-zero to enable)")
+	disableCephNamespaceIsolation = flag.Bool("disable-ceph-namespace-isolation", false, "Disable ceph namespace isolation")
 )
 
 func main() {
@@ -368,7 +409,7 @@ func main() {
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
 	glog.Infof("Creating CephFS provisioner %s with identity: %s, secret namespace: %s", prName, prID, *secretNamespace)
-	cephFSProvisioner := newCephFSProvisioner(clientset, prID, *secretNamespace)
+	cephFSProvisioner := newCephFSProvisioner(clientset, prID, *secretNamespace, *enableQuota)
 
 	// Start the provision controller which will dynamically provision cephFS
 	// PVs
@@ -377,6 +418,7 @@ func main() {
 		prName,
 		cephFSProvisioner,
 		serverVersion.GitVersion,
+		controller.MetricsPort(int32(*metricsPort)),
 	)
 
 	pc.Run(wait.NeverStop)

@@ -64,11 +64,16 @@ const (
 	ProvisionerNodeLabelsForPV = "nodeLabelsForPV"
 	// ProvisionerUseAlphaAPI shows if we need to use alpha API, default to false
 	ProvisionerUseAlphaAPI = "useAlphaAPI"
+	// AlphaStorageNodeAffinityAnnotation defines node affinity policies for a PersistentVolume.
+	// Value is a string of the json representation of type NodeAffinity
+	AlphaStorageNodeAffinityAnnotation = "volume.alpha.kubernetes.io/node-affinity"
 	// VolumeDelete copied from k8s.io/kubernetes/pkg/controller/volume/events
 	VolumeDelete = "VolumeDelete"
 
 	// LocalPVEnv will contain the device path when script is invoked
 	LocalPVEnv = "LOCAL_PV_BLKDEVICE"
+	// LocalFilesystemEnv will contain the filesystm path when script is invoked
+	LocalFilesystemEnv = "LOCAL_PV_FILESYSTEM"
 	// KubeConfigEnv will (optionally) specify the location of kubeconfig file on the node.
 	KubeConfigEnv = "KUBECONFIG"
 
@@ -92,6 +97,12 @@ type UserConfig struct {
 	Namespace string
 	// Image of container to use for jobs (optional)
 	JobContainerImage string
+	// MinResyncPeriod is minimum resync period. Resync period in reflectors
+	// will be random between MinResyncPeriod and 2*MinResyncPeriod.
+	MinResyncPeriod metav1.Duration
+	// UseNodeNameOnly indicates if Node.Name should be used in the provisioner name
+	// instead of Node.UID.
+	UseNodeNameOnly bool
 }
 
 // MountConfig stores a configuration for discoverying a specific storageclass
@@ -164,6 +175,13 @@ type ProvisionerConfiguration struct {
 	// default is false.
 	// +optional
 	UseJobForCleaning bool `json:"useJobForCleaning" yaml:"useJobForCleaning"`
+	// MinResyncPeriod is minimum resync period. Resync period in reflectors
+	// will be random between MinResyncPeriod and 2*MinResyncPeriod.
+	MinResyncPeriod metav1.Duration `json:"minResyncPeriod" yaml:"minResyncPeriod"`
+	// UseNodeNameOnly indicates if Node.Name should be used in the provisioner name
+	// instead of Node.UID. Default is false.
+	// +optional
+	UseNodeNameOnly bool `json:"useNodeNameOnly" yaml:"useNodeNameOnly"`
 }
 
 // CreateLocalPVSpec returns a PV spec that can be used for PV creation
@@ -194,7 +212,7 @@ func CreateLocalPVSpec(config *LocalPVConfig) *v1.PersistentVolume {
 		},
 	}
 	if config.UseAlphaAPI {
-		pv.ObjectMeta.Annotations[v1.AlphaStorageNodeAffinityAnnotation] = config.AffinityAnn
+		pv.ObjectMeta.Annotations[AlphaStorageNodeAffinityAnnotation] = config.AffinityAnn
 	} else {
 		pv.Spec.NodeAffinity = config.NodeAffinity
 	}

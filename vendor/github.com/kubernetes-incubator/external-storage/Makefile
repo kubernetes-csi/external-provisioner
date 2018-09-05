@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-all: aws/efs ceph/cephfs ceph/rbd flex gluster/block gluster/glusterfs gluster/file iscsi/targetd local-volume/provisioner nfs-client nfs snapshot openstack/standalone-cinder openstack-sharedfilesystems
+all: aws/efs ceph/cephfs ceph/rbd flex gluster/block gluster/glusterfs gluster/file iscsi/targetd local-volume/provisioner nfs-client nfs snapshot
 .PHONY: all
 
-clean: clean-aws/efs clean-ceph/cephfs clean-ceph/rbd clean-flex clean-gluster/block clean-gluster/glusterfs clean-iscsi/targetd clean-local-volume/provisioner clean-nfs-client clean-nfs clean-openebs clean-snapshot clean-openstack/standalone-cinder clean-openstack-sharedfilesystems
+clean: clean-aws/efs clean-ceph/cephfs clean-ceph/rbd clean-flex clean-gluster/block clean-gluster/glusterfs clean-iscsi/targetd clean-local-volume/provisioner clean-nfs-client clean-nfs clean-openebs clean-snapshot
 .PHONY: clean
 
-
-test: test-aws/efs test-local-volume/provisioner test-nfs test-snapshot test-openstack/standalone-cinder test-openstack-sharedfilesystems
+test: test-aws/efs test-local-volume/provisioner test-nfs test-snapshot
 .PHONY: test
 
 verify:
@@ -127,6 +126,11 @@ test-local-volume/provisioner:
 	go test ./...
 .PHONY: test-local-volume/provisioner
 
+test-local-volume/helm:
+	cd local-volume/helm; \
+	./test/run.sh
+.PHONY: test-local-volume/helm
+
 clean-local-volume/provisioner:
 	cd local-volume/provisioner; \
 	make clean
@@ -182,41 +186,10 @@ clean-snapshot:
 	make clean
 .PHONY: clean-snapshot
 
-openstack/standalone-cinder:
-	cd openstack/standalone-cinder; \
-	make
-.PHONY: openstack/standalone-cinder
-
-test-openstack/standalone-cinder:
-	cd openstack/standalone-cinder; \
-	make test
-.PHONY: test-openstack/standalone-cinder
-
-clean-openstack/standalone-cinder:
-	cd openstack/standalone-cinder; \
-	make clean
-.PHONY: clean-openstack/standalone-cinder
-
 test-snapshot:
 	cd snapshot; \
 	make test
 .PHONY: test-snapshot
-
-openstack-sharedfilesystems:
-	cd openstack-sharedfilesystems; \
-	make container
-.PHONY: openstack-sharedfilesystems
-
-test-openstack-sharedfilesystems:
-	cd openstack-sharedfilesystems; \
-	make test
-.PHONY: test-openstack-sharedfilesystems
-
-clean-openstack-sharedfilesystems:
-	cd openstack-sharedfilesystems; \
-	make clean
-.PHONY: clean-openstack-sharedfilesystems
-
 
 push-cephfs-provisioner:
 	cd ceph/cephfs; \
@@ -268,15 +241,15 @@ push-nfs-provisioner:
 	make push
 .PHONY: push-nfs-provisioner
 
+push-flex-provisioner:
+	cd flex; \
+	make push
+.PHONY: push-flex-provisioner
+
 push-openebs-provisioner:
 	cd openebs; \
 	make push
 .PHONY: push-openebs-provisioner
-
-push-openstack-sharedfilesystems:
-	cd openstack-sharedfilesystems; \
-	make push
-.PHONY: push-openstack-sharedfilesystems
 
 deploy-openebs-provisioner:
 	cd openebs; \

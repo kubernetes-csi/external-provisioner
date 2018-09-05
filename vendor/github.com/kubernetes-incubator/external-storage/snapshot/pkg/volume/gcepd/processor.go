@@ -29,7 +29,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/kubelet/apis"
-	k8svol "k8s.io/kubernetes/pkg/volume"
+	k8svol "k8s.io/kubernetes/pkg/volume/util"
 )
 
 const (
@@ -190,11 +190,7 @@ func (plugin *gcePersistentDiskPlugin) FindSnapshot(tags *map[string]string) (*c
 	glog.Infof("FindSnapshot by tags: %#v", *tags)
 
 	// TODO: Implement FindSnapshot
-	return &crdv1.VolumeSnapshotDataSource{
-		GCEPersistentDiskSnapshot: &crdv1.GCEPersistentDiskSnapshotSource{
-			SnapshotName: "",
-		},
-	}, nil, nil
+	return nil, nil, fmt.Errorf("Snapshot not found")
 }
 
 func (plugin *gcePersistentDiskPlugin) VolumeDelete(pv *v1.PersistentVolume) error {

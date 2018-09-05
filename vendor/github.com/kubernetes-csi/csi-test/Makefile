@@ -13,7 +13,7 @@
 # limitations under the License.
 
 IMAGE_NAME = quay.io/k8scsi/mock-driver
-IMAGE_VERSION = canary
+IMAGE_VERSION = v0.3.0
 APP := ./bin/mock
 
 
@@ -38,5 +38,15 @@ container: $(APP)
 push: container
 	docker push $(IMAGE_NAME):$(IMAGE_VERSION)
 
-.PHONY: all clean container push
+test:
+	files=$$(find ./ -name '*.go' | grep -v '^./vendor' ); \
+        if [ $$(gofmt -d $$files | wc -l) -ne 0 ]; then \
+                echo "formatting errors:"; \
+                gofmt -d $$files; \
+                false; \
+        fi
+	go vet $$(go list ./... | grep -v vendor)
+	go test $$(go list ./... | grep -v vendor | grep -v "cmd/csi-sanity")
+	./hack/e2e.sh
 
+.PHONY: all clean container push test

@@ -19,7 +19,7 @@ limitations under the License.
 package driver
 
 import (
-	context "context"
+	"context"
 	"errors"
 	"net"
 	"sync"
@@ -27,7 +27,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -58,6 +58,8 @@ type CSICreds struct {
 	ControllerUnpublishVolumeSecret string
 	NodeStageVolumeSecret           string
 	NodePublishVolumeSecret         string
+	CreateSnapshotSecret            string
+	DeleteSnapshotSecret            string
 }
 
 type CSIDriver struct {
@@ -155,6 +157,8 @@ func (c *CSIDriver) SetDefaultCreds() {
 		ControllerUnpublishVolumeSecret: "secretval4",
 		NodeStageVolumeSecret:           "secretval5",
 		NodePublishVolumeSecret:         "secretval6",
+		CreateSnapshotSecret:            "secretval7",
+		DeleteSnapshotSecret:            "secretval8",
 	}
 }
 
@@ -190,6 +194,10 @@ func isAuthenticated(req interface{}, creds *CSICreds) (bool, error) {
 		return authenticateNodeStageVolume(r, creds)
 	case *csi.NodePublishVolumeRequest:
 		return authenticateNodePublishVolume(r, creds)
+	case *csi.CreateSnapshotRequest:
+		return authenticateCreateSnapshot(r, creds)
+	case *csi.DeleteSnapshotRequest:
+		return authenticateDeleteSnapshot(r, creds)
 	default:
 		return true, nil
 	}
@@ -217,6 +225,14 @@ func authenticateNodeStageVolume(req *csi.NodeStageVolumeRequest, creds *CSICred
 
 func authenticateNodePublishVolume(req *csi.NodePublishVolumeRequest, creds *CSICreds) (bool, error) {
 	return credsCheck(req.GetNodePublishSecrets(), creds.NodePublishVolumeSecret)
+}
+
+func authenticateCreateSnapshot(req *csi.CreateSnapshotRequest, creds *CSICreds) (bool, error) {
+	return credsCheck(req.GetCreateSnapshotSecrets(), creds.CreateSnapshotSecret)
+}
+
+func authenticateDeleteSnapshot(req *csi.DeleteSnapshotRequest, creds *CSICreds) (bool, error) {
+	return credsCheck(req.GetDeleteSnapshotSecrets(), creds.DeleteSnapshotSecret)
 }
 
 func credsCheck(secrets map[string]string, secretVal string) (bool, error) {

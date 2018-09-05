@@ -40,6 +40,7 @@ func init() {
 	flag.StringVar(&config.TargetPath, prefix+"mountdir", os.TempDir()+"/csi", "Mount point for NodePublish")
 	flag.StringVar(&config.StagingPath, prefix+"stagingdir", os.TempDir()+"/csi", "Mount point for NodeStage if staging is supported")
 	flag.StringVar(&config.SecretsFile, prefix+"secrets", "", "CSI secrets file")
+	flag.Int64Var(&config.TestVolumeSize, prefix+"testvolumesize", sanity.DefTestVolumeSize, "Base volume size used for provisioned volumes")
 	flag.Parse()
 }
 

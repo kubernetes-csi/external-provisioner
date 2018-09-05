@@ -44,7 +44,7 @@ func (m *RequestSyncDevicesRequest) Reset()         { *m = RequestSyncDevicesReq
 func (m *RequestSyncDevicesRequest) String() string { return proto.CompactTextString(m) }
 func (*RequestSyncDevicesRequest) ProtoMessage()    {}
 func (*RequestSyncDevicesRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_homegraph_5bfcd56e20a4e9c3, []int{0}
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{0}
 }
 func (m *RequestSyncDevicesRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_RequestSyncDevicesRequest.Unmarshal(m, b)
@@ -90,7 +90,7 @@ func (m *RequestSyncDevicesResponse) Reset()         { *m = RequestSyncDevicesRe
 func (m *RequestSyncDevicesResponse) String() string { return proto.CompactTextString(m) }
 func (*RequestSyncDevicesResponse) ProtoMessage()    {}
 func (*RequestSyncDevicesResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_homegraph_5bfcd56e20a4e9c3, []int{1}
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{1}
 }
 func (m *RequestSyncDevicesResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_RequestSyncDevicesResponse.Unmarshal(m, b)
@@ -155,7 +155,7 @@ var xxx_messageInfo_RequestSyncDevicesResponse proto.InternalMessageInfo
 // Notifications, or both. This request uses globally unique flattened state
 // names instead of namespaces based on traits to align with the existing QUERY
 // and EXECUTE APIs implemented by 90+ Smart Home partners.
-// Next tag: 5.
+// Next tag: 6.
 type ReportStateAndNotificationRequest struct {
 	// Request id used for debugging.
 	RequestId string `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
@@ -163,6 +163,8 @@ type ReportStateAndNotificationRequest struct {
 	EventId string `protobuf:"bytes,4,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	// Required. Third-party user id.
 	AgentUserId string `protobuf:"bytes,2,opt,name=agent_user_id,json=agentUserId,proto3" json:"agent_user_id,omitempty"`
+	// Token to maintain state in the follow up notification response.
+	FollowUpToken string `protobuf:"bytes,5,opt,name=follow_up_token,json=followUpToken,proto3" json:"follow_up_token,omitempty"`
 	// State of devices to update and notification metadata for devices. For
 	// example, if a user turns a light on manually, a State update should be
 	// sent so that the information is always the current status of the device.
@@ -183,7 +185,7 @@ func (m *ReportStateAndNotificationRequest) Reset()         { *m = ReportStateAn
 func (m *ReportStateAndNotificationRequest) String() string { return proto.CompactTextString(m) }
 func (*ReportStateAndNotificationRequest) ProtoMessage()    {}
 func (*ReportStateAndNotificationRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_homegraph_5bfcd56e20a4e9c3, []int{2}
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{2}
 }
 func (m *ReportStateAndNotificationRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ReportStateAndNotificationRequest.Unmarshal(m, b)
@@ -224,6 +226,13 @@ func (m *ReportStateAndNotificationRequest) GetAgentUserId() string {
 	return ""
 }
 
+func (m *ReportStateAndNotificationRequest) GetFollowUpToken() string {
+	if m != nil {
+		return m.FollowUpToken
+	}
+	return ""
+}
+
 func (m *ReportStateAndNotificationRequest) GetPayload() *StateAndNotificationPayload {
 	if m != nil {
 		return m.Payload
@@ -244,7 +253,7 @@ func (m *ReportStateAndNotificationResponse) Reset()         { *m = ReportStateA
 func (m *ReportStateAndNotificationResponse) String() string { return proto.CompactTextString(m) }
 func (*ReportStateAndNotificationResponse) ProtoMessage()    {}
 func (*ReportStateAndNotificationResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_homegraph_5bfcd56e20a4e9c3, []int{3}
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{3}
 }
 func (m *ReportStateAndNotificationResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ReportStateAndNotificationResponse.Unmarshal(m, b)
@@ -284,7 +293,7 @@ func (m *StateAndNotificationPayload) Reset()         { *m = StateAndNotificatio
 func (m *StateAndNotificationPayload) String() string { return proto.CompactTextString(m) }
 func (*StateAndNotificationPayload) ProtoMessage()    {}
 func (*StateAndNotificationPayload) Descriptor() ([]byte, []int) {
-	return fileDescriptor_homegraph_5bfcd56e20a4e9c3, []int{4}
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{4}
 }
 func (m *StateAndNotificationPayload) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_StateAndNotificationPayload.Unmarshal(m, b)
@@ -326,7 +335,7 @@ func (m *ReportStateAndNotificationDevice) Reset()         { *m = ReportStateAnd
 func (m *ReportStateAndNotificationDevice) String() string { return proto.CompactTextString(m) }
 func (*ReportStateAndNotificationDevice) ProtoMessage()    {}
 func (*ReportStateAndNotificationDevice) Descriptor() ([]byte, []int) {
-	return fileDescriptor_homegraph_5bfcd56e20a4e9c3, []int{5}
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{5}
 }
 func (m *ReportStateAndNotificationDevice) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ReportStateAndNotificationDevice.Unmarshal(m, b)
@@ -375,7 +384,7 @@ func (m *DeleteAgentUserRequest) Reset()         { *m = DeleteAgentUserRequest{}
 func (m *DeleteAgentUserRequest) String() string { return proto.CompactTextString(m) }
 func (*DeleteAgentUserRequest) ProtoMessage()    {}
 func (*DeleteAgentUserRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_homegraph_5bfcd56e20a4e9c3, []int{6}
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{6}
 }
 func (m *DeleteAgentUserRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_DeleteAgentUserRequest.Unmarshal(m, b)
@@ -409,6 +418,465 @@ func (m *DeleteAgentUserRequest) GetAgentUserId() string {
 	return ""
 }
 
+// Request type for Query call. This should be the same format as the AoG
+// action.devices.QUERY request
+// (https://developers.google.com/actions/smarthome/create-app#actiondevicesquery)
+// with the exception of the extra "agent_user_id" and no "intent" and
+// "customData" field.
+type QueryRequest struct {
+	// Request ID used for debugging.
+	RequestId string `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	// Required. Third-party user ID.
+	AgentUserId string `protobuf:"bytes,2,opt,name=agent_user_id,json=agentUserId,proto3" json:"agent_user_id,omitempty"`
+	// Required. Inputs containing third-party partner's device IDs for which to
+	// get the device states.
+	Inputs               []*QueryRequestInput `protobuf:"bytes,3,rep,name=inputs,proto3" json:"inputs,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}             `json:"-"`
+	XXX_unrecognized     []byte               `json:"-"`
+	XXX_sizecache        int32                `json:"-"`
+}
+
+func (m *QueryRequest) Reset()         { *m = QueryRequest{} }
+func (m *QueryRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryRequest) ProtoMessage()    {}
+func (*QueryRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{7}
+}
+func (m *QueryRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_QueryRequest.Unmarshal(m, b)
+}
+func (m *QueryRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_QueryRequest.Marshal(b, m, deterministic)
+}
+func (dst *QueryRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryRequest.Merge(dst, src)
+}
+func (m *QueryRequest) XXX_Size() int {
+	return xxx_messageInfo_QueryRequest.Size(m)
+}
+func (m *QueryRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryRequest proto.InternalMessageInfo
+
+func (m *QueryRequest) GetRequestId() string {
+	if m != nil {
+		return m.RequestId
+	}
+	return ""
+}
+
+func (m *QueryRequest) GetAgentUserId() string {
+	if m != nil {
+		return m.AgentUserId
+	}
+	return ""
+}
+
+func (m *QueryRequest) GetInputs() []*QueryRequestInput {
+	if m != nil {
+		return m.Inputs
+	}
+	return nil
+}
+
+// Device ID inputs to QueryRequest.
+type QueryRequestInput struct {
+	// Payload containing third-party partner's device IDs.
+	Payload              *QueryRequestPayload `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}             `json:"-"`
+	XXX_unrecognized     []byte               `json:"-"`
+	XXX_sizecache        int32                `json:"-"`
+}
+
+func (m *QueryRequestInput) Reset()         { *m = QueryRequestInput{} }
+func (m *QueryRequestInput) String() string { return proto.CompactTextString(m) }
+func (*QueryRequestInput) ProtoMessage()    {}
+func (*QueryRequestInput) Descriptor() ([]byte, []int) {
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{8}
+}
+func (m *QueryRequestInput) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_QueryRequestInput.Unmarshal(m, b)
+}
+func (m *QueryRequestInput) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_QueryRequestInput.Marshal(b, m, deterministic)
+}
+func (dst *QueryRequestInput) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryRequestInput.Merge(dst, src)
+}
+func (m *QueryRequestInput) XXX_Size() int {
+	return xxx_messageInfo_QueryRequestInput.Size(m)
+}
+func (m *QueryRequestInput) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryRequestInput.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryRequestInput proto.InternalMessageInfo
+
+func (m *QueryRequestInput) GetPayload() *QueryRequestPayload {
+	if m != nil {
+		return m.Payload
+	}
+	return nil
+}
+
+// Payload containing device IDs.
+type QueryRequestPayload struct {
+	// Third-party partner's device IDs to get device states for.
+	Devices              []*AgentDeviceId `protobuf:"bytes,1,rep,name=devices,proto3" json:"devices,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}         `json:"-"`
+	XXX_unrecognized     []byte           `json:"-"`
+	XXX_sizecache        int32            `json:"-"`
+}
+
+func (m *QueryRequestPayload) Reset()         { *m = QueryRequestPayload{} }
+func (m *QueryRequestPayload) String() string { return proto.CompactTextString(m) }
+func (*QueryRequestPayload) ProtoMessage()    {}
+func (*QueryRequestPayload) Descriptor() ([]byte, []int) {
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{9}
+}
+func (m *QueryRequestPayload) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_QueryRequestPayload.Unmarshal(m, b)
+}
+func (m *QueryRequestPayload) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_QueryRequestPayload.Marshal(b, m, deterministic)
+}
+func (dst *QueryRequestPayload) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryRequestPayload.Merge(dst, src)
+}
+func (m *QueryRequestPayload) XXX_Size() int {
+	return xxx_messageInfo_QueryRequestPayload.Size(m)
+}
+func (m *QueryRequestPayload) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryRequestPayload.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryRequestPayload proto.InternalMessageInfo
+
+func (m *QueryRequestPayload) GetDevices() []*AgentDeviceId {
+	if m != nil {
+		return m.Devices
+	}
+	return nil
+}
+
+// Third-party partner's device ID for one device.
+type AgentDeviceId struct {
+	// Third-party partner's device ID.
+	Id                   string   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *AgentDeviceId) Reset()         { *m = AgentDeviceId{} }
+func (m *AgentDeviceId) String() string { return proto.CompactTextString(m) }
+func (*AgentDeviceId) ProtoMessage()    {}
+func (*AgentDeviceId) Descriptor() ([]byte, []int) {
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{10}
+}
+func (m *AgentDeviceId) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_AgentDeviceId.Unmarshal(m, b)
+}
+func (m *AgentDeviceId) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_AgentDeviceId.Marshal(b, m, deterministic)
+}
+func (dst *AgentDeviceId) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_AgentDeviceId.Merge(dst, src)
+}
+func (m *AgentDeviceId) XXX_Size() int {
+	return xxx_messageInfo_AgentDeviceId.Size(m)
+}
+func (m *AgentDeviceId) XXX_DiscardUnknown() {
+	xxx_messageInfo_AgentDeviceId.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_AgentDeviceId proto.InternalMessageInfo
+
+func (m *AgentDeviceId) GetId() string {
+	if m != nil {
+		return m.Id
+	}
+	return ""
+}
+
+// Response type for Query call. This should follow the same format as AoG
+// action.devices.QUERY response
+// (https://developers.google.com/actions/smarthome/create-app#actiondevicesquery).
+type QueryResponse struct {
+	// Request ID used for debugging. Copied from the request.
+	RequestId string `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	// Device states for the devices given in the request.
+	Payload              *QueryResponsePayload `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}              `json:"-"`
+	XXX_unrecognized     []byte                `json:"-"`
+	XXX_sizecache        int32                 `json:"-"`
+}
+
+func (m *QueryResponse) Reset()         { *m = QueryResponse{} }
+func (m *QueryResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryResponse) ProtoMessage()    {}
+func (*QueryResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{11}
+}
+func (m *QueryResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_QueryResponse.Unmarshal(m, b)
+}
+func (m *QueryResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_QueryResponse.Marshal(b, m, deterministic)
+}
+func (dst *QueryResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryResponse.Merge(dst, src)
+}
+func (m *QueryResponse) XXX_Size() int {
+	return xxx_messageInfo_QueryResponse.Size(m)
+}
+func (m *QueryResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryResponse proto.InternalMessageInfo
+
+func (m *QueryResponse) GetRequestId() string {
+	if m != nil {
+		return m.RequestId
+	}
+	return ""
+}
+
+func (m *QueryResponse) GetPayload() *QueryResponsePayload {
+	if m != nil {
+		return m.Payload
+	}
+	return nil
+}
+
+// Payload containing device states information.
+type QueryResponsePayload struct {
+	// States of the devices. Map of third-party device ID to struct of device
+	// states.
+	Devices              map[string]*_struct.Struct `protobuf:"bytes,1,rep,name=devices,proto3" json:"devices,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	XXX_NoUnkeyedLiteral struct{}                   `json:"-"`
+	XXX_unrecognized     []byte                     `json:"-"`
+	XXX_sizecache        int32                      `json:"-"`
+}
+
+func (m *QueryResponsePayload) Reset()         { *m = QueryResponsePayload{} }
+func (m *QueryResponsePayload) String() string { return proto.CompactTextString(m) }
+func (*QueryResponsePayload) ProtoMessage()    {}
+func (*QueryResponsePayload) Descriptor() ([]byte, []int) {
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{12}
+}
+func (m *QueryResponsePayload) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_QueryResponsePayload.Unmarshal(m, b)
+}
+func (m *QueryResponsePayload) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_QueryResponsePayload.Marshal(b, m, deterministic)
+}
+func (dst *QueryResponsePayload) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryResponsePayload.Merge(dst, src)
+}
+func (m *QueryResponsePayload) XXX_Size() int {
+	return xxx_messageInfo_QueryResponsePayload.Size(m)
+}
+func (m *QueryResponsePayload) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryResponsePayload.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryResponsePayload proto.InternalMessageInfo
+
+func (m *QueryResponsePayload) GetDevices() map[string]*_struct.Struct {
+	if m != nil {
+		return m.Devices
+	}
+	return nil
+}
+
+// Request type for Sync call. This should follow the same format as AoG
+// action.devices.SYNC request
+// (https://developers.google.com/actions/smarthome/create-app#actiondevicessync)
+// with the exception of the extra "agent_user_id" and no "intent" field.
+type SyncRequest struct {
+	// Request ID used for debugging.
+	RequestId string `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	// Required. Third-party user ID.
+	AgentUserId          string   `protobuf:"bytes,2,opt,name=agent_user_id,json=agentUserId,proto3" json:"agent_user_id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *SyncRequest) Reset()         { *m = SyncRequest{} }
+func (m *SyncRequest) String() string { return proto.CompactTextString(m) }
+func (*SyncRequest) ProtoMessage()    {}
+func (*SyncRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{13}
+}
+func (m *SyncRequest) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_SyncRequest.Unmarshal(m, b)
+}
+func (m *SyncRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_SyncRequest.Marshal(b, m, deterministic)
+}
+func (dst *SyncRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SyncRequest.Merge(dst, src)
+}
+func (m *SyncRequest) XXX_Size() int {
+	return xxx_messageInfo_SyncRequest.Size(m)
+}
+func (m *SyncRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_SyncRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SyncRequest proto.InternalMessageInfo
+
+func (m *SyncRequest) GetRequestId() string {
+	if m != nil {
+		return m.RequestId
+	}
+	return ""
+}
+
+func (m *SyncRequest) GetAgentUserId() string {
+	if m != nil {
+		return m.AgentUserId
+	}
+	return ""
+}
+
+// Example SyncResponse:
+// {
+//   "requestId": "ff36a3cc-ec34-11e6-b1a0-64510650abcf",
+//   "payload": {
+//     "agentUserId": "1836.15267389",
+//     "devices": [{
+//       "id": "123",
+//       "type": "action.devices.types.OUTLET",
+//       "traits": [
+//         "action.devices.traits.OnOff"
+//       ],
+//       "name": {
+//         "defaultNames": ["My Outlet 1234"],
+//         "name": "Night light",
+//         "nicknames": ["wall plug"]
+//       },
+//       "willReportState": false,
+//       "deviceInfo": {
+//         "manufacturer": "lights-out-inc",
+//         "model": "hs1234",
+//         "hwVersion": "3.2",
+//         "swVersion": "11.4"
+//       },
+//       "customData": {
+//         "fooValue": 74,
+//         "barValue": true,
+//         "bazValue": "foo"
+//       }
+//     }]
+//   }
+// }
+//
+// Response type for Sync call. This should follow the same format as AoG
+// action.devices.SYNC response
+// (https://developers.google.com/actions/smarthome/create-app#actiondevicessync).
+type SyncResponse struct {
+	// Request ID used for debugging. Copied from the request.
+	RequestId string `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	// Devices associated with the third-party user.
+	Payload              *SyncResponsePayload `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}             `json:"-"`
+	XXX_unrecognized     []byte               `json:"-"`
+	XXX_sizecache        int32                `json:"-"`
+}
+
+func (m *SyncResponse) Reset()         { *m = SyncResponse{} }
+func (m *SyncResponse) String() string { return proto.CompactTextString(m) }
+func (*SyncResponse) ProtoMessage()    {}
+func (*SyncResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{14}
+}
+func (m *SyncResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_SyncResponse.Unmarshal(m, b)
+}
+func (m *SyncResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_SyncResponse.Marshal(b, m, deterministic)
+}
+func (dst *SyncResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SyncResponse.Merge(dst, src)
+}
+func (m *SyncResponse) XXX_Size() int {
+	return xxx_messageInfo_SyncResponse.Size(m)
+}
+func (m *SyncResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_SyncResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SyncResponse proto.InternalMessageInfo
+
+func (m *SyncResponse) GetRequestId() string {
+	if m != nil {
+		return m.RequestId
+	}
+	return ""
+}
+
+func (m *SyncResponse) GetPayload() *SyncResponsePayload {
+	if m != nil {
+		return m.Payload
+	}
+	return nil
+}
+
+// Payload containing device information.
+type SyncResponsePayload struct {
+	// Third-party user ID
+	AgentUserId string `protobuf:"bytes,1,opt,name=agent_user_id,json=agentUserId,proto3" json:"agent_user_id,omitempty"`
+	// Devices associated with the third-party user.
+	Devices              []*Device `protobuf:"bytes,2,rep,name=devices,proto3" json:"devices,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}  `json:"-"`
+	XXX_unrecognized     []byte    `json:"-"`
+	XXX_sizecache        int32     `json:"-"`
+}
+
+func (m *SyncResponsePayload) Reset()         { *m = SyncResponsePayload{} }
+func (m *SyncResponsePayload) String() string { return proto.CompactTextString(m) }
+func (*SyncResponsePayload) ProtoMessage()    {}
+func (*SyncResponsePayload) Descriptor() ([]byte, []int) {
+	return fileDescriptor_homegraph_d5a465603b8fcbc5, []int{15}
+}
+func (m *SyncResponsePayload) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_SyncResponsePayload.Unmarshal(m, b)
+}
+func (m *SyncResponsePayload) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_SyncResponsePayload.Marshal(b, m, deterministic)
+}
+func (dst *SyncResponsePayload) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SyncResponsePayload.Merge(dst, src)
+}
+func (m *SyncResponsePayload) XXX_Size() int {
+	return xxx_messageInfo_SyncResponsePayload.Size(m)
+}
+func (m *SyncResponsePayload) XXX_DiscardUnknown() {
+	xxx_messageInfo_SyncResponsePayload.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SyncResponsePayload proto.InternalMessageInfo
+
+func (m *SyncResponsePayload) GetAgentUserId() string {
+	if m != nil {
+		return m.AgentUserId
+	}
+	return ""
+}
+
+func (m *SyncResponsePayload) GetDevices() []*Device {
+	if m != nil {
+		return m.Devices
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*RequestSyncDevicesRequest)(nil), "google.home.graph.v1.RequestSyncDevicesRequest")
 	proto.RegisterType((*RequestSyncDevicesResponse)(nil), "google.home.graph.v1.RequestSyncDevicesResponse")
@@ -417,6 +885,16 @@ func init() {
 	proto.RegisterType((*StateAndNotificationPayload)(nil), "google.home.graph.v1.StateAndNotificationPayload")
 	proto.RegisterType((*ReportStateAndNotificationDevice)(nil), "google.home.graph.v1.ReportStateAndNotificationDevice")
 	proto.RegisterType((*DeleteAgentUserRequest)(nil), "google.home.graph.v1.DeleteAgentUserRequest")
+	proto.RegisterType((*QueryRequest)(nil), "google.home.graph.v1.QueryRequest")
+	proto.RegisterType((*QueryRequestInput)(nil), "google.home.graph.v1.QueryRequestInput")
+	proto.RegisterType((*QueryRequestPayload)(nil), "google.home.graph.v1.QueryRequestPayload")
+	proto.RegisterType((*AgentDeviceId)(nil), "google.home.graph.v1.AgentDeviceId")
+	proto.RegisterType((*QueryResponse)(nil), "google.home.graph.v1.QueryResponse")
+	proto.RegisterType((*QueryResponsePayload)(nil), "google.home.graph.v1.QueryResponsePayload")
+	proto.RegisterMapType((map[string]*_struct.Struct)(nil), "google.home.graph.v1.QueryResponsePayload.DevicesEntry")
+	proto.RegisterType((*SyncRequest)(nil), "google.home.graph.v1.SyncRequest")
+	proto.RegisterType((*SyncResponse)(nil), "google.home.graph.v1.SyncResponse")
+	proto.RegisterType((*SyncResponsePayload)(nil), "google.home.graph.v1.SyncResponsePayload")
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -455,11 +933,33 @@ type HomeGraphApiServiceClient interface {
 	// Unlink an agent user from Google. As result, all data related to this user
 	// will be deleted.
 	//
-	// Third-party user's identity is passed in as agent_user_id.
+	// Here is how the agent user is created in Google:
+	// When users open their Google Home App, they can begin linking a 3p
+	// partner. User is guided through the OAuth process. After entering the 3p
+	// credentials, Google gets the 3p OAuth token, and uses it to make a
+	// Sync call to the 3p partner and gets back all the user's data, including
+	// agent_user_id and devices.
+	// Google then creates the agent user and stores a mapping from the
+	// agent_user_id -> Google ID mapping. Google also stores all user's devices
+	// under that Google ID.
+	// The mapping from agent_user_id -> Google ID is many to many, since one
+	// Google user can have multiple 3p accounts, and multiple Google users can
+	// map to one agent_user_id (e.g. husband and wife share one Nest account
+	// username/password).
+	//
+	// Third-party user's identity is passed in as agent_user_id
 	// Agent is identified by the JWT signed by the partner's service account.
 	//
 	// Note: Special characters (except "/") in agent_user_id must be URL encoded.
 	DeleteAgentUser(ctx context.Context, in *DeleteAgentUserRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	// Gets the device states for the devices in QueryRequest.
+	// Third-party user's identity is passed in as agent_user_id. Agent is
+	// identified by the JWT signed by the third-party partner's service account.
+	Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error)
+	// Gets all the devices associated with the given third-party user.
+	// Third-party user's identity is passed in as agent_user_id. Agent is
+	// identified by the JWT signed by the third-party partner's service account.
+	Sync(ctx context.Context, in *SyncRequest, opts ...grpc.CallOption) (*SyncResponse, error)
 }
 
 type homeGraphApiServiceClient struct {
@@ -497,6 +997,24 @@ func (c *homeGraphApiServiceClient) DeleteAgentUser(ctx context.Context, in *Del
 	return out, nil
 }
 
+func (c *homeGraphApiServiceClient) Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error) {
+	out := new(QueryResponse)
+	err := c.cc.Invoke(ctx, "/google.home.graph.v1.HomeGraphApiService/Query", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *homeGraphApiServiceClient) Sync(ctx context.Context, in *SyncRequest, opts ...grpc.CallOption) (*SyncResponse, error) {
+	out := new(SyncResponse)
+	err := c.cc.Invoke(ctx, "/google.home.graph.v1.HomeGraphApiService/Sync", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HomeGraphApiServiceServer is the server API for HomeGraphApiService service.
 type HomeGraphApiServiceServer interface {
 	// Requests a Sync call from Google to a 3p partner's home control agent for
@@ -523,11 +1041,33 @@ type HomeGraphApiServiceServer interface {
 	// Unlink an agent user from Google. As result, all data related to this user
 	// will be deleted.
 	//
-	// Third-party user's identity is passed in as agent_user_id.
+	// Here is how the agent user is created in Google:
+	// When users open their Google Home App, they can begin linking a 3p
+	// partner. User is guided through the OAuth process. After entering the 3p
+	// credentials, Google gets the 3p OAuth token, and uses it to make a
+	// Sync call to the 3p partner and gets back all the user's data, including
+	// agent_user_id and devices.
+	// Google then creates the agent user and stores a mapping from the
+	// agent_user_id -> Google ID mapping. Google also stores all user's devices
+	// under that Google ID.
+	// The mapping from agent_user_id -> Google ID is many to many, since one
+	// Google user can have multiple 3p accounts, and multiple Google users can
+	// map to one agent_user_id (e.g. husband and wife share one Nest account
+	// username/password).
+	//
+	// Third-party user's identity is passed in as agent_user_id
 	// Agent is identified by the JWT signed by the partner's service account.
 	//
 	// Note: Special characters (except "/") in agent_user_id must be URL encoded.
 	DeleteAgentUser(context.Context, *DeleteAgentUserRequest) (*empty.Empty, error)
+	// Gets the device states for the devices in QueryRequest.
+	// Third-party user's identity is passed in as agent_user_id. Agent is
+	// identified by the JWT signed by the third-party partner's service account.
+	Query(context.Context, *QueryRequest) (*QueryResponse, error)
+	// Gets all the devices associated with the given third-party user.
+	// Third-party user's identity is passed in as agent_user_id. Agent is
+	// identified by the JWT signed by the third-party partner's service account.
+	Sync(context.Context, *SyncRequest) (*SyncResponse, error)
 }
 
 func RegisterHomeGraphApiServiceServer(s *grpc.Server, srv HomeGraphApiServiceServer) {
@@ -588,6 +1128,42 @@ func _HomeGraphApiService_DeleteAgentUser_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HomeGraphApiService_Query_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HomeGraphApiServiceServer).Query(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/google.home.graph.v1.HomeGraphApiService/Query",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HomeGraphApiServiceServer).Query(ctx, req.(*QueryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HomeGraphApiService_Sync_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HomeGraphApiServiceServer).Sync(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/google.home.graph.v1.HomeGraphApiService/Sync",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HomeGraphApiServiceServer).Sync(ctx, req.(*SyncRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _HomeGraphApiService_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "google.home.graph.v1.HomeGraphApiService",
 	HandlerType: (*HomeGraphApiServiceServer)(nil),
@@ -604,51 +1180,78 @@ var _HomeGraphApiService_serviceDesc = grpc.ServiceDesc{
 			MethodName: "DeleteAgentUser",
 			Handler:    _HomeGraphApiService_DeleteAgentUser_Handler,
 		},
+		{
+			MethodName: "Query",
+			Handler:    _HomeGraphApiService_Query_Handler,
+		},
+		{
+			MethodName: "Sync",
+			Handler:    _HomeGraphApiService_Sync_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "google/home/graph/v1/homegraph.proto",
 }
 
 func init() {
-	proto.RegisterFile("google/home/graph/v1/homegraph.proto", fileDescriptor_homegraph_5bfcd56e20a4e9c3)
+	proto.RegisterFile("google/home/graph/v1/homegraph.proto", fileDescriptor_homegraph_d5a465603b8fcbc5)
 }
 
-var fileDescriptor_homegraph_5bfcd56e20a4e9c3 = []byte{
-	// 575 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x54, 0xdd, 0x6a, 0x13, 0x41,
-	0x14, 0x66, 0x5b, 0x6d, 0xda, 0x13, 0x8a, 0x30, 0x96, 0x76, 0x9b, 0x46, 0x48, 0x47, 0x91, 0x18,
-	0x65, 0xd7, 0x44, 0xf0, 0xa7, 0xd2, 0x8b, 0xd4, 0x8a, 0x06, 0x41, 0xc2, 0x86, 0xde, 0xe8, 0x45,
-	0x99, 0xee, 0x9e, 0x6e, 0x17, 0x92, 0x99, 0x75, 0x67, 0x12, 0x08, 0xe2, 0x4d, 0x1f, 0x41, 0x2f,
-	0x7d, 0x1b, 0x1f, 0xc0, 0x1b, 0x5f, 0xc1, 0xd7, 0x10, 0x64, 0x67, 0x76, 0xad, 0x69, 0x36, 0x69,
-	0x7a, 0x37, 0x67, 0xce, 0xdf, 0x77, 0xce, 0xf7, 0xcd, 0xc0, 0xbd, 0x50, 0x88, 0xb0, 0x8f, 0xee,
-	0x99, 0x18, 0xa0, 0x1b, 0x26, 0x2c, 0x3e, 0x73, 0x47, 0x4d, 0x6d, 0x69, 0xc3, 0x89, 0x13, 0xa1,
-	0x04, 0xd9, 0x30, 0x51, 0x4e, 0x7a, 0xef, 0x18, 0xc7, 0xa8, 0x59, 0xa9, 0x66, 0xb9, 0x2c, 0x8e,
-	0x5c, 0xc6, 0xb9, 0x50, 0x4c, 0x45, 0x82, 0x4b, 0x93, 0x53, 0xd9, 0xc9, 0xbc, 0xda, 0x3a, 0x19,
-	0x9e, 0xba, 0x38, 0x88, 0xd5, 0x38, 0x73, 0x56, 0x2f, 0x3b, 0xa5, 0x4a, 0x86, 0xbe, 0x32, 0x5e,
-	0x7a, 0x04, 0xdb, 0x1e, 0x7e, 0x1a, 0xa2, 0x54, 0xbd, 0x31, 0xf7, 0x0f, 0x71, 0x14, 0xf9, 0x28,
-	0xb3, 0x1b, 0x42, 0x61, 0x9d, 0x85, 0xc8, 0xd5, 0xf1, 0x50, 0x62, 0x72, 0x1c, 0x05, 0xb6, 0x55,
-	0xb3, 0xea, 0x6b, 0x5e, 0x59, 0x5f, 0x1e, 0x49, 0x4c, 0x3a, 0x01, 0xd9, 0x80, 0x9b, 0x4c, 0x8e,
-	0xb9, 0x6f, 0x2f, 0xd5, 0xac, 0xfa, 0xaa, 0x67, 0x0c, 0x5a, 0x85, 0x4a, 0x51, 0x59, 0x19, 0x0b,
-	0x2e, 0x91, 0xfe, 0xb4, 0x60, 0xd7, 0xc3, 0x58, 0x24, 0xaa, 0xa7, 0x98, 0xc2, 0x36, 0x0f, 0xde,
-	0x0b, 0x15, 0x9d, 0x46, 0xbe, 0x9e, 0x2a, 0xef, 0x7e, 0x07, 0x20, 0x31, 0xc7, 0x8b, 0xd6, 0x6b,
-	0xd9, 0x4d, 0x27, 0x20, 0xdb, 0xb0, 0x8a, 0xa3, 0x14, 0x5c, 0x14, 0xd8, 0x37, 0xb4, 0xb3, 0xa4,
-	0xed, 0x4e, 0x30, 0x8d, 0x7b, 0x69, 0x1a, 0xf7, 0x3b, 0x28, 0xc5, 0x6c, 0xdc, 0x17, 0x2c, 0xb0,
-	0x97, 0x6b, 0x56, 0xbd, 0xdc, 0x6a, 0x3a, 0x45, 0x9b, 0x77, 0x8a, 0x10, 0x76, 0x4d, 0xa2, 0x97,
-	0x57, 0xa0, 0xaf, 0x80, 0xce, 0x9b, 0xc7, 0x8c, 0x7d, 0xc5, 0x40, 0x54, 0xc0, 0xce, 0x9c, 0x66,
-	0xa4, 0x0b, 0xa5, 0xc0, 0xec, 0x51, 0xa7, 0x96, 0x5b, 0x4f, 0x8b, 0x01, 0xcf, 0x06, 0x62, 0x68,
-	0xf0, 0xf2, 0x32, 0xf4, 0xab, 0x05, 0xb5, 0xab, 0xa2, 0x89, 0x0b, 0x2b, 0x32, 0xf5, 0xe6, 0x5d,
-	0xb7, 0xf2, 0xae, 0xb9, 0x9e, 0x9c, 0x9e, 0xd6, 0x93, 0x97, 0x85, 0x91, 0x7d, 0x58, 0xe7, 0xff,
-	0x95, 0x91, 0x7a, 0xf9, 0x73, 0xf2, 0x26, 0xa3, 0xe9, 0x47, 0xd8, 0x3c, 0xc4, 0x3e, 0x2a, 0x6c,
-	0xe7, 0x64, 0x2d, 0xa8, 0x87, 0x05, 0x48, 0x6f, 0xfd, 0x59, 0x86, 0xdb, 0x6f, 0xc5, 0x00, 0xdf,
-	0xa4, 0xcb, 0x6a, 0xc7, 0x51, 0x0f, 0x13, 0x3d, 0xe4, 0x77, 0x0b, 0xc8, 0xb4, 0x5e, 0x89, 0x3b,
-	0x6b, 0xc3, 0x33, 0x1e, 0x4c, 0xe5, 0xf1, 0xe2, 0x09, 0xd9, 0x53, 0xa0, 0xe7, 0xbf, 0x7e, 0x7f,
-	0x5b, 0xaa, 0xd2, 0xad, 0xf4, 0x2f, 0xc8, 0x88, 0xd9, 0x4b, 0x2e, 0xe2, 0xf7, 0xac, 0x06, 0xf9,
-	0x61, 0xa5, 0xaf, 0x69, 0x16, 0x4f, 0xe4, 0xd9, 0x75, 0x75, 0x90, 0xa3, 0x7d, 0x7e, 0xfd, 0xc4,
-	0x0c, 0x75, 0x53, 0xa3, 0x7e, 0x48, 0xef, 0x4f, 0xa2, 0x9e, 0x95, 0x97, 0x0e, 0x71, 0x6e, 0xc1,
-	0xad, 0x4b, 0xc4, 0x92, 0x47, 0xc5, 0x00, 0x8a, 0xf9, 0xaf, 0x6c, 0x4e, 0x29, 0xe8, 0x75, 0xfa,
-	0xcd, 0xd1, 0x07, 0x1a, 0xcc, 0xdd, 0xc6, 0x6e, 0x0a, 0xe6, 0xf3, 0x84, 0x06, 0xf6, 0xff, 0x91,
-	0x2f, 0xdd, 0x46, 0xe3, 0xcb, 0x81, 0x00, 0xdb, 0x17, 0x83, 0xc2, 0xae, 0x07, 0x76, 0x81, 0x30,
-	0xba, 0x69, 0xa7, 0x0f, 0x2f, 0xb2, 0xf8, 0x50, 0xf4, 0x19, 0x0f, 0x1d, 0x91, 0x84, 0x6e, 0x88,
-	0x5c, 0xa3, 0x70, 0x8d, 0x8b, 0xc5, 0x91, 0x9c, 0xfc, 0xd7, 0x5f, 0xea, 0xc3, 0xc9, 0x8a, 0x8e,
-	0x7a, 0xf2, 0x37, 0x00, 0x00, 0xff, 0xff, 0x92, 0xb2, 0x5b, 0xe2, 0xfc, 0x05, 0x00, 0x00,
+var fileDescriptor_homegraph_d5a465603b8fcbc5 = []byte{
+	// 879 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x56, 0x4f, 0x8f, 0xdb, 0x44,
+	0x14, 0x97, 0x93, 0x66, 0xb7, 0x7d, 0xd9, 0xd0, 0x76, 0x76, 0xd9, 0xba, 0xd9, 0x20, 0x92, 0x59,
+	0x54, 0xd2, 0x00, 0x36, 0x09, 0x52, 0x5b, 0x16, 0xad, 0xd0, 0x76, 0xb7, 0x82, 0x08, 0x09, 0xa5,
+	0x4e, 0x57, 0x42, 0x70, 0x88, 0xdc, 0x78, 0xd6, 0x35, 0x4d, 0x3c, 0x5e, 0xcf, 0x38, 0x28, 0x42,
+	0x5c, 0xfa, 0x11, 0xe0, 0xc8, 0x77, 0xe1, 0xc0, 0x57, 0xe0, 0xc4, 0x9d, 0xcf, 0xc0, 0xb9, 0x9a,
+	0x19, 0x7b, 0xf3, 0xc7, 0x4e, 0xe2, 0x4a, 0x7b, 0xf3, 0xcc, 0xfb, 0xbd, 0xdf, 0x7b, 0x6f, 0xde,
+	0x6f, 0xde, 0x18, 0x3e, 0x72, 0x29, 0x75, 0x47, 0xc4, 0x7c, 0x45, 0xc7, 0xc4, 0x74, 0x43, 0x3b,
+	0x78, 0x65, 0x4e, 0xda, 0x72, 0x25, 0x17, 0x46, 0x10, 0x52, 0x4e, 0xd1, 0x9e, 0x42, 0x19, 0x62,
+	0xdf, 0x50, 0x86, 0x49, 0xbb, 0x5a, 0x8b, 0x7d, 0xed, 0xc0, 0x33, 0x6d, 0xdf, 0xa7, 0xdc, 0xe6,
+	0x1e, 0xf5, 0x99, 0xf2, 0xa9, 0x36, 0x32, 0x99, 0x1d, 0x32, 0xf1, 0x86, 0x24, 0x86, 0x1c, 0xc4,
+	0x10, 0xb9, 0x7a, 0x19, 0x5d, 0x98, 0x64, 0x1c, 0xf0, 0x69, 0x6c, 0xac, 0x2d, 0x1b, 0x19, 0x0f,
+	0xa3, 0x21, 0x57, 0x56, 0x7c, 0x0e, 0xf7, 0x2d, 0x72, 0x19, 0x11, 0xc6, 0xfb, 0x53, 0x7f, 0x78,
+	0x26, 0x59, 0x59, 0xbc, 0x83, 0x30, 0x54, 0x6c, 0x97, 0xf8, 0x7c, 0x10, 0x31, 0x12, 0x0e, 0x3c,
+	0x47, 0xd7, 0xea, 0x5a, 0xf3, 0x96, 0x55, 0x96, 0x9b, 0xe7, 0x8c, 0x84, 0x5d, 0x07, 0xed, 0x41,
+	0xc9, 0x66, 0x53, 0x7f, 0xa8, 0x17, 0xea, 0x5a, 0xf3, 0xa6, 0xa5, 0x16, 0xb8, 0x06, 0xd5, 0x2c,
+	0x5a, 0x16, 0x50, 0x9f, 0x11, 0xfc, 0xbf, 0x06, 0x0d, 0x8b, 0x04, 0x34, 0xe4, 0x7d, 0x6e, 0x73,
+	0x72, 0xe2, 0x3b, 0xdf, 0x53, 0xee, 0x5d, 0x78, 0x43, 0x59, 0x78, 0x12, 0xfd, 0x03, 0x80, 0x50,
+	0x7d, 0xce, 0x42, 0xdf, 0x8a, 0x77, 0xba, 0x0e, 0xba, 0x0f, 0x37, 0xc9, 0x44, 0x24, 0xe7, 0x39,
+	0xfa, 0x0d, 0x69, 0xdc, 0x96, 0xeb, 0xae, 0x93, 0xce, 0xbb, 0x90, 0xce, 0xfb, 0x01, 0xdc, 0xbe,
+	0xa0, 0xa3, 0x11, 0xfd, 0x65, 0x10, 0x05, 0x03, 0x4e, 0x5f, 0x13, 0x5f, 0x2f, 0x49, 0x54, 0x45,
+	0x6d, 0x9f, 0x07, 0x2f, 0xc4, 0x26, 0xfa, 0x0e, 0xb6, 0x03, 0x7b, 0x3a, 0xa2, 0xb6, 0xa3, 0x17,
+	0xeb, 0x5a, 0xb3, 0xdc, 0x69, 0x1b, 0x59, 0x4d, 0x34, 0xb2, 0x2a, 0xe9, 0x29, 0x47, 0x2b, 0x61,
+	0xc0, 0xa7, 0x80, 0xd7, 0xd5, 0xad, 0x8e, 0x67, 0x43, 0xe1, 0x98, 0xc2, 0xc1, 0x9a, 0x60, 0xa8,
+	0x07, 0xdb, 0x4a, 0x1c, 0x4c, 0xba, 0x96, 0x3b, 0x8f, 0xb2, 0x13, 0x5e, 0x9d, 0x88, 0x6a, 0x97,
+	0x95, 0xd0, 0xe0, 0xdf, 0x35, 0xa8, 0x6f, 0x42, 0x23, 0x13, 0xb6, 0x98, 0xb0, 0x26, 0x51, 0xef,
+	0x25, 0x51, 0x13, 0xdd, 0x19, 0x7d, 0xa9, 0x3b, 0x2b, 0x86, 0xa1, 0x63, 0xa8, 0xf8, 0x73, 0x34,
+	0x4c, 0x36, 0x69, 0x8d, 0xdf, 0x22, 0x1a, 0xff, 0x04, 0xfb, 0x67, 0x64, 0x44, 0x38, 0x39, 0x49,
+	0x9a, 0x9a, 0x53, 0x37, 0x39, 0xc4, 0x21, 0x2a, 0xde, 0x79, 0x1e, 0x91, 0x70, 0x7a, 0x7d, 0x9c,
+	0xe8, 0x6b, 0xd8, 0xf2, 0xfc, 0x20, 0xe2, 0x4c, 0x2f, 0xd6, 0x8b, 0xcd, 0x72, 0xe7, 0xe3, 0xec,
+	0xb6, 0xcc, 0x87, 0xed, 0x0a, 0xbc, 0x15, 0xbb, 0xe1, 0x1f, 0xe0, 0x6e, 0xca, 0x88, 0x4e, 0x67,
+	0xf2, 0x54, 0xe7, 0xfe, 0x70, 0x33, 0x6d, 0x4a, 0x96, 0x2f, 0x60, 0x37, 0xc3, 0x8e, 0x8e, 0xe7,
+	0x95, 0x24, 0x52, 0x3e, 0xcc, 0xe6, 0x96, 0x1d, 0x50, 0x32, 0xe8, 0x3a, 0x33, 0xd9, 0x7c, 0x08,
+	0x95, 0x05, 0x0b, 0x7a, 0x0f, 0x0a, 0x57, 0x87, 0x57, 0xf0, 0x1c, 0xcc, 0xa1, 0x12, 0x87, 0xcd,
+	0x25, 0x7c, 0x74, 0x36, 0xab, 0x55, 0x69, 0xa5, 0xb5, 0xb6, 0x56, 0x45, 0x9a, 0x2a, 0xf6, 0x2f,
+	0x0d, 0xf6, 0xb2, 0x10, 0xe8, 0xf9, 0x72, 0xb9, 0x8f, 0xf3, 0xd3, 0x1b, 0xf1, 0x88, 0x7b, 0xe6,
+	0xf3, 0x70, 0x7a, 0x75, 0x04, 0xd5, 0x3e, 0xec, 0xcc, 0x1b, 0xd0, 0x1d, 0x28, 0xbe, 0x26, 0xd3,
+	0xb8, 0x32, 0xf1, 0x89, 0x3e, 0x83, 0xd2, 0xc4, 0x1e, 0x45, 0x64, 0x93, 0xfa, 0x15, 0xea, 0xa8,
+	0xf0, 0x44, 0xc3, 0x3d, 0x28, 0x8b, 0xa1, 0x7a, 0x8d, 0x72, 0x0f, 0x61, 0x47, 0x31, 0xe6, 0xeb,
+	0xc3, 0xe9, 0x72, 0x1f, 0x56, 0x68, 0x6e, 0x9e, 0x33, 0xd5, 0x86, 0x4b, 0xd8, 0xcd, 0xb0, 0xe7,
+	0x7a, 0x72, 0x1e, 0xcd, 0x1a, 0x55, 0x90, 0x8d, 0xaa, 0x65, 0xc7, 0x5f, 0x9a, 0x63, 0x9d, 0x7f,
+	0x4b, 0xb0, 0xfb, 0x2d, 0x1d, 0x93, 0x6f, 0x04, 0xe0, 0x24, 0xf0, 0xfa, 0x24, 0x94, 0xa3, 0xeb,
+	0x4f, 0x0d, 0x50, 0xfa, 0xb5, 0x42, 0xe6, 0xaa, 0xb9, 0xb9, 0xe2, 0xb9, 0xac, 0x7e, 0x9e, 0xdf,
+	0x21, 0x7e, 0x08, 0xf1, 0x9b, 0x7f, 0xfe, 0xfb, 0xa3, 0x50, 0xc3, 0xf7, 0x66, 0x4f, 0x3a, 0x3b,
+	0x0a, 0x67, 0xf8, 0x23, 0xad, 0x85, 0xfe, 0xd6, 0xc4, 0x5b, 0xba, 0x6a, 0xfa, 0xa2, 0xc7, 0xef,
+	0x3a, 0xdd, 0x93, 0x6c, 0x9f, 0xbc, 0xbb, 0x63, 0x9c, 0x75, 0x5b, 0x66, 0xfd, 0x09, 0x7e, 0xb0,
+	0x98, 0xf5, 0x2a, 0x3f, 0x51, 0xc4, 0x1b, 0x0d, 0x6e, 0x2f, 0x8d, 0x6b, 0xf4, 0xe9, 0xaa, 0xae,
+	0x65, 0x4d, 0xf5, 0xea, 0x7e, 0xea, 0x66, 0x3c, 0x13, 0x3f, 0x39, 0xf8, 0xa1, 0x4c, 0xe6, 0xb0,
+	0xd5, 0x10, 0xc9, 0xfc, 0xba, 0xa0, 0x9d, 0xe3, 0x2b, 0xd1, 0x30, 0xb3, 0xd5, 0xfa, 0x0d, 0xf9,
+	0x50, 0x92, 0x77, 0x17, 0xe1, 0xcd, 0x33, 0xb2, 0x7a, 0x98, 0xe3, 0xf2, 0xe3, 0x9a, 0x0c, 0xbe,
+	0x8f, 0xef, 0xce, 0x9f, 0xc4, 0xa5, 0x80, 0x88, 0xa2, 0x7f, 0x86, 0x1b, 0xa2, 0x89, 0xa8, 0xb1,
+	0xee, 0x7a, 0xa8, 0x68, 0x78, 0xf3, 0x0d, 0xc2, 0x07, 0x32, 0xd8, 0xfb, 0xf8, 0xce, 0x7c, 0x30,
+	0xa6, 0x54, 0xf2, 0x94, 0x82, 0x3e, 0xa4, 0xe3, 0x4c, 0x96, 0xa7, 0x7a, 0x86, 0xe8, 0x7b, 0xe2,
+	0x14, 0x7f, 0xfc, 0x32, 0xc6, 0xbb, 0x74, 0x64, 0xfb, 0xae, 0x41, 0x43, 0xd7, 0x74, 0x89, 0x2f,
+	0x4f, 0xd8, 0x54, 0x26, 0x3b, 0xf0, 0xd8, 0xe2, 0xaf, 0xe7, 0x57, 0xf2, 0xe3, 0xe5, 0x96, 0x44,
+	0x7d, 0xf1, 0x36, 0x00, 0x00, 0xff, 0xff, 0x5b, 0x87, 0x36, 0x9c, 0xf9, 0x0a, 0x00, 0x00,
 }

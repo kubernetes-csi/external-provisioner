@@ -182,7 +182,7 @@ func (c *snapshotController) onSnapshotAdd(obj interface{}) {
 	// the actual snapshot
 	snapshotObj, ok := obj.(*crdv1.VolumeSnapshot)
 	if !ok {
-		glog.Warning("expecting type VolumeSnapshot but received type %T", obj)
+		glog.Warningf("expecting type VolumeSnapshot but received type %T", obj)
 		return
 	}
 	snapshot := snapshotObj.DeepCopy()
@@ -220,6 +220,6 @@ func (c *snapshotController) onSnapshotDelete(obj interface{}) {
 	// the snapshot itself
 	snapshot := deletedSnapshot.DeepCopy()
 	glog.Infof("[CONTROLLER] OnDelete %s, snapshot name: %s/%s\n", snapshot.Metadata.SelfLink, snapshot.Metadata.Namespace, snapshot.Metadata.Name)
-	c.desiredStateOfWorld.DeleteSnapshot(cache.MakeSnapshotName(snapshot.Metadata.Namespace, snapshot.Metadata.Name))
+	c.desiredStateOfWorld.DeleteSnapshot(cache.MakeSnapshotName(snapshot))
 
 }

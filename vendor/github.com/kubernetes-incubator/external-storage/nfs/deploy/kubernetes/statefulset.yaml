@@ -1,3 +1,8 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nfs-provisioner
+---
 kind: Service
 apiVersion: v1
 metadata:
@@ -19,23 +24,25 @@ spec:
     app: nfs-provisioner
 ---
 kind: StatefulSet
-apiVersion: apps/v1beta1
+apiVersion: apps/v1
 metadata:
   name: nfs-provisioner
 spec:
+  selector:
+    matchLabels:
+      app: nfs-provisioner
   serviceName: "nfs-provisioner"
   replicas: 1
   template:
     metadata:
       labels:
         app: nfs-provisioner
-      annotations:
-        pod.alpha.kubernetes.io/initialized: "true"
     spec:
-      terminationGracePeriodSeconds: 0
+      serviceAccount: nfs-provisioner
+      terminationGracePeriodSeconds: 10
       containers:
         - name: nfs-provisioner
-          image: quay.io/kubernetes_incubator/nfs-provisioner:v1.0.8
+          image: quay.io/kubernetes_incubator/nfs-provisioner:latest
           ports:
             - name: nfs
               containerPort: 2049

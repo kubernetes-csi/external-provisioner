@@ -12,7 +12,7 @@ CO developers can use this framework to create drivers based on the
 
 ### Mock driver for testing
 We also provide a container called `quay.io/k8scsi/mock-driver:canary` which can be used as an in-memory mock driver.
-It follows the same release cycle as other containers, so the latest release is `quay.io/k8scsi/mock-driver:v0.2.0`.
+It follows the same release cycle as other containers, so the latest release is `quay.io/k8scsi/mock-driver:v0.3.0`.
 
 You will need to setup the environment variable `CSI_ENDPOINT` for the mock driver to know where to create the unix
 domain socket.

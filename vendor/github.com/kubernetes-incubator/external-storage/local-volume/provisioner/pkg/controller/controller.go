@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/golang/glog"
@@ -43,11 +44,21 @@ import (
 func StartLocalController(client *kubernetes.Clientset, ptable deleter.ProcTable, config *common.UserConfig) {
 	glog.Info("Initializing volume cache\n")
 
-	provisionerName := fmt.Sprintf("local-volume-provisioner-%v-%v", config.Node.Name, config.Node.UID)
+	var provisionerName string
+	if config.UseNodeNameOnly {
+		provisionerName = fmt.Sprintf("local-volume-provisioner-%v", config.Node.Name)
+	} else {
+		provisionerName = fmt.Sprintf("local-volume-provisioner-%v-%v", config.Node.Name, config.Node.UID)
+	}
 
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(client.CoreV1().RESTClient()).Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: provisionerName})
+
+	// We choose a random resync period between MinResyncPeriod and 2 *
+	// MinResyncPeriod, so that local provisioners deployed on multiple nodes
+	// at same time don't list the apiserver simultaneously.
+	resyncPeriod := time.Duration(config.MinResyncPeriod.Seconds()*(1+rand.Float64())) * time.Second
 
 	runtimeConfig := &common.RuntimeConfig{
 		UserConfig:      config,
@@ -58,7 +69,7 @@ func StartLocalController(client *kubernetes.Clientset, ptable deleter.ProcTable
 		Name:            provisionerName,
 		Recorder:        recorder,
 		Mounter:         mount.New("" /* default mount path */),
-		InformerFactory: informers.NewSharedInformerFactory(client, 0),
+		InformerFactory: informers.NewSharedInformerFactory(client, resyncPeriod),
 	}
 
 	populator.NewPopulator(runtimeConfig)
