@@ -93,9 +93,6 @@ type csiProvisioner struct {
 var _ controller.Provisioner = &csiProvisioner{}
 
 var (
-	accessMode = &csi.VolumeCapability_AccessMode{
-		Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-	}
 	accessType = &csi.VolumeCapability_Mount{
 		Mount: &csi.VolumeCapability_MountVolume{},
 	}
@@ -370,17 +367,40 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 
+	// Get access mode
+	volumeCaps := make([]*csi.VolumeCapability, 0)
+	for _, cap := range options.PVC.Spec.AccessModes {
+		switch cap {
+		case v1.ReadWriteOnce:
+			volumeCaps = append(volumeCaps, &csi.VolumeCapability{
+				AccessMode: &csi.VolumeCapability_AccessMode{
+					Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+				},
+				AccessType: accessType,
+			})
+		case v1.ReadWriteMany:
+			volumeCaps = append(volumeCaps, &csi.VolumeCapability{
+				AccessMode: &csi.VolumeCapability_AccessMode{
+					Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+				},
+				AccessType: accessType,
+			})
+		case v1.ReadOnlyMany:
+			volumeCaps = append(volumeCaps, &csi.VolumeCapability{
+				AccessMode: &csi.VolumeCapability_AccessMode{
+					Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+				},
+				AccessType: accessType,
+			})
+		}
+	}
+
 	// Create a CSI CreateVolumeRequest and Response
 	req := csi.CreateVolumeRequest{
 
-		Name:       pvName,
-		Parameters: options.Parameters,
-		VolumeCapabilities: []*csi.VolumeCapability{
-			{
-				AccessType: accessType,
-				AccessMode: accessMode,
-			},
-		},
+		Name:               pvName,
+		Parameters:         options.Parameters,
+		VolumeCapabilities: volumeCaps,
 		CapacityRange: &csi.CapacityRange{
 			RequiredBytes: int64(volSizeBytes),
 		},
