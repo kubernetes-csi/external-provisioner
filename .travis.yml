@@ -4,7 +4,7 @@ services:
   - docker
 matrix:
   include:
-  - go: 1.x
+  - go: 1.10.4
 install:
   - go get -u github.com/golang/dep/cmd/dep
   - dep ensure -vendor-only
