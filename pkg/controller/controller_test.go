@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -673,6 +674,7 @@ func TestProvision(t *testing.T) {
 		expectedPVSpec    *pvSpec
 		withSecretRefs    bool
 		expectErr         bool
+		expectCreateVolDo interface{}
 	}{
 		"normal provision": {
 			volOpts: controller.VolumeOptions{
@@ -699,7 +701,103 @@ func TestProvision(t *testing.T) {
 				},
 			},
 		},
-		"provision with access modes": {
+		"provision with access mode multi node multi writer": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteMany},
+					},
+				},
+				Parameters: map[string]string{},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteMany},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+				if len(req.GetVolumeCapabilities()) != 1 {
+					t.Errorf("Incorrect length in volume capabilities")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+					t.Errorf("Expected access mode to be set")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
+					t.Errorf("Expected multi_node_multi_writer")
+				}
+			},
+		},
+		"provision with access mode multi node multi readonly": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany},
+					},
+				},
+				Parameters: map[string]string{},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+				if len(req.GetVolumeCapabilities()) != 1 {
+					t.Errorf("Incorrect length in volume capabilities")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+					t.Errorf("Expected access mode to be set")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
+					t.Errorf("Expected multi_node_reader_only")
+				}
+			},
+		},
+		"provision with access mode single writer": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				PVName: "test-name",
@@ -734,6 +832,71 @@ func TestProvision(t *testing.T) {
 						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
 					},
 				},
+			},
+			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+				if len(req.GetVolumeCapabilities()) != 1 {
+					t.Errorf("Incorrect length in volume capabilities")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+					t.Errorf("Expected access mode to be set")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
+					t.Errorf("Expected single_node_writer")
+				}
+			},
+		},
+		"provision with multiple access modes": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany, v1.ReadWriteOnce},
+					},
+				},
+				Parameters: map[string]string{},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany, v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+				if len(req.GetVolumeCapabilities()) != 2 {
+					t.Errorf("Incorrect length in volume capabilities")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+					t.Errorf("Expected access mode to be set")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
+					t.Errorf("Expected multi reade only")
+				}
+				if req.GetVolumeCapabilities()[1].GetAccessMode() == nil {
+					t.Errorf("Expected access mode to be set")
+				}
+				if req.GetVolumeCapabilities()[1].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
+					t.Errorf("Expected single_node_writer")
+				}
 			},
 		},
 		"provision with secrets": {
@@ -891,6 +1054,9 @@ func TestProvision(t *testing.T) {
 			provisionMockServerSetupExpectations(identityServer, controllerServer)
 			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 			controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
+		} else if tc.expectCreateVolDo != nil {
+			provisionMockServerSetupExpectations(identityServer, controllerServer)
+			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(tc.expectCreateVolDo).Return(out, nil).Times(1)
 		} else {
 			// Setup regular mock call expectations.
 			provisionMockServerSetupExpectations(identityServer, controllerServer)
