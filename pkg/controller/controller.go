@@ -477,7 +477,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		volumeAttributes[k] = v
 	}
 	respCap := rep.GetVolume().GetCapacityBytes()
-	if respCap < volSizeBytes {
+	if respCap != 0 && respCap < volSizeBytes {
 		capErr := fmt.Errorf("created volume capacity %v less than requested capacity %v", respCap, volSizeBytes)
 		delReq := &csi.DeleteVolumeRequest{
 			VolumeId: rep.GetVolume().GetId(),
