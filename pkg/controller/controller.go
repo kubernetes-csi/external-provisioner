@@ -296,7 +296,7 @@ func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration, needSn
 		// Check whether plugin supports create snapshot
 		// If not, create volume from snapshot cannot proceed
 		if !capabilities.Has(ControllerCapability_CREATE_DELETE_SNAPSHOT) {
-			return nil, fmt.Errorf("no create/delete snapshot support detected. Cannot create volume from shapshot")
+			return nil, fmt.Errorf("no create/delete snapshot support detected. Cannot create volume from snapshot")
 		}
 	}
 
@@ -496,6 +496,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	if len(fsType) == 0 {
 		fsType = defaultFSType
 	}
+
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: pvName,
@@ -519,6 +520,10 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 				},
 			},
 		},
+	}
+
+	if driverState.capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) {
+		pv.Spec.NodeAffinity = GenerateVolumeNodeAffinity(rep.Volume.AccessibleTopology)
 	}
 
 	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)

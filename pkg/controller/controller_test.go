@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-test/driver"
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
@@ -494,7 +494,7 @@ func provisionMockServerSetupExpectations(identityServer *driver.MockIdentitySer
 func provisionFromSnapshotMockServerSetupExpectations(identityServer *driver.MockIdentityServer, controllerServer *driver.MockControllerServer) {
 	identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(&csi.GetPluginCapabilitiesResponse{
 		Capabilities: []*csi.PluginCapability{
-			&csi.PluginCapability{
+			{
 				Type: &csi.PluginCapability_Service_{
 					Service: &csi.PluginCapability_Service{
 						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
@@ -505,14 +505,14 @@ func provisionFromSnapshotMockServerSetupExpectations(identityServer *driver.Moc
 	}, nil).Times(1)
 	controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), gomock.Any()).Return(&csi.ControllerGetCapabilitiesResponse{
 		Capabilities: []*csi.ControllerServiceCapability{
-			&csi.ControllerServiceCapability{
+			{
 				Type: &csi.ControllerServiceCapability_Rpc{
 					Rpc: &csi.ControllerServiceCapability_RPC{
 						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 					},
 				},
 			},
-			&csi.ControllerServiceCapability{
+			{
 				Type: &csi.ControllerServiceCapability_Rpc{
 					Rpc: &csi.ControllerServiceCapability_RPC{
 						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
@@ -1494,5 +1494,70 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestProvisionWithTopology is a basic test of provisioner integration with topology functions.
+func TestProvisionWithTopology(t *testing.T) {
+	accessibleTopology := []*csi.Topology{
+		{
+			Segments: map[string]string{
+				"com.example.csi/zone": "zone1",
+				"com.example.csi/rack": "rack2",
+			},
+		},
+	}
+	expectedNodeAffinity := &v1.VolumeNodeAffinity{
+		Required: &v1.NodeSelector{
+			NodeSelectorTerms: []v1.NodeSelectorTerm{
+				{
+					MatchExpressions: []v1.NodeSelectorRequirement{
+						{
+							Key:      "com.example.csi/zone",
+							Operator: v1.NodeSelectorOpIn,
+							Values:   []string{"zone1"},
+						},
+						{
+							Key:      "com.example.csi/rack",
+							Operator: v1.NodeSelectorOpIn,
+							Values:   []string{"rack2"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	const requestBytes = 100
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	clientSet := fakeclientset.NewSimpleClientset()
+	csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+
+	out := &csi.CreateVolumeResponse{
+		Volume: &csi.Volume{
+			CapacityBytes:      requestBytes,
+			Id:                 "test-volume-id",
+			AccessibleTopology: accessibleTopology,
+		},
+	}
+
+	provisionWithTopologyMockServerSetupExpectations(identityServer, controllerServer)
+	controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+
+	pv, err := csiProvisioner.Provision(controller.VolumeOptions{
+		PVC: createFakePVC(requestBytes), // dummy PVC
+	})
+	if err != nil {
+		t.Errorf("got error from Provision call: %v", err)
+	}
+
+	if !volumeNodeAffinitiesEqual(pv.Spec.NodeAffinity, expectedNodeAffinity) {
+		t.Errorf("expected node affinity %v; got: %v", expectedNodeAffinity, pv.Spec.NodeAffinity)
 	}
 }
