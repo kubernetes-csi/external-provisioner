@@ -90,6 +90,18 @@ type csiProvisioner struct {
 	config               *rest.Config
 }
 
+type driverState struct {
+	driverName   string
+	capabilities sets.Int
+}
+
+const (
+	PluginCapability_CONTROLLER_SERVICE = iota
+	PluginCapability_ACCESSIBILITY_CONSTRAINTS
+	ControllerCapability_CREATE_DELETE_VOLUME
+	ControllerCapability_CREATE_DELETE_SNAPSHOT
+)
+
 var _ controller.Provisioner = &csiProvisioner{}
 
 var (
@@ -163,7 +175,52 @@ func getDriverName(conn *grpc.ClientConn, timeout time.Duration) (string, error)
 	return name, nil
 }
 
-func supportsPluginControllerService(conn *grpc.ClientConn, timeout time.Duration) (bool, error) {
+func getDriverCapabilities(conn *grpc.ClientConn, timeout time.Duration) (sets.Int, error) {
+	pluginCaps, err := getPluginCapabilities(conn, timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	controllerCaps, err := getControllerCapabilities(conn, timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	capabilities := make(sets.Int)
+	for _, cap := range pluginCaps {
+		if cap == nil {
+			continue
+		}
+		service := cap.GetService()
+		if service == nil {
+			continue
+		}
+		switch service.GetType() {
+		case csi.PluginCapability_Service_CONTROLLER_SERVICE:
+			capabilities.Insert(PluginCapability_CONTROLLER_SERVICE)
+		case csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS:
+			capabilities.Insert(PluginCapability_ACCESSIBILITY_CONSTRAINTS)
+		}
+	}
+	for _, cap := range controllerCaps {
+		if cap == nil {
+			continue
+		}
+		rpc := cap.GetRpc()
+		if rpc == nil {
+			continue
+		}
+		switch rpc.GetType() {
+		case csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:
+			capabilities.Insert(ControllerCapability_CREATE_DELETE_VOLUME)
+		case csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT:
+			capabilities.Insert(ControllerCapability_CREATE_DELETE_SNAPSHOT)
+		}
+	}
+	return capabilities, nil
+}
+
+func getPluginCapabilities(conn *grpc.ClientConn, timeout time.Duration) ([]*csi.PluginCapability, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -172,25 +229,12 @@ func supportsPluginControllerService(conn *grpc.ClientConn, timeout time.Duratio
 
 	rsp, err := client.GetPluginCapabilities(ctx, &req)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	caps := rsp.GetCapabilities()
-	for _, cap := range caps {
-		if cap == nil {
-			continue
-		}
-		service := cap.GetService()
-		if service == nil {
-			continue
-		}
-		if service.GetType() == csi.PluginCapability_Service_CONTROLLER_SERVICE {
-			return true, nil
-		}
-	}
-	return false, nil
+	return rsp.GetCapabilities(), nil
 }
 
-func supportsControllerCreateVolume(conn *grpc.ClientConn, timeout time.Duration) (bool, error) {
+func getControllerCapabilities(conn *grpc.ClientConn, timeout time.Duration) ([]*csi.ControllerServiceCapability, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -199,49 +243,9 @@ func supportsControllerCreateVolume(conn *grpc.ClientConn, timeout time.Duration
 
 	rsp, err := client.ControllerGetCapabilities(ctx, &req)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	caps := rsp.GetCapabilities()
-	for _, cap := range caps {
-		if cap == nil {
-			continue
-		}
-		rpc := cap.GetRpc()
-		if rpc == nil {
-			continue
-		}
-		if rpc.GetType() == csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func supportsControllerCreateSnapshot(conn *grpc.ClientConn, timeout time.Duration) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	client := csi.NewControllerClient(conn)
-	req := csi.ControllerGetCapabilitiesRequest{}
-
-	rsp, err := client.ControllerGetCapabilities(ctx, &req)
-	if err != nil {
-		return false, err
-	}
-	caps := rsp.GetCapabilities()
-	for _, cap := range caps {
-		if cap == nil {
-			continue
-		}
-		rpc := cap.GetRpc()
-		if rpc == nil {
-			continue
-		}
-		if rpc.GetType() == csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT {
-			return true, nil
-		}
-	}
-	return false, nil
+	return rsp.GetCapabilities(), nil
 }
 
 // NewCSIProvisioner creates new CSI provisioner
@@ -268,27 +272,21 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	return provisioner
 }
 
-// This function get called before any attepmt to communicate with the driver.
+// This function get called before any attempt to communicate with the driver.
 // Before initiating Create/Delete API calls provisioner checks if Capabilities:
 // PluginControllerService,  ControllerCreateVolume sre supported and gets the  driver name.
-func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration, needSnapshotSupport bool) (string, error) {
-	ok, err := supportsPluginControllerService(grpcClient, timeout)
+func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration, needSnapshotSupport bool) (*driverState, error) {
+	capabilities, err := getDriverCapabilities(grpcClient, timeout)
 	if err != nil {
-		glog.Errorf("failed to get support info :%v", err)
-		return "", err
+		return nil, fmt.Errorf("failed to get capabilities: %v", err)
 	}
-	if !ok {
-		glog.Errorf("no plugin controller service support detected")
-		return "", fmt.Errorf("no plugin controller service support detected")
+
+	if !capabilities.Has(PluginCapability_CONTROLLER_SERVICE) {
+		return nil, fmt.Errorf("no plugin controller service support detected")
 	}
-	ok, err = supportsControllerCreateVolume(grpcClient, timeout)
-	if err != nil {
-		glog.Errorf("failed to get support info :%v", err)
-		return "", err
-	}
-	if !ok {
-		glog.Error("no create/delete volume support detected")
-		return "", fmt.Errorf("no create/delete volume support detected")
+
+	if !capabilities.Has(ControllerCapability_CREATE_DELETE_VOLUME) {
+		return nil, fmt.Errorf("no create/delete volume support detected")
 	}
 
 	// If PVC.Spec.DataSource is not nil, it indicates the request is to create volume
@@ -297,23 +295,19 @@ func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration, needSn
 	if needSnapshotSupport {
 		// Check whether plugin supports create snapshot
 		// If not, create volume from snapshot cannot proceed
-		ok, err = supportsControllerCreateSnapshot(grpcClient, timeout)
-		if err != nil {
-			glog.Errorf("failed to get support info :%v", err)
-			return "", err
-		}
-		if !ok {
-			glog.Error("no create/delete snapshot support detected. Cannot create volume from shapshot")
-			return "", fmt.Errorf("no create/delete snapshot support detected. Cannot create volume from shapshot")
+		if !capabilities.Has(ControllerCapability_CREATE_DELETE_SNAPSHOT) {
+			return nil, fmt.Errorf("no create/delete snapshot support detected. Cannot create volume from shapshot")
 		}
 	}
 
 	driverName, err := getDriverName(grpcClient, timeout)
 	if err != nil {
-		glog.Errorf("failed to get driver info :%v", err)
-		return "", err
+		return nil, fmt.Errorf("failed to get driver info: %v", err)
 	}
-	return driverName, nil
+	return &driverState{
+		driverName:   driverName,
+		capabilities: capabilities,
+	}, nil
 }
 
 func makeVolumeName(prefix, pvcUID string, volumeNameUUIDLength int) (string, error) {
@@ -354,7 +348,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		}
 		needSnapshotSupport = true
 	}
-	driverName, err := checkDriverState(p.grpcClient, p.timeout, needSnapshotSupport)
+	driverState, err := checkDriverState(p.grpcClient, p.timeout, needSnapshotSupport)
 	if err != nil {
 		return nil, err
 	}
@@ -515,7 +509,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:                     driverName,
+					Driver:                     driverState.driverName,
 					VolumeHandle:               p.volumeIdToHandle(rep.Volume.Id),
 					FSType:                     fsType,
 					VolumeAttributes:           volumeAttributes,

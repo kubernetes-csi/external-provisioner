@@ -144,83 +144,80 @@ func TestGetPluginName(t *testing.T) {
 	}
 }
 
-func TestSupportsControllerCreateVolume(t *testing.T) {
-
-	tests := []struct {
-		name         string
-		output       *csi.ControllerGetCapabilitiesResponse
-		injectError  bool
-		expectError  bool
-		expectResult bool
-	}{
-		{
-			name: "controller create",
-			output: &csi.ControllerGetCapabilitiesResponse{
-				Capabilities: []*csi.ControllerServiceCapability{
-					{
-						Type: &csi.ControllerServiceCapability_Rpc{
-							Rpc: &csi.ControllerServiceCapability_RPC{
-								Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-							},
-						},
-					},
-					{
-						Type: &csi.ControllerServiceCapability_Rpc{
-							Rpc: &csi.ControllerServiceCapability_RPC{
-								Type: csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
-							},
-						},
-					},
-				},
-			},
-			expectError:  false,
-			expectResult: true,
-		},
-		{
-			name: "no controller create",
-			output: &csi.ControllerGetCapabilitiesResponse{
-				Capabilities: []*csi.ControllerServiceCapability{
-					{
-						Type: &csi.ControllerServiceCapability_Rpc{
-							Rpc: &csi.ControllerServiceCapability_RPC{
-								Type: csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
-							},
-						},
-					},
-				},
-			},
-			expectError:  false,
-			expectResult: false,
-		},
-		{
-			name:         "gRPC error",
-			output:       nil,
-			injectError:  true,
-			expectError:  true,
-			expectResult: false,
-		},
-		{
-			name: "empty capability",
-			output: &csi.ControllerGetCapabilitiesResponse{
-				Capabilities: []*csi.ControllerServiceCapability{
-					{
-						Type: nil,
-					},
-				},
-			},
-			expectError:  false,
-			expectResult: false,
-		},
-		{
-			name: "no capabilities",
-			output: &csi.ControllerGetCapabilitiesResponse{
-				Capabilities: []*csi.ControllerServiceCapability{},
-			},
-			expectError:  false,
-			expectResult: false,
-		},
+func TestGetDriverCapabilities(t *testing.T) {
+	type testcase struct {
+		name                   string
+		pluginCapabilities     []*csi.PluginCapability_Service_Type
+		controllerCapabilities []*csi.ControllerServiceCapability_RPC_Type
+		injectPluginError      bool
+		injectControllerError  bool
+		expectError            bool
 	}
-	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t)
+	tests := []testcase{{}}
+
+	// Generate test cases by creating all possible combination of capabilities
+	for capName, capValue := range csi.PluginCapability_Service_Type_value {
+		cap := csi.PluginCapability_Service_Type(capValue)
+		var newTests []testcase
+		for _, test := range tests {
+			newTest := testcase{
+				name: fmt.Sprintf("%s,Plugin_%s", test.name, capName),
+			}
+			copy(newTest.pluginCapabilities, append(test.pluginCapabilities, &cap))
+			copy(newTest.controllerCapabilities, test.controllerCapabilities)
+			newTests = append(newTests, newTest)
+		}
+		tests = newTests
+	}
+	for capName, capValue := range csi.ControllerServiceCapability_RPC_Type_value {
+		cap := csi.ControllerServiceCapability_RPC_Type(capValue)
+		var newTests []testcase
+		for _, test := range tests {
+			newTest := testcase{
+				name: fmt.Sprintf("%s,Plugin_%s", test.name, capName),
+			}
+			copy(newTest.pluginCapabilities, test.pluginCapabilities)
+			copy(newTest.controllerCapabilities, append(test.controllerCapabilities, &cap))
+			newTests = append(newTests, newTest)
+		}
+		tests = newTests
+	}
+
+	// nil capabilities tests
+	dummyPluginCap := csi.PluginCapability_Service_CONTROLLER_SERVICE
+	dummyControllerCap := csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME
+	tests = append(tests, []testcase{
+		{
+			name:                   "plugin capabilities with nil entries",
+			pluginCapabilities:     []*csi.PluginCapability_Service_Type{nil},
+			controllerCapabilities: []*csi.ControllerServiceCapability_RPC_Type{&dummyControllerCap},
+		},
+		{
+			name:                   "controller capabilities with nil entries",
+			pluginCapabilities:     []*csi.PluginCapability_Service_Type{&dummyPluginCap},
+			controllerCapabilities: []*csi.ControllerServiceCapability_RPC_Type{nil},
+		},
+	}...)
+
+	// gRPC errors
+	tests = append(tests, []testcase{
+		{
+			name:                   "plugin capabilities call with gRPC error",
+			pluginCapabilities:     []*csi.PluginCapability_Service_Type{&dummyPluginCap},
+			controllerCapabilities: []*csi.ControllerServiceCapability_RPC_Type{&dummyControllerCap},
+			injectPluginError:      true,
+			expectError:            true,
+		},
+		{
+			name:                   "controller capabilities call with gRPC error",
+			pluginCapabilities:     []*csi.PluginCapability_Service_Type{&dummyPluginCap},
+			controllerCapabilities: []*csi.ControllerServiceCapability_RPC_Type{&dummyControllerCap},
+			injectControllerError:  true,
+			expectError:            true,
+		},
+	}...)
+
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,212 +225,83 @@ func TestSupportsControllerCreateVolume(t *testing.T) {
 	defer driver.Stop()
 	for _, test := range tests {
 
-		in := &csi.ControllerGetCapabilitiesRequest{}
-
-		out := test.output
-		var injectedErr error
-		if test.injectError {
-			injectedErr = fmt.Errorf("mock error")
+		var injectedPluginErr, injectedControllerErr error
+		if test.injectPluginError {
+			injectedPluginErr = fmt.Errorf("mock error")
+		}
+		if test.injectControllerError {
+			injectedControllerErr = fmt.Errorf("mock error")
 		}
 
-		controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), in).Return(out, injectedErr).Times(1)
-		ok, err := supportsControllerCreateVolume(csiConn.conn, timeout)
+		var pluginCaps []*csi.PluginCapability
+		for _, cap := range test.pluginCapabilities {
+			var c *csi.PluginCapability
+			if cap == nil {
+				c = &csi.PluginCapability{Type: nil}
+			} else {
+				c = &csi.PluginCapability{
+					Type: &csi.PluginCapability_Service_{
+						Service: &csi.PluginCapability_Service{
+							Type: *cap,
+						},
+					},
+				}
+			}
+			pluginCaps = append(pluginCaps, c)
+		}
+		pluginResponse := &csi.GetPluginCapabilitiesResponse{Capabilities: pluginCaps}
+
+		var controllerCaps []*csi.ControllerServiceCapability
+		for _, cap := range test.controllerCapabilities {
+			var c *csi.ControllerServiceCapability
+			if cap == nil {
+				c = &csi.ControllerServiceCapability{Type: nil}
+			} else {
+				c = &csi.ControllerServiceCapability{
+					Type: &csi.ControllerServiceCapability_Rpc{
+						Rpc: &csi.ControllerServiceCapability_RPC{
+							Type: *cap,
+						},
+					},
+				}
+			}
+			controllerCaps = append(controllerCaps, c)
+		}
+		controllerResponse := &csi.ControllerGetCapabilitiesResponse{Capabilities: controllerCaps}
+
+		identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), &csi.GetPluginCapabilitiesRequest{}).Return(pluginResponse, injectedPluginErr).Times(1)
+		controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), &csi.ControllerGetCapabilitiesRequest{}).Return(controllerResponse, injectedControllerErr).MinTimes(0).MaxTimes(1)
+
+		capabilities, err := getDriverCapabilities(csiConn.conn, timeout)
 		if err != nil && !test.expectError {
-			t.Errorf("test fail with error: %v\n", err)
+			t.Errorf("test %q failed with error: %v\n", test.name, err)
 		}
-		if err == nil && test.expectResult != ok {
-			t.Errorf("test fail expected result %t but got %t\n", test.expectResult, ok)
-		}
-	}
-}
+		if err == nil {
+			ok := true
+			for _, cap := range test.pluginCapabilities {
+				if cap != nil {
+					switch *cap {
+					case csi.PluginCapability_Service_CONTROLLER_SERVICE:
+						ok = ok && capabilities.Has(PluginCapability_CONTROLLER_SERVICE)
+					case csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS:
+						ok = ok && capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS)
+					}
+				}
+			}
+			for _, cap := range test.controllerCapabilities {
+				if cap != nil {
+					switch *cap {
+					case csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:
+						ok = ok && capabilities.Has(ControllerCapability_CREATE_DELETE_VOLUME)
+					case csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT:
+						ok = ok && capabilities.Has(ControllerCapability_CREATE_DELETE_SNAPSHOT)
+					}
+				}
+			}
 
-func TestSupportsControllerCreateSnapshot(t *testing.T) {
-
-	tests := []struct {
-		name         string
-		output       *csi.ControllerGetCapabilitiesResponse
-		injectError  bool
-		expectError  bool
-		expectResult bool
-	}{
-		{
-			name: "controller create snapshot",
-			output: &csi.ControllerGetCapabilitiesResponse{
-				Capabilities: []*csi.ControllerServiceCapability{
-					{
-						Type: &csi.ControllerServiceCapability_Rpc{
-							Rpc: &csi.ControllerServiceCapability_RPC{
-								Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-							},
-						},
-					},
-					{
-						Type: &csi.ControllerServiceCapability_Rpc{
-							Rpc: &csi.ControllerServiceCapability_RPC{
-								Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
-							},
-						},
-					},
-				},
-			},
-			expectError:  false,
-			expectResult: true,
-		},
-		{
-			name: "no controller create snapshot",
-			output: &csi.ControllerGetCapabilitiesResponse{
-				Capabilities: []*csi.ControllerServiceCapability{
-					{
-						Type: &csi.ControllerServiceCapability_Rpc{
-							Rpc: &csi.ControllerServiceCapability_RPC{
-								Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-							},
-						},
-					},
-				},
-			},
-			expectError:  false,
-			expectResult: false,
-		},
-		{
-			name:         "gRPC error",
-			output:       nil,
-			injectError:  true,
-			expectError:  true,
-			expectResult: false,
-		},
-		{
-			name: "empty capability",
-			output: &csi.ControllerGetCapabilitiesResponse{
-				Capabilities: []*csi.ControllerServiceCapability{
-					{
-						Type: nil,
-					},
-				},
-			},
-			expectError:  false,
-			expectResult: false,
-		},
-		{
-			name: "no capabilities",
-			output: &csi.ControllerGetCapabilitiesResponse{
-				Capabilities: []*csi.ControllerServiceCapability{},
-			},
-			expectError:  false,
-			expectResult: false,
-		},
-	}
-	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mockController.Finish()
-	defer driver.Stop()
-	for _, test := range tests {
-
-		in := &csi.ControllerGetCapabilitiesRequest{}
-
-		out := test.output
-		var injectedErr error
-		if test.injectError {
-			injectedErr = fmt.Errorf("mock error")
-		}
-
-		controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), in).Return(out, injectedErr).Times(1)
-		ok, err := supportsControllerCreateSnapshot(csiConn.conn, timeout)
-		if err != nil && !test.expectError {
-			t.Errorf("test fail with error: %v\n", err)
-		}
-		if err == nil && test.expectResult != ok {
-			t.Errorf("test fail expected result %t but got %t\n", test.expectResult, ok)
-		}
-	}
-}
-
-func TestSupportsPluginControllerService(t *testing.T) {
-
-	tests := []struct {
-		name         string
-		output       *csi.GetPluginCapabilitiesResponse
-		injectError  bool
-		expectError  bool
-		expectResult bool
-	}{
-		{
-			name: "controller capability",
-			output: &csi.GetPluginCapabilitiesResponse{
-				Capabilities: []*csi.PluginCapability{
-					{
-						Type: &csi.PluginCapability_Service_{
-							Service: &csi.PluginCapability_Service{
-								Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
-							},
-						},
-					},
-				},
-			},
-			expectError:  false,
-			expectResult: true,
-		},
-		{
-			name: "no controller capability",
-			output: &csi.GetPluginCapabilitiesResponse{
-				Capabilities: []*csi.PluginCapability{
-					{
-						Type: &csi.PluginCapability_Service_{
-							Service: &csi.PluginCapability_Service{
-								Type: csi.PluginCapability_Service_UNKNOWN,
-							},
-						},
-					},
-				},
-			},
-			expectError:  false,
-			expectResult: false,
-		},
-		{
-			name:         "gRPC error",
-			output:       nil,
-			injectError:  true,
-			expectError:  true,
-			expectResult: false,
-		},
-		{
-			name: "empty capability",
-			output: &csi.GetPluginCapabilitiesResponse{
-				Capabilities: []*csi.PluginCapability{
-					{
-						Type: nil,
-					},
-				},
-			},
-			expectError:  false,
-			expectResult: false,
-		},
-	}
-	mockController, driver, identityServer, _, csiConn, err := createMockServer(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mockController.Finish()
-	defer driver.Stop()
-	for _, test := range tests {
-
-		in := &csi.GetPluginCapabilitiesRequest{}
-
-		out := test.output
-		var injectedErr error
-		if test.injectError {
-			injectedErr = fmt.Errorf("mock error")
-		}
-
-		identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), in).Return(out, injectedErr).Times(1)
-		ok, err := supportsPluginControllerService(csiConn.conn, timeout)
-		if err != nil && !test.expectError {
-			t.Errorf("test fail with error: %v\n", err)
-		}
-		if err == nil && test.expectResult != ok {
-			t.Errorf("test fail expected result %t but got %t\n", test.expectResult, ok)
+			if !ok {
+				t.Errorf("test %q: missing capabilities", test.name)
+			}
 		}
 	}
 }
@@ -652,7 +520,43 @@ func provisionFromSnapshotMockServerSetupExpectations(identityServer *driver.Moc
 				},
 			},
 		},
-	}, nil).Times(2)
+	}, nil).Times(1)
+	identityServer.EXPECT().GetPluginInfo(gomock.Any(), gomock.Any()).Return(&csi.GetPluginInfoResponse{
+		Name:          "test-driver",
+		VendorVersion: "test-vendor",
+	}, nil).Times(1)
+}
+
+func provisionWithTopologyMockServerSetupExpectations(identityServer *driver.MockIdentityServer, controllerServer *driver.MockControllerServer) {
+	identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(&csi.GetPluginCapabilitiesResponse{
+		Capabilities: []*csi.PluginCapability{
+			{
+				Type: &csi.PluginCapability_Service_{
+					Service: &csi.PluginCapability_Service{
+						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
+					},
+				},
+			},
+			{
+				Type: &csi.PluginCapability_Service_{
+					Service: &csi.PluginCapability_Service{
+						Type: csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS,
+					},
+				},
+			},
+		},
+	}, nil).Times(1)
+	controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), gomock.Any()).Return(&csi.ControllerGetCapabilitiesResponse{
+		Capabilities: []*csi.ControllerServiceCapability{
+			{
+				Type: &csi.ControllerServiceCapability_Rpc{
+					Rpc: &csi.ControllerServiceCapability_RPC{
+						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+					},
+				},
+			},
+		},
+	}, nil).Times(1)
 	identityServer.EXPECT().GetPluginInfo(gomock.Any(), gomock.Any()).Return(&csi.GetPluginInfoResponse{
 		Name:          "test-driver",
 		VendorVersion: "test-vendor",
