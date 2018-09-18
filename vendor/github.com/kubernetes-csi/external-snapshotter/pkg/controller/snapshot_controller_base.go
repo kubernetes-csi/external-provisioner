@@ -56,7 +56,6 @@ type csiSnapshotController struct {
 
 	snapshotStore cache.Store
 	contentStore  cache.Store
-	classStore    cache.Store
 
 	handler Handler
 	// Map of scheduled/running operations.
@@ -84,6 +83,7 @@ func NewCSISnapshotController(
 	snapshotNameUUIDLength int,
 ) *csiSnapshotController {
 	broadcaster := record.NewBroadcaster()
+	broadcaster.StartLogging(glog.Infof)
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: client.Core().Events(v1.NamespaceAll)})
 	var eventRecorder record.EventRecorder
 	eventRecorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf("csi-snapshotter %s", snapshotterName)})
@@ -100,7 +100,6 @@ func NewCSISnapshotController(
 		resyncPeriod:                    resyncPeriod,
 		snapshotStore:                   cache.NewStore(cache.DeletionHandlingMetaNamespaceKeyFunc),
 		contentStore:                    cache.NewStore(cache.DeletionHandlingMetaNamespaceKeyFunc),
-		classStore:                      cache.NewStore(cache.DeletionHandlingMetaNamespaceKeyFunc),
 		snapshotQueue:                   workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "csi-snapshotter-snapshot"),
 		contentQueue:                    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "csi-snapshotter-content"),
 	}

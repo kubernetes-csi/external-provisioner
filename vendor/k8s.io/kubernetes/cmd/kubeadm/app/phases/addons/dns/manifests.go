@@ -122,6 +122,7 @@ spec:
         - -k
         - --cache-size=1000
         - --no-negcache
+        - --dns-loop-detect
         - --log-facility=-
         - --server=/{{ .DNSDomain }}/{{ .DNSBindAddr }}#10053
         - --server=/in-addr.arpa/{{ .DNSBindAddr }}#10053
@@ -310,7 +311,9 @@ data:
         prometheus :9153
         proxy . {{ .UpstreamNameserver }}
         cache 30
+        loop
         reload
+        loadbalance
     }{{ .StubDomain }}
 `
 	// CoreDNSClusterRole is the CoreDNS ClusterRole manifest
