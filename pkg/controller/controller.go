@@ -328,10 +328,9 @@ func makeVolumeName(prefix, pvcUID string, volumeNameUUIDLength int) (string, er
 	if volumeNameUUIDLength == -1 {
 		// Default behavior is to not truncate or remove dashes
 		return fmt.Sprintf("%s-%s", prefix, pvcUID), nil
-	} else {
-		// Else we remove all dashes from UUID and truncate to volumeNameUUIDLength
-		return fmt.Sprintf("%s-%s", prefix, strings.Replace(string(pvcUID), "-", "", -1)[0:volumeNameUUIDLength]), nil
 	}
+	// Else we remove all dashes from UUID and truncate to volumeNameUUIDLength
+	return fmt.Sprintf("%s-%s", prefix, strings.Replace(string(pvcUID), "-", "", -1)[0:volumeNameUUIDLength]), nil
 
 }
 
@@ -340,7 +339,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, fmt.Errorf("claim Selector is not supported")
 	}
 
-	var needSnapshotSupport bool = false
+	var needSnapshotSupport bool
 	if options.PVC.Spec.DataSource != nil {
 		// PVC.Spec.DataSource.Name is the name of the VolumeSnapshot API object
 		if options.PVC.Spec.DataSource.Name == "" {
