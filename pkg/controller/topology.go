@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
+	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
 	"sort"
 	"strings"
 )
@@ -58,7 +60,10 @@ func GenerateVolumeNodeAffinity(accessibleTopology []*csi.Topology) *v1.VolumeNo
 	}
 }
 
-func GenerateAccessibilityRequirements(allowedTopologies []v1.TopologySelectorTerm) (*csi.TopologyRequirement, error) {
+func GenerateAccessibilityRequirements(
+	kubeClient kubernetes.Interface,
+	csiAPIClient csiclientset.Interface,
+	allowedTopologies []v1.TopologySelectorTerm) (*csi.TopologyRequirement, error) {
 	if len(allowedTopologies) == 0 {
 		return nil, fmt.Errorf("topology aggregation not implemented")
 	} else {

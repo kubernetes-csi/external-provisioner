@@ -505,7 +505,10 @@ func TestGenerateAccessibilityRequirements(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Logf("test: %s", name)
-		requirements, err := GenerateAccessibilityRequirements(tc.allowedTopologies)
+		requirements, err := GenerateAccessibilityRequirements(
+			nil, /* kubeClient */
+			nil, /* csiAPIClient */
+			tc.allowedTopologies)
 
 		if tc.expectError {
 			if err == nil {

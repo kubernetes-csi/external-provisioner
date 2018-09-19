@@ -49,6 +49,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
 )
 
 const (
@@ -81,6 +82,7 @@ const (
 type csiProvisioner struct {
 	client               kubernetes.Interface
 	csiClient            csi.ControllerClient
+	csiAPIClient         csiclientset.Interface
 	grpcClient           *grpc.ClientConn
 	snapshotClient       snapclientset.Interface
 	timeout              time.Duration
@@ -250,6 +252,7 @@ func getControllerCapabilities(conn *grpc.ClientConn, timeout time.Duration) ([]
 
 // NewCSIProvisioner creates new CSI provisioner
 func NewCSIProvisioner(client kubernetes.Interface,
+	csiAPIClient csiclientset.Interface,
 	csiEndpoint string,
 	connectionTimeout time.Duration,
 	identity string,
@@ -263,6 +266,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		client:               client,
 		grpcClient:           grpcClient,
 		csiClient:            csiClient,
+		csiAPIClient:         csiAPIClient,
 		snapshotClient:       snapshotClient,
 		timeout:              connectionTimeout,
 		identity:             identity,
@@ -409,7 +413,10 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	}
 
 	if driverState.capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) {
-		requirements, err := GenerateAccessibilityRequirements(options.AllowedTopologies)
+		requirements, err := GenerateAccessibilityRequirements(
+			p.client,
+			p.csiAPIClient,
+			options.AllowedTopologies)
 		if err != nil {
 			return nil, fmt.Errorf("error generating accessibility requirements: %v", err)
 		}

@@ -41,6 +41,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+	fakecsiclientset "k8s.io/csi-api/pkg/client/clientset/versioned/fake"
 )
 
 const (
@@ -425,7 +426,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	defer mockController.Finish()
 	defer driver.Stop()
 
-	csiProvisioner := NewCSIProvisioner(nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+	csiProvisioner := NewCSIProvisioner(nil, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
 
 	// Requested PVC with requestedBytes storage
 	opts := controller.VolumeOptions{
@@ -1068,7 +1069,7 @@ func TestProvision(t *testing.T) {
 			clientSet = fakeclientset.NewSimpleClientset()
 		}
 
-		csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+		csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -1445,7 +1446,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			return true, content, nil
 		})
 
-		csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client)
+		csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -1537,7 +1538,8 @@ func TestProvisionWithTopology(t *testing.T) {
 	defer driver.Stop()
 
 	clientSet := fakeclientset.NewSimpleClientset()
-	csiProvisioner := NewCSIProvisioner(clientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+	csiClientSet := fakecsiclientset.NewSimpleClientset()
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
