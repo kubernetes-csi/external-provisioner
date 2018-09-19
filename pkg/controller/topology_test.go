@@ -20,6 +20,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/apis/core/helper"
 	"testing"
 )
 
@@ -133,7 +134,395 @@ func TestGenerateVolumeNodeAffinity(t *testing.T) {
 		t.Logf("test: %s", name)
 		nodeAffinity := GenerateVolumeNodeAffinity(tc.accessibleTopology)
 		if !volumeNodeAffinitiesEqual(nodeAffinity, tc.expectedNodeAffinity) {
-			t.Errorf("test %q: expected node affinity %v; got: %v", name, tc.expectedNodeAffinity, nodeAffinity)
+			t.Errorf("expected node affinity %v; got: %v", tc.expectedNodeAffinity, nodeAffinity)
+		}
+	}
+}
+
+func TestGenerateAccessibilityRequirements(t *testing.T) {
+	// TODO (verult) more AllowedTopologies unit tests
+	testcases := map[string]struct {
+		allowedTopologies []v1.TopologySelectorTerm
+		expectedRequisite []*csi.Topology
+		expectError       bool
+	}{
+		// TODO (verult) update when topology aggregation is implemented
+		"empty allowedTopologies": {
+			allowedTopologies: nil,
+			expectError:       true,
+		},
+		"single expression, single value": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+					},
+				},
+			},
+			expectedRequisite: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+					},
+				},
+			},
+		},
+		"single expression, multiple values": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1", "zone2"},
+						},
+					},
+				},
+			},
+			expectedRequisite: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone2",
+					},
+				},
+			},
+		},
+		"multiple expressions, single value": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackA"},
+						},
+					},
+				},
+			},
+			expectedRequisite: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+						"com.example.csi/rack": "rackA",
+					},
+				},
+			},
+		},
+		"multiple expressions, 1 single value, 1 multiple values": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackA", "rackB"},
+						},
+					},
+				},
+			},
+			expectedRequisite: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+						"com.example.csi/rack": "rackA",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+						"com.example.csi/rack": "rackB",
+					},
+				},
+			},
+		},
+		"multiple expressions, both multiple values": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1", "zone2"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackA", "rackB"},
+						},
+					},
+				},
+			},
+			expectedRequisite: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+						"com.example.csi/rack": "rackA",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+						"com.example.csi/rack": "rackB",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone2",
+						"com.example.csi/rack": "rackA",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone2",
+						"com.example.csi/rack": "rackB",
+					},
+				},
+			},
+		},
+		"multiple terms: single expression, single values": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+					},
+				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackA"},
+						},
+					},
+				},
+			},
+			expectedRequisite: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+					},
+				},
+			},
+		},
+		"multiple terms: single expression, overlapping keys, distinct values": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+					},
+				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone2"},
+						},
+					},
+				},
+			},
+			expectedRequisite: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone2",
+					},
+				},
+			},
+		},
+		"multiple terms: single expression, overlapping keys, overlapping values": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1", "zone2"},
+						},
+					},
+				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone2", "zone3"},
+						},
+					},
+				},
+			},
+			expectedRequisite: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone2",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone3",
+					},
+				},
+			},
+		},
+		//// TODO (verult) advanced reduction could eliminate subset duplicates here
+		"multiple terms: 1 single expression, 1 multiple expressions; contains a subset duplicate": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+					},
+				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1", "zone2"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackA", "rackB"},
+						},
+					},
+				},
+			},
+			expectedRequisite: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+						"com.example.csi/rack": "rackA",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+						"com.example.csi/rack": "rackB",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone2",
+						"com.example.csi/rack": "rackA",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone2",
+						"com.example.csi/rack": "rackB",
+					},
+				},
+			},
+		},
+		"multiple terms: both contains multiple expressions; contains an identical duplicate": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackB"},
+						},
+					},
+				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1", "zone2"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackA", "rackB"},
+						},
+					},
+				},
+			},
+			expectedRequisite: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+						"com.example.csi/rack": "rackA",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone1",
+						"com.example.csi/rack": "rackB",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone2",
+						"com.example.csi/rack": "rackA",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/zone": "zone2",
+						"com.example.csi/rack": "rackB",
+					},
+				},
+			},
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Logf("test: %s", name)
+		requirements, err := GenerateAccessibilityRequirements(tc.allowedTopologies)
+
+		if tc.expectError {
+			if err == nil {
+				t.Error("expected error but got none")
+			}
+			continue
+		}
+		if !tc.expectError && err != nil {
+			t.Errorf("expected no error but got: %v", err)
+			continue
+		}
+		if requirements == nil {
+			t.Errorf("expected requirements not to be nil")
+			continue
+		}
+		if !requisiteEqual(requirements.Requisite, tc.expectedRequisite) {
+			t.Errorf("expected requisite %v; got: %v", tc.expectedRequisite, requirements.Requisite)
 		}
 	}
 }
@@ -225,4 +614,27 @@ func volumeNodeAffinitiesEqual(n1, n2 *v1.VolumeNodeAffinity) bool {
 		return true
 	}
 	return match(ns1.NodeSelectorTerms, ns2.NodeSelectorTerms) && match(ns2.NodeSelectorTerms, ns1.NodeSelectorTerms)
+}
+
+func requisiteEqual(t1, t2 []*csi.Topology) bool {
+	// Requisite may contain duplicate topologies
+	unchecked := make(sets.Int)
+	for i := range t1 {
+		unchecked.Insert(i)
+	}
+	for _, topology := range t2 {
+		found := false
+		for i := range unchecked {
+			if helper.Semantic.DeepEqual(t1[i], topology) {
+				found = true
+				unchecked.Delete(i)
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	return unchecked.Len() == 0
 }

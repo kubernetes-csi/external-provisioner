@@ -408,6 +408,14 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		req.VolumeContentSource = volumeContentSource
 	}
 
+	if driverState.capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) {
+		requirements, err := GenerateAccessibilityRequirements(options.AllowedTopologies)
+		if err != nil {
+			return nil, fmt.Errorf("error generating accessibility requirements: %v", err)
+		}
+		req.AccessibilityRequirements = requirements
+	}
+
 	glog.V(5).Infof("CreateVolumeRequest %+v", req)
 
 	rep := &csi.CreateVolumeResponse{}
