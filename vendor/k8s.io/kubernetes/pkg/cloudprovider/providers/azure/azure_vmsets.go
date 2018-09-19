@@ -17,7 +17,7 @@ limitations under the License.
 package azure
 
 import (
-	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2017-12-01/compute"
+	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2018-04-01/compute"
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2017-09-01/network"
 
 	"k8s.io/api/core/v1"
@@ -64,4 +64,7 @@ type VMSet interface {
 	DetachDiskByName(diskName, diskURI string, nodeName types.NodeName) error
 	// GetDataDisks gets a list of data disks attached to the node.
 	GetDataDisks(nodeName types.NodeName) ([]compute.DataDisk, error)
+
+	// GetProvisioningStateByNodeName gets the provisioning state by node name.
+	GetProvisioningStateByNodeName(name string) (string, error)
 }

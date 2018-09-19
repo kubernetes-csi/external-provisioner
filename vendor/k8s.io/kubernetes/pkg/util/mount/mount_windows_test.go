@@ -127,7 +127,7 @@ func TestGetMountRefs(t *testing.T) {
 		}
 	}
 
-	if refs, err := GetMountRefs(fm, mountPath); err != nil || !setEquivalent(expectedRefs, refs) {
+	if refs, err := fm.GetMountRefs(mountPath); err != nil || !setEquivalent(expectedRefs, refs) {
 		t.Errorf("getMountRefs(%q) = %v, error: %v; expected %v", mountPath, refs, err, expectedRefs)
 	}
 
@@ -576,8 +576,8 @@ func TestPathWithinBase(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result := pathWithinBase(test.fullPath, test.basePath)
-		assert.Equal(t, result, test.expectedResult, "Expect result not equal with pathWithinBase(%s, %s) return: %q, expected: %q",
+		result := PathWithinBase(test.fullPath, test.basePath)
+		assert.Equal(t, result, test.expectedResult, "Expect result not equal with PathWithinBase(%s, %s) return: %q, expected: %q",
 			test.fullPath, test.basePath, result, test.expectedResult)
 	}
 }

@@ -23,12 +23,14 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apiserver/pkg/storage/names"
@@ -38,6 +40,7 @@ import (
 	core "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
@@ -83,15 +86,6 @@ var (
 		TimeAdded: nowPointer(),
 	}}
 )
-
-func getKey(ds *apps.DaemonSet, t *testing.T) string {
-	key, err := controller.KeyFunc(ds)
-
-	if err != nil {
-		t.Errorf("Unexpected error getting key for ds %v: %v", ds.Name, err)
-	}
-	return key
-}
 
 func newDaemonSet(name string) *apps.DaemonSet {
 	two := int32(2)
@@ -176,7 +170,7 @@ func newPod(podName string, nodeName string, label map[string]string, ds *apps.D
 	var podSpec v1.PodSpec
 	// Copy pod spec from DaemonSet template, or use a default one if DaemonSet is nil
 	if ds != nil {
-		hash := fmt.Sprint(controller.ComputeHash(&ds.Spec.Template, ds.Status.CollisionCount))
+		hash := controller.ComputeHash(&ds.Spec.Template, ds.Status.CollisionCount)
 		newLabels = labelsutil.CloneAndAddLabel(label, apps.DefaultDaemonSetUniqueLabelKey, hash)
 		podSpec = ds.Spec.Template.Spec
 	} else {
@@ -329,6 +323,7 @@ func newTestController(initialObjects ...runtime.Object) (*daemonSetsController,
 		informerFactory.Core().V1().Pods(),
 		informerFactory.Core().V1().Nodes(),
 		clientset,
+		flowcontrol.NewFakeBackOff(50*time.Millisecond, 500*time.Millisecond, clock.NewFakeClock(time.Now())),
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -353,6 +348,13 @@ func newTestController(initialObjects ...runtime.Object) (*daemonSetsController,
 		informerFactory.Core().V1().Nodes().Informer().GetStore(),
 		fakeRecorder,
 	}, podControl, clientset, nil
+}
+
+func resetCounters(manager *daemonSetsController) {
+	manager.podControl.(*fakePodControl).Clear()
+	fakeRecorder := record.NewFakeRecorder(100)
+	manager.eventRecorder = fakeRecorder
+	manager.fakeRecorder = fakeRecorder
 }
 
 func validateSyncDaemonSets(t *testing.T, manager *daemonSetsController, fakePodControl *fakePodControl, expectedCreates, expectedDeletes int, expectedEvents int) {
@@ -435,6 +437,12 @@ func markPodReady(pod *v1.Pod) {
 	podutil.UpdatePodCondition(&pod.Status, &condition)
 }
 
+func setFeatureGate(t *testing.T, feature utilfeature.Feature, enabled bool) {
+	if err := utilfeature.DefaultFeatureGate.Set(fmt.Sprintf("%s=%t", feature, enabled)); err != nil {
+		t.Fatalf("Failed to set FeatureGate %v to %t: %v", feature, enabled, err)
+	}
+}
+
 // DaemonSets without node selectors should launch pods on every node.
 func TestSimpleDaemonSetLaunchesPods(t *testing.T) {
 	for _, strategy := range updateStrategies() {
@@ -458,12 +466,9 @@ func TestSimpleDaemonSetScheduleDaemonSetPodsLaunchesPods(t *testing.T) {
 	enabled := utilfeature.DefaultFeatureGate.Enabled(features.ScheduleDaemonSetPods)
 	// Rollback feature gate.
 	defer func() {
-		if !enabled {
-			utilfeature.DefaultFeatureGate.Set("ScheduleDaemonSetPods=false")
-		}
+		setFeatureGate(t, features.ScheduleDaemonSetPods, enabled)
 	}()
-
-	utilfeature.DefaultFeatureGate.Set("ScheduleDaemonSetPods=true")
+	setFeatureGate(t, features.ScheduleDaemonSetPods, true)
 
 	nodeNum := 5
 
@@ -1314,24 +1319,90 @@ func TestDaemonKillFailedPods(t *testing.T) {
 		{numFailedPods: 0, numNormalPods: 0, expectedCreates: 1, expectedDeletes: 0, expectedEvents: 0, test: "no pods (create 1)"},
 		{numFailedPods: 1, numNormalPods: 0, expectedCreates: 0, expectedDeletes: 1, expectedEvents: 1, test: "1 failed pod (kill 1), 0 normal pod (create 0; will create in the next sync)"},
 		{numFailedPods: 1, numNormalPods: 3, expectedCreates: 0, expectedDeletes: 3, expectedEvents: 1, test: "1 failed pod (kill 1), 3 normal pods (kill 2)"},
-		{numFailedPods: 2, numNormalPods: 1, expectedCreates: 0, expectedDeletes: 2, expectedEvents: 2, test: "2 failed pods (kill 2), 1 normal pod"},
 	}
 
 	for _, test := range tests {
-		t.Logf("test case: %s\n", test.test)
-		for _, strategy := range updateStrategies() {
+		t.Run(test.test, func(t *testing.T) {
+			for _, strategy := range updateStrategies() {
+				ds := newDaemonSet("foo")
+				ds.Spec.UpdateStrategy = *strategy
+				manager, podControl, _, err := newTestController(ds)
+				if err != nil {
+					t.Fatalf("error creating DaemonSets controller: %v", err)
+				}
+				manager.dsStore.Add(ds)
+				addNodes(manager.nodeStore, 0, 1, nil)
+				addFailedPods(manager.podStore, "node-0", simpleDaemonSetLabel, ds, test.numFailedPods)
+				addPods(manager.podStore, "node-0", simpleDaemonSetLabel, ds, test.numNormalPods)
+				syncAndValidateDaemonSets(t, manager, ds, podControl, test.expectedCreates, test.expectedDeletes, test.expectedEvents)
+			}
+		})
+	}
+}
+
+// DaemonSet controller needs to backoff when killing failed pods to avoid hot looping and fighting with kubelet.
+func TestDaemonKillFailedPodsBackoff(t *testing.T) {
+	for _, strategy := range updateStrategies() {
+		t.Run(string(strategy.Type), func(t *testing.T) {
 			ds := newDaemonSet("foo")
 			ds.Spec.UpdateStrategy = *strategy
+
 			manager, podControl, _, err := newTestController(ds)
 			if err != nil {
 				t.Fatalf("error creating DaemonSets controller: %v", err)
 			}
+
 			manager.dsStore.Add(ds)
 			addNodes(manager.nodeStore, 0, 1, nil)
-			addFailedPods(manager.podStore, "node-0", simpleDaemonSetLabel, ds, test.numFailedPods)
-			addPods(manager.podStore, "node-0", simpleDaemonSetLabel, ds, test.numNormalPods)
-			syncAndValidateDaemonSets(t, manager, ds, podControl, test.expectedCreates, test.expectedDeletes, test.expectedEvents)
-		}
+
+			nodeName := "node-0"
+			pod := newPod(fmt.Sprintf("%s-", nodeName), nodeName, simpleDaemonSetLabel, ds)
+
+			// Add a failed Pod
+			pod.Status.Phase = v1.PodFailed
+			err = manager.podStore.Add(pod)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			backoffKey := failedPodsBackoffKey(ds, nodeName)
+
+			// First sync will delete the pod, initializing backoff
+			syncAndValidateDaemonSets(t, manager, ds, podControl, 0, 1, 1)
+			initialDelay := manager.failedPodsBackoff.Get(backoffKey)
+			if initialDelay <= 0 {
+				t.Fatal("Initial delay is expected to be set.")
+			}
+
+			resetCounters(manager)
+
+			// Immediate (second) sync gets limited by the backoff
+			syncAndValidateDaemonSets(t, manager, ds, podControl, 0, 0, 0)
+			delay := manager.failedPodsBackoff.Get(backoffKey)
+			if delay != initialDelay {
+				t.Fatal("Backoff delay shouldn't be raised while waiting.")
+			}
+
+			resetCounters(manager)
+
+			// Sleep to wait out backoff
+			fakeClock := manager.failedPodsBackoff.Clock
+
+			// Move just before the backoff end time
+			fakeClock.Sleep(delay - 1*time.Nanosecond)
+			if !manager.failedPodsBackoff.IsInBackOffSinceUpdate(backoffKey, fakeClock.Now()) {
+				t.Errorf("Backoff delay didn't last the whole waitout period.")
+			}
+
+			// Move to the backoff end time
+			fakeClock.Sleep(1 * time.Nanosecond)
+			if manager.failedPodsBackoff.IsInBackOffSinceUpdate(backoffKey, fakeClock.Now()) {
+				t.Fatal("Backoff delay hasn't been reset after the period has passed.")
+			}
+
+			// After backoff time, it will delete the failed pod
+			syncAndValidateDaemonSets(t, manager, ds, podControl, 0, 1, 1)
+		})
 	}
 }
 
@@ -1508,6 +1579,11 @@ func setDaemonSetToleration(ds *apps.DaemonSet, tolerations []v1.Toleration) {
 // DaemonSet should launch a critical pod even when the node with OutOfDisk taints.
 // TODO(#48843) OutOfDisk taints will be removed in 1.10
 func TestTaintOutOfDiskNodeDaemonLaunchesCriticalPod(t *testing.T) {
+	enabled := utilfeature.DefaultFeatureGate.Enabled(features.ExperimentalCriticalPodAnnotation)
+	defer func() {
+		setFeatureGate(t, features.ExperimentalCriticalPodAnnotation, enabled)
+	}()
+
 	for _, strategy := range updateStrategies() {
 		ds := newDaemonSet("critical")
 		ds.Spec.UpdateStrategy = *strategy
@@ -1525,25 +1601,24 @@ func TestTaintOutOfDiskNodeDaemonLaunchesCriticalPod(t *testing.T) {
 		// NOTE: Whether or not TaintNodesByCondition is enabled, it'll add toleration to DaemonSet pods.
 
 		// Without enabling critical pod annotation feature gate, we shouldn't create critical pod
-		utilfeature.DefaultFeatureGate.Set("ExperimentalCriticalPodAnnotation=False")
-		utilfeature.DefaultFeatureGate.Set("TaintNodesByCondition=True")
+		setFeatureGate(t, features.ExperimentalCriticalPodAnnotation, false)
 		manager.dsStore.Add(ds)
 		syncAndValidateDaemonSets(t, manager, ds, podControl, 0, 0, 0)
 
 		// With enabling critical pod annotation feature gate, we will create critical pod
-		utilfeature.DefaultFeatureGate.Set("ExperimentalCriticalPodAnnotation=True")
-		utilfeature.DefaultFeatureGate.Set("TaintNodesByCondition=False")
+		setFeatureGate(t, features.ExperimentalCriticalPodAnnotation, true)
 		manager.dsStore.Add(ds)
 		syncAndValidateDaemonSets(t, manager, ds, podControl, 1, 0, 0)
-
-		// Rollback feature gate to false.
-		utilfeature.DefaultFeatureGate.Set("TaintNodesByCondition=False")
-		utilfeature.DefaultFeatureGate.Set("ExperimentalCriticalPodAnnotation=False")
 	}
 }
 
 // DaemonSet should launch a pod even when the node with MemoryPressure/DiskPressure taints.
 func TestTaintPressureNodeDaemonLaunchesPod(t *testing.T) {
+	enabled := utilfeature.DefaultFeatureGate.Enabled(features.TaintNodesByCondition)
+	defer func() {
+		setFeatureGate(t, features.TaintNodesByCondition, enabled)
+	}()
+
 	for _, strategy := range updateStrategies() {
 		ds := newDaemonSet("critical")
 		ds.Spec.UpdateStrategy = *strategy
@@ -1565,17 +1640,19 @@ func TestTaintPressureNodeDaemonLaunchesPod(t *testing.T) {
 		manager.nodeStore.Add(node)
 
 		// Enabling critical pod and taint nodes by condition feature gate should create critical pod
-		utilfeature.DefaultFeatureGate.Set("TaintNodesByCondition=True")
+		setFeatureGate(t, features.TaintNodesByCondition, true)
 		manager.dsStore.Add(ds)
 		syncAndValidateDaemonSets(t, manager, ds, podControl, 1, 0, 0)
-
-		// Rollback feature gate to false.
-		utilfeature.DefaultFeatureGate.Set("TaintNodesByCondition=False")
 	}
 }
 
 // DaemonSet should launch a critical pod even when the node has insufficient free resource.
 func TestInsufficientCapacityNodeDaemonLaunchesCriticalPod(t *testing.T) {
+	enabled := utilfeature.DefaultFeatureGate.Enabled(features.ExperimentalCriticalPodAnnotation)
+	defer func() {
+		setFeatureGate(t, features.ExperimentalCriticalPodAnnotation, enabled)
+	}()
+
 	for _, strategy := range updateStrategies() {
 		podSpec := resourcePodSpec("too-much-mem", "75M", "75m")
 		ds := newDaemonSet("critical")
@@ -1595,7 +1672,7 @@ func TestInsufficientCapacityNodeDaemonLaunchesCriticalPod(t *testing.T) {
 		})
 
 		// Without enabling critical pod annotation feature gate, we shouldn't create critical pod
-		utilfeature.DefaultFeatureGate.Set("ExperimentalCriticalPodAnnotation=False")
+		setFeatureGate(t, features.ExperimentalCriticalPodAnnotation, false)
 		manager.dsStore.Add(ds)
 		switch strategy.Type {
 		case apps.OnDeleteDaemonSetStrategyType:
@@ -1607,7 +1684,7 @@ func TestInsufficientCapacityNodeDaemonLaunchesCriticalPod(t *testing.T) {
 		}
 
 		// Enabling critical pod annotation feature gate should create critical pod
-		utilfeature.DefaultFeatureGate.Set("ExperimentalCriticalPodAnnotation=True")
+		setFeatureGate(t, features.ExperimentalCriticalPodAnnotation, true)
 		switch strategy.Type {
 		case apps.OnDeleteDaemonSetStrategyType:
 			syncAndValidateDaemonSets(t, manager, ds, podControl, 1, 0, 2)
@@ -1621,6 +1698,11 @@ func TestInsufficientCapacityNodeDaemonLaunchesCriticalPod(t *testing.T) {
 
 // DaemonSets should NOT launch a critical pod when there are port conflicts.
 func TestPortConflictNodeDaemonDoesNotLaunchCriticalPod(t *testing.T) {
+	enabled := utilfeature.DefaultFeatureGate.Enabled(features.ExperimentalCriticalPodAnnotation)
+	defer func() {
+		setFeatureGate(t, features.ExperimentalCriticalPodAnnotation, enabled)
+	}()
+
 	for _, strategy := range updateStrategies() {
 		podSpec := v1.PodSpec{
 			NodeName: "port-conflict",
@@ -1640,7 +1722,7 @@ func TestPortConflictNodeDaemonDoesNotLaunchCriticalPod(t *testing.T) {
 			Spec: podSpec,
 		})
 
-		utilfeature.DefaultFeatureGate.Set("ExperimentalCriticalPodAnnotation=True")
+		setFeatureGate(t, features.ExperimentalCriticalPodAnnotation, true)
 		ds := newDaemonSet("critical")
 		ds.Spec.UpdateStrategy = *strategy
 		ds.Spec.Template.Spec = podSpec
@@ -1979,11 +2061,12 @@ func TestUpdateNode(t *testing.T) {
 	var enqueued bool
 
 	cases := []struct {
-		test          string
-		newNode       *v1.Node
-		oldNode       *v1.Node
-		ds            *apps.DaemonSet
-		shouldEnqueue bool
+		test               string
+		newNode            *v1.Node
+		oldNode            *v1.Node
+		ds                 *apps.DaemonSet
+		expectedEventsFunc func(strategyType apps.DaemonSetUpdateStrategyType) int
+		shouldEnqueue      bool
 	}{
 		{
 			test:    "Nothing changed, should not enqueue",
@@ -2018,6 +2101,32 @@ func TestUpdateNode(t *testing.T) {
 			ds:            newDaemonSet("ds"),
 			shouldEnqueue: true,
 		},
+		{
+			test:    "Node Allocatable changed",
+			oldNode: newNode("node1", nil),
+			newNode: func() *v1.Node {
+				node := newNode("node1", nil)
+				node.Status.Allocatable = allocatableResources("200M", "200m")
+				return node
+			}(),
+			ds: func() *apps.DaemonSet {
+				ds := newDaemonSet("ds")
+				ds.Spec.Template.Spec = resourcePodSpecWithoutNodeName("200M", "200m")
+				return ds
+			}(),
+			expectedEventsFunc: func(strategyType apps.DaemonSetUpdateStrategyType) int {
+				switch strategyType {
+				case apps.OnDeleteDaemonSetStrategyType:
+					return 2
+				case apps.RollingUpdateDaemonSetStrategyType:
+					return 3
+				default:
+					t.Fatalf("unexpected UpdateStrategy %+v", strategyType)
+				}
+				return 0
+			},
+			shouldEnqueue: true,
+		},
 	}
 	for _, c := range cases {
 		for _, strategy := range updateStrategies() {
@@ -2028,7 +2137,12 @@ func TestUpdateNode(t *testing.T) {
 			manager.nodeStore.Add(c.oldNode)
 			c.ds.Spec.UpdateStrategy = *strategy
 			manager.dsStore.Add(c.ds)
-			syncAndValidateDaemonSets(t, manager, c.ds, podControl, 0, 0, 0)
+
+			expectedEvents := 0
+			if c.expectedEventsFunc != nil {
+				expectedEvents = c.expectedEventsFunc(strategy.Type)
+			}
+			syncAndValidateDaemonSets(t, manager, c.ds, podControl, 0, 0, expectedEvents)
 
 			manager.enqueueDaemonSet = func(ds *apps.DaemonSet) {
 				if ds.Name == "ds" {

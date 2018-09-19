@@ -142,7 +142,7 @@ If your cluster has RBAC enabled or you are running OpenShift you must authorize
 #### RBAC
 ```console
 # Set the subject of the RBAC objects to the current namespace where the provisioner is being deployed
-$ NAMESPACE=`kc config get-contexts | grep '^*' | tr -s ' ' | cut -d' ' -f5`
+$ NAMESPACE=`kubectl config get-contexts | grep '^*' | tr -s ' ' | cut -d' ' -f5`
 $ sed -i'' "s/namespace:.*/namespace: $NAMESPACE/g" ./deploy/rbac.yaml
 $ kubectl create -f deploy/rbac.yaml
 ```
@@ -153,7 +153,7 @@ If SELinux is enforcing on the node where the provisioner runs, you must enable 
 $ setsebool -P virt_use_nfs 1
 $ setsebool -P virt_sandbox_use_nfs 1
 ```
-https://docs.openshift.org/latest/install_config/persistent_storage/persistent_storage_nfs.html#nfs-selinux
+https://docs.okd.io/latest/install_config/persistent_storage/persistent_storage_nfs.html#nfs-selinux
 
 ## Usage
 

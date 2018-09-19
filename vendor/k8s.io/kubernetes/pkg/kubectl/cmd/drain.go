@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
@@ -42,12 +43,12 @@ import (
 	restclient "k8s.io/client-go/rest"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/cli-runtime/pkg/genericclioptions/printers"
+	"k8s.io/cli-runtime/pkg/genericclioptions/resource"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/kubectl/genericclioptions"
-	"k8s.io/kubernetes/pkg/kubectl/genericclioptions/printers"
-	"k8s.io/kubernetes/pkg/kubectl/genericclioptions/resource"
 	"k8s.io/kubernetes/pkg/kubectl/scheme"
 	"k8s.io/kubernetes/pkg/kubectl/util/i18n"
 )
@@ -572,37 +573,39 @@ func (o *DrainOptions) deleteOrEvictPods(pods []corev1.Pod) error {
 }
 
 func (o *DrainOptions) evictPods(pods []corev1.Pod, policyGroupVersion string, getPodFn func(namespace, name string) (*corev1.Pod, error)) error {
-	doneCh := make(chan bool, len(pods))
-	errCh := make(chan error, 1)
+	returnCh := make(chan error, 1)
 
 	for _, pod := range pods {
-		go func(pod corev1.Pod, doneCh chan bool, errCh chan error) {
+		go func(pod corev1.Pod, returnCh chan error) {
 			var err error
 			for {
 				err = o.evictPod(pod, policyGroupVersion)
 				if err == nil {
 					break
 				} else if apierrors.IsNotFound(err) {
-					doneCh <- true
+					returnCh <- nil
 					return
 				} else if apierrors.IsTooManyRequests(err) {
+					fmt.Fprintf(o.ErrOut, "error when evicting pod %q (will retry after 5s): %v\n", pod.Name, err)
 					time.Sleep(5 * time.Second)
 				} else {
-					errCh <- fmt.Errorf("error when evicting pod %q: %v", pod.Name, err)
+					returnCh <- fmt.Errorf("error when evicting pod %q: %v", pod.Name, err)
 					return
 				}
 			}
 			podArray := []corev1.Pod{pod}
 			_, err = o.waitForDelete(podArray, 1*time.Second, time.Duration(math.MaxInt64), true, getPodFn)
 			if err == nil {
-				doneCh <- true
+				returnCh <- nil
 			} else {
-				errCh <- fmt.Errorf("error when waiting for pod %q terminating: %v", pod.Name, err)
+				returnCh <- fmt.Errorf("error when waiting for pod %q terminating: %v", pod.Name, err)
 			}
-		}(pod, doneCh, errCh)
+		}(pod, returnCh)
 	}
 
 	doneCount := 0
+	var errors []error
+
 	// 0 timeout means infinite, we use MaxInt64 to represent it.
 	var globalTimeout time.Duration
 	if o.Timeout == 0 {
@@ -610,19 +613,20 @@ func (o *DrainOptions) evictPods(pods []corev1.Pod, policyGroupVersion string, g
 	} else {
 		globalTimeout = o.Timeout
 	}
-	for {
+	globalTimeoutCh := time.After(globalTimeout)
+	numPods := len(pods)
+	for doneCount < numPods {
 		select {
-		case err := <-errCh:
-			return err
-		case <-doneCh:
+		case err := <-returnCh:
 			doneCount++
-			if doneCount == len(pods) {
-				return nil
+			if err != nil {
+				errors = append(errors, err)
 			}
-		case <-time.After(globalTimeout):
+		case <-globalTimeoutCh:
 			return fmt.Errorf("Drain did not complete within %v", globalTimeout)
 		}
 	}
+	return utilerrors.NewAggregate(errors)
 }
 
 func (o *DrainOptions) deletePods(pods []corev1.Pod, getPodFn func(namespace, name string) (*corev1.Pod, error)) error {
@@ -756,7 +760,7 @@ func (o *DrainOptions) RunCordonOrUncordon(desired bool) error {
 						fmt.Printf("error: unable to %s node %q: %v", cordonOrUncordon, nodeInfo.Name, err)
 						continue
 					}
-					_, err = helper.Patch(o.Namespace, nodeInfo.Name, types.StrategicMergePatchType, patchBytes)
+					_, err = helper.Patch(o.Namespace, nodeInfo.Name, types.StrategicMergePatchType, patchBytes, nil)
 					if err != nil {
 						fmt.Printf("error: unable to %s node %q: %v", cordonOrUncordon, nodeInfo.Name, err)
 						continue

@@ -48,6 +48,12 @@ const (
 	VolumeSelectorKey = "e2e-pv-pool"
 )
 
+var (
+	// Common selinux labels
+	SELinuxLabel = &v1.SELinuxOptions{
+		Level: "s0:c0,c1"}
+)
+
 // Map of all PVs used in the multi pv-pvc tests. The key is the PV's name, which is
 // guaranteed to be unique. The value is {} (empty struct) since we're only interested
 // in the PV's name and if it is present. We must always Get the pv object before
@@ -501,7 +507,6 @@ func testPodSuccessOrFail(c clientset.Interface, ns string, pod *v1.Pod) error {
 // Deletes the passed-in pod and waits for the pod to be terminated. Resilient to the pod
 // not existing.
 func DeletePodWithWait(f *Framework, c clientset.Interface, pod *v1.Pod) error {
-	const maxWait = 5 * time.Minute
 	if pod == nil {
 		return nil
 	}
@@ -513,8 +518,8 @@ func DeletePodWithWait(f *Framework, c clientset.Interface, pod *v1.Pod) error {
 		}
 		return fmt.Errorf("pod Delete API error: %v", err)
 	}
-	Logf("Wait up to %v for pod %q to be fully deleted", maxWait, pod.Name)
-	err = f.WaitForPodNotFound(pod.Name, maxWait)
+	Logf("Wait up to %v for pod %q to be fully deleted", PodDeleteTimeout, pod.Name)
+	err = f.WaitForPodNotFound(pod.Name, PodDeleteTimeout)
 	if err != nil {
 		return fmt.Errorf("pod %q was not deleted: %v", pod.Name, err)
 	}
@@ -1000,11 +1005,19 @@ func CreateNginxPod(client clientset.Interface, namespace string, nodeSelector m
 
 // create security pod with given claims
 func CreateSecPod(client clientset.Interface, namespace string, pvclaims []*v1.PersistentVolumeClaim, isPrivileged bool, command string, hostIPC bool, hostPID bool, seLinuxLabel *v1.SELinuxOptions, fsGroup *int64, timeout time.Duration) (*v1.Pod, error) {
+	return CreateSecPodWithNodeName(client, namespace, pvclaims, isPrivileged, command, hostIPC, hostPID, seLinuxLabel, fsGroup, "", timeout)
+}
+
+// create security pod with given claims
+func CreateSecPodWithNodeName(client clientset.Interface, namespace string, pvclaims []*v1.PersistentVolumeClaim, isPrivileged bool, command string, hostIPC bool, hostPID bool, seLinuxLabel *v1.SELinuxOptions, fsGroup *int64, nodeName string, timeout time.Duration) (*v1.Pod, error) {
 	pod := MakeSecPod(namespace, pvclaims, isPrivileged, command, hostIPC, hostPID, seLinuxLabel, fsGroup)
 	pod, err := client.CoreV1().Pods(namespace).Create(pod)
 	if err != nil {
 		return nil, fmt.Errorf("pod Create API error: %v", err)
 	}
+	// Setting nodeName
+	pod.Spec.NodeName = nodeName
+
 	// Waiting for pod to be running
 	err = WaitTimeoutForPodRunningInNamespace(client, pod.Name, namespace, timeout)
 	if err != nil {
