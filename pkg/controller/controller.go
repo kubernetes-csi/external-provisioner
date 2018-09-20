@@ -416,7 +416,9 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		requirements, err := GenerateAccessibilityRequirements(
 			p.client,
 			p.csiAPIClient,
-			options.AllowedTopologies)
+			driverState.driverName,
+			options.AllowedTopologies,
+			options.SelectedNode)
 		if err != nil {
 			return nil, fmt.Errorf("error generating accessibility requirements: %v", err)
 		}

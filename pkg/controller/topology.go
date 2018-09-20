@@ -19,9 +19,13 @@ package controller
 import (
 	"fmt"
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	csiv1alpha1 "k8s.io/csi-api/pkg/apis/csi/v1alpha1"
 	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
+	"math/rand"
 	"sort"
 	"strings"
 )
@@ -63,20 +67,95 @@ func GenerateVolumeNodeAffinity(accessibleTopology []*csi.Topology) *v1.VolumeNo
 func GenerateAccessibilityRequirements(
 	kubeClient kubernetes.Interface,
 	csiAPIClient csiclientset.Interface,
-	allowedTopologies []v1.TopologySelectorTerm) (*csi.TopologyRequirement, error) {
-	if len(allowedTopologies) == 0 {
-		return nil, fmt.Errorf("topology aggregation not implemented")
-	} else {
-		topologyTerms := flatten(allowedTopologies)
-		topologyTerms = deduplicate(topologyTerms)
-		// TODO (verult) reduce subset duplicate terms (advanced reduction)
+	driverName string,
+	allowedTopologies []v1.TopologySelectorTerm,
+	selectedNode *v1.Node) (*csi.TopologyRequirement, error) {
+	requirement := &csi.TopologyRequirement{}
 
-		var requisite []*csi.Topology
-		for _, term := range topologyTerms {
-			requisite = append(requisite, &csi.Topology{Segments: term})
+	var topologyTerms []topologyTerm
+	if len(allowedTopologies) == 0 {
+		// Aggregate existing topologies in nodes across the entire cluster.
+		var err error
+		topologyTerms, err = aggregateTopologies(kubeClient, csiAPIClient, driverName, selectedNode)
+		if err != nil {
+			return nil, err
 		}
-		return &csi.TopologyRequirement{Requisite: requisite}, nil
+	} else {
+		topologyTerms = flatten(allowedTopologies)
 	}
+
+	if len(topologyTerms) == 0 {
+		return nil, nil
+	}
+
+	topologyTerms = deduplicate(topologyTerms)
+	// TODO (verult) reduce subset duplicate terms (advanced reduction)
+
+	var requisite []*csi.Topology
+	for _, term := range topologyTerms {
+		requisite = append(requisite, &csi.Topology{Segments: term})
+	}
+	requirement.Requisite = requisite
+
+	return requirement, nil
+}
+
+func aggregateTopologies(
+	kubeClient kubernetes.Interface,
+	csiAPIClient csiclientset.Interface,
+	driverName string,
+	selectedNode *v1.Node) ([]topologyTerm, error) {
+
+	var topologyKeys []string
+	if selectedNode == nil {
+		// TODO (verult) retry
+		nodeInfos, err := csiAPIClient.CsiV1alpha1().CSINodeInfos().List(metav1.ListOptions{})
+		if err != nil {
+			// We must support provisioning if CSINodeInfo is missing, for backward compatibility.
+			glog.Warningf("error listing CSINodeInfos: %v; proceeding to provision without topology information", err)
+			return nil, nil
+		}
+
+		rand.Shuffle(len(nodeInfos.Items), func(i, j int) {
+			nodeInfos.Items[i], nodeInfos.Items[j] = nodeInfos.Items[j], nodeInfos.Items[i]
+		})
+
+		// Pick the first node with topology keys
+		for _, nodeInfo := range nodeInfos.Items {
+			topologyKeys = getTopologyKeysFromNodeInfo(&nodeInfo, driverName)
+			if topologyKeys != nil {
+				break
+			}
+		}
+	} else {
+		// TODO (verult) retry
+		selectedNodeInfo, err := csiAPIClient.CsiV1alpha1().CSINodeInfos().Get(selectedNode.Name, metav1.GetOptions{})
+		if err != nil {
+			// We must support provisioning if CSINodeInfo is missing, for backward compatibility.
+			glog.Warningf("error getting CSINodeInfo for selected node %q: %v; proceeding to provision without topology information", selectedNode.Name, err)
+			return nil, nil
+		}
+		topologyKeys = getTopologyKeysFromNodeInfo(selectedNodeInfo, driverName)
+	}
+
+	if len(topologyKeys) == 0 {
+		// Assuming the external provisioner is never running during node driver upgrades.
+		// If selectedNode != nil, the scheduler selected a node with no topology information.
+		// If selectedNode == nil, all nodes in the cluster are missing topology information.
+		// In either case, provisioning needs to be allowed to proceed.
+		return nil, nil
+	}
+
+	selector, err := buildTopologyKeySelector(topologyKeys)
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := kubeClient.CoreV1().Nodes().List(metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return nil, fmt.Errorf("error listing nodes: %v", err)
+	}
+
+	return extractTopologyFromNodes(nodes, topologyKeys), nil
 }
 
 // AllowedTopologies is an OR of TopologySelectorTerms.
@@ -153,6 +232,49 @@ func deduplicate(terms []topologyTerm) []topologyTerm {
 		dedupedTerms = append(dedupedTerms, term)
 	}
 	return dedupedTerms
+}
+
+func getTopologyKeysFromNodeInfo(nodeInfo *csiv1alpha1.CSINodeInfo, driverName string) []string {
+	for _, driver := range nodeInfo.CSIDrivers {
+		if driver.Driver == driverName {
+			return driver.TopologyKeys
+		}
+	}
+	return nil
+}
+
+func extractTopologyFromNodes(nodes *v1.NodeList, topologyKeys []string) []topologyTerm {
+	var terms []topologyTerm
+	for _, node := range nodes.Items {
+		segments := make(map[string]string)
+		for _, key := range topologyKeys {
+			// Key always exists because nodes were selected by these keys.
+			segments[key] = node.Labels[key]
+		}
+		terms = append(terms, segments)
+	}
+	return terms
+}
+
+func buildTopologyKeySelector(topologyKeys []string) (string, error) {
+	var expr []metav1.LabelSelectorRequirement
+	for _, key := range topologyKeys {
+		expr = append(expr, metav1.LabelSelectorRequirement{
+			Key:      key,
+			Operator: metav1.LabelSelectorOpExists,
+		})
+	}
+
+	labelSelector := metav1.LabelSelector{
+		MatchExpressions: expr,
+	}
+
+	selector, err := metav1.LabelSelectorAsSelector(&labelSelector)
+	if err != nil {
+		return "", fmt.Errorf("error parsing topology keys selector: %v", err)
+	}
+
+	return selector.String(), nil
 }
 
 func (t topologyTerm) clone() topologyTerm {
