@@ -29,6 +29,8 @@ import (
 	"testing"
 )
 
+const testDriverName = "com.example.csi/test-driver"
+
 func TestGenerateVolumeNodeAffinity(t *testing.T) {
 	// TODO (verult) more test cases
 	testcases := map[string]struct {
@@ -530,7 +532,6 @@ func TestTopologyAggregation(t *testing.T) {
 	//       specified in the test case.
 
 	// TODO (verult) more test cases
-	const driverName = "com.example.csi/test-driver"
 	testcases := map[string]struct {
 		nodeLabels        []map[string]string
 		topologyKeys      []map[string][]string
@@ -545,9 +546,9 @@ func TestTopologyAggregation(t *testing.T) {
 				{"com.example.csi/zone": "zone1"},
 			},
 			topologyKeys: []map[string][]string{
-				{driverName: []string{"com.example.csi/zone"}},
-				{driverName: []string{"com.example.csi/zone"}},
-				{driverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
 			},
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
@@ -561,9 +562,9 @@ func TestTopologyAggregation(t *testing.T) {
 				{"com.example.csi/zone": "zone1"},
 			},
 			topologyKeys: []map[string][]string{
-				{driverName: []string{"com.example.csi/zone"}},
-				{driverName: []string{"com.example.csi/zone"}},
-				{driverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
 			},
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
@@ -576,9 +577,9 @@ func TestTopologyAggregation(t *testing.T) {
 				{"com.example.csi/zone": "zone2"},
 			},
 			topologyKeys: []map[string][]string{
-				{driverName: []string{"com.example.csi/zone"}},
-				{driverName: []string{"com.example.csi/zone"}},
-				{driverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
 			},
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
@@ -593,9 +594,9 @@ func TestTopologyAggregation(t *testing.T) {
 				{"com.example.csi/zone": "zone2"},
 			},
 			topologyKeys: []map[string][]string{
-				{driverName: []string{"com.example.csi/zone"}},
-				{driverName: []string{"com.example.csi/zone"}},
-				{driverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
 			},
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
@@ -609,9 +610,9 @@ func TestTopologyAggregation(t *testing.T) {
 		//		{ "com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA" },
 		//	},
 		//	topologyKeys: []map[string][]string{
-		//		{ driverName: []string{ "com.example.csi/zone" } },
-		//		{ driverName: []string{ "com.example.csi/zone", "com.example.csi/rack" } },
-		//		{ driverName: []string{ "com.example.csi/zone", "com.example.csi/rack" } },
+		//		{ testDriverName: []string{ "com.example.csi/zone" } },
+		//		{ testDriverName: []string{ "com.example.csi/zone", "com.example.csi/rack" } },
+		//		{ testDriverName: []string{ "com.example.csi/zone", "com.example.csi/rack" } },
 		//	},
 		//	expectedRequisite: &csi.TopologyRequirement{
 		//		Requisite: []*csi.Topology{
@@ -628,9 +629,9 @@ func TestTopologyAggregation(t *testing.T) {
 				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
 			},
 			topologyKeys: []map[string][]string{
-				{driverName: []string{"com.example.csi/zone"}},
-				{driverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
-				{driverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
 			},
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
@@ -650,9 +651,9 @@ func TestTopologyAggregation(t *testing.T) {
 		"random node: missing keys": {
 			nodeLabels: []map[string]string{{}, {}, {}},
 			topologyKeys: []map[string][]string{
-				{driverName: nil},
-				{driverName: nil},
-				{driverName: nil},
+				{testDriverName: nil},
+				{testDriverName: nil},
+				{testDriverName: nil},
 			},
 			expectedRequisite: nil,
 		},
@@ -660,9 +661,9 @@ func TestTopologyAggregation(t *testing.T) {
 			hasSelectedNode: true,
 			nodeLabels:      []map[string]string{{}, {}, {}},
 			topologyKeys: []map[string][]string{
-				{driverName: nil},
-				{driverName: nil},
-				{driverName: nil},
+				{testDriverName: nil},
+				{testDriverName: nil},
+				{testDriverName: nil},
 			},
 			expectedRequisite: nil,
 		},
@@ -683,7 +684,7 @@ func TestTopologyAggregation(t *testing.T) {
 		requirements, err := GenerateAccessibilityRequirements(
 			kubeClient,
 			csiClient,
-			driverName,
+			testDriverName,
 			nil, /* allowedTopologies */
 			selectedNode,
 		)
@@ -710,6 +711,174 @@ func TestTopologyAggregation(t *testing.T) {
 		}
 		if !requisiteEqual(requirements.Requisite, tc.expectedRequisite) {
 			t.Errorf("expected requisite %v; got: %v", tc.expectedRequisite, requirements.Requisite)
+		}
+	}
+}
+
+func TestPreferredTopologies(t *testing.T) {
+	// TODO (verult) more test cases
+	testcases := map[string]struct {
+		allowedTopologies []v1.TopologySelectorTerm
+		nodeLabels        []map[string]string   // first node is selected node
+		topologyKeys      []map[string][]string // first entry is from the selected node
+		expectedPreferred []*csi.Topology
+		expectError       bool
+	}{
+		"allowedTopologies specified": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1", "zone2"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackA", "rackB"},
+						},
+					},
+				},
+			},
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackA"},
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackB"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone2",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackB",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackB",
+						"com.example.csi/zone": "zone2",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+			},
+		},
+		"topology aggregation": {
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackA"},
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackB"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone2",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackB",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+			},
+		},
+		"topology aggregation with no topology info": {
+			nodeLabels:        []map[string]string{{}, {}, {}},
+			topologyKeys:      []map[string][]string{{}, {}, {}},
+			expectedPreferred: nil,
+		},
+		// This case is never triggered in reality due to scheduler behavior
+		"topology from selected node is not in allowedTopologies": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+					},
+				},
+			},
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone2"},
+				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi/zone": "zone1"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expectError: true,
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Logf("test: %s", name)
+
+		nodes := buildNodes(tc.nodeLabels)
+		nodeInfos := buildNodeInfos(tc.topologyKeys)
+
+		kubeClient := fakeclientset.NewSimpleClientset(nodes)
+		csiClient := fakecsiclientset.NewSimpleClientset(nodeInfos)
+		selectedNode := &nodes.Items[0]
+
+		requirements, err := GenerateAccessibilityRequirements(
+			kubeClient,
+			csiClient,
+			testDriverName,
+			tc.allowedTopologies,
+			selectedNode,
+		)
+
+		if tc.expectError {
+			if err == nil {
+				t.Error("expected error but got none")
+			}
+			continue
+		}
+		if !tc.expectError && err != nil {
+			t.Errorf("expected no error but got: %v", err)
+			continue
+		}
+		if requirements == nil {
+			if tc.expectedPreferred != nil {
+				t.Errorf("expected preferred to be %v but requirements is nil", tc.expectedPreferred)
+			}
+			continue
+		}
+		if requirements != nil && tc.expectedPreferred == nil {
+			t.Errorf("expected requirements to be nil but got preferred: %v", requirements.Preferred)
+			continue
+		}
+		if !helper.Semantic.DeepEqual(requirements.Preferred, tc.expectedPreferred) {
+			t.Errorf("expected requisite %v; got: %v", tc.expectedPreferred, requirements.Preferred)
 		}
 	}
 }

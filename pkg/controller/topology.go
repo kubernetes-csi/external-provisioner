@@ -72,30 +72,56 @@ func GenerateAccessibilityRequirements(
 	selectedNode *v1.Node) (*csi.TopologyRequirement, error) {
 	requirement := &csi.TopologyRequirement{}
 
-	var topologyTerms []topologyTerm
+	/* Requisite */
+	var requisiteTerms []topologyTerm
 	if len(allowedTopologies) == 0 {
 		// Aggregate existing topologies in nodes across the entire cluster.
 		var err error
-		topologyTerms, err = aggregateTopologies(kubeClient, csiAPIClient, driverName, selectedNode)
+		requisiteTerms, err = aggregateTopologies(kubeClient, csiAPIClient, driverName, selectedNode)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		topologyTerms = flatten(allowedTopologies)
+		// Distribute out one of the OR layers in allowedTopologies
+		requisiteTerms = flatten(allowedTopologies)
 	}
 
-	if len(topologyTerms) == 0 {
+	if len(requisiteTerms) == 0 {
 		return nil, nil
 	}
 
-	topologyTerms = deduplicate(topologyTerms)
+	requisiteTerms = deduplicate(requisiteTerms)
 	// TODO (verult) reduce subset duplicate terms (advanced reduction)
 
-	var requisite []*csi.Topology
-	for _, term := range topologyTerms {
-		requisite = append(requisite, &csi.Topology{Segments: term})
+	requirement.Requisite = toCSITopology(requisiteTerms)
+
+	/* Preferred */
+	if selectedNode != nil {
+		// TODO (verult) reuse selected node info from aggregateTopologies
+		// TODO (verult) retry
+		nodeInfo, err := csiAPIClient.CsiV1alpha1().CSINodeInfos().Get(selectedNode.Name, metav1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("error getting node info for selected node: %v", err)
+		}
+
+		topologyKeys := getTopologyKeys(nodeInfo, driverName)
+		selectedTopology, isMissingKey := getTopologyFromNode(selectedNode, topologyKeys)
+		if isMissingKey {
+			return nil, fmt.Errorf("topology labels from selected node %v does not match topology keys from CSINodeInfo %v", selectedNode.Labels, topologyKeys)
+		}
+
+		preferredTerms := sortAndShift(requisiteTerms, selectedTopology)
+		if preferredTerms == nil {
+			// Topology from selected node is not in requisite. This case should never be hit:
+			// - If AllowedTopologies is specified, the scheduler should choose a node satisfying the
+			//   constraint.
+			// - Otherwise, the aggregated topology is guaranteed to contain topology information from the
+			//   selected node.
+			return nil, fmt.Errorf("topology %v from selected node %q is not in requisite", selectedTopology, selectedNode.Name)
+		}
+
+		requirement.Preferred = toCSITopology(preferredTerms)
 	}
-	requirement.Requisite = requisite
 
 	return requirement, nil
 }
@@ -122,7 +148,7 @@ func aggregateTopologies(
 
 		// Pick the first node with topology keys
 		for _, nodeInfo := range nodeInfos.Items {
-			topologyKeys = getTopologyKeysFromNodeInfo(&nodeInfo, driverName)
+			topologyKeys = getTopologyKeys(&nodeInfo, driverName)
 			if topologyKeys != nil {
 				break
 			}
@@ -135,7 +161,7 @@ func aggregateTopologies(
 			glog.Warningf("error getting CSINodeInfo for selected node %q: %v; proceeding to provision without topology information", selectedNode.Name, err)
 			return nil, nil
 		}
-		topologyKeys = getTopologyKeysFromNodeInfo(selectedNodeInfo, driverName)
+		topologyKeys = getTopologyKeys(selectedNodeInfo, driverName)
 	}
 
 	if len(topologyKeys) == 0 {
@@ -155,7 +181,13 @@ func aggregateTopologies(
 		return nil, fmt.Errorf("error listing nodes: %v", err)
 	}
 
-	return extractTopologyFromNodes(nodes, topologyKeys), nil
+	var terms []topologyTerm
+	for _, node := range nodes.Items {
+		// missingKey bool can be ignored because nodes were selected by these keys.
+		term, _ := getTopologyFromNode(&node, topologyKeys)
+		terms = append(terms, term)
+	}
+	return terms, nil
 }
 
 // AllowedTopologies is an OR of TopologySelectorTerms.
@@ -234,7 +266,24 @@ func deduplicate(terms []topologyTerm) []topologyTerm {
 	return dedupedTerms
 }
 
-func getTopologyKeysFromNodeInfo(nodeInfo *csiv1alpha1.CSINodeInfo, driverName string) []string {
+// Sort the given terms in place,
+// then return a new list of terms equivalent to the sorted terms, but shifted so that the primary
+// term is the first in the list.
+func sortAndShift(terms []topologyTerm, primary topologyTerm) []topologyTerm {
+	var preferredTerms []topologyTerm
+	sort.Slice(terms, func(i, j int) bool {
+		return terms[i].less(terms[j])
+	})
+	for i, t := range terms {
+		if t.equal(primary) {
+			preferredTerms = append(terms[i:], terms[:i]...)
+			break
+		}
+	}
+	return preferredTerms
+}
+
+func getTopologyKeys(nodeInfo *csiv1alpha1.CSINodeInfo, driverName string) []string {
 	for _, driver := range nodeInfo.CSIDrivers {
 		if driver.Driver == driverName {
 			return driver.TopologyKeys
@@ -243,17 +292,16 @@ func getTopologyKeysFromNodeInfo(nodeInfo *csiv1alpha1.CSINodeInfo, driverName s
 	return nil
 }
 
-func extractTopologyFromNodes(nodes *v1.NodeList, topologyKeys []string) []topologyTerm {
-	var terms []topologyTerm
-	for _, node := range nodes.Items {
-		segments := make(map[string]string)
-		for _, key := range topologyKeys {
-			// Key always exists because nodes were selected by these keys.
-			segments[key] = node.Labels[key]
+func getTopologyFromNode(node *v1.Node, topologyKeys []string) (term topologyTerm, isMissingKey bool) {
+	term = make(topologyTerm)
+	for _, key := range topologyKeys {
+		v, ok := node.Labels[key]
+		if !ok {
+			return nil, true
 		}
-		terms = append(terms, segments)
+		term[key] = v
 	}
-	return terms
+	return term, false
 }
 
 func buildTopologyKeySelector(topologyKeys []string) (string, error) {
@@ -302,4 +350,20 @@ func (t topologyTerm) hash() string {
 
 	sort.Strings(segments)
 	return strings.Join(segments, ",")
+}
+
+func (t topologyTerm) less(other topologyTerm) bool {
+	return t.hash() < other.hash()
+}
+
+func (t topologyTerm) equal(other topologyTerm) bool {
+	return t.hash() == other.hash()
+}
+
+func toCSITopology(terms []topologyTerm) []*csi.Topology {
+	var out []*csi.Topology
+	for _, term := range terms {
+		out = append(out, &csi.Topology{Segments: term})
+	}
+	return out
 }
