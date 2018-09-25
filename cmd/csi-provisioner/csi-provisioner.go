@@ -29,6 +29,7 @@ import (
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
+	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
 
 	"google.golang.org/grpc"
 
@@ -92,6 +93,10 @@ func init() {
 	if err != nil {
 		glog.Fatalf("Failed to create snapshot client: %v", err)
 	}
+	csiAPIClient, err := csiclientset.NewForConfig(config)
+	if err != nil {
+		glog.Fatalf("Failed to create CSI API client: %v", err)
+	}
 
 	// The controller needs to know what the server version is because out-of-tree
 	// provisioners aren't officially supported until 1.5
@@ -118,7 +123,7 @@ func init() {
 	}
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient)
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		*provisioner,

@@ -41,6 +41,7 @@ flycheck_*.el
 
 .idea/
 /.project
+*.iml
 
 # ignore build directory
 _output/
