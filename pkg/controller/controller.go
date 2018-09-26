@@ -557,6 +557,9 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions
 		return nil, fmt.Errorf("snapshot %s is not Ready", options.PVC.Spec.DataSource.Name)
 	}
 
+	if snapshotObj.ObjectMeta.DeletionTimestamp != nil {
+		return nil, fmt.Errorf("snapshot %s is currently being deleted", options.PVC.Spec.DataSource.Name)
+	}
 	glog.V(5).Infof("VolumeSnapshot %+v", snapshotObj)
 
 	snapContentObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshotContents().Get(snapshotObj.Spec.SnapshotContentName, metav1.GetOptions{})
