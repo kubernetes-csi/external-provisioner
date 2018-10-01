@@ -45,7 +45,7 @@ import (
 )
 
 var (
-	provisioner          = flag.String("provisioner", "", "Name of the provisioner. The provisioner will only provision volumes for claims that request a StorageClass with a provisioner field set equal to this name.")
+	provisioner          = flag.String("provisioner", "", "Name of the provisioner. The provisioner will only provision volumes for claims that request a StorageClass with a provisioner field set equal to this name. If omitted, CSI driver name is used.")
 	master               = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
 	kubeconfig           = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
 	csiEndpoint          = flag.String("csi-address", "/run/csi/socket", "The gRPC endpoint for Target CSI Volume.")
@@ -136,6 +136,16 @@ func init() {
 		}
 		time.Sleep(10 * time.Second)
 	}
+
+	// Autodetect provisioner name if necessary
+	if *provisioner == "" {
+		*provisioner, err = ctrl.GetDriverName(grpcClient, *connectionTimeout)
+		if err != nil {
+			glog.Fatalf("Error getting CSI driver name: %s", err)
+		}
+		glog.V(2).Infof("Detected CSI driver %q", *provisioner)
+	}
+
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
 	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient)

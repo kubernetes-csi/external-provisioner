@@ -125,7 +125,7 @@ func TestGetPluginName(t *testing.T) {
 	out := test.output[0]
 
 	identityServer.EXPECT().GetPluginInfo(gomock.Any(), in).Return(out, nil).Times(1)
-	oldName, err := getDriverName(csiConn.conn, timeout)
+	oldName, err := GetDriverName(csiConn.conn, timeout)
 	if err != nil {
 		t.Errorf("test %q: Failed to get driver's name", test.name)
 	}
@@ -135,7 +135,7 @@ func TestGetPluginName(t *testing.T) {
 
 	out = test.output[1]
 	identityServer.EXPECT().GetPluginInfo(gomock.Any(), in).Return(out, nil).Times(1)
-	newName, err := getDriverName(csiConn.conn, timeout)
+	newName, err := GetDriverName(csiConn.conn, timeout)
 	if err != nil {
 		t.Errorf("test %s: Failed to get driver's name", test.name)
 	}
@@ -363,7 +363,7 @@ func TestGetDriverName(t *testing.T) {
 		// Setup expectation
 		identityServer.EXPECT().GetPluginInfo(gomock.Any(), in).Return(out, injectedErr).Times(1)
 
-		name, err := getDriverName(csiConn.conn, timeout)
+		name, err := GetDriverName(csiConn.conn, timeout)
 		if test.expectError && err == nil {
 			t.Errorf("test %q: Expected error, got none", test.name)
 		}

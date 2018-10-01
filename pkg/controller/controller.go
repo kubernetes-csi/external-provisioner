@@ -161,7 +161,7 @@ func Connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
 	}
 }
 
-func getDriverName(conn *grpc.ClientConn, timeout time.Duration) (string, error) {
+func GetDriverName(conn *grpc.ClientConn, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -307,7 +307,7 @@ func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration, needSn
 		}
 	}
 
-	driverName, err := getDriverName(grpcClient, timeout)
+	driverName, err := GetDriverName(grpcClient, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get driver info: %v", err)
 	}
