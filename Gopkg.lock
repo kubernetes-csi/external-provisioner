@@ -170,8 +170,7 @@
   version = "v0.3.0-2"
 
 [[projects]]
-  branch = "master"
-  digest = "1:cb384e0790360a1fd33f635af1d869c5d00887929fe3a1f55da314af6ba94902"
+  digest = "1:4239620b2c39a3d5e920e1b5967ce45e7a973a66c95c7b8160e1bc198cb1ce8c"
   name = "github.com/kubernetes-csi/external-snapshotter"
   packages = [
     "pkg/apis/volumesnapshot/v1alpha1",
@@ -182,10 +181,11 @@
     "pkg/client/clientset/versioned/typed/volumesnapshot/v1alpha1/fake",
   ]
   pruneopts = ""
-  revision = "564a1b95fa71417c32a030913c7cc7eb0ef0b414"
+  revision = "5bad0876534419b708ca88cecdfae0c1c39a1e1e"
+  version = "v0.4.1"
 
 [[projects]]
-  digest = "1:1855c7fbe4de2a4696db8a8ceba78047ef6f2bbfab278a420605bac1784a790c"
+  digest = "1:9bf4ddb89c29f0d2e33a24aab87e2bb3aeb48dab3fe712e43bf41552d31d6f2e"
   name = "github.com/kubernetes-incubator/external-storage"
   packages = [
     "lib/controller",
@@ -193,8 +193,8 @@
     "lib/util",
   ]
   pruneopts = ""
-  revision = "c463bd186f4cc7abe1e042e050b34563fd4b4f2d"
-  version = "kubernetes-1.12.0-beta.1"
+  revision = "193fb3944bf3061e59ae072ab7511861e8868553"
+  version = "v5.2.0"
 
 [[projects]]
   digest = "1:63722a4b1e1717be7b98fc686e0b30d5e7f734b9e93d7dee86293b6deab7ea28"
@@ -452,7 +452,7 @@
   version = "v2.2.1"
 
 [[projects]]
-  digest = "1:ce7f9bcd1705ba049bbb23ac2736f6546c0d4fcca4f1e7793b3624691e3e4edb"
+  digest = "1:5f076f6f9c3ac4f2b99d79dc7974eabd3f51be35254aa0d8c4cf920fdb9c7ff8"
   name = "k8s.io/api"
   packages = [
     "admissionregistration/v1alpha1",
@@ -488,11 +488,11 @@
     "storage/v1beta1",
   ]
   pruneopts = ""
-  revision = "0527d9f2238346a310e6cf1e6afe2422f329cc3d"
-  version = "kubernetes-1.12.0-beta.1"
+  revision = "fd83cbc87e7632ccd8bbab63d2b673d4e0c631cc"
+  version = "kubernetes-1.12.0"
 
 [[projects]]
-  digest = "1:a36b0af9cb67dd558016e48ff172c14e1c22766860fab00938f69eafd1fcac7b"
+  digest = "1:7aa037a4df5432be2820d164f378d7c22335e5cbba124e90e42114757ebd11ac"
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/api/errors",
@@ -540,15 +540,59 @@
     "third_party/forked/golang/reflect",
   ]
   pruneopts = ""
-  revision = "63dd81ab0848cd58da3257a806f599808708029c"
-  version = "kubernetes-1.12.0-beta.1"
+  revision = "6dd46049f39503a1fc8d65de4bd566829e95faff"
+  version = "kubernetes-1.12.0"
 
 [[projects]]
-  digest = "1:1eb5aaeed2f468204d3bfe46fdd87b09f34fe7f1064baec21c5a60559747f952"
+  digest = "1:5d4153d12c3aed2c90a94262520d2498d5afa4d692554af55e65a7c5af0bc399"
   name = "k8s.io/client-go"
   packages = [
     "discovery",
     "discovery/fake",
+    "informers",
+    "informers/admissionregistration",
+    "informers/admissionregistration/v1alpha1",
+    "informers/admissionregistration/v1beta1",
+    "informers/apps",
+    "informers/apps/v1",
+    "informers/apps/v1beta1",
+    "informers/apps/v1beta2",
+    "informers/autoscaling",
+    "informers/autoscaling/v1",
+    "informers/autoscaling/v2beta1",
+    "informers/autoscaling/v2beta2",
+    "informers/batch",
+    "informers/batch/v1",
+    "informers/batch/v1beta1",
+    "informers/batch/v2alpha1",
+    "informers/certificates",
+    "informers/certificates/v1beta1",
+    "informers/coordination",
+    "informers/coordination/v1beta1",
+    "informers/core",
+    "informers/core/v1",
+    "informers/events",
+    "informers/events/v1beta1",
+    "informers/extensions",
+    "informers/extensions/v1beta1",
+    "informers/internalinterfaces",
+    "informers/networking",
+    "informers/networking/v1",
+    "informers/policy",
+    "informers/policy/v1beta1",
+    "informers/rbac",
+    "informers/rbac/v1",
+    "informers/rbac/v1alpha1",
+    "informers/rbac/v1beta1",
+    "informers/scheduling",
+    "informers/scheduling/v1alpha1",
+    "informers/scheduling/v1beta1",
+    "informers/settings",
+    "informers/settings/v1alpha1",
+    "informers/storage",
+    "informers/storage/v1",
+    "informers/storage/v1alpha1",
+    "informers/storage/v1beta1",
     "kubernetes",
     "kubernetes/fake",
     "kubernetes/scheme",
@@ -614,6 +658,33 @@
     "kubernetes/typed/storage/v1alpha1/fake",
     "kubernetes/typed/storage/v1beta1",
     "kubernetes/typed/storage/v1beta1/fake",
+    "listers/admissionregistration/v1alpha1",
+    "listers/admissionregistration/v1beta1",
+    "listers/apps/v1",
+    "listers/apps/v1beta1",
+    "listers/apps/v1beta2",
+    "listers/autoscaling/v1",
+    "listers/autoscaling/v2beta1",
+    "listers/autoscaling/v2beta2",
+    "listers/batch/v1",
+    "listers/batch/v1beta1",
+    "listers/batch/v2alpha1",
+    "listers/certificates/v1beta1",
+    "listers/coordination/v1beta1",
+    "listers/core/v1",
+    "listers/events/v1beta1",
+    "listers/extensions/v1beta1",
+    "listers/networking/v1",
+    "listers/policy/v1beta1",
+    "listers/rbac/v1",
+    "listers/rbac/v1alpha1",
+    "listers/rbac/v1beta1",
+    "listers/scheduling/v1alpha1",
+    "listers/scheduling/v1beta1",
+    "listers/settings/v1alpha1",
+    "listers/storage/v1",
+    "listers/storage/v1alpha1",
+    "listers/storage/v1beta1",
     "pkg/apis/clientauthentication",
     "pkg/apis/clientauthentication/v1alpha1",
     "pkg/apis/clientauthentication/v1beta1",
@@ -645,21 +716,23 @@
     "util/workqueue",
   ]
   pruneopts = ""
-  revision = "173ad5fde8e4ee8f92763f78c6ba37322f2125ab"
-  version = "kubernetes-1.12.0-beta.1"
+  revision = "1638f8970cefaa404ff3a62950f88b08292b2696"
+  version = "kubernetes-1.12.0"
 
 [[projects]]
-  digest = "1:2c08b2f40be5060693938a98bb00febc12d7f79ce80856d2859e308b906494cd"
+  digest = "1:6b29915b728f47c182c1992c15c508e4ac9945c0f3457b1173b813708638e571"
   name = "k8s.io/csi-api"
   packages = [
     "pkg/apis/csi/v1alpha1",
     "pkg/client/clientset/versioned",
+    "pkg/client/clientset/versioned/fake",
     "pkg/client/clientset/versioned/scheme",
     "pkg/client/clientset/versioned/typed/csi/v1alpha1",
+    "pkg/client/clientset/versioned/typed/csi/v1alpha1/fake",
   ]
   pruneopts = ""
-  revision = "2ba4dfd66c9687fd6f199c5ab96a06dd1e79d4c5"
-  version = "kubernetes-1.12.0-beta.1"
+  revision = "daa9d551756f72a51f887db9485ec2b2575f47e4"
+  version = "kubernetes-1.12.0"
 
 [[projects]]
   branch = "master"
@@ -670,7 +743,7 @@
   revision = "e3762e86a74c878ffed47484592986685639c2cd"
 
 [[projects]]
-  digest = "1:bcca11363b16e4ff8d39be35837053b6b870a1a0e0e8ace4cd0b68d83c77900f"
+  digest = "1:c8b66f8046163fd757f9fb87602e3bb181191512d31281c50c2c900046470877"
   name = "k8s.io/kubernetes"
   packages = [
     "pkg/apis/core",
@@ -679,8 +752,8 @@
     "pkg/util/version",
   ]
   pruneopts = ""
-  revision = "0cafd04160ff4e5c16bb38d0e4ecae805c84d41c"
-  version = "v1.12.0-beta.2"
+  revision = "4ed3216f3ec431b140b1d899130a69fc671678f4"
+  version = "v1.12.1"
 
 [solve-meta]
   analyzer-name = "dep"
@@ -713,7 +786,10 @@
     "k8s.io/client-go/rest",
     "k8s.io/client-go/testing",
     "k8s.io/client-go/tools/clientcmd",
+    "k8s.io/csi-api/pkg/apis/csi/v1alpha1",
     "k8s.io/csi-api/pkg/client/clientset/versioned",
+    "k8s.io/csi-api/pkg/client/clientset/versioned/fake",
+    "k8s.io/kubernetes/pkg/apis/core/helper",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1

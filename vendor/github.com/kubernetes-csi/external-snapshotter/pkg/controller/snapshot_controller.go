@@ -85,49 +85,49 @@ const IsDefaultSnapshotClassAnnotation = "snapshot.storage.kubernetes.io/is-defa
 func (ctrl *csiSnapshotController) syncContent(content *crdv1.VolumeSnapshotContent) error {
 	glog.V(5).Infof("synchronizing VolumeSnapshotContent[%s]", content.Name)
 
-	// VolumeSnapshotContent is not bound to any VolumeSnapshot, this case rare and we just return err
+	// VolumeSnapshotContent is not bound to any VolumeSnapshot, in this case we just return err
 	if content.Spec.VolumeSnapshotRef == nil {
 		// content is not bound
 		glog.V(4).Infof("synchronizing VolumeSnapshotContent[%s]: VolumeSnapshotContent is not bound to any VolumeSnapshot", content.Name)
 		ctrl.eventRecorder.Event(content, v1.EventTypeWarning, "SnapshotContentNotBound", "VolumeSnapshotContent is not bound to any VolumeSnapshot")
 		return fmt.Errorf("volumeSnapshotContent %s is not bound to any VolumeSnapshot", content.Name)
-	} else {
-		glog.V(4).Infof("synchronizing VolumeSnapshotContent[%s]: content is bound to snapshot %s", content.Name, snapshotRefKey(content.Spec.VolumeSnapshotRef))
-		// The VolumeSnapshotContent is reserved for a VolumeSnapshot;
-		// that VolumeSnapshot has not yet been bound to this VolumeSnapshotContent; the VolumeSnapshot sync will handle it.
-		if content.Spec.VolumeSnapshotRef.UID == "" {
-			glog.V(4).Infof("synchronizing VolumeSnapshotContent[%s]: VolumeSnapshotContent is pre-bound to VolumeSnapshot %s", content.Name, snapshotRefKey(content.Spec.VolumeSnapshotRef))
-			return nil
-		}
-		// Get the VolumeSnapshot by _name_
-		var snapshot *crdv1.VolumeSnapshot
-		snapshotName := snapshotRefKey(content.Spec.VolumeSnapshotRef)
-		obj, found, err := ctrl.snapshotStore.GetByKey(snapshotName)
-		if err != nil {
-			return err
-		}
-		if !found {
-			glog.V(4).Infof("synchronizing VolumeSnapshotContent[%s]: snapshot %s not found", content.Name, snapshotRefKey(content.Spec.VolumeSnapshotRef))
-			// Fall through with snapshot = nil
-		} else {
-			var ok bool
-			snapshot, ok = obj.(*crdv1.VolumeSnapshot)
-			if !ok {
-				return fmt.Errorf("cannot convert object from snapshot cache to snapshot %q!?: %#v", content.Name, obj)
-			}
-			glog.V(4).Infof("synchronizing VolumeSnapshotContent[%s]: snapshot %s found", content.Name, snapshotRefKey(content.Spec.VolumeSnapshotRef))
-		}
-		if snapshot != nil && snapshot.UID != content.Spec.VolumeSnapshotRef.UID {
-			// The snapshot that the content was pointing to was deleted, and another
-			// with the same name created.
-			glog.V(4).Infof("synchronizing VolumeSnapshotContent[%s]: content %s has different UID, the old one must have been deleted", content.Name, snapshotRefKey(content.Spec.VolumeSnapshotRef))
-			// Treat the volume as bound to a missing claim.
-			snapshot = nil
-		}
-		if snapshot == nil {
-			ctrl.deleteSnapshotContent(content)
-		}
 	}
+	glog.V(4).Infof("synchronizing VolumeSnapshotContent[%s]: content is bound to snapshot %s", content.Name, snapshotRefKey(content.Spec.VolumeSnapshotRef))
+	// The VolumeSnapshotContent is reserved for a VolumeSnapshot;
+	// that VolumeSnapshot has not yet been bound to this VolumeSnapshotContent; the VolumeSnapshot sync will handle it.
+	if content.Spec.VolumeSnapshotRef.UID == "" {
+		glog.V(4).Infof("synchronizing VolumeSnapshotContent[%s]: VolumeSnapshotContent is pre-bound to VolumeSnapshot %s", content.Name, snapshotRefKey(content.Spec.VolumeSnapshotRef))
+		return nil
+	}
+	// Get the VolumeSnapshot by _name_
+	var snapshot *crdv1.VolumeSnapshot
+	snapshotName := snapshotRefKey(content.Spec.VolumeSnapshotRef)
+	obj, found, err := ctrl.snapshotStore.GetByKey(snapshotName)
+	if err != nil {
+		return err
+	}
+	if !found {
+		glog.V(4).Infof("synchronizing VolumeSnapshotContent[%s]: snapshot %s not found", content.Name, snapshotRefKey(content.Spec.VolumeSnapshotRef))
+		// Fall through with snapshot = nil
+	} else {
+		var ok bool
+		snapshot, ok = obj.(*crdv1.VolumeSnapshot)
+		if !ok {
+			return fmt.Errorf("cannot convert object from snapshot cache to snapshot %q!?: %#v", content.Name, obj)
+		}
+		glog.V(4).Infof("synchronizing VolumeSnapshotContent[%s]: snapshot %s found", content.Name, snapshotRefKey(content.Spec.VolumeSnapshotRef))
+	}
+	if snapshot != nil && snapshot.UID != content.Spec.VolumeSnapshotRef.UID {
+		// The snapshot that the content was pointing to was deleted, and another
+		// with the same name created.
+		glog.V(4).Infof("synchronizing VolumeSnapshotContent[%s]: content %s has different UID, the old one must have been deleted", content.Name, snapshotRefKey(content.Spec.VolumeSnapshotRef))
+		// Treat the content as bound to a missing snapshot.
+		snapshot = nil
+	}
+	if snapshot == nil {
+		ctrl.deleteSnapshotContent(content)
+	}
+
 	return nil
 }
 
@@ -170,7 +170,7 @@ func (ctrl *csiSnapshotController) syncReadySnapshot(snapshot *crdv1.VolumeSnaps
 			return fmt.Errorf("Cannot convert object from snapshot content store to VolumeSnapshotContent %q!?: %#v", snapshot.Spec.SnapshotContentName, obj)
 		}
 
-		glog.V(5).Infof("syncCompleteSnapshot[%s]: VolumeSnapshotContent %q found", snapshotKey(snapshot), content.Name)
+		glog.V(5).Infof("syncReadySnapshot[%s]: VolumeSnapshotContent %q found", snapshotKey(snapshot), content.Name)
 		if !IsSnapshotBound(snapshot, content) {
 			// snapshot is bound but content is not bound to snapshot correctly
 			if err = ctrl.updateSnapshotErrorStatusWithEvent(snapshot, v1.EventTypeWarning, "SnapshotMisbound", "VolumeSnapshotContent is not bound to the VolumeSnapshot correctly"); err != nil {
@@ -212,7 +212,7 @@ func (ctrl *csiSnapshotController) syncUnreadySnapshot(snapshot *crdv1.VolumeSna
 
 		// snapshot is already bound correctly, check the status and update if it is ready.
 		glog.V(5).Infof("Check and update snapshot %s status", uniqueSnapshotName)
-		if err = ctrl.checkandUpdateSnapshotStatus(snapshot, content); err != nil {
+		if err = ctrl.checkandUpdateBoundSnapshotStatus(snapshot, content); err != nil {
 			return err
 		}
 		return nil
@@ -321,11 +321,11 @@ func (ctrl *csiSnapshotController) createSnapshot(snapshot *crdv1.VolumeSnapshot
 	return nil
 }
 
-func (ctrl *csiSnapshotController) checkandUpdateSnapshotStatus(snapshot *crdv1.VolumeSnapshot, content *crdv1.VolumeSnapshotContent) error {
+func (ctrl *csiSnapshotController) checkandUpdateBoundSnapshotStatus(snapshot *crdv1.VolumeSnapshot, content *crdv1.VolumeSnapshotContent) error {
 	glog.V(5).Infof("checkandUpdateSnapshotStatus[%s] started", snapshotKey(snapshot))
 	opName := fmt.Sprintf("check-%s[%s]", snapshotKey(snapshot), string(snapshot.UID))
 	ctrl.scheduleOperation(opName, func() error {
-		snapshotObj, err := ctrl.checkandUpdateSnapshotStatusOperation(snapshot, content)
+		snapshotObj, err := ctrl.checkandUpdateBoundSnapshotStatusOperation(snapshot, content)
 		if err != nil {
 			ctrl.updateSnapshotErrorStatusWithEvent(snapshot, v1.EventTypeWarning, "SnapshotCheckandUpdateFailed", fmt.Sprintf("Failed to check and update snapshot: %v", err))
 			glog.Errorf("checkandUpdateSnapshotStatus [%s]: error occured %v", snapshotKey(snapshot), err)
@@ -401,32 +401,37 @@ func (ctrl *csiSnapshotController) checkandBindSnapshotContent(snapshot *crdv1.V
 		return fmt.Errorf("Could not bind snapshot %s and content %s, the VolumeSnapshotRef does not match", snapshot.Name, content.Name)
 	} else if content.Spec.VolumeSnapshotRef.UID != "" && content.Spec.VolumeSnapshotRef.UID != snapshot.UID {
 		return fmt.Errorf("Could not bind snapshot %s and content %s, the VolumeSnapshotRef does not match", snapshot.Name, content.Name)
-	} else if content.Spec.VolumeSnapshotRef.UID == "" {
-		contentClone := content.DeepCopy()
-		contentClone.Spec.VolumeSnapshotRef.UID = snapshot.UID
-		className := *(snapshot.Spec.VolumeSnapshotClassName)
-		contentClone.Spec.VolumeSnapshotClassName = &className
-		newContent, err := ctrl.clientset.VolumesnapshotV1alpha1().VolumeSnapshotContents().Update(contentClone)
-		if err != nil {
-			glog.V(4).Infof("updating VolumeSnapshotContent[%s] error status failed %v", newContent.Name, err)
-			return err
-		}
-		_, err = ctrl.storeContentUpdate(newContent)
-		if err != nil {
-			glog.V(4).Infof("updating VolumeSnapshotContent[%s] error status: cannot update internal cache %v", newContent.Name, err)
-			return err
-		}
+	} else if content.Spec.VolumeSnapshotRef.UID != "" && content.Spec.VolumeSnapshotClassName != nil {
+		return nil
+	}
+	contentClone := content.DeepCopy()
+	contentClone.Spec.VolumeSnapshotRef.UID = snapshot.UID
+	className := *(snapshot.Spec.VolumeSnapshotClassName)
+	contentClone.Spec.VolumeSnapshotClassName = &className
+	newContent, err := ctrl.clientset.VolumesnapshotV1alpha1().VolumeSnapshotContents().Update(contentClone)
+	if err != nil {
+		glog.V(4).Infof("updating VolumeSnapshotContent[%s] error status failed %v", newContent.Name, err)
+		return err
+	}
+	_, err = ctrl.storeContentUpdate(newContent)
+	if err != nil {
+		glog.V(4).Infof("updating VolumeSnapshotContent[%s] error status: cannot update internal cache %v", newContent.Name, err)
+		return err
 	}
 	return nil
 }
 
-func (ctrl *csiSnapshotController) checkandUpdateSnapshotStatusOperation(snapshot *crdv1.VolumeSnapshot, content *crdv1.VolumeSnapshotContent) (*crdv1.VolumeSnapshot, error) {
+func (ctrl *csiSnapshotController) checkandUpdateBoundSnapshotStatusOperation(snapshot *crdv1.VolumeSnapshot, content *crdv1.VolumeSnapshotContent) (*crdv1.VolumeSnapshot, error) {
 	status, _, size, err := ctrl.handler.GetSnapshotStatus(content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check snapshot status %s with error %v", snapshot.Name, err)
 	}
 	timestamp := time.Now().UnixNano()
 	newSnapshot, err := ctrl.updateSnapshotStatus(snapshot, status, timestamp, size, IsSnapshotBound(snapshot, content))
+	if err != nil {
+		return nil, err
+	}
+	err = ctrl.updateSnapshotContentSize(content, size)
 	if err != nil {
 		return nil, err
 	}
@@ -502,26 +507,27 @@ func (ctrl *csiSnapshotController) createSnapshotOperation(snapshot *crdv1.Volum
 	}
 	// Create VolumeSnapshotContent in the database
 	volumeRef, err := ref.GetReference(scheme.Scheme, volume)
+	if err != nil {
+		return nil, err
+	}
+	snapshotRef, err := ref.GetReference(scheme.Scheme, snapshot)
+	if err != nil {
+		return nil, err
+	}
 
 	snapshotContent := &crdv1.VolumeSnapshotContent{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: contentName,
 		},
 		Spec: crdv1.VolumeSnapshotContentSpec{
-			VolumeSnapshotRef: &v1.ObjectReference{
-				Kind:       "VolumeSnapshot",
-				Namespace:  snapshot.Namespace,
-				Name:       snapshot.Name,
-				UID:        snapshot.UID,
-				APIVersion: "snapshot.storage.k8s.io/v1alpha1",
-			},
+			VolumeSnapshotRef:   snapshotRef,
 			PersistentVolumeRef: volumeRef,
 			VolumeSnapshotSource: crdv1.VolumeSnapshotSource{
 				CSI: &crdv1.CSIVolumeSnapshotSource{
 					Driver:         driverName,
 					SnapshotHandle: snapshotID,
 					CreationTime:   &timestamp,
-					RestoreSize:    resource.NewQuantity(size, resource.BinarySI),
+					RestoreSize:    &size,
 				},
 			},
 			VolumeSnapshotClassName: &(class.Name),
@@ -635,6 +641,28 @@ func (ctrl *csiSnapshotController) bindandUpdateVolumeSnapshot(snapshotContent *
 
 	glog.V(5).Infof("bindandUpdateVolumeSnapshot for snapshot completed [%#v]", snapshotCopy)
 	return snapshotCopy, nil
+}
+
+// updateSnapshotContentSize update the restore size for snapshot content
+func (ctrl *csiSnapshotController) updateSnapshotContentSize(content *crdv1.VolumeSnapshotContent, size int64) error {
+	if content.Spec.VolumeSnapshotSource.CSI == nil || size <= 0 {
+		return nil
+	}
+	if content.Spec.VolumeSnapshotSource.CSI.RestoreSize != nil && *content.Spec.VolumeSnapshotSource.CSI.RestoreSize == size {
+		return nil
+	}
+	contentClone := content.DeepCopy()
+	contentClone.Spec.VolumeSnapshotSource.CSI.RestoreSize = &size
+	_, err := ctrl.clientset.VolumesnapshotV1alpha1().VolumeSnapshotContents().Update(contentClone)
+	if err != nil {
+		return newControllerUpdateError(content.Name, err.Error())
+	}
+
+	_, err = ctrl.storeContentUpdate(contentClone)
+	if err != nil {
+		glog.Errorf("failed to update content store %v", err)
+	}
+	return nil
 }
 
 // UpdateSnapshotStatus converts snapshot status to crdv1.VolumeSnapshotCondition
