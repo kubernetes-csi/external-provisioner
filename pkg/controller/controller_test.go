@@ -352,7 +352,7 @@ func TestGetDriverName(t *testing.T) {
 		in := &csi.GetPluginInfoRequest{}
 
 		out := test.output
-		var injectedErr error = nil
+		var injectedErr error
 		if test.injectError {
 			injectedErr = fmt.Errorf("mock error")
 		}
