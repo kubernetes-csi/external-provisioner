@@ -1180,7 +1180,7 @@ func newSnapshot(name, className, boundToContent, snapshotUID, claimName string,
 }
 
 // newContent returns a new content with given attributes
-func newContent(name, className, snapshotHandle, volumeUID, volumeName, boundToSnapshotUID, boundToSnapshotName string, size *resource.Quantity, creationTime *int64) *crdv1.VolumeSnapshotContent {
+func newContent(name, className, snapshotHandle, volumeUID, volumeName, boundToSnapshotUID, boundToSnapshotName string, size *int64, creationTime *int64) *crdv1.VolumeSnapshotContent {
 	content := crdv1.VolumeSnapshotContent{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
@@ -1219,6 +1219,8 @@ func newContent(name, className, snapshotHandle, volumeUID, volumeName, boundToS
 
 // TestProvisionFromSnapshot tests create volume from snapshot
 func TestProvisionFromSnapshot(t *testing.T) {
+	var apiGrp string = "snapshot.storage.k8s.io"
+	var unsupportedAPIGrp string = "unsupported.group.io"
 	var requestedBytes int64 = 1000
 	var snapName string = "test-snapshot"
 	var snapClassName string = "test-snapclass"
@@ -1262,7 +1264,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						DataSource: &v1.TypedLocalObjectReference{
 							Name:     snapName,
 							Kind:     "VolumeSnapshot",
-							APIGroup: "snapshot.storage.k8s.io",
+							APIGroup: &apiGrp,
 						},
 					},
 				},
@@ -1304,7 +1306,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						DataSource: &v1.TypedLocalObjectReference{
 							Name:     snapName,
 							Kind:     "VolumeSnapshot",
-							APIGroup: "snapshot.storage.k8s.io",
+							APIGroup: &apiGrp,
 						},
 					},
 				},
@@ -1332,7 +1334,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						DataSource: &v1.TypedLocalObjectReference{
 							Name:     "",
 							Kind:     "VolumeSnapshot",
-							APIGroup: "snapshot.storage.k8s.io",
+							APIGroup: &apiGrp,
 						},
 					},
 				},
@@ -1359,7 +1361,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						DataSource: &v1.TypedLocalObjectReference{
 							Name:     "",
 							Kind:     "UnsupportedKind",
-							APIGroup: "snapshot.storage.k8s.io",
+							APIGroup: &apiGrp,
 						},
 					},
 				},
@@ -1386,7 +1388,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						DataSource: &v1.TypedLocalObjectReference{
 							Name:     snapName,
 							Kind:     "VolumeSnapshot",
-							APIGroup: "unsupported.group.io",
+							APIGroup: &unsupportedAPIGrp,
 						},
 					},
 				},
@@ -1413,7 +1415,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						DataSource: &v1.TypedLocalObjectReference{
 							Name:     snapName,
 							Kind:     "VolumeSnapshot",
-							APIGroup: "snapshot.storage.k8s.io",
+							APIGroup: &apiGrp,
 						},
 					},
 				},
@@ -1442,7 +1444,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		})
 
 		client.AddReactor("get", "volumesnapshotcontents", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-			content := newContent("snapcontent-snapuid", snapClassName, "sid", "pv-uid", "volume", "snapuid", snapName, resource.NewQuantity(requestedBytes, resource.BinarySI), &timeNow)
+			content := newContent("snapcontent-snapuid", snapClassName, "sid", "pv-uid", "volume", "snapuid", snapName, &requestedBytes, &timeNow)
 			return true, content, nil
 		})
 

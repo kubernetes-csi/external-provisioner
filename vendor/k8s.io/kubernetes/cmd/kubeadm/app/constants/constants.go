@@ -299,7 +299,7 @@ const (
 	LeaseEndpointReconcilerType = "lease"
 
 	// KubeDNSVersion is the version of kube-dns to be deployed if it is used
-	KubeDNSVersion = "1.14.10"
+	KubeDNSVersion = "1.14.13"
 
 	// CoreDNSVersion is the version of CoreDNS to be deployed if it is used
 	CoreDNSVersion = "1.2.2"
@@ -352,10 +352,10 @@ var (
 	MasterComponents = []string{KubeAPIServer, KubeControllerManager, KubeScheduler}
 
 	// MinimumControlPlaneVersion specifies the minimum control plane version kubeadm can deploy
-	MinimumControlPlaneVersion = version.MustParseSemantic("v1.10.0")
+	MinimumControlPlaneVersion = version.MustParseSemantic("v1.11.0")
 
 	// MinimumKubeletVersion specifies the minimum version of kubelet which kubeadm supports
-	MinimumKubeletVersion = version.MustParseSemantic("v1.10.0")
+	MinimumKubeletVersion = version.MustParseSemantic("v1.11.0")
 
 	// SupportedEtcdVersion lists officially supported etcd versions with corresponding kubernetes releases
 	SupportedEtcdVersion = map[uint8]string{

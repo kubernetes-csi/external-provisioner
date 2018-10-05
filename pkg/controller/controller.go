@@ -347,8 +347,8 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		if options.PVC.Spec.DataSource.Kind != snapshotKind {
 			return nil, fmt.Errorf("the PVC source is not the right type. Expected %s, Got %s", snapshotKind, options.PVC.Spec.DataSource.Kind)
 		}
-		if options.PVC.Spec.DataSource.APIGroup != snapshotAPIGroup {
-			return nil, fmt.Errorf("the PVC source does not belong to the right APIGroup. Expected %s, Got %s", snapshotAPIGroup, options.PVC.Spec.DataSource.APIGroup)
+		if *(options.PVC.Spec.DataSource.APIGroup) != snapshotAPIGroup {
+			return nil, fmt.Errorf("the PVC source does not belong to the right APIGroup. Expected %s, Got %s", snapshotAPIGroup, *(options.PVC.Spec.DataSource.APIGroup))
 		}
 		needSnapshotSupport = true
 	}

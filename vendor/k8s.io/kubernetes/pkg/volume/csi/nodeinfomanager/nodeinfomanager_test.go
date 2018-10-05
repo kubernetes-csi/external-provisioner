@@ -18,20 +18,26 @@ package nodeinfomanager
 
 import (
 	"encoding/json"
+	"testing"
+
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilfeaturetesting "k8s.io/apiserver/pkg/util/feature/testing"
 	"k8s.io/client-go/kubernetes/fake"
+	utiltesting "k8s.io/client-go/util/testing"
 	csiv1alpha1 "k8s.io/csi-api/pkg/apis/csi/v1alpha1"
 	csifake "k8s.io/csi-api/pkg/client/clientset/versioned/fake"
 	"k8s.io/kubernetes/pkg/apis/core/helper"
+	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/features"
-	"testing"
+	volumetest "k8s.io/kubernetes/pkg/volume/testing"
+	"k8s.io/kubernetes/pkg/volume/util"
 )
 
 type testcase struct {
@@ -41,10 +47,12 @@ type testcase struct {
 	existingNodeInfo    *csiv1alpha1.CSINodeInfo
 	inputNodeID         string
 	inputTopology       *csi.Topology
+	inputVolumeLimit    int64
 	expectedNodeIDMap   map[string]string
 	expectedTopologyMap map[string]sets.String
 	expectedLabels      map[string]string
 	expectNoNodeInfo    bool
+	expectedVolumeLimit int64
 	expectFail          bool
 }
 
@@ -59,7 +67,7 @@ func TestAddNodeInfo(t *testing.T) {
 		{
 			name:         "empty node",
 			driverName:   "com.example.csi/driver1",
-			existingNode: generateNode(nil /* nodeIDs */, nil /* labels */),
+			existingNode: generateNode(nil /* nodeIDs */, nil /* labels */, nil /*capacity*/),
 			inputNodeID:  "com.example.csi/csi-node1",
 			inputTopology: &csi.Topology{
 				Segments: map[string]string{
@@ -83,7 +91,8 @@ func TestAddNodeInfo(t *testing.T) {
 				},
 				labelMap{
 					"com.example.csi/zone": "zoneA",
-				}),
+				},
+				nil /*capacity*/),
 			existingNodeInfo: generateNodeInfo(
 				nodeIDMap{
 					"com.example.csi/driver1": "com.example.csi/csi-node1",
@@ -115,7 +124,7 @@ func TestAddNodeInfo(t *testing.T) {
 				nodeIDMap{
 					"com.example.csi/driver1": "com.example.csi/csi-node1",
 				},
-				nil /* labels */),
+				nil /* labels */, nil /*capacity*/),
 			existingNodeInfo: generateNodeInfo(
 				nodeIDMap{
 					"com.example.csi/driver1": "com.example.csi/csi-node1",
@@ -147,7 +156,7 @@ func TestAddNodeInfo(t *testing.T) {
 				},
 				labelMap{
 					"net.example.storage/rack": "rack1",
-				}),
+				}, nil /*capacity*/),
 			existingNodeInfo: generateNodeInfo(
 				nodeIDMap{
 					"net.example.storage/other-driver": "net.example.storage/test-node",
@@ -184,7 +193,7 @@ func TestAddNodeInfo(t *testing.T) {
 				},
 				labelMap{
 					"com.example.csi/zone": "zoneA",
-				}),
+				}, nil /*capacity*/),
 			existingNodeInfo: generateNodeInfo(
 				nodeIDMap{
 					"com.example.csi/driver1": "com.example.csi/csi-node1",
@@ -210,7 +219,7 @@ func TestAddNodeInfo(t *testing.T) {
 				},
 				labelMap{
 					"com.example.csi/zone": "zoneA",
-				}),
+				}, nil /*capacity*/),
 			existingNodeInfo: generateNodeInfo(
 				nodeIDMap{
 					"com.example.csi/driver1": "com.example.csi/csi-node1",
@@ -239,7 +248,7 @@ func TestAddNodeInfo(t *testing.T) {
 		{
 			name:          "nil topology, empty node",
 			driverName:    "com.example.csi/driver1",
-			existingNode:  generateNode(nil /* nodeIDs */, nil /* labels */),
+			existingNode:  generateNode(nil /* nodeIDs */, nil /* labels */, nil /*capacity*/),
 			inputNodeID:   "com.example.csi/csi-node1",
 			inputTopology: nil,
 			expectedNodeIDMap: map[string]string{
@@ -259,7 +268,7 @@ func TestAddNodeInfo(t *testing.T) {
 				},
 				labelMap{
 					"com.example.csi/zone": "zoneA",
-				}),
+				}, nil /*capacity*/),
 			existingNodeInfo: generateNodeInfo(
 				nodeIDMap{
 					"com.example.csi/driver1": "com.example.csi/csi-node1",
@@ -289,7 +298,7 @@ func TestAddNodeInfo(t *testing.T) {
 				},
 				labelMap{
 					"net.example.storage/rack": "rack1",
-				}),
+				}, nil /*capacity*/),
 			existingNodeInfo: generateNodeInfo(
 				nodeIDMap{
 					"net.example.storage/other-driver": "net.example.storage/test-node",
@@ -315,9 +324,47 @@ func TestAddNodeInfo(t *testing.T) {
 		{
 			name:         "empty node ID",
 			driverName:   "com.example.csi/driver1",
-			existingNode: generateNode(nil /* nodeIDs */, nil /* labels */),
+			existingNode: generateNode(nil /* nodeIDs */, nil /* labels */, nil /*capacity*/),
 			inputNodeID:  "",
 			expectFail:   true,
+		},
+		{
+			name:                "new node with valid max limit",
+			driverName:          "com.example.csi/driver1",
+			existingNode:        generateNode(nil /*nodeIDs*/, nil /*labels*/, nil /*capacity*/),
+			inputVolumeLimit:    10,
+			inputTopology:       nil,
+			inputNodeID:         "com.example.csi/csi-node1",
+			expectedVolumeLimit: 10,
+			expectedNodeIDMap: map[string]string{
+				"com.example.csi/driver1": "com.example.csi/csi-node1",
+			},
+			expectedTopologyMap: map[string]sets.String{
+				"com.example.csi/driver1": nil,
+			},
+			expectedLabels: nil,
+		},
+		{
+			name:       "node with existing valid max limit",
+			driverName: "com.example.csi/driver1",
+			existingNode: generateNode(
+				nil, /*nodeIDs*/
+				nil, /*labels*/
+				map[v1.ResourceName]resource.Quantity{
+					v1.ResourceCPU: *resource.NewScaledQuantity(4, -3),
+					v1.ResourceName(util.GetCSIAttachLimitKey("com.example.csi/driver1")): *resource.NewQuantity(10, resource.DecimalSI),
+				}),
+			inputVolumeLimit:    20,
+			inputTopology:       nil,
+			inputNodeID:         "com.example.csi/csi-node1",
+			expectedVolumeLimit: 20,
+			expectedNodeIDMap: map[string]string{
+				"com.example.csi/driver1": "com.example.csi/csi-node1",
+			},
+			expectedTopologyMap: map[string]sets.String{
+				"com.example.csi/driver1": nil,
+			},
+			expectedLabels: nil,
 		},
 	}
 
@@ -331,7 +378,7 @@ func TestAddNodeInfo_CSINodeInfoDisabled(t *testing.T) {
 		{
 			name:         "empty node",
 			driverName:   "com.example.csi/driver1",
-			existingNode: generateNode(nil /* nodeIDs */, nil /* labels */),
+			existingNode: generateNode(nil /* nodeIDs */, nil /* labels */, nil /*capacity*/),
 			inputNodeID:  "com.example.csi/csi-node1",
 			expectedNodeIDMap: map[string]string{
 				"com.example.csi/driver1": "com.example.csi/csi-node1",
@@ -344,7 +391,7 @@ func TestAddNodeInfo_CSINodeInfoDisabled(t *testing.T) {
 				nodeIDMap{
 					"com.example.csi/driver1": "com.example.csi/csi-node1",
 				},
-				nil /* labels */),
+				nil /* labels */, nil /*capacity*/),
 			inputNodeID: "com.example.csi/csi-node1",
 			expectedNodeIDMap: map[string]string{
 				"com.example.csi/driver1": "com.example.csi/csi-node1",
@@ -357,7 +404,7 @@ func TestAddNodeInfo_CSINodeInfoDisabled(t *testing.T) {
 				nodeIDMap{
 					"net.example.storage/other-driver": "net.example.storage/test-node",
 				},
-				nil /* labels */),
+				nil /* labels */, nil /*capacity*/),
 			inputNodeID: "com.example.csi/csi-node1",
 			expectedNodeIDMap: map[string]string{
 				"com.example.csi/driver1":          "com.example.csi/csi-node1",
@@ -375,7 +422,7 @@ func TestRemoveNodeInfo(t *testing.T) {
 		{
 			name:              "empty node and no CSINodeInfo",
 			driverName:        "com.example.csi/driver1",
-			existingNode:      generateNode(nil /* nodeIDs */, nil /* labels */),
+			existingNode:      generateNode(nil /* nodeIDs */, nil /* labels */, nil /*capacity*/),
 			expectedNodeIDMap: nil,
 			expectedLabels:    nil,
 			expectNoNodeInfo:  true,
@@ -389,7 +436,7 @@ func TestRemoveNodeInfo(t *testing.T) {
 				},
 				labelMap{
 					"com.example.csi/zone": "zoneA",
-				}),
+				}, nil /*capacity*/),
 			existingNodeInfo: generateNodeInfo(
 				nodeIDMap{
 					"com.example.csi/driver1": "com.example.csi/csi-node1",
@@ -411,7 +458,7 @@ func TestRemoveNodeInfo(t *testing.T) {
 				},
 				labelMap{
 					"net.example.storage/zone": "zoneA",
-				}),
+				}, nil /*capacity*/),
 			existingNodeInfo: generateNodeInfo(
 				nodeIDMap{
 					"net.example.storage/other-driver": "net.example.storage/csi-node1",
@@ -435,7 +482,7 @@ func TestRemoveNodeInfo(t *testing.T) {
 				nodeIDMap{
 					"com.example.csi/driver1": "com.example.csi/csi-node1",
 				},
-				nil /* labels */),
+				nil /* labels */, nil /*capacity*/),
 			expectedNodeIDMap: nil,
 			expectedLabels:    nil,
 			expectNoNodeInfo:  true,
@@ -446,12 +493,28 @@ func TestRemoveNodeInfo(t *testing.T) {
 				nodeIDMap{
 					"net.example.storage/other-driver": "net.example.storage/csi-node1",
 				},
-				nil /* labels */),
+				nil /* labels */, nil /*capacity*/),
 			expectedNodeIDMap: map[string]string{
 				"net.example.storage/other-driver": "net.example.storage/csi-node1",
 			},
 			expectedLabels:   nil,
 			expectNoNodeInfo: true,
+		},
+		{
+			name:       "new node with valid max limit",
+			driverName: "com.example.csi/driver1",
+			existingNode: generateNode(
+				nil, /*nodeIDs*/
+				nil, /*labels*/
+				map[v1.ResourceName]resource.Quantity{
+					v1.ResourceCPU: *resource.NewScaledQuantity(4, -3),
+					v1.ResourceName(util.GetCSIAttachLimitKey("com.example.csi/driver1")): *resource.NewQuantity(10, resource.DecimalSI),
+				},
+			),
+			inputTopology:       nil,
+			inputNodeID:         "com.example.csi/csi-node1",
+			expectNoNodeInfo:    true,
+			expectedVolumeLimit: 0,
 		},
 	}
 
@@ -465,7 +528,7 @@ func TestRemoveNodeInfo_CSINodeInfoDisabled(t *testing.T) {
 		{
 			name:              "empty node",
 			driverName:        "com.example.csi/driver1",
-			existingNode:      generateNode(nil /* nodeIDs */, nil /* labels */),
+			existingNode:      generateNode(nil /* nodeIDs */, nil /* labels */, nil /*capacity*/),
 			expectedNodeIDMap: nil,
 		},
 		{
@@ -475,7 +538,7 @@ func TestRemoveNodeInfo_CSINodeInfoDisabled(t *testing.T) {
 				nodeIDMap{
 					"com.example.csi/driver1": "com.example.csi/csi-node1",
 				},
-				nil /* labels */),
+				nil /* labels */, nil /*capacity*/),
 			expectedNodeIDMap: nil,
 		},
 		{
@@ -485,7 +548,7 @@ func TestRemoveNodeInfo_CSINodeInfoDisabled(t *testing.T) {
 				nodeIDMap{
 					"net.example.storage/other-driver": "net.example.storage/csi-node1",
 				},
-				nil /* labels */),
+				nil /* labels */, nil /*capacity*/),
 			expectedNodeIDMap: map[string]string{
 				"net.example.storage/other-driver": "net.example.storage/csi-node1",
 			},
@@ -511,7 +574,7 @@ func TestAddNodeInfoExistingAnnotation(t *testing.T) {
 				nodeIDMap{
 					"com.example.csi/driver1": "com.example.csi/csi-node1",
 				},
-				nil /* labels */),
+				nil /* labels */, nil /*capacity*/),
 		},
 		{
 			name: "pre-existing info about a different driver in node, but no CSINodeInfo",
@@ -519,7 +582,7 @@ func TestAddNodeInfoExistingAnnotation(t *testing.T) {
 				nodeIDMap{
 					"net.example.storage/other-driver": "net.example.storage/test-node",
 				},
-				nil /* labels */),
+				nil /* labels */, nil /*capacity*/),
 		},
 	}
 
@@ -530,10 +593,23 @@ func TestAddNodeInfoExistingAnnotation(t *testing.T) {
 		nodeName := tc.existingNode.Name
 		client := fake.NewSimpleClientset(tc.existingNode)
 		csiClient := csifake.NewSimpleClientset()
-		nim := NewNodeInfoManager(types.NodeName(nodeName), client, csiClient)
+
+		tmpDir, err := utiltesting.MkTmpdir("nodeinfomanager-test")
+		if err != nil {
+			t.Fatalf("can't create temp dir: %v", err)
+		}
+		host := volumetest.NewFakeVolumeHostWithCSINodeName(
+			tmpDir,
+			client,
+			csiClient,
+			nil,
+			nodeName,
+		)
+
+		nim := NewNodeInfoManager(types.NodeName(nodeName), host)
 
 		// Act
-		err := nim.AddNodeInfo(driverName, nodeID, 0 /* maxVolumeLimit */, nil) // TODO test maxVolumeLimit
+		err = nim.AddNodeInfo(driverName, nodeID, 0 /* maxVolumeLimit */, nil) // TODO test maxVolumeLimit
 		if err != nil {
 			t.Errorf("expected no error from AddNodeInfo call but got: %v", err)
 			continue
@@ -560,6 +636,7 @@ func TestAddNodeInfoExistingAnnotation(t *testing.T) {
 
 func test(t *testing.T, addNodeInfo bool, csiNodeInfoEnabled bool, testcases []testcase) {
 	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSINodeInfo, csiNodeInfoEnabled)()
+	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.AttachVolumeLimit, true)()
 
 	for _, tc := range testcases {
 		t.Logf("test case: %q", tc.name)
@@ -573,12 +650,23 @@ func test(t *testing.T, addNodeInfo bool, csiNodeInfoEnabled bool, testcases []t
 		} else {
 			csiClient = csifake.NewSimpleClientset(tc.existingNodeInfo)
 		}
-		nim := NewNodeInfoManager(types.NodeName(nodeName), client, csiClient)
+
+		tmpDir, err := utiltesting.MkTmpdir("nodeinfomanager-test")
+		if err != nil {
+			t.Fatalf("can't create temp dir: %v", err)
+		}
+		host := volumetest.NewFakeVolumeHostWithCSINodeName(
+			tmpDir,
+			client,
+			csiClient,
+			nil,
+			nodeName,
+		)
+		nim := NewNodeInfoManager(types.NodeName(nodeName), host)
 
 		//// Act
-		var err error
 		if addNodeInfo {
-			err = nim.AddNodeInfo(tc.driverName, tc.inputNodeID, 0 /* maxVolumeLimit */, tc.inputTopology) // TODO test maxVolumeLimit
+			err = nim.AddNodeInfo(tc.driverName, tc.inputNodeID, tc.inputVolumeLimit, tc.inputTopology)
 		} else {
 			err = nim.RemoveNodeInfo(tc.driverName)
 		}
@@ -598,6 +686,13 @@ func test(t *testing.T, addNodeInfo bool, csiNodeInfoEnabled bool, testcases []t
 		node, err := client.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
 		if err != nil {
 			t.Errorf("error getting node: %v", err)
+			continue
+		}
+
+		// We are testing max volume limits
+		attachLimit := getVolumeLimit(node, tc.driverName)
+		if attachLimit != tc.expectedVolumeLimit {
+			t.Errorf("expected volume limit to be %d got %d", tc.expectedVolumeLimit, attachLimit)
 			continue
 		}
 
@@ -659,19 +754,38 @@ func test(t *testing.T, addNodeInfo bool, csiNodeInfoEnabled bool, testcases []t
 	}
 }
 
-func generateNode(nodeIDs, labels map[string]string) *v1.Node {
+func getVolumeLimit(node *v1.Node, driverName string) int64 {
+	volumeLimits := map[v1.ResourceName]int64{}
+	nodeAllocatables := node.Status.Allocatable
+	for k, v := range nodeAllocatables {
+		if v1helper.IsAttachableVolumeResourceName(k) {
+			volumeLimits[k] = v.Value()
+		}
+	}
+	attachKey := v1.ResourceName(util.GetCSIAttachLimitKey(driverName))
+	attachLimit := volumeLimits[attachKey]
+	return attachLimit
+}
+
+func generateNode(nodeIDs, labels map[string]string, capacity map[v1.ResourceName]resource.Quantity) *v1.Node {
 	var annotations map[string]string
 	if len(nodeIDs) > 0 {
 		b, _ := json.Marshal(nodeIDs)
 		annotations = map[string]string{annotationKeyNodeID: string(b)}
 	}
-	return &v1.Node{
+	node := &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "node1",
 			Annotations: annotations,
 			Labels:      labels,
 		},
 	}
+
+	if len(capacity) > 0 {
+		node.Status.Capacity = v1.ResourceList(capacity)
+		node.Status.Allocatable = v1.ResourceList(capacity)
+	}
+	return node
 }
 
 func generateNodeInfo(nodeIDs map[string]string, topologyKeys map[string][]string) *csiv1alpha1.CSINodeInfo {
