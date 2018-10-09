@@ -331,6 +331,7 @@ func (*KeyRing) ProtoMessage()    {}
 func (*KeyRing) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e40e1384d35a80c5, []int{0}
 }
+
 func (m *KeyRing) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_KeyRing.Unmarshal(m, b)
 }
@@ -425,6 +426,7 @@ func (*CryptoKey) ProtoMessage()    {}
 func (*CryptoKey) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e40e1384d35a80c5, []int{1}
 }
+
 func (m *CryptoKey) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CryptoKey.Unmarshal(m, b)
 }
@@ -597,6 +599,7 @@ func (*CryptoKeyVersionTemplate) ProtoMessage()    {}
 func (*CryptoKeyVersionTemplate) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e40e1384d35a80c5, []int{2}
 }
+
 func (m *CryptoKeyVersionTemplate) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CryptoKeyVersionTemplate.Unmarshal(m, b)
 }
@@ -647,6 +650,7 @@ func (*KeyOperationAttestation) ProtoMessage()    {}
 func (*KeyOperationAttestation) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e40e1384d35a80c5, []int{3}
 }
+
 func (m *KeyOperationAttestation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_KeyOperationAttestation.Unmarshal(m, b)
 }
@@ -730,6 +734,7 @@ func (*CryptoKeyVersion) ProtoMessage()    {}
 func (*CryptoKeyVersion) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e40e1384d35a80c5, []int{4}
 }
+
 func (m *CryptoKeyVersion) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CryptoKeyVersion.Unmarshal(m, b)
 }
@@ -834,6 +839,7 @@ func (*PublicKey) ProtoMessage()    {}
 func (*PublicKey) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e40e1384d35a80c5, []int{5}
 }
+
 func (m *PublicKey) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PublicKey.Unmarshal(m, b)
 }
@@ -867,6 +873,12 @@ func (m *PublicKey) GetAlgorithm() CryptoKeyVersion_CryptoKeyVersionAlgorithm {
 }
 
 func init() {
+	proto.RegisterEnum("google.cloud.kms.v1.ProtectionLevel", ProtectionLevel_name, ProtectionLevel_value)
+	proto.RegisterEnum("google.cloud.kms.v1.CryptoKey_CryptoKeyPurpose", CryptoKey_CryptoKeyPurpose_name, CryptoKey_CryptoKeyPurpose_value)
+	proto.RegisterEnum("google.cloud.kms.v1.KeyOperationAttestation_AttestationFormat", KeyOperationAttestation_AttestationFormat_name, KeyOperationAttestation_AttestationFormat_value)
+	proto.RegisterEnum("google.cloud.kms.v1.CryptoKeyVersion_CryptoKeyVersionAlgorithm", CryptoKeyVersion_CryptoKeyVersionAlgorithm_name, CryptoKeyVersion_CryptoKeyVersionAlgorithm_value)
+	proto.RegisterEnum("google.cloud.kms.v1.CryptoKeyVersion_CryptoKeyVersionState", CryptoKeyVersion_CryptoKeyVersionState_name, CryptoKeyVersion_CryptoKeyVersionState_value)
+	proto.RegisterEnum("google.cloud.kms.v1.CryptoKeyVersion_CryptoKeyVersionView", CryptoKeyVersion_CryptoKeyVersionView_name, CryptoKeyVersion_CryptoKeyVersionView_value)
 	proto.RegisterType((*KeyRing)(nil), "google.cloud.kms.v1.KeyRing")
 	proto.RegisterType((*CryptoKey)(nil), "google.cloud.kms.v1.CryptoKey")
 	proto.RegisterMapType((map[string]string)(nil), "google.cloud.kms.v1.CryptoKey.LabelsEntry")
@@ -874,12 +886,6 @@ func init() {
 	proto.RegisterType((*KeyOperationAttestation)(nil), "google.cloud.kms.v1.KeyOperationAttestation")
 	proto.RegisterType((*CryptoKeyVersion)(nil), "google.cloud.kms.v1.CryptoKeyVersion")
 	proto.RegisterType((*PublicKey)(nil), "google.cloud.kms.v1.PublicKey")
-	proto.RegisterEnum("google.cloud.kms.v1.ProtectionLevel", ProtectionLevel_name, ProtectionLevel_value)
-	proto.RegisterEnum("google.cloud.kms.v1.CryptoKey_CryptoKeyPurpose", CryptoKey_CryptoKeyPurpose_name, CryptoKey_CryptoKeyPurpose_value)
-	proto.RegisterEnum("google.cloud.kms.v1.KeyOperationAttestation_AttestationFormat", KeyOperationAttestation_AttestationFormat_name, KeyOperationAttestation_AttestationFormat_value)
-	proto.RegisterEnum("google.cloud.kms.v1.CryptoKeyVersion_CryptoKeyVersionAlgorithm", CryptoKeyVersion_CryptoKeyVersionAlgorithm_name, CryptoKeyVersion_CryptoKeyVersionAlgorithm_value)
-	proto.RegisterEnum("google.cloud.kms.v1.CryptoKeyVersion_CryptoKeyVersionState", CryptoKeyVersion_CryptoKeyVersionState_name, CryptoKeyVersion_CryptoKeyVersionState_value)
-	proto.RegisterEnum("google.cloud.kms.v1.CryptoKeyVersion_CryptoKeyVersionView", CryptoKeyVersion_CryptoKeyVersionView_name, CryptoKeyVersion_CryptoKeyVersionView_value)
 }
 
 func init() {

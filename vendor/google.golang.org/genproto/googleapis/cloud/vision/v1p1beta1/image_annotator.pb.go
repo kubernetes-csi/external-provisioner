@@ -6,16 +6,13 @@ package vision
 import (
 	fmt "fmt"
 	proto "github.com/golang/protobuf/proto"
+	context "golang.org/x/net/context"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	status "google.golang.org/genproto/googleapis/rpc/status"
 	color "google.golang.org/genproto/googleapis/type/color"
 	latlng "google.golang.org/genproto/googleapis/type/latlng"
-	math "math"
-)
-
-import (
-	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
+	math "math"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -326,6 +323,7 @@ func (*Feature) ProtoMessage()    {}
 func (*Feature) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{0}
 }
+
 func (m *Feature) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Feature.Unmarshal(m, b)
 }
@@ -396,6 +394,7 @@ func (*ImageSource) ProtoMessage()    {}
 func (*ImageSource) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{1}
 }
+
 func (m *ImageSource) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ImageSource.Unmarshal(m, b)
 }
@@ -449,6 +448,7 @@ func (*Image) ProtoMessage()    {}
 func (*Image) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{2}
 }
+
 func (m *Image) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Image.Unmarshal(m, b)
 }
@@ -540,6 +540,7 @@ func (*FaceAnnotation) ProtoMessage()    {}
 func (*FaceAnnotation) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{3}
 }
+
 func (m *FaceAnnotation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_FaceAnnotation.Unmarshal(m, b)
 }
@@ -680,6 +681,7 @@ func (*FaceAnnotation_Landmark) ProtoMessage()    {}
 func (*FaceAnnotation_Landmark) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{3, 0}
 }
+
 func (m *FaceAnnotation_Landmark) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_FaceAnnotation_Landmark.Unmarshal(m, b)
 }
@@ -727,6 +729,7 @@ func (*LocationInfo) ProtoMessage()    {}
 func (*LocationInfo) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{4}
 }
+
 func (m *LocationInfo) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_LocationInfo.Unmarshal(m, b)
 }
@@ -771,6 +774,7 @@ func (*Property) ProtoMessage()    {}
 func (*Property) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{5}
 }
+
 func (m *Property) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Property.Unmarshal(m, b)
 }
@@ -856,6 +860,7 @@ func (*EntityAnnotation) ProtoMessage()    {}
 func (*EntityAnnotation) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{6}
 }
+
 func (m *EntityAnnotation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_EntityAnnotation.Unmarshal(m, b)
 }
@@ -969,6 +974,7 @@ func (*SafeSearchAnnotation) ProtoMessage()    {}
 func (*SafeSearchAnnotation) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{7}
 }
+
 func (m *SafeSearchAnnotation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SafeSearchAnnotation.Unmarshal(m, b)
 }
@@ -1039,6 +1045,7 @@ func (*LatLongRect) ProtoMessage()    {}
 func (*LatLongRect) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{8}
 }
+
 func (m *LatLongRect) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_LatLongRect.Unmarshal(m, b)
 }
@@ -1092,6 +1099,7 @@ func (*ColorInfo) ProtoMessage()    {}
 func (*ColorInfo) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{9}
 }
+
 func (m *ColorInfo) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ColorInfo.Unmarshal(m, b)
 }
@@ -1146,6 +1154,7 @@ func (*DominantColorsAnnotation) ProtoMessage()    {}
 func (*DominantColorsAnnotation) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{10}
 }
+
 func (m *DominantColorsAnnotation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_DominantColorsAnnotation.Unmarshal(m, b)
 }
@@ -1186,6 +1195,7 @@ func (*ImageProperties) ProtoMessage()    {}
 func (*ImageProperties) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{11}
 }
+
 func (m *ImageProperties) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ImageProperties.Unmarshal(m, b)
 }
@@ -1232,6 +1242,7 @@ func (*CropHint) ProtoMessage()    {}
 func (*CropHint) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{12}
 }
+
 func (m *CropHint) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CropHint.Unmarshal(m, b)
 }
@@ -1286,6 +1297,7 @@ func (*CropHintsAnnotation) ProtoMessage()    {}
 func (*CropHintsAnnotation) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{13}
 }
+
 func (m *CropHintsAnnotation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CropHintsAnnotation.Unmarshal(m, b)
 }
@@ -1331,6 +1343,7 @@ func (*CropHintsParams) ProtoMessage()    {}
 func (*CropHintsParams) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{14}
 }
+
 func (m *CropHintsParams) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CropHintsParams.Unmarshal(m, b)
 }
@@ -1371,6 +1384,7 @@ func (*WebDetectionParams) ProtoMessage()    {}
 func (*WebDetectionParams) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{15}
 }
+
 func (m *WebDetectionParams) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_WebDetectionParams.Unmarshal(m, b)
 }
@@ -1424,6 +1438,7 @@ func (*ImageContext) ProtoMessage()    {}
 func (*ImageContext) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{16}
 }
+
 func (m *ImageContext) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ImageContext.Unmarshal(m, b)
 }
@@ -1490,6 +1505,7 @@ func (*AnnotateImageRequest) ProtoMessage()    {}
 func (*AnnotateImageRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{17}
 }
+
 func (m *AnnotateImageRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AnnotateImageRequest.Unmarshal(m, b)
 }
@@ -1569,6 +1585,7 @@ func (*AnnotateImageResponse) ProtoMessage()    {}
 func (*AnnotateImageResponse) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{18}
 }
+
 func (m *AnnotateImageResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AnnotateImageResponse.Unmarshal(m, b)
 }
@@ -1679,6 +1696,7 @@ func (*BatchAnnotateImagesRequest) ProtoMessage()    {}
 func (*BatchAnnotateImagesRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{19}
 }
+
 func (m *BatchAnnotateImagesRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_BatchAnnotateImagesRequest.Unmarshal(m, b)
 }
@@ -1719,6 +1737,7 @@ func (*BatchAnnotateImagesResponse) ProtoMessage()    {}
 func (*BatchAnnotateImagesResponse) Descriptor() ([]byte, []int) {
 	return fileDescriptor_1f6928ee25f8ae1f, []int{20}
 }
+
 func (m *BatchAnnotateImagesResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_BatchAnnotateImagesResponse.Unmarshal(m, b)
 }
@@ -1745,6 +1764,9 @@ func (m *BatchAnnotateImagesResponse) GetResponses() []*AnnotateImageResponse {
 }
 
 func init() {
+	proto.RegisterEnum("google.cloud.vision.v1p1beta1.Likelihood", Likelihood_name, Likelihood_value)
+	proto.RegisterEnum("google.cloud.vision.v1p1beta1.Feature_Type", Feature_Type_name, Feature_Type_value)
+	proto.RegisterEnum("google.cloud.vision.v1p1beta1.FaceAnnotation_Landmark_Type", FaceAnnotation_Landmark_Type_name, FaceAnnotation_Landmark_Type_value)
 	proto.RegisterType((*Feature)(nil), "google.cloud.vision.v1p1beta1.Feature")
 	proto.RegisterType((*ImageSource)(nil), "google.cloud.vision.v1p1beta1.ImageSource")
 	proto.RegisterType((*Image)(nil), "google.cloud.vision.v1p1beta1.Image")
@@ -1767,83 +1789,6 @@ func init() {
 	proto.RegisterType((*AnnotateImageResponse)(nil), "google.cloud.vision.v1p1beta1.AnnotateImageResponse")
 	proto.RegisterType((*BatchAnnotateImagesRequest)(nil), "google.cloud.vision.v1p1beta1.BatchAnnotateImagesRequest")
 	proto.RegisterType((*BatchAnnotateImagesResponse)(nil), "google.cloud.vision.v1p1beta1.BatchAnnotateImagesResponse")
-	proto.RegisterEnum("google.cloud.vision.v1p1beta1.Likelihood", Likelihood_name, Likelihood_value)
-	proto.RegisterEnum("google.cloud.vision.v1p1beta1.Feature_Type", Feature_Type_name, Feature_Type_value)
-	proto.RegisterEnum("google.cloud.vision.v1p1beta1.FaceAnnotation_Landmark_Type", FaceAnnotation_Landmark_Type_name, FaceAnnotation_Landmark_Type_value)
-}
-
-// Reference imports to suppress errors if they are not otherwise used.
-var _ context.Context
-var _ grpc.ClientConn
-
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion4
-
-// ImageAnnotatorClient is the client API for ImageAnnotator service.
-//
-// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
-type ImageAnnotatorClient interface {
-	// Run image detection and annotation for a batch of images.
-	BatchAnnotateImages(ctx context.Context, in *BatchAnnotateImagesRequest, opts ...grpc.CallOption) (*BatchAnnotateImagesResponse, error)
-}
-
-type imageAnnotatorClient struct {
-	cc *grpc.ClientConn
-}
-
-func NewImageAnnotatorClient(cc *grpc.ClientConn) ImageAnnotatorClient {
-	return &imageAnnotatorClient{cc}
-}
-
-func (c *imageAnnotatorClient) BatchAnnotateImages(ctx context.Context, in *BatchAnnotateImagesRequest, opts ...grpc.CallOption) (*BatchAnnotateImagesResponse, error) {
-	out := new(BatchAnnotateImagesResponse)
-	err := c.cc.Invoke(ctx, "/google.cloud.vision.v1p1beta1.ImageAnnotator/BatchAnnotateImages", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// ImageAnnotatorServer is the server API for ImageAnnotator service.
-type ImageAnnotatorServer interface {
-	// Run image detection and annotation for a batch of images.
-	BatchAnnotateImages(context.Context, *BatchAnnotateImagesRequest) (*BatchAnnotateImagesResponse, error)
-}
-
-func RegisterImageAnnotatorServer(s *grpc.Server, srv ImageAnnotatorServer) {
-	s.RegisterService(&_ImageAnnotator_serviceDesc, srv)
-}
-
-func _ImageAnnotator_BatchAnnotateImages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(BatchAnnotateImagesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ImageAnnotatorServer).BatchAnnotateImages(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/google.cloud.vision.v1p1beta1.ImageAnnotator/BatchAnnotateImages",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ImageAnnotatorServer).BatchAnnotateImages(ctx, req.(*BatchAnnotateImagesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-var _ImageAnnotator_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "google.cloud.vision.v1p1beta1.ImageAnnotator",
-	HandlerType: (*ImageAnnotatorServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "BatchAnnotateImages",
-			Handler:    _ImageAnnotator_BatchAnnotateImages_Handler,
-		},
-	},
-	Streams:  []grpc.StreamDesc{},
-	Metadata: "google/cloud/vision/v1p1beta1/image_annotator.proto",
 }
 
 func init() {
@@ -2002,4 +1947,78 @@ var fileDescriptor_1f6928ee25f8ae1f = []byte{
 	0x0f, 0xc7, 0xc4, 0xe7, 0xff, 0xf7, 0x1c, 0x0a, 0x95, 0x1d, 0xb8, 0xd1, 0x6b, 0xfe, 0x71, 0xfa,
 	0x54, 0x08, 0xfe, 0x95, 0xcb, 0x5d, 0xae, 0x73, 0xc8, 0xc3, 0xff, 0x04, 0x00, 0x00, 0xff, 0xff,
 	0xb8, 0x10, 0xf5, 0x85, 0x78, 0x1b, 0x00, 0x00,
+}
+
+// Reference imports to suppress errors if they are not otherwise used.
+var _ context.Context
+var _ grpc.ClientConn
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+const _ = grpc.SupportPackageIsVersion4
+
+// ImageAnnotatorClient is the client API for ImageAnnotator service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type ImageAnnotatorClient interface {
+	// Run image detection and annotation for a batch of images.
+	BatchAnnotateImages(ctx context.Context, in *BatchAnnotateImagesRequest, opts ...grpc.CallOption) (*BatchAnnotateImagesResponse, error)
+}
+
+type imageAnnotatorClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewImageAnnotatorClient(cc *grpc.ClientConn) ImageAnnotatorClient {
+	return &imageAnnotatorClient{cc}
+}
+
+func (c *imageAnnotatorClient) BatchAnnotateImages(ctx context.Context, in *BatchAnnotateImagesRequest, opts ...grpc.CallOption) (*BatchAnnotateImagesResponse, error) {
+	out := new(BatchAnnotateImagesResponse)
+	err := c.cc.Invoke(ctx, "/google.cloud.vision.v1p1beta1.ImageAnnotator/BatchAnnotateImages", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ImageAnnotatorServer is the server API for ImageAnnotator service.
+type ImageAnnotatorServer interface {
+	// Run image detection and annotation for a batch of images.
+	BatchAnnotateImages(context.Context, *BatchAnnotateImagesRequest) (*BatchAnnotateImagesResponse, error)
+}
+
+func RegisterImageAnnotatorServer(s *grpc.Server, srv ImageAnnotatorServer) {
+	s.RegisterService(&_ImageAnnotator_serviceDesc, srv)
+}
+
+func _ImageAnnotator_BatchAnnotateImages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchAnnotateImagesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImageAnnotatorServer).BatchAnnotateImages(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/google.cloud.vision.v1p1beta1.ImageAnnotator/BatchAnnotateImages",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImageAnnotatorServer).BatchAnnotateImages(ctx, req.(*BatchAnnotateImagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var _ImageAnnotator_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "google.cloud.vision.v1p1beta1.ImageAnnotator",
+	HandlerType: (*ImageAnnotatorServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "BatchAnnotateImages",
+			Handler:    _ImageAnnotator_BatchAnnotateImages_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "google/cloud/vision/v1p1beta1/image_annotator.proto",
 }

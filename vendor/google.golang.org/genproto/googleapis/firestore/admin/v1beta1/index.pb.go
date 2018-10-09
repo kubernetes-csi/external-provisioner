@@ -128,6 +128,7 @@ func (*IndexField) ProtoMessage()    {}
 func (*IndexField) Descriptor() ([]byte, []int) {
 	return fileDescriptor_18dcb37b2ab27460, []int{0}
 }
+
 func (m *IndexField) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_IndexField.Unmarshal(m, b)
 }
@@ -183,6 +184,7 @@ func (*Index) ProtoMessage()    {}
 func (*Index) Descriptor() ([]byte, []int) {
 	return fileDescriptor_18dcb37b2ab27460, []int{1}
 }
+
 func (m *Index) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Index.Unmarshal(m, b)
 }
@@ -230,10 +232,10 @@ func (m *Index) GetState() Index_State {
 }
 
 func init() {
-	proto.RegisterType((*IndexField)(nil), "google.firestore.admin.v1beta1.IndexField")
-	proto.RegisterType((*Index)(nil), "google.firestore.admin.v1beta1.Index")
 	proto.RegisterEnum("google.firestore.admin.v1beta1.IndexField_Mode", IndexField_Mode_name, IndexField_Mode_value)
 	proto.RegisterEnum("google.firestore.admin.v1beta1.Index_State", Index_State_name, Index_State_value)
+	proto.RegisterType((*IndexField)(nil), "google.firestore.admin.v1beta1.IndexField")
+	proto.RegisterType((*Index)(nil), "google.firestore.admin.v1beta1.Index")
 }
 
 func init() {

@@ -128,6 +128,7 @@ func (*CigarUnit) ProtoMessage()    {}
 func (*CigarUnit) Descriptor() ([]byte, []int) {
 	return fileDescriptor_353bda9a6ec457b8, []int{0}
 }
+
 func (m *CigarUnit) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CigarUnit.Unmarshal(m, b)
 }
@@ -168,8 +169,8 @@ func (m *CigarUnit) GetReferenceSequence() string {
 }
 
 func init() {
-	proto.RegisterType((*CigarUnit)(nil), "google.genomics.v1.CigarUnit")
 	proto.RegisterEnum("google.genomics.v1.CigarUnit_Operation", CigarUnit_Operation_name, CigarUnit_Operation_value)
+	proto.RegisterType((*CigarUnit)(nil), "google.genomics.v1.CigarUnit")
 }
 
 func init() { proto.RegisterFile("google/genomics/v1/cigar.proto", fileDescriptor_353bda9a6ec457b8) }

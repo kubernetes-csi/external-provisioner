@@ -132,6 +132,7 @@ func (*CheckError) ProtoMessage()    {}
 func (*CheckError) Descriptor() ([]byte, []int) {
 	return fileDescriptor_abfa738e19256db6, []int{0}
 }
+
 func (m *CheckError) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CheckError.Unmarshal(m, b)
 }
@@ -165,8 +166,8 @@ func (m *CheckError) GetDetail() string {
 }
 
 func init() {
-	proto.RegisterType((*CheckError)(nil), "google.api.servicecontrol.v1.CheckError")
 	proto.RegisterEnum("google.api.servicecontrol.v1.CheckError_Code", CheckError_Code_name, CheckError_Code_value)
+	proto.RegisterType((*CheckError)(nil), "google.api.servicecontrol.v1.CheckError")
 }
 
 func init() {

@@ -222,6 +222,7 @@ func (*MetricDescriptor) ProtoMessage()    {}
 func (*MetricDescriptor) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927eaac1a24f8abb, []int{0}
 }
+
 func (m *MetricDescriptor) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_MetricDescriptor.Unmarshal(m, b)
 }
@@ -316,6 +317,7 @@ func (*Metric) ProtoMessage()    {}
 func (*Metric) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927eaac1a24f8abb, []int{1}
 }
+
 func (m *Metric) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Metric.Unmarshal(m, b)
 }
@@ -349,11 +351,11 @@ func (m *Metric) GetLabels() map[string]string {
 }
 
 func init() {
+	proto.RegisterEnum("google.api.MetricDescriptor_MetricKind", MetricDescriptor_MetricKind_name, MetricDescriptor_MetricKind_value)
+	proto.RegisterEnum("google.api.MetricDescriptor_ValueType", MetricDescriptor_ValueType_name, MetricDescriptor_ValueType_value)
 	proto.RegisterType((*MetricDescriptor)(nil), "google.api.MetricDescriptor")
 	proto.RegisterType((*Metric)(nil), "google.api.Metric")
 	proto.RegisterMapType((map[string]string)(nil), "google.api.Metric.LabelsEntry")
-	proto.RegisterEnum("google.api.MetricDescriptor_MetricKind", MetricDescriptor_MetricKind_name, MetricDescriptor_MetricKind_value)
-	proto.RegisterEnum("google.api.MetricDescriptor_ValueType", MetricDescriptor_ValueType_name, MetricDescriptor_ValueType_value)
 }
 
 func init() { proto.RegisterFile("google/api/metric.proto", fileDescriptor_927eaac1a24f8abb) }
