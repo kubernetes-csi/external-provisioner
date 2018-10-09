@@ -317,6 +317,7 @@ func (*SupportAccount) ProtoMessage()    {}
 func (*SupportAccount) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f71dd4106e21c931, []int{0}
 }
+
 func (m *SupportAccount) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SupportAccount.Unmarshal(m, b)
 }
@@ -448,6 +449,7 @@ func (*Case) ProtoMessage()    {}
 func (*Case) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f71dd4106e21c931, []int{1}
 }
+
 func (m *Case) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Case.Unmarshal(m, b)
 }
@@ -601,6 +603,7 @@ func (*CustomerIssue) ProtoMessage()    {}
 func (*CustomerIssue) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f71dd4106e21c931, []int{2}
 }
+
 func (m *CustomerIssue) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CustomerIssue.Unmarshal(m, b)
 }
@@ -672,6 +675,7 @@ func (*SupportRole) ProtoMessage()    {}
 func (*SupportRole) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f71dd4106e21c931, []int{3}
 }
+
 func (m *SupportRole) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SupportRole.Unmarshal(m, b)
 }
@@ -729,6 +733,7 @@ func (*Comment) ProtoMessage()    {}
 func (*Comment) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f71dd4106e21c931, []int{4}
 }
+
 func (m *Comment) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Comment.Unmarshal(m, b)
 }
@@ -793,6 +798,7 @@ func (*IssueTaxonomy) ProtoMessage()    {}
 func (*IssueTaxonomy) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f71dd4106e21c931, []int{5}
 }
+
 func (m *IssueTaxonomy) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_IssueTaxonomy.Unmarshal(m, b)
 }
@@ -846,6 +852,7 @@ func (*IssueTaxonomy_Component) ProtoMessage()    {}
 func (*IssueTaxonomy_Component) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f71dd4106e21c931, []int{5, 0}
 }
+
 func (m *IssueTaxonomy_Component) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_IssueTaxonomy_Component.Unmarshal(m, b)
 }
@@ -910,6 +917,7 @@ func (*IssueTaxonomy_Category) ProtoMessage()    {}
 func (*IssueTaxonomy_Category) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f71dd4106e21c931, []int{5, 1}
 }
+
 func (m *IssueTaxonomy_Category) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_IssueTaxonomy_Category.Unmarshal(m, b)
 }
@@ -943,6 +951,12 @@ func (m *IssueTaxonomy_Category) GetComponents() map[string]*IssueTaxonomy_Compo
 }
 
 func init() {
+	proto.RegisterEnum("google.cloud.support.common.SupportAccount_State", SupportAccount_State_name, SupportAccount_State_value)
+	proto.RegisterEnum("google.cloud.support.common.SupportAccount_PricingModel", SupportAccount_PricingModel_name, SupportAccount_PricingModel_value)
+	proto.RegisterEnum("google.cloud.support.common.Case_Priority", Case_Priority_name, Case_Priority_value)
+	proto.RegisterEnum("google.cloud.support.common.Case_State", Case_State_name, Case_State_value)
+	proto.RegisterEnum("google.cloud.support.common.CustomerIssue_IssueState", CustomerIssue_IssueState_name, CustomerIssue_IssueState_value)
+	proto.RegisterEnum("google.cloud.support.common.SupportRole_Role", SupportRole_Role_name, SupportRole_Role_value)
 	proto.RegisterType((*SupportAccount)(nil), "google.cloud.support.common.SupportAccount")
 	proto.RegisterType((*Case)(nil), "google.cloud.support.common.Case")
 	proto.RegisterType((*CustomerIssue)(nil), "google.cloud.support.common.CustomerIssue")
@@ -953,12 +967,6 @@ func init() {
 	proto.RegisterType((*IssueTaxonomy_Component)(nil), "google.cloud.support.common.IssueTaxonomy.Component")
 	proto.RegisterType((*IssueTaxonomy_Category)(nil), "google.cloud.support.common.IssueTaxonomy.Category")
 	proto.RegisterMapType((map[string]*IssueTaxonomy_Component)(nil), "google.cloud.support.common.IssueTaxonomy.Category.ComponentsEntry")
-	proto.RegisterEnum("google.cloud.support.common.SupportAccount_State", SupportAccount_State_name, SupportAccount_State_value)
-	proto.RegisterEnum("google.cloud.support.common.SupportAccount_PricingModel", SupportAccount_PricingModel_name, SupportAccount_PricingModel_value)
-	proto.RegisterEnum("google.cloud.support.common.Case_Priority", Case_Priority_name, Case_Priority_value)
-	proto.RegisterEnum("google.cloud.support.common.Case_State", Case_State_name, Case_State_value)
-	proto.RegisterEnum("google.cloud.support.common.CustomerIssue_IssueState", CustomerIssue_IssueState_name, CustomerIssue_IssueState_value)
-	proto.RegisterEnum("google.cloud.support.common.SupportRole_Role", SupportRole_Role_name, SupportRole_Role_value)
 }
 
 func init() { proto.RegisterFile("google/cloud/support/common.proto", fileDescriptor_f71dd4106e21c931) }

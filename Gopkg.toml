@@ -59,3 +59,7 @@
 [[constraint]]
   name = "k8s.io/csi-api"
   version = "kubernetes-1.12.0"
+
+[[constraint]]
+  name = "k8s.io/apiserver"
+  version = "kubernetes-1.12.0"

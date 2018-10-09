@@ -140,6 +140,7 @@ func (*Task) ProtoMessage()    {}
 func (*Task) Descriptor() ([]byte, []int) {
 	return fileDescriptor_ef2a735969aa09d5, []int{0}
 }
+
 func (m *Task) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Task.Unmarshal(m, b)
 }
@@ -323,6 +324,7 @@ func (*Attempt) ProtoMessage()    {}
 func (*Attempt) Descriptor() ([]byte, []int) {
 	return fileDescriptor_ef2a735969aa09d5, []int{1}
 }
+
 func (m *Attempt) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Attempt.Unmarshal(m, b)
 }
@@ -370,9 +372,9 @@ func (m *Attempt) GetResponseStatus() *status.Status {
 }
 
 func init() {
+	proto.RegisterEnum("google.cloud.tasks.v2beta3.Task_View", Task_View_name, Task_View_value)
 	proto.RegisterType((*Task)(nil), "google.cloud.tasks.v2beta3.Task")
 	proto.RegisterType((*Attempt)(nil), "google.cloud.tasks.v2beta3.Attempt")
-	proto.RegisterEnum("google.cloud.tasks.v2beta3.Task_View", Task_View_name, Task_View_value)
 }
 
 func init() {

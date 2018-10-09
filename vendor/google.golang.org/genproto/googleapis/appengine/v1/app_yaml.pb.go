@@ -251,6 +251,7 @@ func (*ApiConfigHandler) ProtoMessage()    {}
 func (*ApiConfigHandler) Descriptor() ([]byte, []int) {
 	return fileDescriptor_2e3b6ce3f971717f, []int{0}
 }
+
 func (m *ApiConfigHandler) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ApiConfigHandler.Unmarshal(m, b)
 }
@@ -323,6 +324,7 @@ func (*ErrorHandler) ProtoMessage()    {}
 func (*ErrorHandler) Descriptor() ([]byte, []int) {
 	return fileDescriptor_2e3b6ce3f971717f, []int{1}
 }
+
 func (m *ErrorHandler) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ErrorHandler.Unmarshal(m, b)
 }
@@ -399,6 +401,7 @@ func (*UrlMap) ProtoMessage()    {}
 func (*UrlMap) Descriptor() ([]byte, []int) {
 	return fileDescriptor_2e3b6ce3f971717f, []int{2}
 }
+
 func (m *UrlMap) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_UrlMap.Unmarshal(m, b)
 }
@@ -637,6 +640,7 @@ func (*StaticFilesHandler) ProtoMessage()    {}
 func (*StaticFilesHandler) Descriptor() ([]byte, []int) {
 	return fileDescriptor_2e3b6ce3f971717f, []int{3}
 }
+
 func (m *StaticFilesHandler) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_StaticFilesHandler.Unmarshal(m, b)
 }
@@ -719,6 +723,7 @@ func (*ScriptHandler) ProtoMessage()    {}
 func (*ScriptHandler) Descriptor() ([]byte, []int) {
 	return fileDescriptor_2e3b6ce3f971717f, []int{4}
 }
+
 func (m *ScriptHandler) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ScriptHandler.Unmarshal(m, b)
 }
@@ -759,6 +764,7 @@ func (*ApiEndpointHandler) ProtoMessage()    {}
 func (*ApiEndpointHandler) Descriptor() ([]byte, []int) {
 	return fileDescriptor_2e3b6ce3f971717f, []int{5}
 }
+
 func (m *ApiEndpointHandler) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ApiEndpointHandler.Unmarshal(m, b)
 }
@@ -817,6 +823,7 @@ func (*HealthCheck) ProtoMessage()    {}
 func (*HealthCheck) Descriptor() ([]byte, []int) {
 	return fileDescriptor_2e3b6ce3f971717f, []int{6}
 }
+
 func (m *HealthCheck) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_HealthCheck.Unmarshal(m, b)
 }
@@ -901,6 +908,7 @@ func (*Library) ProtoMessage()    {}
 func (*Library) Descriptor() ([]byte, []int) {
 	return fileDescriptor_2e3b6ce3f971717f, []int{7}
 }
+
 func (m *Library) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Library.Unmarshal(m, b)
 }
@@ -934,6 +942,11 @@ func (m *Library) GetVersion() string {
 }
 
 func init() {
+	proto.RegisterEnum("google.appengine.v1.AuthFailAction", AuthFailAction_name, AuthFailAction_value)
+	proto.RegisterEnum("google.appengine.v1.LoginRequirement", LoginRequirement_name, LoginRequirement_value)
+	proto.RegisterEnum("google.appengine.v1.SecurityLevel", SecurityLevel_name, SecurityLevel_value)
+	proto.RegisterEnum("google.appengine.v1.ErrorHandler_ErrorCode", ErrorHandler_ErrorCode_name, ErrorHandler_ErrorCode_value)
+	proto.RegisterEnum("google.appengine.v1.UrlMap_RedirectHttpResponseCode", UrlMap_RedirectHttpResponseCode_name, UrlMap_RedirectHttpResponseCode_value)
 	proto.RegisterType((*ApiConfigHandler)(nil), "google.appengine.v1.ApiConfigHandler")
 	proto.RegisterType((*ErrorHandler)(nil), "google.appengine.v1.ErrorHandler")
 	proto.RegisterType((*UrlMap)(nil), "google.appengine.v1.UrlMap")
@@ -943,11 +956,6 @@ func init() {
 	proto.RegisterType((*ApiEndpointHandler)(nil), "google.appengine.v1.ApiEndpointHandler")
 	proto.RegisterType((*HealthCheck)(nil), "google.appengine.v1.HealthCheck")
 	proto.RegisterType((*Library)(nil), "google.appengine.v1.Library")
-	proto.RegisterEnum("google.appengine.v1.AuthFailAction", AuthFailAction_name, AuthFailAction_value)
-	proto.RegisterEnum("google.appengine.v1.LoginRequirement", LoginRequirement_name, LoginRequirement_value)
-	proto.RegisterEnum("google.appengine.v1.SecurityLevel", SecurityLevel_name, SecurityLevel_value)
-	proto.RegisterEnum("google.appengine.v1.ErrorHandler_ErrorCode", ErrorHandler_ErrorCode_name, ErrorHandler_ErrorCode_value)
-	proto.RegisterEnum("google.appengine.v1.UrlMap_RedirectHttpResponseCode", UrlMap_RedirectHttpResponseCode_name, UrlMap_RedirectHttpResponseCode_value)
 }
 
 func init() { proto.RegisterFile("google/appengine/v1/app_yaml.proto", fileDescriptor_2e3b6ce3f971717f) }

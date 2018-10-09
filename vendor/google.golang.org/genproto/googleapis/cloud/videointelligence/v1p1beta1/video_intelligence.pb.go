@@ -8,15 +8,12 @@ import (
 	proto "github.com/golang/protobuf/proto"
 	duration "github.com/golang/protobuf/ptypes/duration"
 	timestamp "github.com/golang/protobuf/ptypes/timestamp"
+	context "golang.org/x/net/context"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	longrunning "google.golang.org/genproto/googleapis/longrunning"
 	status "google.golang.org/genproto/googleapis/rpc/status"
-	math "math"
-)
-
-import (
-	context "golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
+	math "math"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -193,6 +190,7 @@ func (*AnnotateVideoRequest) ProtoMessage()    {}
 func (*AnnotateVideoRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{0}
 }
+
 func (m *AnnotateVideoRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AnnotateVideoRequest.Unmarshal(m, b)
 }
@@ -278,6 +276,7 @@ func (*VideoContext) ProtoMessage()    {}
 func (*VideoContext) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{1}
 }
+
 func (m *VideoContext) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_VideoContext.Unmarshal(m, b)
 }
@@ -356,6 +355,7 @@ func (*LabelDetectionConfig) ProtoMessage()    {}
 func (*LabelDetectionConfig) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{2}
 }
+
 func (m *LabelDetectionConfig) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_LabelDetectionConfig.Unmarshal(m, b)
 }
@@ -412,6 +412,7 @@ func (*ShotChangeDetectionConfig) ProtoMessage()    {}
 func (*ShotChangeDetectionConfig) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{3}
 }
+
 func (m *ShotChangeDetectionConfig) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ShotChangeDetectionConfig.Unmarshal(m, b)
 }
@@ -454,6 +455,7 @@ func (*ExplicitContentDetectionConfig) ProtoMessage()    {}
 func (*ExplicitContentDetectionConfig) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{4}
 }
+
 func (m *ExplicitContentDetectionConfig) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ExplicitContentDetectionConfig.Unmarshal(m, b)
 }
@@ -498,6 +500,7 @@ func (*VideoSegment) ProtoMessage()    {}
 func (*VideoSegment) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{5}
 }
+
 func (m *VideoSegment) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_VideoSegment.Unmarshal(m, b)
 }
@@ -547,6 +550,7 @@ func (*LabelSegment) ProtoMessage()    {}
 func (*LabelSegment) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{6}
 }
+
 func (m *LabelSegment) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_LabelSegment.Unmarshal(m, b)
 }
@@ -597,6 +601,7 @@ func (*LabelFrame) ProtoMessage()    {}
 func (*LabelFrame) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{7}
 }
+
 func (m *LabelFrame) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_LabelFrame.Unmarshal(m, b)
 }
@@ -650,6 +655,7 @@ func (*Entity) ProtoMessage()    {}
 func (*Entity) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{8}
 }
+
 func (m *Entity) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Entity.Unmarshal(m, b)
 }
@@ -713,6 +719,7 @@ func (*LabelAnnotation) ProtoMessage()    {}
 func (*LabelAnnotation) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{9}
 }
+
 func (m *LabelAnnotation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_LabelAnnotation.Unmarshal(m, b)
 }
@@ -777,6 +784,7 @@ func (*ExplicitContentFrame) ProtoMessage()    {}
 func (*ExplicitContentFrame) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{10}
 }
+
 func (m *ExplicitContentFrame) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ExplicitContentFrame.Unmarshal(m, b)
 }
@@ -826,6 +834,7 @@ func (*ExplicitContentAnnotation) ProtoMessage()    {}
 func (*ExplicitContentAnnotation) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{11}
 }
+
 func (m *ExplicitContentAnnotation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ExplicitContentAnnotation.Unmarshal(m, b)
 }
@@ -885,6 +894,7 @@ func (*VideoAnnotationResults) ProtoMessage()    {}
 func (*VideoAnnotationResults) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{12}
 }
+
 func (m *VideoAnnotationResults) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_VideoAnnotationResults.Unmarshal(m, b)
 }
@@ -976,6 +986,7 @@ func (*AnnotateVideoResponse) ProtoMessage()    {}
 func (*AnnotateVideoResponse) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{13}
 }
+
 func (m *AnnotateVideoResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AnnotateVideoResponse.Unmarshal(m, b)
 }
@@ -1024,6 +1035,7 @@ func (*VideoAnnotationProgress) ProtoMessage()    {}
 func (*VideoAnnotationProgress) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{14}
 }
+
 func (m *VideoAnnotationProgress) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_VideoAnnotationProgress.Unmarshal(m, b)
 }
@@ -1087,6 +1099,7 @@ func (*AnnotateVideoProgress) ProtoMessage()    {}
 func (*AnnotateVideoProgress) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{15}
 }
+
 func (m *AnnotateVideoProgress) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AnnotateVideoProgress.Unmarshal(m, b)
 }
@@ -1154,6 +1167,7 @@ func (*SpeechTranscriptionConfig) ProtoMessage()    {}
 func (*SpeechTranscriptionConfig) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{16}
 }
+
 func (m *SpeechTranscriptionConfig) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SpeechTranscriptionConfig.Unmarshal(m, b)
 }
@@ -1235,6 +1249,7 @@ func (*SpeechContext) ProtoMessage()    {}
 func (*SpeechContext) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{17}
 }
+
 func (m *SpeechContext) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SpeechContext.Unmarshal(m, b)
 }
@@ -1278,6 +1293,7 @@ func (*SpeechTranscription) ProtoMessage()    {}
 func (*SpeechTranscription) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{18}
 }
+
 func (m *SpeechTranscription) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SpeechTranscription.Unmarshal(m, b)
 }
@@ -1327,6 +1343,7 @@ func (*SpeechRecognitionAlternative) ProtoMessage()    {}
 func (*SpeechRecognitionAlternative) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{19}
 }
+
 func (m *SpeechRecognitionAlternative) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SpeechRecognitionAlternative.Unmarshal(m, b)
 }
@@ -1393,6 +1410,7 @@ func (*WordInfo) ProtoMessage()    {}
 func (*WordInfo) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9e6ec0147460ac77, []int{20}
 }
+
 func (m *WordInfo) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_WordInfo.Unmarshal(m, b)
 }
@@ -1433,6 +1451,9 @@ func (m *WordInfo) GetWord() string {
 }
 
 func init() {
+	proto.RegisterEnum("google.cloud.videointelligence.v1p1beta1.Feature", Feature_name, Feature_value)
+	proto.RegisterEnum("google.cloud.videointelligence.v1p1beta1.LabelDetectionMode", LabelDetectionMode_name, LabelDetectionMode_value)
+	proto.RegisterEnum("google.cloud.videointelligence.v1p1beta1.Likelihood", Likelihood_name, Likelihood_value)
 	proto.RegisterType((*AnnotateVideoRequest)(nil), "google.cloud.videointelligence.v1p1beta1.AnnotateVideoRequest")
 	proto.RegisterType((*VideoContext)(nil), "google.cloud.videointelligence.v1p1beta1.VideoContext")
 	proto.RegisterType((*LabelDetectionConfig)(nil), "google.cloud.videointelligence.v1p1beta1.LabelDetectionConfig")
@@ -1454,89 +1475,6 @@ func init() {
 	proto.RegisterType((*SpeechTranscription)(nil), "google.cloud.videointelligence.v1p1beta1.SpeechTranscription")
 	proto.RegisterType((*SpeechRecognitionAlternative)(nil), "google.cloud.videointelligence.v1p1beta1.SpeechRecognitionAlternative")
 	proto.RegisterType((*WordInfo)(nil), "google.cloud.videointelligence.v1p1beta1.WordInfo")
-	proto.RegisterEnum("google.cloud.videointelligence.v1p1beta1.Feature", Feature_name, Feature_value)
-	proto.RegisterEnum("google.cloud.videointelligence.v1p1beta1.LabelDetectionMode", LabelDetectionMode_name, LabelDetectionMode_value)
-	proto.RegisterEnum("google.cloud.videointelligence.v1p1beta1.Likelihood", Likelihood_name, Likelihood_value)
-}
-
-// Reference imports to suppress errors if they are not otherwise used.
-var _ context.Context
-var _ grpc.ClientConn
-
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion4
-
-// VideoIntelligenceServiceClient is the client API for VideoIntelligenceService service.
-//
-// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
-type VideoIntelligenceServiceClient interface {
-	// Performs asynchronous video annotation. Progress and results can be
-	// retrieved through the `google.longrunning.Operations` interface.
-	// `Operation.metadata` contains `AnnotateVideoProgress` (progress).
-	// `Operation.response` contains `AnnotateVideoResponse` (results).
-	AnnotateVideo(ctx context.Context, in *AnnotateVideoRequest, opts ...grpc.CallOption) (*longrunning.Operation, error)
-}
-
-type videoIntelligenceServiceClient struct {
-	cc *grpc.ClientConn
-}
-
-func NewVideoIntelligenceServiceClient(cc *grpc.ClientConn) VideoIntelligenceServiceClient {
-	return &videoIntelligenceServiceClient{cc}
-}
-
-func (c *videoIntelligenceServiceClient) AnnotateVideo(ctx context.Context, in *AnnotateVideoRequest, opts ...grpc.CallOption) (*longrunning.Operation, error) {
-	out := new(longrunning.Operation)
-	err := c.cc.Invoke(ctx, "/google.cloud.videointelligence.v1p1beta1.VideoIntelligenceService/AnnotateVideo", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// VideoIntelligenceServiceServer is the server API for VideoIntelligenceService service.
-type VideoIntelligenceServiceServer interface {
-	// Performs asynchronous video annotation. Progress and results can be
-	// retrieved through the `google.longrunning.Operations` interface.
-	// `Operation.metadata` contains `AnnotateVideoProgress` (progress).
-	// `Operation.response` contains `AnnotateVideoResponse` (results).
-	AnnotateVideo(context.Context, *AnnotateVideoRequest) (*longrunning.Operation, error)
-}
-
-func RegisterVideoIntelligenceServiceServer(s *grpc.Server, srv VideoIntelligenceServiceServer) {
-	s.RegisterService(&_VideoIntelligenceService_serviceDesc, srv)
-}
-
-func _VideoIntelligenceService_AnnotateVideo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AnnotateVideoRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(VideoIntelligenceServiceServer).AnnotateVideo(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/google.cloud.videointelligence.v1p1beta1.VideoIntelligenceService/AnnotateVideo",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VideoIntelligenceServiceServer).AnnotateVideo(ctx, req.(*AnnotateVideoRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-var _VideoIntelligenceService_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "google.cloud.videointelligence.v1p1beta1.VideoIntelligenceService",
-	HandlerType: (*VideoIntelligenceServiceServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "AnnotateVideo",
-			Handler:    _VideoIntelligenceService_AnnotateVideo_Handler,
-		},
-	},
-	Streams:  []grpc.StreamDesc{},
-	Metadata: "google/cloud/videointelligence/v1p1beta1/video_intelligence.proto",
 }
 
 func init() {
@@ -1658,4 +1596,84 @@ var fileDescriptor_9e6ec0147460ac77 = []byte{
 	0x4c, 0x60, 0x37, 0xb9, 0x9b, 0x53, 0x9e, 0xd4, 0x4e, 0x77, 0x3b, 0xbb, 0xfb, 0xb1, 0xf2, 0x3f,
 	0x13, 0xd1, 0x97, 0x5c, 0xf4, 0xe5, 0x94, 0xe8, 0xcb, 0xd3, 0xc4, 0xce, 0x59, 0x8e, 0xfb, 0xf6,
 	0xad, 0x2f, 0x03, 0x00, 0x00, 0xff, 0xff, 0x82, 0x99, 0xe4, 0x9b, 0x15, 0x16, 0x00, 0x00,
+}
+
+// Reference imports to suppress errors if they are not otherwise used.
+var _ context.Context
+var _ grpc.ClientConn
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+const _ = grpc.SupportPackageIsVersion4
+
+// VideoIntelligenceServiceClient is the client API for VideoIntelligenceService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type VideoIntelligenceServiceClient interface {
+	// Performs asynchronous video annotation. Progress and results can be
+	// retrieved through the `google.longrunning.Operations` interface.
+	// `Operation.metadata` contains `AnnotateVideoProgress` (progress).
+	// `Operation.response` contains `AnnotateVideoResponse` (results).
+	AnnotateVideo(ctx context.Context, in *AnnotateVideoRequest, opts ...grpc.CallOption) (*longrunning.Operation, error)
+}
+
+type videoIntelligenceServiceClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewVideoIntelligenceServiceClient(cc *grpc.ClientConn) VideoIntelligenceServiceClient {
+	return &videoIntelligenceServiceClient{cc}
+}
+
+func (c *videoIntelligenceServiceClient) AnnotateVideo(ctx context.Context, in *AnnotateVideoRequest, opts ...grpc.CallOption) (*longrunning.Operation, error) {
+	out := new(longrunning.Operation)
+	err := c.cc.Invoke(ctx, "/google.cloud.videointelligence.v1p1beta1.VideoIntelligenceService/AnnotateVideo", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// VideoIntelligenceServiceServer is the server API for VideoIntelligenceService service.
+type VideoIntelligenceServiceServer interface {
+	// Performs asynchronous video annotation. Progress and results can be
+	// retrieved through the `google.longrunning.Operations` interface.
+	// `Operation.metadata` contains `AnnotateVideoProgress` (progress).
+	// `Operation.response` contains `AnnotateVideoResponse` (results).
+	AnnotateVideo(context.Context, *AnnotateVideoRequest) (*longrunning.Operation, error)
+}
+
+func RegisterVideoIntelligenceServiceServer(s *grpc.Server, srv VideoIntelligenceServiceServer) {
+	s.RegisterService(&_VideoIntelligenceService_serviceDesc, srv)
+}
+
+func _VideoIntelligenceService_AnnotateVideo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AnnotateVideoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VideoIntelligenceServiceServer).AnnotateVideo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/google.cloud.videointelligence.v1p1beta1.VideoIntelligenceService/AnnotateVideo",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VideoIntelligenceServiceServer).AnnotateVideo(ctx, req.(*AnnotateVideoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var _VideoIntelligenceService_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "google.cloud.videointelligence.v1p1beta1.VideoIntelligenceService",
+	HandlerType: (*VideoIntelligenceServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "AnnotateVideo",
+			Handler:    _VideoIntelligenceService_AnnotateVideo_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "google/cloud/videointelligence/v1p1beta1/video_intelligence.proto",
 }

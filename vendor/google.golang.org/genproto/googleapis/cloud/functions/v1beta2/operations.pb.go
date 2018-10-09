@@ -78,6 +78,7 @@ func (*OperationMetadataV1Beta2) ProtoMessage()    {}
 func (*OperationMetadataV1Beta2) Descriptor() ([]byte, []int) {
 	return fileDescriptor_25e43fb62395b1f8, []int{0}
 }
+
 func (m *OperationMetadataV1Beta2) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_OperationMetadataV1Beta2.Unmarshal(m, b)
 }
@@ -118,8 +119,8 @@ func (m *OperationMetadataV1Beta2) GetRequest() *any.Any {
 }
 
 func init() {
-	proto.RegisterType((*OperationMetadataV1Beta2)(nil), "google.cloud.functions.v1beta2.OperationMetadataV1Beta2")
 	proto.RegisterEnum("google.cloud.functions.v1beta2.OperationType", OperationType_name, OperationType_value)
+	proto.RegisterType((*OperationMetadataV1Beta2)(nil), "google.cloud.functions.v1beta2.OperationMetadataV1Beta2")
 }
 
 func init() {

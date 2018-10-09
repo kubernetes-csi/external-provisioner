@@ -132,6 +132,7 @@ func (*Instance) ProtoMessage()    {}
 func (*Instance) Descriptor() ([]byte, []int) {
 	return fileDescriptor_3b3f5aa565fc77c9, []int{0}
 }
+
 func (m *Instance) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Instance.Unmarshal(m, b)
 }
@@ -256,8 +257,8 @@ func (m *Instance) GetVmDebugEnabled() bool {
 }
 
 func init() {
-	proto.RegisterType((*Instance)(nil), "google.appengine.v1.Instance")
 	proto.RegisterEnum("google.appengine.v1.Instance_Availability", Instance_Availability_name, Instance_Availability_value)
+	proto.RegisterType((*Instance)(nil), "google.appengine.v1.Instance")
 }
 
 func init() { proto.RegisterFile("google/appengine/v1/instance.proto", fileDescriptor_3b3f5aa565fc77c9) }
