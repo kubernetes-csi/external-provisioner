@@ -17,8 +17,9 @@ limitations under the License.
 package main
 
 import (
-	"flag"
+	goflag "flag"
 	"fmt"
+	flag "github.com/spf13/pflag"
 	"math/rand"
 	"os"
 	"strconv"
@@ -37,6 +38,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"strings"
+
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	utilflag "k8s.io/apiserver/pkg/util/flag"
 )
 
 var (
@@ -48,6 +53,7 @@ var (
 	volumeNamePrefix     = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume")
 	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
 	showVersion          = flag.Bool("version", false, "Show version.")
+	featureGates         map[string]bool
 
 	provisionController *controller.ProvisionController
 	version             = "unknown"
@@ -57,8 +63,16 @@ func init() {
 	var config *rest.Config
 	var err error
 
+	flag.Var(utilflag.NewMapStringBool(&featureGates), "feature-gates", "A set of key=value pairs that describe feature gates for alpha/experimental features. "+
+		"Options are:\n"+strings.Join(utilfeature.DefaultFeatureGate.KnownFeatures(), "\n"))
+
+	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Parse()
 	flag.Set("logtostderr", "true")
+
+	if err := utilfeature.DefaultFeatureGate.SetFromMap(featureGates); err != nil {
+		glog.Fatal(err)
+	}
 
 	if *showVersion {
 		fmt.Println(os.Args[0], version)
