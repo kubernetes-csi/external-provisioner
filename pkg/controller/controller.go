@@ -107,9 +107,6 @@ const (
 var _ controller.Provisioner = &csiProvisioner{}
 
 var (
-	accessType = &csi.VolumeCapability_Mount{
-		Mount: &csi.VolumeCapability_MountVolume{},
-	}
 	// Each provisioner have a identify string to distinguish with others. This
 	// identify string will be added in PV annoations under this key.
 	provisionerIDKey = "storage.kubernetes.io/csiProvisionerIdentity"
@@ -361,8 +358,26 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, err
 	}
 
+	fsType := ""
+	for k, v := range options.Parameters {
+		switch strings.ToLower(k) {
+		case "fstype":
+			fsType = v
+		}
+	}
+	if len(fsType) == 0 {
+		fsType = defaultFSType
+	}
+
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
+
+	accessType := &csi.VolumeCapability_Mount{
+		Mount: &csi.VolumeCapability_MountVolume{
+			FsType:     fsType,
+			MountFlags: options.MountOptions,
+		},
+	}
 
 	// Get access mode
 	volumeCaps := make([]*csi.VolumeCapability, 0)
@@ -502,17 +517,6 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, capErr
 	}
 
-	fsType := ""
-	for k, v := range options.Parameters {
-		switch strings.ToLower(k) {
-		case "fstype":
-			fsType = v
-		}
-	}
-	if len(fsType) == 0 {
-		fsType = defaultFSType
-	}
-
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: pvName,
@@ -520,6 +524,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
 			AccessModes:                   options.PVC.Spec.AccessModes,
+			MountOptions:                  options.MountOptions,
 			Capacity: v1.ResourceList{
 				v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(respCap),
 			},
