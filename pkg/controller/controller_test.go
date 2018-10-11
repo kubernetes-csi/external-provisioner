@@ -1036,6 +1036,62 @@ func TestProvision(t *testing.T) {
 			volWithLessCap: true,
 			expectErr:      true,
 		},
+		"provision with mount options": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+					},
+				},
+				MountOptions: []string{"foo=bar", "baz=qux"},
+				Parameters:   map[string]string{},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+				if len(req.GetVolumeCapabilities()) != 1 {
+					t.Errorf("Incorrect length in volume capabilities")
+				}
+				cap := req.GetVolumeCapabilities()[0]
+				if cap.GetAccessMode() == nil {
+					t.Errorf("Expected access mode to be set")
+				}
+				if cap.GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
+					t.Errorf("Expected multi reade only")
+				}
+				if cap.GetMount() == nil {
+					t.Errorf("Expected access type to be mount")
+				}
+				if !reflect.DeepEqual(cap.GetMount().MountFlags, []string{"foo=bar", "baz=qux"}) {
+					t.Errorf("Expected 2 mount options")
+				}
+			},
+		},
 	}
 
 	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
@@ -1561,5 +1617,43 @@ func TestProvisionWithTopology(t *testing.T) {
 
 	if !volumeNodeAffinitiesEqual(pv.Spec.NodeAffinity, expectedNodeAffinity) {
 		t.Errorf("expected node affinity %v; got: %v", expectedNodeAffinity, pv.Spec.NodeAffinity)
+	}
+}
+
+// TestProvisionWithMountOptions is a test of provisioner integration with mount options.
+func TestProvisionWithMountOptions(t *testing.T) {
+	expectedOptions := []string{"foo=bar", "baz=qux"}
+	const requestBytes = 100
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	clientSet := fakeclientset.NewSimpleClientset()
+	csiClientSet := fakecsiclientset.NewSimpleClientset()
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+
+	out := &csi.CreateVolumeResponse{
+		Volume: &csi.Volume{
+			CapacityBytes: requestBytes,
+			Id:            "test-volume-id",
+		},
+	}
+
+	provisionWithTopologyMockServerSetupExpectations(identityServer, controllerServer)
+	controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+
+	pv, err := csiProvisioner.Provision(controller.VolumeOptions{
+		PVC:          createFakePVC(requestBytes), // dummy PVC
+		MountOptions: expectedOptions,
+	})
+	if err != nil {
+		t.Errorf("got error from Provision call: %v", err)
+	}
+
+	if !reflect.DeepEqual(pv.Spec.MountOptions, expectedOptions) {
+		t.Errorf("expected mount options %v; got: %v", expectedOptions, pv.Spec.MountOptions)
 	}
 }
