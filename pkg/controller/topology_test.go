@@ -146,6 +146,279 @@ func TestGenerateVolumeNodeAffinity(t *testing.T) {
 	}
 }
 
+func TestStatefulSetSpreading(t *testing.T) {
+	nodeLabels := []map[string]string{
+		{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
+		{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"},
+		{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"},
+		{"com.example.csi/zone": "zone4", "com.example.csi/rack": "rackD"},
+	}
+	var topologyKeys []map[string][]string
+	keys := map[string][]string{testDriverName: {"com.example.csi/zone", "com.example.csi/rack"}}
+	for i := 0; i < len(nodeLabels); i++ {
+		topologyKeys = append(topologyKeys, keys)
+	}
+	// Ordering of segments in preferred array is sensitive to statefulset name portion of pvcName.
+	// In the tests below, name of the statefulset: testset is the portion whose hash determines ordering.
+	// If statefulset name is changed, make sure expectedPreferred is kept in sync.
+	// pvc prefix in pvcName does not have any effect on segment ordering
+	testcases := map[string]struct {
+		pvcName           string
+		allowedTopologies []v1.TopologySelectorTerm
+		expectedPreferred []*csi.Topology
+	}{
+		"select index 0 among nodes for pvc with statefulset name:testset and id:1; ignore claimname:testpvcA": {
+			pvcName: "testpvcA-testset-1",
+			expectedPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackB",
+						"com.example.csi/zone": "zone2",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackC",
+						"com.example.csi/zone": "zone3",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackD",
+						"com.example.csi/zone": "zone4",
+					},
+				},
+			},
+		},
+		"select index 0 among nodes for pvc with statefulset name:testset and id:1; ignore claimname:testpvcB": {
+			pvcName: "testpvcB-testset-1",
+			expectedPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackB",
+						"com.example.csi/zone": "zone2",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackC",
+						"com.example.csi/zone": "zone3",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackD",
+						"com.example.csi/zone": "zone4",
+					},
+				},
+			},
+		},
+		"select index 0 among allowedTopologies with single term/multiple requirements for pvc with statefulset name:testset and id:1; ignore claimname:testpvcC": {
+			pvcName: "testpvcC-testset-1",
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackA"},
+						},
+					},
+				},
+			},
+			expectedPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+			},
+		},
+		"select index 1 among nodes for pvc with statefulset name:testset and id:2": {
+			pvcName: "testset-2",
+			expectedPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackB",
+						"com.example.csi/zone": "zone2",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackC",
+						"com.example.csi/zone": "zone3",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackD",
+						"com.example.csi/zone": "zone4",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+			},
+		},
+		"select index 1 among allowedTopologies with multiple terms/multiple requirments for pvc with statefulset name:testset and id:2; ignore claimname:testpvcB": {
+			pvcName: "testpvcB-testset-2",
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone2"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackB"},
+						},
+					},
+				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackA"},
+						},
+					},
+				},
+			},
+			expectedPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackB",
+						"com.example.csi/zone": "zone2",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+			},
+		},
+		"select index 2 among nodes with statefulset name:testset and id:3; ignore claimname:testpvc": {
+			pvcName: "testpvc-testset-3",
+			expectedPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackC",
+						"com.example.csi/zone": "zone3",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackD",
+						"com.example.csi/zone": "zone4",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackB",
+						"com.example.csi/zone": "zone2",
+					},
+				},
+			},
+		},
+		"select index 3 among nodes with statefulset name:testset and id:4; ignore claimname:testpvc": {
+			pvcName: "testpvc-testset-4",
+			expectedPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackD",
+						"com.example.csi/zone": "zone4",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackB",
+						"com.example.csi/zone": "zone2",
+					},
+				},
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackC",
+						"com.example.csi/zone": "zone3",
+					},
+				},
+			},
+		},
+	}
+
+	nodes := buildNodes(nodeLabels)
+	nodeInfos := buildNodeInfos(topologyKeys)
+
+	kubeClient := fakeclientset.NewSimpleClientset(nodes)
+	csiClient := fakecsiclientset.NewSimpleClientset(nodeInfos)
+
+	for name, tc := range testcases {
+		t.Logf("test: %s", name)
+
+		requirements, err := GenerateAccessibilityRequirements(
+			kubeClient,
+			csiClient,
+			testDriverName,
+			tc.pvcName,
+			tc.allowedTopologies,
+			nil,
+		)
+
+		if err != nil {
+			t.Errorf("unexpected error found: %v", err)
+			continue
+		}
+
+		if requirements == nil {
+			t.Errorf("expected preferred to be %v but requirements is nil", tc.expectedPreferred)
+			continue
+		}
+		if requirements.Preferred == nil {
+			t.Errorf("expected preferred to be %v but requirements.Preferred is nil", tc.expectedPreferred)
+			continue
+		}
+		if !helper.Semantic.DeepEqual(requirements.Preferred, tc.expectedPreferred) {
+			t.Errorf("expected preferred requisite %v; got: %v", tc.expectedPreferred, requirements.Preferred)
+		}
+	}
+}
+
 func TestAllowedTopologies(t *testing.T) {
 	// TODO (verult) more AllowedTopologies unit tests
 	testcases := map[string]struct {
@@ -510,6 +783,7 @@ func TestAllowedTopologies(t *testing.T) {
 			nil,           /* kubeClient */
 			nil,           /* csiAPIClient */
 			"test-driver", /* driverName */
+			"testpvc",
 			tc.allowedTopologies,
 			nil /* selectedNode */)
 
@@ -685,6 +959,7 @@ func TestTopologyAggregation(t *testing.T) {
 			kubeClient,
 			csiClient,
 			testDriverName,
+			"testpvc",
 			nil, /* allowedTopologies */
 			selectedNode,
 		)
@@ -853,6 +1128,7 @@ func TestPreferredTopologies(t *testing.T) {
 			kubeClient,
 			csiClient,
 			testDriverName,
+			"testpvc",
 			tc.allowedTopologies,
 			selectedNode,
 		)
