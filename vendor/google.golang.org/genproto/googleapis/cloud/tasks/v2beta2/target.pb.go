@@ -79,6 +79,7 @@ func (*PullTarget) ProtoMessage()    {}
 func (*PullTarget) Descriptor() ([]byte, []int) {
 	return fileDescriptor_ad20693261d55153, []int{0}
 }
+
 func (m *PullTarget) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PullTarget.Unmarshal(m, b)
 }
@@ -135,6 +136,7 @@ func (*PullMessage) ProtoMessage()    {}
 func (*PullMessage) Descriptor() ([]byte, []int) {
 	return fileDescriptor_ad20693261d55153, []int{1}
 }
+
 func (m *PullMessage) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PullMessage.Unmarshal(m, b)
 }
@@ -199,6 +201,7 @@ func (*AppEngineHttpTarget) ProtoMessage()    {}
 func (*AppEngineHttpTarget) Descriptor() ([]byte, []int) {
 	return fileDescriptor_ad20693261d55153, []int{2}
 }
+
 func (m *AppEngineHttpTarget) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AppEngineHttpTarget.Unmarshal(m, b)
 }
@@ -352,6 +355,7 @@ func (*AppEngineHttpRequest) ProtoMessage()    {}
 func (*AppEngineHttpRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_ad20693261d55153, []int{3}
 }
+
 func (m *AppEngineHttpRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AppEngineHttpRequest.Unmarshal(m, b)
 }
@@ -530,6 +534,7 @@ func (*AppEngineRouting) ProtoMessage()    {}
 func (*AppEngineRouting) Descriptor() ([]byte, []int) {
 	return fileDescriptor_ad20693261d55153, []int{4}
 }
+
 func (m *AppEngineRouting) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AppEngineRouting.Unmarshal(m, b)
 }
@@ -577,13 +582,13 @@ func (m *AppEngineRouting) GetHost() string {
 }
 
 func init() {
+	proto.RegisterEnum("google.cloud.tasks.v2beta2.HttpMethod", HttpMethod_name, HttpMethod_value)
 	proto.RegisterType((*PullTarget)(nil), "google.cloud.tasks.v2beta2.PullTarget")
 	proto.RegisterType((*PullMessage)(nil), "google.cloud.tasks.v2beta2.PullMessage")
 	proto.RegisterType((*AppEngineHttpTarget)(nil), "google.cloud.tasks.v2beta2.AppEngineHttpTarget")
 	proto.RegisterType((*AppEngineHttpRequest)(nil), "google.cloud.tasks.v2beta2.AppEngineHttpRequest")
 	proto.RegisterMapType((map[string]string)(nil), "google.cloud.tasks.v2beta2.AppEngineHttpRequest.HeadersEntry")
 	proto.RegisterType((*AppEngineRouting)(nil), "google.cloud.tasks.v2beta2.AppEngineRouting")
-	proto.RegisterEnum("google.cloud.tasks.v2beta2.HttpMethod", HttpMethod_name, HttpMethod_value)
 }
 
 func init() {

@@ -89,6 +89,7 @@ func (*RelatedUrl) ProtoMessage()    {}
 func (*RelatedUrl) Descriptor() ([]byte, []int) {
 	return fileDescriptor_baf5189c00300310, []int{0}
 }
+
 func (m *RelatedUrl) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_RelatedUrl.Unmarshal(m, b)
 }
@@ -122,8 +123,8 @@ func (m *RelatedUrl) GetLabel() string {
 }
 
 func init() {
-	proto.RegisterType((*RelatedUrl)(nil), "grafeas.v1beta1.RelatedUrl")
 	proto.RegisterEnum("grafeas.v1beta1.NoteKind", NoteKind_name, NoteKind_value)
+	proto.RegisterType((*RelatedUrl)(nil), "grafeas.v1beta1.RelatedUrl")
 }
 
 func init() {

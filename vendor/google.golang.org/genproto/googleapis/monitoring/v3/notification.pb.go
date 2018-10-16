@@ -105,6 +105,7 @@ func (*NotificationChannelDescriptor) ProtoMessage()    {}
 func (*NotificationChannelDescriptor) Descriptor() ([]byte, []int) {
 	return fileDescriptor_4399f1e4bc1a75ef, []int{0}
 }
+
 func (m *NotificationChannelDescriptor) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_NotificationChannelDescriptor.Unmarshal(m, b)
 }
@@ -243,6 +244,7 @@ func (*NotificationChannel) ProtoMessage()    {}
 func (*NotificationChannel) Descriptor() ([]byte, []int) {
 	return fileDescriptor_4399f1e4bc1a75ef, []int{1}
 }
+
 func (m *NotificationChannel) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_NotificationChannel.Unmarshal(m, b)
 }
@@ -318,11 +320,11 @@ func (m *NotificationChannel) GetEnabled() *wrappers.BoolValue {
 }
 
 func init() {
+	proto.RegisterEnum("google.monitoring.v3.NotificationChannel_VerificationStatus", NotificationChannel_VerificationStatus_name, NotificationChannel_VerificationStatus_value)
 	proto.RegisterType((*NotificationChannelDescriptor)(nil), "google.monitoring.v3.NotificationChannelDescriptor")
 	proto.RegisterType((*NotificationChannel)(nil), "google.monitoring.v3.NotificationChannel")
 	proto.RegisterMapType((map[string]string)(nil), "google.monitoring.v3.NotificationChannel.LabelsEntry")
 	proto.RegisterMapType((map[string]string)(nil), "google.monitoring.v3.NotificationChannel.UserLabelsEntry")
-	proto.RegisterEnum("google.monitoring.v3.NotificationChannel_VerificationStatus", NotificationChannel_VerificationStatus_name, NotificationChannel_VerificationStatus_value)
 }
 
 func init() {

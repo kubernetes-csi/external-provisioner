@@ -120,6 +120,7 @@ func (*Type) ProtoMessage()    {}
 func (*Type) Descriptor() ([]byte, []int) {
 	return fileDescriptor_dc1f2442a7aeba2a, []int{0}
 }
+
 func (m *Type) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Type.Unmarshal(m, b)
 }
@@ -179,6 +180,7 @@ func (*StructType) ProtoMessage()    {}
 func (*StructType) Descriptor() ([]byte, []int) {
 	return fileDescriptor_dc1f2442a7aeba2a, []int{1}
 }
+
 func (m *StructType) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_StructType.Unmarshal(m, b)
 }
@@ -227,6 +229,7 @@ func (*StructType_Field) ProtoMessage()    {}
 func (*StructType_Field) Descriptor() ([]byte, []int) {
 	return fileDescriptor_dc1f2442a7aeba2a, []int{1, 0}
 }
+
 func (m *StructType_Field) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_StructType_Field.Unmarshal(m, b)
 }
@@ -260,10 +263,10 @@ func (m *StructType_Field) GetType() *Type {
 }
 
 func init() {
+	proto.RegisterEnum("google.spanner.v1.TypeCode", TypeCode_name, TypeCode_value)
 	proto.RegisterType((*Type)(nil), "google.spanner.v1.Type")
 	proto.RegisterType((*StructType)(nil), "google.spanner.v1.StructType")
 	proto.RegisterType((*StructType_Field)(nil), "google.spanner.v1.StructType.Field")
-	proto.RegisterEnum("google.spanner.v1.TypeCode", TypeCode_name, TypeCode_value)
 }
 
 func init() { proto.RegisterFile("google/spanner/v1/type.proto", fileDescriptor_dc1f2442a7aeba2a) }

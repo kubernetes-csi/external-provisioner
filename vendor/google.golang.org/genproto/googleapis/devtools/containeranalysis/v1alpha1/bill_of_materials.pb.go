@@ -66,6 +66,7 @@ func (*PackageManager) ProtoMessage()    {}
 func (*PackageManager) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7bcf14fe966f6fd8, []int{0}
 }
+
 func (m *PackageManager) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PackageManager.Unmarshal(m, b)
 }
@@ -113,6 +114,7 @@ func (*PackageManager_Distribution) ProtoMessage()    {}
 func (*PackageManager_Distribution) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7bcf14fe966f6fd8, []int{0, 0}
 }
+
 func (m *PackageManager_Distribution) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PackageManager_Distribution.Unmarshal(m, b)
 }
@@ -195,6 +197,7 @@ func (*PackageManager_Location) ProtoMessage()    {}
 func (*PackageManager_Location) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7bcf14fe966f6fd8, []int{0, 1}
 }
+
 func (m *PackageManager_Location) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PackageManager_Location.Unmarshal(m, b)
 }
@@ -253,6 +256,7 @@ func (*PackageManager_Package) ProtoMessage()    {}
 func (*PackageManager_Package) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7bcf14fe966f6fd8, []int{0, 2}
 }
+
 func (m *PackageManager_Package) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PackageManager_Package.Unmarshal(m, b)
 }
@@ -304,6 +308,7 @@ func (*PackageManager_Installation) ProtoMessage()    {}
 func (*PackageManager_Installation) Descriptor() ([]byte, []int) {
 	return fileDescriptor_7bcf14fe966f6fd8, []int{0, 3}
 }
+
 func (m *PackageManager_Installation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PackageManager_Installation.Unmarshal(m, b)
 }
@@ -337,12 +342,12 @@ func (m *PackageManager_Installation) GetLocation() []*PackageManager_Location {
 }
 
 func init() {
+	proto.RegisterEnum("google.devtools.containeranalysis.v1alpha1.PackageManager_Architecture", PackageManager_Architecture_name, PackageManager_Architecture_value)
 	proto.RegisterType((*PackageManager)(nil), "google.devtools.containeranalysis.v1alpha1.PackageManager")
 	proto.RegisterType((*PackageManager_Distribution)(nil), "google.devtools.containeranalysis.v1alpha1.PackageManager.Distribution")
 	proto.RegisterType((*PackageManager_Location)(nil), "google.devtools.containeranalysis.v1alpha1.PackageManager.Location")
 	proto.RegisterType((*PackageManager_Package)(nil), "google.devtools.containeranalysis.v1alpha1.PackageManager.Package")
 	proto.RegisterType((*PackageManager_Installation)(nil), "google.devtools.containeranalysis.v1alpha1.PackageManager.Installation")
-	proto.RegisterEnum("google.devtools.containeranalysis.v1alpha1.PackageManager_Architecture", PackageManager_Architecture_name, PackageManager_Architecture_value)
 }
 
 func init() {

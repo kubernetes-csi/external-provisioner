@@ -71,6 +71,7 @@ func (*LabelDescriptor) ProtoMessage()    {}
 func (*LabelDescriptor) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f372a463e25ba151, []int{0}
 }
+
 func (m *LabelDescriptor) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_LabelDescriptor.Unmarshal(m, b)
 }
@@ -111,8 +112,8 @@ func (m *LabelDescriptor) GetDescription() string {
 }
 
 func init() {
-	proto.RegisterType((*LabelDescriptor)(nil), "google.api.LabelDescriptor")
 	proto.RegisterEnum("google.api.LabelDescriptor_ValueType", LabelDescriptor_ValueType_name, LabelDescriptor_ValueType_value)
+	proto.RegisterType((*LabelDescriptor)(nil), "google.api.LabelDescriptor")
 }
 
 func init() { proto.RegisterFile("google/api/label.proto", fileDescriptor_f372a463e25ba151) }

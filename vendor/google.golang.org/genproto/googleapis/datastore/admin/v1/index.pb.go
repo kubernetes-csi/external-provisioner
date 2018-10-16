@@ -173,6 +173,7 @@ func (*Index) ProtoMessage()    {}
 func (*Index) Descriptor() ([]byte, []int) {
 	return fileDescriptor_809cc5775e1cdeb3, []int{0}
 }
+
 func (m *Index) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Index.Unmarshal(m, b)
 }
@@ -252,6 +253,7 @@ func (*Index_IndexedProperty) ProtoMessage()    {}
 func (*Index_IndexedProperty) Descriptor() ([]byte, []int) {
 	return fileDescriptor_809cc5775e1cdeb3, []int{0, 0}
 }
+
 func (m *Index_IndexedProperty) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Index_IndexedProperty.Unmarshal(m, b)
 }
@@ -285,11 +287,11 @@ func (m *Index_IndexedProperty) GetDirection() Index_Direction {
 }
 
 func init() {
-	proto.RegisterType((*Index)(nil), "google.datastore.admin.v1.Index")
-	proto.RegisterType((*Index_IndexedProperty)(nil), "google.datastore.admin.v1.Index.IndexedProperty")
 	proto.RegisterEnum("google.datastore.admin.v1.Index_AncestorMode", Index_AncestorMode_name, Index_AncestorMode_value)
 	proto.RegisterEnum("google.datastore.admin.v1.Index_Direction", Index_Direction_name, Index_Direction_value)
 	proto.RegisterEnum("google.datastore.admin.v1.Index_State", Index_State_name, Index_State_value)
+	proto.RegisterType((*Index)(nil), "google.datastore.admin.v1.Index")
+	proto.RegisterType((*Index_IndexedProperty)(nil), "google.datastore.admin.v1.Index.IndexedProperty")
 }
 
 func init() {

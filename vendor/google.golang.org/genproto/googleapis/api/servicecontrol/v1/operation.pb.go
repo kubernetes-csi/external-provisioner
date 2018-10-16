@@ -125,6 +125,7 @@ func (*Operation) ProtoMessage()    {}
 func (*Operation) Descriptor() ([]byte, []int) {
 	return fileDescriptor_afd5d09de2965ad3, []int{0}
 }
+
 func (m *Operation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Operation.Unmarshal(m, b)
 }
@@ -207,9 +208,9 @@ func (m *Operation) GetImportance() Operation_Importance {
 }
 
 func init() {
+	proto.RegisterEnum("google.api.servicecontrol.v1.Operation_Importance", Operation_Importance_name, Operation_Importance_value)
 	proto.RegisterType((*Operation)(nil), "google.api.servicecontrol.v1.Operation")
 	proto.RegisterMapType((map[string]string)(nil), "google.api.servicecontrol.v1.Operation.LabelsEntry")
-	proto.RegisterEnum("google.api.servicecontrol.v1.Operation_Importance", Operation_Importance_name, Operation_Importance_value)
 }
 
 func init() {

@@ -156,6 +156,7 @@ func (*Finding) ProtoMessage()    {}
 func (*Finding) Descriptor() ([]byte, []int) {
 	return fileDescriptor_811918cc7b338327, []int{0}
 }
+
 func (m *Finding) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Finding.Unmarshal(m, b)
 }
@@ -273,8 +274,8 @@ func (m *Finding) GetXss() *Xss {
 }
 
 func init() {
-	proto.RegisterType((*Finding)(nil), "google.cloud.websecurityscanner.v1alpha.Finding")
 	proto.RegisterEnum("google.cloud.websecurityscanner.v1alpha.Finding_FindingType", Finding_FindingType_name, Finding_FindingType_value)
+	proto.RegisterType((*Finding)(nil), "google.cloud.websecurityscanner.v1alpha.Finding")
 }
 
 func init() {

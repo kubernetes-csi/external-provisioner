@@ -17,8 +17,9 @@ limitations under the License.
 package main
 
 import (
-	"flag"
+	goflag "flag"
 	"fmt"
+	flag "github.com/spf13/pflag"
 	"math/rand"
 	"os"
 	"strconv"
@@ -37,17 +38,23 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"strings"
+
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	utilflag "k8s.io/apiserver/pkg/util/flag"
 )
 
 var (
 	provisioner          = flag.String("provisioner", "", "Name of the provisioner. The provisioner will only provision volumes for claims that request a StorageClass with a provisioner field set equal to this name. If omitted, CSI driver name is used.")
 	master               = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
 	kubeconfig           = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
-	csiEndpoint          = flag.String("csi-address", "/run/csi/socket", "The gRPC endpoint for Target CSI Volume")
+	csiEndpoint          = flag.String("csi-address", "/run/csi/socket", "The gRPC endpoint for Target CSI Volume.")
 	connectionTimeout    = flag.Duration("connection-timeout", 10*time.Second, "Timeout for waiting for CSI driver socket.")
-	volumeNamePrefix     = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume")
+	volumeNamePrefix     = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume.")
 	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
 	showVersion          = flag.Bool("version", false, "Show version.")
+	enableLeaderElection = flag.Bool("enable-leader-election", false, "Enables leader election. If leader election is enabled, additional RBAC rules are required. Please refer to the Kubernetes CSI documentation for instructions on setting up these RBAC rules.")
+	featureGates         map[string]bool
 
 	provisionController *controller.ProvisionController
 	version             = "unknown"
@@ -57,8 +64,16 @@ func init() {
 	var config *rest.Config
 	var err error
 
+	flag.Var(utilflag.NewMapStringBool(&featureGates), "feature-gates", "A set of key=value pairs that describe feature gates for alpha/experimental features. "+
+		"Options are:\n"+strings.Join(utilfeature.DefaultFeatureGate.KnownFeatures(), "\n"))
+
+	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Parse()
 	flag.Set("logtostderr", "true")
+
+	if err := utilfeature.DefaultFeatureGate.SetFromMap(featureGates); err != nil {
+		glog.Fatal(err)
+	}
 
 	if *showVersion {
 		fmt.Println(os.Args[0], version)
@@ -139,6 +154,7 @@ func init() {
 		*provisioner,
 		csiProvisioner,
 		serverVersion.GitVersion,
+		controller.LeaderElection(*enableLeaderElection),
 	)
 }
 

@@ -184,6 +184,7 @@ func (*Instance) ProtoMessage()    {}
 func (*Instance) Descriptor() ([]byte, []int) {
 	return fileDescriptor_712127d2a900984d, []int{0}
 }
+
 func (m *Instance) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Instance.Unmarshal(m, b)
 }
@@ -272,6 +273,7 @@ func (*Cluster) ProtoMessage()    {}
 func (*Cluster) Descriptor() ([]byte, []int) {
 	return fileDescriptor_712127d2a900984d, []int{1}
 }
+
 func (m *Cluster) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Cluster.Unmarshal(m, b)
 }
@@ -361,6 +363,7 @@ func (*AppProfile) ProtoMessage()    {}
 func (*AppProfile) Descriptor() ([]byte, []int) {
 	return fileDescriptor_712127d2a900984d, []int{2}
 }
+
 func (m *AppProfile) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AppProfile.Unmarshal(m, b)
 }
@@ -527,6 +530,7 @@ func (*AppProfile_MultiClusterRoutingUseAny) ProtoMessage()    {}
 func (*AppProfile_MultiClusterRoutingUseAny) Descriptor() ([]byte, []int) {
 	return fileDescriptor_712127d2a900984d, []int{2, 0}
 }
+
 func (m *AppProfile_MultiClusterRoutingUseAny) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AppProfile_MultiClusterRoutingUseAny.Unmarshal(m, b)
 }
@@ -566,6 +570,7 @@ func (*AppProfile_SingleClusterRouting) ProtoMessage()    {}
 func (*AppProfile_SingleClusterRouting) Descriptor() ([]byte, []int) {
 	return fileDescriptor_712127d2a900984d, []int{2, 1}
 }
+
 func (m *AppProfile_SingleClusterRouting) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_AppProfile_SingleClusterRouting.Unmarshal(m, b)
 }
@@ -599,15 +604,15 @@ func (m *AppProfile_SingleClusterRouting) GetAllowTransactionalWrites() bool {
 }
 
 func init() {
+	proto.RegisterEnum("google.bigtable.admin.v2.Instance_State", Instance_State_name, Instance_State_value)
+	proto.RegisterEnum("google.bigtable.admin.v2.Instance_Type", Instance_Type_name, Instance_Type_value)
+	proto.RegisterEnum("google.bigtable.admin.v2.Cluster_State", Cluster_State_name, Cluster_State_value)
 	proto.RegisterType((*Instance)(nil), "google.bigtable.admin.v2.Instance")
 	proto.RegisterMapType((map[string]string)(nil), "google.bigtable.admin.v2.Instance.LabelsEntry")
 	proto.RegisterType((*Cluster)(nil), "google.bigtable.admin.v2.Cluster")
 	proto.RegisterType((*AppProfile)(nil), "google.bigtable.admin.v2.AppProfile")
 	proto.RegisterType((*AppProfile_MultiClusterRoutingUseAny)(nil), "google.bigtable.admin.v2.AppProfile.MultiClusterRoutingUseAny")
 	proto.RegisterType((*AppProfile_SingleClusterRouting)(nil), "google.bigtable.admin.v2.AppProfile.SingleClusterRouting")
-	proto.RegisterEnum("google.bigtable.admin.v2.Instance_State", Instance_State_name, Instance_State_value)
-	proto.RegisterEnum("google.bigtable.admin.v2.Instance_Type", Instance_Type_name, Instance_Type_value)
-	proto.RegisterEnum("google.bigtable.admin.v2.Cluster_State", Cluster_State_name, Cluster_State_value)
 }
 
 func init() {

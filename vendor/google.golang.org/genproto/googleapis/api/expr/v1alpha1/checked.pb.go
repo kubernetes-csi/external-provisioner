@@ -157,6 +157,7 @@ func (*CheckedExpr) ProtoMessage()    {}
 func (*CheckedExpr) Descriptor() ([]byte, []int) {
 	return fileDescriptor_30a741de3e790389, []int{0}
 }
+
 func (m *CheckedExpr) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CheckedExpr.Unmarshal(m, b)
 }
@@ -233,6 +234,7 @@ func (*Type) ProtoMessage()    {}
 func (*Type) Descriptor() ([]byte, []int) {
 	return fileDescriptor_30a741de3e790389, []int{1}
 }
+
 func (m *Type) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Type.Unmarshal(m, b)
 }
@@ -701,6 +703,7 @@ func (*Type_ListType) ProtoMessage()    {}
 func (*Type_ListType) Descriptor() ([]byte, []int) {
 	return fileDescriptor_30a741de3e790389, []int{1, 0}
 }
+
 func (m *Type_ListType) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Type_ListType.Unmarshal(m, b)
 }
@@ -743,6 +746,7 @@ func (*Type_MapType) ProtoMessage()    {}
 func (*Type_MapType) Descriptor() ([]byte, []int) {
 	return fileDescriptor_30a741de3e790389, []int{1, 1}
 }
+
 func (m *Type_MapType) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Type_MapType.Unmarshal(m, b)
 }
@@ -792,6 +796,7 @@ func (*Type_FunctionType) ProtoMessage()    {}
 func (*Type_FunctionType) Descriptor() ([]byte, []int) {
 	return fileDescriptor_30a741de3e790389, []int{1, 2}
 }
+
 func (m *Type_FunctionType) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Type_FunctionType.Unmarshal(m, b)
 }
@@ -841,6 +846,7 @@ func (*Type_AbstractType) ProtoMessage()    {}
 func (*Type_AbstractType) Descriptor() ([]byte, []int) {
 	return fileDescriptor_30a741de3e790389, []int{1, 3}
 }
+
 func (m *Type_AbstractType) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Type_AbstractType.Unmarshal(m, b)
 }
@@ -906,6 +912,7 @@ func (*Decl) ProtoMessage()    {}
 func (*Decl) Descriptor() ([]byte, []int) {
 	return fileDescriptor_30a741de3e790389, []int{2}
 }
+
 func (m *Decl) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Decl.Unmarshal(m, b)
 }
@@ -1067,6 +1074,7 @@ func (*Decl_IdentDecl) ProtoMessage()    {}
 func (*Decl_IdentDecl) Descriptor() ([]byte, []int) {
 	return fileDescriptor_30a741de3e790389, []int{2, 0}
 }
+
 func (m *Decl_IdentDecl) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Decl_IdentDecl.Unmarshal(m, b)
 }
@@ -1126,6 +1134,7 @@ func (*Decl_FunctionDecl) ProtoMessage()    {}
 func (*Decl_FunctionDecl) Descriptor() ([]byte, []int) {
 	return fileDescriptor_30a741de3e790389, []int{2, 1}
 }
+
 func (m *Decl_FunctionDecl) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Decl_FunctionDecl.Unmarshal(m, b)
 }
@@ -1208,6 +1217,7 @@ func (*Decl_FunctionDecl_Overload) ProtoMessage()    {}
 func (*Decl_FunctionDecl_Overload) Descriptor() ([]byte, []int) {
 	return fileDescriptor_30a741de3e790389, []int{2, 1, 0}
 }
+
 func (m *Decl_FunctionDecl_Overload) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Decl_FunctionDecl_Overload.Unmarshal(m, b)
 }
@@ -1296,6 +1306,7 @@ func (*Reference) ProtoMessage()    {}
 func (*Reference) Descriptor() ([]byte, []int) {
 	return fileDescriptor_30a741de3e790389, []int{3}
 }
+
 func (m *Reference) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Reference.Unmarshal(m, b)
 }
@@ -1336,6 +1347,8 @@ func (m *Reference) GetValue() *Constant {
 }
 
 func init() {
+	proto.RegisterEnum("google.api.expr.v1alpha1.Type_PrimitiveType", Type_PrimitiveType_name, Type_PrimitiveType_value)
+	proto.RegisterEnum("google.api.expr.v1alpha1.Type_WellKnownType", Type_WellKnownType_name, Type_WellKnownType_value)
 	proto.RegisterType((*CheckedExpr)(nil), "google.api.expr.v1alpha1.CheckedExpr")
 	proto.RegisterMapType((map[int64]*Reference)(nil), "google.api.expr.v1alpha1.CheckedExpr.ReferenceMapEntry")
 	proto.RegisterMapType((map[int64]*Type)(nil), "google.api.expr.v1alpha1.CheckedExpr.TypeMapEntry")
@@ -1349,8 +1362,6 @@ func init() {
 	proto.RegisterType((*Decl_FunctionDecl)(nil), "google.api.expr.v1alpha1.Decl.FunctionDecl")
 	proto.RegisterType((*Decl_FunctionDecl_Overload)(nil), "google.api.expr.v1alpha1.Decl.FunctionDecl.Overload")
 	proto.RegisterType((*Reference)(nil), "google.api.expr.v1alpha1.Reference")
-	proto.RegisterEnum("google.api.expr.v1alpha1.Type_PrimitiveType", Type_PrimitiveType_name, Type_PrimitiveType_value)
-	proto.RegisterEnum("google.api.expr.v1alpha1.Type_WellKnownType", Type_WellKnownType_name, Type_WellKnownType_value)
 }
 
 func init() {
