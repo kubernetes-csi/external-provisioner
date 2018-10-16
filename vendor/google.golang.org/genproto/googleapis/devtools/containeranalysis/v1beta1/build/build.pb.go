@@ -72,6 +72,7 @@ func (*Build) ProtoMessage()    {}
 func (*Build) Descriptor() ([]byte, []int) {
 	return fileDescriptor_040ca5655a0ae0a6, []int{0}
 }
+
 func (m *Build) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Build.Unmarshal(m, b)
 }
@@ -142,6 +143,7 @@ func (*BuildSignature) ProtoMessage()    {}
 func (*BuildSignature) Descriptor() ([]byte, []int) {
 	return fileDescriptor_040ca5655a0ae0a6, []int{1}
 }
+
 func (m *BuildSignature) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_BuildSignature.Unmarshal(m, b)
 }
@@ -215,6 +217,7 @@ func (*Details) ProtoMessage()    {}
 func (*Details) Descriptor() ([]byte, []int) {
 	return fileDescriptor_040ca5655a0ae0a6, []int{2}
 }
+
 func (m *Details) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Details.Unmarshal(m, b)
 }
@@ -248,10 +251,10 @@ func (m *Details) GetProvenanceBytes() string {
 }
 
 func init() {
+	proto.RegisterEnum("grafeas.v1beta1.build.BuildSignature_KeyType", BuildSignature_KeyType_name, BuildSignature_KeyType_value)
 	proto.RegisterType((*Build)(nil), "grafeas.v1beta1.build.Build")
 	proto.RegisterType((*BuildSignature)(nil), "grafeas.v1beta1.build.BuildSignature")
 	proto.RegisterType((*Details)(nil), "grafeas.v1beta1.build.Details")
-	proto.RegisterEnum("grafeas.v1beta1.build.BuildSignature_KeyType", BuildSignature_KeyType_name, BuildSignature_KeyType_value)
 }
 
 func init() {

@@ -139,6 +139,7 @@ func (*FieldOperationMetadata) ProtoMessage()    {}
 func (*FieldOperationMetadata) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f946ae2a57533608, []int{0}
 }
+
 func (m *FieldOperationMetadata) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_FieldOperationMetadata.Unmarshal(m, b)
 }
@@ -225,6 +226,7 @@ func (*FieldOperationMetadata_IndexConfigDelta) ProtoMessage()    {}
 func (*FieldOperationMetadata_IndexConfigDelta) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f946ae2a57533608, []int{0, 0}
 }
+
 func (m *FieldOperationMetadata_IndexConfigDelta) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_FieldOperationMetadata_IndexConfigDelta.Unmarshal(m, b)
 }
@@ -276,6 +278,7 @@ func (*Progress) ProtoMessage()    {}
 func (*Progress) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f946ae2a57533608, []int{1}
 }
+
 func (m *Progress) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Progress.Unmarshal(m, b)
 }
@@ -309,11 +312,11 @@ func (m *Progress) GetCompletedWork() int64 {
 }
 
 func init() {
+	proto.RegisterEnum("google.firestore.admin.v1beta2.OperationState", OperationState_name, OperationState_value)
+	proto.RegisterEnum("google.firestore.admin.v1beta2.FieldOperationMetadata_IndexConfigDelta_ChangeType", FieldOperationMetadata_IndexConfigDelta_ChangeType_name, FieldOperationMetadata_IndexConfigDelta_ChangeType_value)
 	proto.RegisterType((*FieldOperationMetadata)(nil), "google.firestore.admin.v1beta2.FieldOperationMetadata")
 	proto.RegisterType((*FieldOperationMetadata_IndexConfigDelta)(nil), "google.firestore.admin.v1beta2.FieldOperationMetadata.IndexConfigDelta")
 	proto.RegisterType((*Progress)(nil), "google.firestore.admin.v1beta2.Progress")
-	proto.RegisterEnum("google.firestore.admin.v1beta2.OperationState", OperationState_name, OperationState_value)
-	proto.RegisterEnum("google.firestore.admin.v1beta2.FieldOperationMetadata_IndexConfigDelta_ChangeType", FieldOperationMetadata_IndexConfigDelta_ChangeType_name, FieldOperationMetadata_IndexConfigDelta_ChangeType_value)
 }
 
 func init() {

@@ -121,6 +121,7 @@ func (*VoiceSelectionParams) ProtoMessage()    {}
 func (*VoiceSelectionParams) Descriptor() ([]byte, []int) {
 	return fileDescriptor_80617ff5f6b0e1c6, []int{0}
 }
+
 func (m *VoiceSelectionParams) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_VoiceSelectionParams.Unmarshal(m, b)
 }
@@ -190,6 +191,7 @@ func (*SynthesizeSpeechConfig) ProtoMessage()    {}
 func (*SynthesizeSpeechConfig) Descriptor() ([]byte, []int) {
 	return fileDescriptor_80617ff5f6b0e1c6, []int{1}
 }
+
 func (m *SynthesizeSpeechConfig) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_SynthesizeSpeechConfig.Unmarshal(m, b)
 }
@@ -266,6 +268,7 @@ func (*OutputAudioConfig) ProtoMessage()    {}
 func (*OutputAudioConfig) Descriptor() ([]byte, []int) {
 	return fileDescriptor_80617ff5f6b0e1c6, []int{2}
 }
+
 func (m *OutputAudioConfig) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_OutputAudioConfig.Unmarshal(m, b)
 }
@@ -306,11 +309,11 @@ func (m *OutputAudioConfig) GetSynthesizeSpeechConfig() *SynthesizeSpeechConfig 
 }
 
 func init() {
+	proto.RegisterEnum("google.cloud.dialogflow.v2beta1.SsmlVoiceGender", SsmlVoiceGender_name, SsmlVoiceGender_value)
+	proto.RegisterEnum("google.cloud.dialogflow.v2beta1.OutputAudioEncoding", OutputAudioEncoding_name, OutputAudioEncoding_value)
 	proto.RegisterType((*VoiceSelectionParams)(nil), "google.cloud.dialogflow.v2beta1.VoiceSelectionParams")
 	proto.RegisterType((*SynthesizeSpeechConfig)(nil), "google.cloud.dialogflow.v2beta1.SynthesizeSpeechConfig")
 	proto.RegisterType((*OutputAudioConfig)(nil), "google.cloud.dialogflow.v2beta1.OutputAudioConfig")
-	proto.RegisterEnum("google.cloud.dialogflow.v2beta1.SsmlVoiceGender", SsmlVoiceGender_name, SsmlVoiceGender_value)
-	proto.RegisterEnum("google.cloud.dialogflow.v2beta1.OutputAudioEncoding", OutputAudioEncoding_name, OutputAudioEncoding_value)
 }
 
 func init() {

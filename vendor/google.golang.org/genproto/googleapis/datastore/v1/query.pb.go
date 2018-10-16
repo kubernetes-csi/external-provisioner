@@ -240,6 +240,7 @@ func (*EntityResult) ProtoMessage()    {}
 func (*EntityResult) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{0}
 }
+
 func (m *EntityResult) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_EntityResult.Unmarshal(m, b)
 }
@@ -321,6 +322,7 @@ func (*Query) ProtoMessage()    {}
 func (*Query) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{1}
 }
+
 func (m *Query) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Query.Unmarshal(m, b)
 }
@@ -417,6 +419,7 @@ func (*KindExpression) ProtoMessage()    {}
 func (*KindExpression) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{2}
 }
+
 func (m *KindExpression) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_KindExpression.Unmarshal(m, b)
 }
@@ -458,6 +461,7 @@ func (*PropertyReference) ProtoMessage()    {}
 func (*PropertyReference) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{3}
 }
+
 func (m *PropertyReference) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PropertyReference.Unmarshal(m, b)
 }
@@ -498,6 +502,7 @@ func (*Projection) ProtoMessage()    {}
 func (*Projection) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{4}
 }
+
 func (m *Projection) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Projection.Unmarshal(m, b)
 }
@@ -540,6 +545,7 @@ func (*PropertyOrder) ProtoMessage()    {}
 func (*PropertyOrder) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{5}
 }
+
 func (m *PropertyOrder) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PropertyOrder.Unmarshal(m, b)
 }
@@ -591,6 +597,7 @@ func (*Filter) ProtoMessage()    {}
 func (*Filter) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{6}
 }
+
 func (m *Filter) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Filter.Unmarshal(m, b)
 }
@@ -738,6 +745,7 @@ func (*CompositeFilter) ProtoMessage()    {}
 func (*CompositeFilter) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{7}
 }
+
 func (m *CompositeFilter) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CompositeFilter.Unmarshal(m, b)
 }
@@ -789,6 +797,7 @@ func (*PropertyFilter) ProtoMessage()    {}
 func (*PropertyFilter) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{8}
 }
+
 func (m *PropertyFilter) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PropertyFilter.Unmarshal(m, b)
 }
@@ -861,6 +870,7 @@ func (*GqlQuery) ProtoMessage()    {}
 func (*GqlQuery) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{9}
 }
+
 func (m *GqlQuery) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GqlQuery.Unmarshal(m, b)
 }
@@ -926,6 +936,7 @@ func (*GqlQueryParameter) ProtoMessage()    {}
 func (*GqlQueryParameter) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{10}
 }
+
 func (m *GqlQueryParameter) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GqlQueryParameter.Unmarshal(m, b)
 }
@@ -1087,6 +1098,7 @@ func (*QueryResultBatch) ProtoMessage()    {}
 func (*QueryResultBatch) Descriptor() ([]byte, []int) {
 	return fileDescriptor_927b394a72d2bc0d, []int{11}
 }
+
 func (m *QueryResultBatch) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_QueryResultBatch.Unmarshal(m, b)
 }
@@ -1155,6 +1167,11 @@ func (m *QueryResultBatch) GetSnapshotVersion() int64 {
 }
 
 func init() {
+	proto.RegisterEnum("google.datastore.v1.EntityResult_ResultType", EntityResult_ResultType_name, EntityResult_ResultType_value)
+	proto.RegisterEnum("google.datastore.v1.PropertyOrder_Direction", PropertyOrder_Direction_name, PropertyOrder_Direction_value)
+	proto.RegisterEnum("google.datastore.v1.CompositeFilter_Operator", CompositeFilter_Operator_name, CompositeFilter_Operator_value)
+	proto.RegisterEnum("google.datastore.v1.PropertyFilter_Operator", PropertyFilter_Operator_name, PropertyFilter_Operator_value)
+	proto.RegisterEnum("google.datastore.v1.QueryResultBatch_MoreResultsType", QueryResultBatch_MoreResultsType_name, QueryResultBatch_MoreResultsType_value)
 	proto.RegisterType((*EntityResult)(nil), "google.datastore.v1.EntityResult")
 	proto.RegisterType((*Query)(nil), "google.datastore.v1.Query")
 	proto.RegisterType((*KindExpression)(nil), "google.datastore.v1.KindExpression")
@@ -1168,11 +1185,6 @@ func init() {
 	proto.RegisterMapType((map[string]*GqlQueryParameter)(nil), "google.datastore.v1.GqlQuery.NamedBindingsEntry")
 	proto.RegisterType((*GqlQueryParameter)(nil), "google.datastore.v1.GqlQueryParameter")
 	proto.RegisterType((*QueryResultBatch)(nil), "google.datastore.v1.QueryResultBatch")
-	proto.RegisterEnum("google.datastore.v1.EntityResult_ResultType", EntityResult_ResultType_name, EntityResult_ResultType_value)
-	proto.RegisterEnum("google.datastore.v1.PropertyOrder_Direction", PropertyOrder_Direction_name, PropertyOrder_Direction_value)
-	proto.RegisterEnum("google.datastore.v1.CompositeFilter_Operator", CompositeFilter_Operator_name, CompositeFilter_Operator_value)
-	proto.RegisterEnum("google.datastore.v1.PropertyFilter_Operator", PropertyFilter_Operator_name, PropertyFilter_Operator_value)
-	proto.RegisterEnum("google.datastore.v1.QueryResultBatch_MoreResultsType", QueryResultBatch_MoreResultsType_name, QueryResultBatch_MoreResultsType_value)
 }
 
 func init() { proto.RegisterFile("google/datastore/v1/query.proto", fileDescriptor_927b394a72d2bc0d) }

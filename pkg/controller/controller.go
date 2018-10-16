@@ -50,6 +50,9 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
+
+	"github.com/kubernetes-csi/external-provisioner/pkg/features"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 )
 
 const (
@@ -412,7 +415,8 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		req.VolumeContentSource = volumeContentSource
 	}
 
-	if driverState.capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) {
+	if driverState.capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) &&
+		utilfeature.DefaultFeatureGate.Enabled(features.Topology) {
 		requirements, err := GenerateAccessibilityRequirements(
 			p.client,
 			p.csiAPIClient,
@@ -539,7 +543,8 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		},
 	}
 
-	if driverState.capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) {
+	if driverState.capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) &&
+		utilfeature.DefaultFeatureGate.Enabled(features.Topology) {
 		pv.Spec.NodeAffinity = GenerateVolumeNodeAffinity(rep.Volume.AccessibleTopology)
 	}
 

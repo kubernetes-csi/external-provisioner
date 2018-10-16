@@ -118,6 +118,7 @@ func (*Discovery) ProtoMessage()    {}
 func (*Discovery) Descriptor() ([]byte, []int) {
 	return fileDescriptor_6ec5519deb85e465, []int{0}
 }
+
 func (m *Discovery) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Discovery.Unmarshal(m, b)
 }
@@ -158,6 +159,7 @@ func (*Details) ProtoMessage()    {}
 func (*Details) Descriptor() ([]byte, []int) {
 	return fileDescriptor_6ec5519deb85e465, []int{1}
 }
+
 func (m *Details) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Details.Unmarshal(m, b)
 }
@@ -206,6 +208,7 @@ func (*Discovered) ProtoMessage()    {}
 func (*Discovered) Descriptor() ([]byte, []int) {
 	return fileDescriptor_6ec5519deb85e465, []int{2}
 }
+
 func (m *Discovered) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Discovered.Unmarshal(m, b)
 }
@@ -253,11 +256,11 @@ func (m *Discovered) GetAnalysisStatusError() *status.Status {
 }
 
 func init() {
+	proto.RegisterEnum("grafeas.v1beta1.discovery.Discovered_ContinuousAnalysis", Discovered_ContinuousAnalysis_name, Discovered_ContinuousAnalysis_value)
+	proto.RegisterEnum("grafeas.v1beta1.discovery.Discovered_AnalysisStatus", Discovered_AnalysisStatus_name, Discovered_AnalysisStatus_value)
 	proto.RegisterType((*Discovery)(nil), "grafeas.v1beta1.discovery.Discovery")
 	proto.RegisterType((*Details)(nil), "grafeas.v1beta1.discovery.Details")
 	proto.RegisterType((*Discovered)(nil), "grafeas.v1beta1.discovery.Discovered")
-	proto.RegisterEnum("grafeas.v1beta1.discovery.Discovered_ContinuousAnalysis", Discovered_ContinuousAnalysis_name, Discovered_ContinuousAnalysis_value)
-	proto.RegisterEnum("grafeas.v1beta1.discovery.Discovered_AnalysisStatus", Discovered_AnalysisStatus_name, Discovered_AnalysisStatus_value)
 }
 
 func init() {

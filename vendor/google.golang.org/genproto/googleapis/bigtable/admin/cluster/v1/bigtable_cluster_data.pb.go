@@ -112,6 +112,7 @@ func (*Zone) ProtoMessage()    {}
 func (*Zone) Descriptor() ([]byte, []int) {
 	return fileDescriptor_33bf61dbf3bd7369, []int{0}
 }
+
 func (m *Zone) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Zone.Unmarshal(m, b)
 }
@@ -182,6 +183,7 @@ func (*Cluster) ProtoMessage()    {}
 func (*Cluster) Descriptor() ([]byte, []int) {
 	return fileDescriptor_33bf61dbf3bd7369, []int{1}
 }
+
 func (m *Cluster) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Cluster.Unmarshal(m, b)
 }
@@ -236,10 +238,10 @@ func (m *Cluster) GetDefaultStorageType() StorageType {
 }
 
 func init() {
-	proto.RegisterType((*Zone)(nil), "google.bigtable.admin.cluster.v1.Zone")
-	proto.RegisterType((*Cluster)(nil), "google.bigtable.admin.cluster.v1.Cluster")
 	proto.RegisterEnum("google.bigtable.admin.cluster.v1.StorageType", StorageType_name, StorageType_value)
 	proto.RegisterEnum("google.bigtable.admin.cluster.v1.Zone_Status", Zone_Status_name, Zone_Status_value)
+	proto.RegisterType((*Zone)(nil), "google.bigtable.admin.cluster.v1.Zone")
+	proto.RegisterType((*Cluster)(nil), "google.bigtable.admin.cluster.v1.Cluster")
 }
 
 func init() {

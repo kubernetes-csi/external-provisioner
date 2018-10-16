@@ -28,6 +28,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-test/driver"
+	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
 	"github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake"
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
@@ -38,6 +39,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	utilfeaturetesting "k8s.io/apiserver/pkg/util/feature/testing"
 	"k8s.io/client-go/kubernetes"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
@@ -1502,6 +1505,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 
 // TestProvisionWithTopology is a basic test of provisioner integration with topology functions.
 func TestProvisionWithTopology(t *testing.T) {
+	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, true)()
+
 	accessibleTopology := []*csi.Topology{
 		{
 			Segments: map[string]string{

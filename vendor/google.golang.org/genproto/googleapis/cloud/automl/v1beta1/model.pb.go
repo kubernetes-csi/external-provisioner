@@ -98,6 +98,7 @@ func (*Model) ProtoMessage()    {}
 func (*Model) Descriptor() ([]byte, []int) {
 	return fileDescriptor_27c9ed3a1b40360b, []int{0}
 }
+
 func (m *Model) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Model.Unmarshal(m, b)
 }
@@ -302,8 +303,8 @@ func _Model_OneofSizer(msg proto.Message) (n int) {
 }
 
 func init() {
-	proto.RegisterType((*Model)(nil), "google.cloud.automl.v1beta1.Model")
 	proto.RegisterEnum("google.cloud.automl.v1beta1.Model_DeploymentState", Model_DeploymentState_name, Model_DeploymentState_value)
+	proto.RegisterType((*Model)(nil), "google.cloud.automl.v1beta1.Model")
 }
 
 func init() {

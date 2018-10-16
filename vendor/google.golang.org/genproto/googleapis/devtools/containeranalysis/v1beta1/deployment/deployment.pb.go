@@ -72,6 +72,7 @@ func (*Deployable) ProtoMessage()    {}
 func (*Deployable) Descriptor() ([]byte, []int) {
 	return fileDescriptor_27c2fb509818da47, []int{0}
 }
+
 func (m *Deployable) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Deployable.Unmarshal(m, b)
 }
@@ -112,6 +113,7 @@ func (*Details) ProtoMessage()    {}
 func (*Details) Descriptor() ([]byte, []int) {
 	return fileDescriptor_27c2fb509818da47, []int{1}
 }
+
 func (m *Details) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Details.Unmarshal(m, b)
 }
@@ -165,6 +167,7 @@ func (*Deployment) ProtoMessage()    {}
 func (*Deployment) Descriptor() ([]byte, []int) {
 	return fileDescriptor_27c2fb509818da47, []int{2}
 }
+
 func (m *Deployment) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Deployment.Unmarshal(m, b)
 }
@@ -233,10 +236,10 @@ func (m *Deployment) GetPlatform() Deployment_Platform {
 }
 
 func init() {
+	proto.RegisterEnum("grafeas.v1beta1.deployment.Deployment_Platform", Deployment_Platform_name, Deployment_Platform_value)
 	proto.RegisterType((*Deployable)(nil), "grafeas.v1beta1.deployment.Deployable")
 	proto.RegisterType((*Details)(nil), "grafeas.v1beta1.deployment.Details")
 	proto.RegisterType((*Deployment)(nil), "grafeas.v1beta1.deployment.Deployment")
-	proto.RegisterEnum("grafeas.v1beta1.deployment.Deployment_Platform", Deployment_Platform_name, Deployment_Platform_value)
 }
 
 func init() {

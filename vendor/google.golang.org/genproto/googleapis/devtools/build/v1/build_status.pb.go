@@ -95,6 +95,7 @@ func (*BuildStatus) ProtoMessage()    {}
 func (*BuildStatus) Descriptor() ([]byte, []int) {
 	return fileDescriptor_f5ec8917bb205301, []int{0}
 }
+
 func (m *BuildStatus) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_BuildStatus.Unmarshal(m, b)
 }
@@ -128,8 +129,8 @@ func (m *BuildStatus) GetDetails() *any.Any {
 }
 
 func init() {
-	proto.RegisterType((*BuildStatus)(nil), "google.devtools.build.v1.BuildStatus")
 	proto.RegisterEnum("google.devtools.build.v1.BuildStatus_Result", BuildStatus_Result_name, BuildStatus_Result_value)
+	proto.RegisterType((*BuildStatus)(nil), "google.devtools.build.v1.BuildStatus")
 }
 
 func init() {

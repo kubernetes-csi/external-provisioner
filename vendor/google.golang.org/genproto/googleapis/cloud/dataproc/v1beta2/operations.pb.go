@@ -79,6 +79,7 @@ func (*ClusterOperationStatus) ProtoMessage()    {}
 func (*ClusterOperationStatus) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e6e7a565fff113fd, []int{0}
 }
+
 func (m *ClusterOperationStatus) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ClusterOperationStatus.Unmarshal(m, b)
 }
@@ -154,6 +155,7 @@ func (*ClusterOperationMetadata) ProtoMessage()    {}
 func (*ClusterOperationMetadata) Descriptor() ([]byte, []int) {
 	return fileDescriptor_e6e7a565fff113fd, []int{1}
 }
+
 func (m *ClusterOperationMetadata) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ClusterOperationMetadata.Unmarshal(m, b)
 }
@@ -229,10 +231,10 @@ func (m *ClusterOperationMetadata) GetWarnings() []string {
 }
 
 func init() {
+	proto.RegisterEnum("google.cloud.dataproc.v1beta2.ClusterOperationStatus_State", ClusterOperationStatus_State_name, ClusterOperationStatus_State_value)
 	proto.RegisterType((*ClusterOperationStatus)(nil), "google.cloud.dataproc.v1beta2.ClusterOperationStatus")
 	proto.RegisterType((*ClusterOperationMetadata)(nil), "google.cloud.dataproc.v1beta2.ClusterOperationMetadata")
 	proto.RegisterMapType((map[string]string)(nil), "google.cloud.dataproc.v1beta2.ClusterOperationMetadata.LabelsEntry")
-	proto.RegisterEnum("google.cloud.dataproc.v1beta2.ClusterOperationStatus_State", ClusterOperationStatus_State_name, ClusterOperationStatus_State_value)
 }
 
 func init() {

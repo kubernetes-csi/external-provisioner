@@ -119,6 +119,7 @@ func (*Distribution) ProtoMessage()    {}
 func (*Distribution) Descriptor() ([]byte, []int) {
 	return fileDescriptor_a2db18e408c1243f, []int{0}
 }
+
 func (m *Distribution) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Distribution.Unmarshal(m, b)
 }
@@ -200,6 +201,7 @@ func (*Location) ProtoMessage()    {}
 func (*Location) Descriptor() ([]byte, []int) {
 	return fileDescriptor_a2db18e408c1243f, []int{1}
 }
+
 func (m *Location) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Location.Unmarshal(m, b)
 }
@@ -258,6 +260,7 @@ func (*Package) ProtoMessage()    {}
 func (*Package) Descriptor() ([]byte, []int) {
 	return fileDescriptor_a2db18e408c1243f, []int{2}
 }
+
 func (m *Package) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Package.Unmarshal(m, b)
 }
@@ -305,6 +308,7 @@ func (*Details) ProtoMessage()    {}
 func (*Details) Descriptor() ([]byte, []int) {
 	return fileDescriptor_a2db18e408c1243f, []int{3}
 }
+
 func (m *Details) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Details.Unmarshal(m, b)
 }
@@ -349,6 +353,7 @@ func (*Installation) ProtoMessage()    {}
 func (*Installation) Descriptor() ([]byte, []int) {
 	return fileDescriptor_a2db18e408c1243f, []int{4}
 }
+
 func (m *Installation) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Installation.Unmarshal(m, b)
 }
@@ -403,6 +408,7 @@ func (*Version) ProtoMessage()    {}
 func (*Version) Descriptor() ([]byte, []int) {
 	return fileDescriptor_a2db18e408c1243f, []int{5}
 }
+
 func (m *Version) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Version.Unmarshal(m, b)
 }
@@ -450,14 +456,14 @@ func (m *Version) GetKind() Version_VersionKind {
 }
 
 func init() {
+	proto.RegisterEnum("grafeas.v1beta1.package.Architecture", Architecture_name, Architecture_value)
+	proto.RegisterEnum("grafeas.v1beta1.package.Version_VersionKind", Version_VersionKind_name, Version_VersionKind_value)
 	proto.RegisterType((*Distribution)(nil), "grafeas.v1beta1.package.Distribution")
 	proto.RegisterType((*Location)(nil), "grafeas.v1beta1.package.Location")
 	proto.RegisterType((*Package)(nil), "grafeas.v1beta1.package.Package")
 	proto.RegisterType((*Details)(nil), "grafeas.v1beta1.package.Details")
 	proto.RegisterType((*Installation)(nil), "grafeas.v1beta1.package.Installation")
 	proto.RegisterType((*Version)(nil), "grafeas.v1beta1.package.Version")
-	proto.RegisterEnum("grafeas.v1beta1.package.Architecture", Architecture_name, Architecture_value)
-	proto.RegisterEnum("grafeas.v1beta1.package.Version_VersionKind", Version_VersionKind_name, Version_VersionKind_value)
 }
 
 func init() {
