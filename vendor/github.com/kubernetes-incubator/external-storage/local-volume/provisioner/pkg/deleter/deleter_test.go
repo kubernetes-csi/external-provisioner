@@ -552,6 +552,9 @@ func testSetup(t *testing.T, config *testConfig, cleanupCmd []string, useJobForC
 		// Track it in the list of generated PVs
 		config.generatedPVs[pvName] = pv
 		// Make sure the fake Volumeutil knows about it
+		if vol.VolumeMode == "" {
+			vol.VolumeMode = util.FakeEntryFile
+		}
 		newVols["test1"] = append(newVols["test1"], &util.FakeDirEntry{Name: "entry-" + pvName, Hash: 0xf34b8003,
 			VolumeType: vol.VolumeMode})
 	}
@@ -628,7 +631,7 @@ func waitForAsyncToComplete(t *testing.T, d *Deleter, pvNames ...string) {
 	d.DeletePVs()
 	for _, pvName := range pvNames {
 		if d.CleanupStatus.ProcTable.IsRunning(pvName) {
-			t.Errorf("Command failed to complete for pv " + pvName)
+			t.Errorf("Command failed to complete for pv %s", pvName)
 		}
 	}
 }

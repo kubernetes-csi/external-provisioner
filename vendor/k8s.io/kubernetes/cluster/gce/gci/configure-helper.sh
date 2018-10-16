@@ -30,6 +30,10 @@ readonly UUID_BLOCK_PREFIX="/dev/disk/by-uuid/google-local-ssds"
 readonly COREDNS_AUTOSCALER="Deployment/coredns"
 readonly KUBEDNS_AUTOSCALER="Deployment/kube-dns"
 
+# Resource requests of master components.
+KUBE_CONTROLLER_MANAGER_CPU_REQUEST="${KUBE_CONTROLLER_MANAGER_CPU_REQUEST:-200m}"
+KUBE_SCHEDULER_CPU_REQUEST="${KUBE_SCHEDULER_CPU_REQUEST:-75m}"
+
 # Use --retry-connrefused opt only if it's supported by curl.
 CURL_RETRY_CONNREFUSED=""
 if curl --help | grep -q -- '--retry-connrefused'; then
@@ -1194,6 +1198,7 @@ function start-kubelet {
   local -r kubelet_env_file="/etc/default/kubelet"
   local kubelet_opts="${KUBELET_ARGS} ${KUBELET_CONFIG_FILE_ARG:-}"
   echo "KUBELET_OPTS=\"${kubelet_opts}\"" > "${kubelet_env_file}"
+  echo "KUBE_COVERAGE_FILE=\"/var/log/kubelet.cov\"" >> "${kubelet_env_file}"
 
   # Write the systemd service file for kubelet.
   cat <<EOF >/etc/systemd/system/kubelet.service
@@ -1311,7 +1316,7 @@ function prepare-kube-proxy-manifest-variables {
   sed -i -e "s@{{container_env}}@${container_env}@g" ${src_file}
   sed -i -e "s@{{kube_cache_mutation_detector_env_name}}@${kube_cache_mutation_detector_env_name}@g" ${src_file}
   sed -i -e "s@{{kube_cache_mutation_detector_env_value}}@${kube_cache_mutation_detector_env_value}@g" ${src_file}
-  sed -i -e "s@{{ cpurequest }}@50m@g" ${src_file}
+  sed -i -e "s@{{ cpurequest }}@100m@g" ${src_file}
   sed -i -e "s@{{api_servers_with_port}}@${api_servers}@g" ${src_file}
   sed -i -e "s@{{kubernetes_service_host_env_value}}@${KUBERNETES_MASTER_NAME}@g" ${src_file}
   if [[ -n "${CLUSTER_IP_RANGE:-}" ]]; then
@@ -1432,10 +1437,10 @@ function start-etcd-servers {
     rm -f /etc/init.d/etcd
   fi
   prepare-log-file /var/log/etcd.log
-  prepare-etcd-manifest "" "2379" "2380" "100m" "etcd.manifest"
+  prepare-etcd-manifest "" "2379" "2380" "200m" "etcd.manifest"
 
   prepare-log-file /var/log/etcd-events.log
-  prepare-etcd-manifest "-events" "4002" "2381" "50m" "etcd-events.manifest"
+  prepare-etcd-manifest "-events" "4002" "2381" "100m" "etcd-events.manifest"
 }
 
 # Calculates the following variables based on env variables, which will be used
@@ -1978,6 +1983,7 @@ function start-kube-controller-manager {
   sed -i -e "s@{{pv_recycler_volume}}@${PV_RECYCLER_VOLUME}@g" "${src_file}"
   sed -i -e "s@{{flexvolume_hostpath_mount}}@${FLEXVOLUME_HOSTPATH_MOUNT}@g" "${src_file}"
   sed -i -e "s@{{flexvolume_hostpath}}@${FLEXVOLUME_HOSTPATH_VOLUME}@g" "${src_file}"
+  sed -i -e "s@{{cpurequest}}@${KUBE_CONTROLLER_MANAGER_CPU_REQUEST}@g" "${src_file}"
 
   cp "${src_file}" /etc/kubernetes/manifests
 }
@@ -2015,6 +2021,7 @@ function start-kube-scheduler {
   sed -i -e "s@{{params}}@${params}@g" "${src_file}"
   sed -i -e "s@{{pillar\['kube_docker_registry'\]}}@${DOCKER_REGISTRY}@g" "${src_file}"
   sed -i -e "s@{{pillar\['kube-scheduler_docker_tag'\]}}@${kube_scheduler_docker_tag}@g" "${src_file}"
+  sed -i -e "s@{{cpurequest}}@${KUBE_SCHEDULER_CPU_REQUEST}@g" "${src_file}"
   cp "${src_file}" /etc/kubernetes/manifests
 }
 
@@ -2460,7 +2467,7 @@ EOF
     metrics_server_memory_per_node="4"
     metrics_server_min_cluster_size="16"
     if [[ "${ENABLE_SYSTEM_ADDON_RESOURCE_OPTIMIZATIONS:-}" == "true" ]]; then
-      base_metrics_server_cpu="5m"
+      base_metrics_server_cpu="40m"
       base_metrics_server_memory="35Mi"
       metrics_server_memory_per_node="4"
       metrics_server_min_cluster_size="5"
