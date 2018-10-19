@@ -37,8 +37,8 @@
   version = "v0.4.1"
 
 [[constraint]]
-  name = "github.com/kubernetes-incubator/external-storage"
-  version = "v5.2.0"
+  name = "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner"
+  version = "v1.0.0"
 
 [[constraint]]
   name = "google.golang.org/grpc"

@@ -223,16 +223,16 @@
   version = "v0.4.1"
 
 [[projects]]
-  digest = "1:9bf4ddb89c29f0d2e33a24aab87e2bb3aeb48dab3fe712e43bf41552d31d6f2e"
-  name = "github.com/kubernetes-incubator/external-storage"
+  digest = "1:184946ca008a018d5f3b5b15d81e3772bfd4bb58c63f71f5f6f3aa3fa0d88652"
+  name = "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner"
   packages = [
-    "lib/controller",
-    "lib/controller/metrics",
-    "lib/util",
+    "controller",
+    "controller/metrics",
+    "util",
   ]
   pruneopts = ""
-  revision = "193fb3944bf3061e59ae072ab7511861e8868553"
-  version = "v5.2.0"
+  revision = "cdaf8fa71bb51d0a633d28d6f4ab46063d6e8f94"
+  version = "v1.0.0"
 
 [[projects]]
   digest = "1:63722a4b1e1717be7b98fc686e0b30d5e7f734b9e93d7dee86293b6deab7ea28"
@@ -241,6 +241,14 @@
   pruneopts = ""
   revision = "c12348ce28de40eed0136aa2b644d0ee0650e56c"
   version = "v1.0.1"
+
+[[projects]]
+  digest = "1:43985c4839fe00466a6a0ec70379933b9e3b440b0d10f3ff9be8ae595919e916"
+  name = "github.com/miekg/dns"
+  packages = ["."]
+  pruneopts = ""
+  revision = "d74956db7b5b20451796774572d0f5a0222e377a"
+  version = "v1.0.13"
 
 [[projects]]
   digest = "1:0c0ff2a89c1bb0d01887e1dac043ad7efbf3ec77482ef058ac423d13497e16fd"
@@ -339,7 +347,11 @@
   branch = "master"
   digest = "1:78f41d38365ccef743e54ed854a2faf73313ba0750c621116a8eeb0395590bd0"
   name = "golang.org/x/crypto"
-  packages = ["ssh/terminal"]
+  packages = [
+    "ed25519",
+    "ed25519/internal/edwards25519",
+    "ssh/terminal",
+  ]
   pruneopts = ""
   revision = "0c41d7ab0a0ee717d4590a44bcb987dfd9e183eb"
 
@@ -348,13 +360,18 @@
   digest = "1:547dcb6aebfb7fb17947660ebb034470c13f4d63d893def190a2f7ba3d09bc38"
   name = "golang.org/x/net"
   packages = [
+    "bpf",
     "context",
     "context/ctxhttp",
     "http/httpguts",
     "http2",
     "http2/hpack",
     "idna",
+    "internal/iana",
+    "internal/socket",
     "internal/timeseries",
+    "ipv4",
+    "ipv6",
     "trace",
   ]
   pruneopts = ""
@@ -587,6 +604,7 @@
   name = "k8s.io/apiserver"
   packages = [
     "pkg/util/feature",
+    "pkg/util/feature/testing",
     "pkg/util/flag",
   ]
   pruneopts = ""
@@ -798,7 +816,6 @@
   packages = [
     "pkg/apis/core",
     "pkg/apis/core/helper",
-    "pkg/apis/core/v1/helper",
     "pkg/util/version",
   ]
   pruneopts = ""
@@ -816,7 +833,7 @@
     "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake",
-    "github.com/kubernetes-incubator/external-storage/lib/controller",
+    "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller",
     "github.com/spf13/pflag",
     "google.golang.org/grpc",
     "google.golang.org/grpc/codes",
@@ -833,6 +850,7 @@
     "k8s.io/apimachinery/pkg/util/validation",
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/apiserver/pkg/util/feature",
+    "k8s.io/apiserver/pkg/util/feature/testing",
     "k8s.io/apiserver/pkg/util/flag",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/kubernetes/fake",
