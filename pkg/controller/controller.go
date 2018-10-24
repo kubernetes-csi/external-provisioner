@@ -416,9 +416,10 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 
 	if driverState.capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) &&
 		utilfeature.DefaultFeatureGate.Enabled(features.Topology) {
+		topologyKeys := lookupTopologyKeys(p.client, p.csiAPIClient, driverState.driverName, options.SelectedNode)
 		requirements, err := GenerateAccessibilityRequirements(
+			topologyKeys,
 			p.client,
-			p.csiAPIClient,
 			driverState.driverName,
 			options.AllowedTopologies,
 			options.SelectedNode)

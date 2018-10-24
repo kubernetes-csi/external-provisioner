@@ -65,8 +65,8 @@ func GenerateVolumeNodeAffinity(accessibleTopology []*csi.Topology) *v1.VolumeNo
 }
 
 func GenerateAccessibilityRequirements(
+	topologyKeys []string,
 	kubeClient kubernetes.Interface,
-	csiAPIClient csiclientset.Interface,
 	driverName string,
 	allowedTopologies []v1.TopologySelectorTerm,
 	selectedNode *v1.Node) (*csi.TopologyRequirement, error) {
@@ -77,7 +77,7 @@ func GenerateAccessibilityRequirements(
 	if len(allowedTopologies) == 0 {
 		// Aggregate existing topologies in nodes across the entire cluster.
 		var err error
-		requisiteTerms, err = aggregateTopologies(kubeClient, csiAPIClient, driverName, selectedNode)
+		requisiteTerms, err = aggregateTopologies(topologyKeys, kubeClient)
 		if err != nil {
 			return nil, err
 		}
@@ -97,14 +97,6 @@ func GenerateAccessibilityRequirements(
 
 	/* Preferred */
 	if selectedNode != nil {
-		// TODO (verult) reuse selected node info from aggregateTopologies
-		// TODO (verult) retry
-		nodeInfo, err := csiAPIClient.CsiV1alpha1().CSINodeInfos().Get(selectedNode.Name, metav1.GetOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("error getting node info for selected node: %v", err)
-		}
-
-		topologyKeys := getTopologyKeys(nodeInfo, driverName)
 		selectedTopology, isMissingKey := getTopologyFromNode(selectedNode, topologyKeys)
 		if isMissingKey {
 			return nil, fmt.Errorf("topology labels from selected node %v does not match topology keys from CSINodeInfo %v", selectedNode.Labels, topologyKeys)
@@ -126,11 +118,11 @@ func GenerateAccessibilityRequirements(
 	return requirement, nil
 }
 
-func aggregateTopologies(
+func lookupTopologyKeys(
 	kubeClient kubernetes.Interface,
 	csiAPIClient csiclientset.Interface,
 	driverName string,
-	selectedNode *v1.Node) ([]topologyTerm, error) {
+	selectedNode *v1.Node) []string {
 
 	var topologyKeys []string
 	if selectedNode == nil {
@@ -139,7 +131,7 @@ func aggregateTopologies(
 		if err != nil {
 			// We must support provisioning if CSINodeInfo is missing, for backward compatibility.
 			glog.Warningf("error listing CSINodeInfos: %v; proceeding to provision without topology information", err)
-			return nil, nil
+			return nil
 		}
 
 		rand.Shuffle(len(nodeInfos.Items), func(i, j int) {
@@ -159,11 +151,15 @@ func aggregateTopologies(
 		if err != nil {
 			// We must support provisioning if CSINodeInfo is missing, for backward compatibility.
 			glog.Warningf("error getting CSINodeInfo for selected node %q: %v; proceeding to provision without topology information", selectedNode.Name, err)
-			return nil, nil
+			return nil
 		}
 		topologyKeys = getTopologyKeys(selectedNodeInfo, driverName)
 	}
 
+	return topologyKeys
+}
+
+func aggregateTopologies(topologyKeys []string, kubeClient kubernetes.Interface) ([]topologyTerm, error) {
 	if len(topologyKeys) == 0 {
 		// Assuming the external provisioner is never running during node driver upgrades.
 		// If selectedNode != nil, the scheduler selected a node with no topology information.

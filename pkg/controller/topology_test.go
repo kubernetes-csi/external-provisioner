@@ -149,10 +149,12 @@ func TestGenerateVolumeNodeAffinity(t *testing.T) {
 func TestAllowedTopologies(t *testing.T) {
 	// TODO (verult) more AllowedTopologies unit tests
 	testcases := map[string]struct {
+		topologyKeys      []string
 		allowedTopologies []v1.TopologySelectorTerm
 		expectedRequisite []*csi.Topology
 	}{
 		"single expression, single value": {
+			topologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -172,6 +174,7 @@ func TestAllowedTopologies(t *testing.T) {
 			},
 		},
 		"single expression, multiple values": {
+			topologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -196,6 +199,7 @@ func TestAllowedTopologies(t *testing.T) {
 			},
 		},
 		"multiple expressions, single value": {
+			topologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -220,6 +224,7 @@ func TestAllowedTopologies(t *testing.T) {
 			},
 		},
 		"multiple expressions, 1 single value, 1 multiple values": {
+			topologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -250,6 +255,7 @@ func TestAllowedTopologies(t *testing.T) {
 			},
 		},
 		"multiple expressions, both multiple values": {
+			topologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -292,6 +298,7 @@ func TestAllowedTopologies(t *testing.T) {
 			},
 		},
 		"multiple terms: single expression, single values": {
+			topologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -324,6 +331,7 @@ func TestAllowedTopologies(t *testing.T) {
 			},
 		},
 		"multiple terms: single expression, overlapping keys, distinct values": {
+			topologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -356,6 +364,7 @@ func TestAllowedTopologies(t *testing.T) {
 			},
 		},
 		"multiple terms: single expression, overlapping keys, overlapping values": {
+			topologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -394,6 +403,7 @@ func TestAllowedTopologies(t *testing.T) {
 		},
 		//// TODO (verult) advanced reduction could eliminate subset duplicates here
 		"multiple terms: 1 single expression, 1 multiple expressions; contains a subset duplicate": {
+			topologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -449,6 +459,7 @@ func TestAllowedTopologies(t *testing.T) {
 			},
 		},
 		"multiple terms: both contains multiple expressions; contains an identical duplicate": {
+			topologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -507,8 +518,8 @@ func TestAllowedTopologies(t *testing.T) {
 	for name, tc := range testcases {
 		t.Logf("test: %s", name)
 		requirements, err := GenerateAccessibilityRequirements(
+			tc.topologyKeys,
 			nil,           /* kubeClient */
-			nil,           /* csiAPIClient */
 			"test-driver", /* driverName */
 			tc.allowedTopologies,
 			nil /* selectedNode */)
@@ -681,9 +692,11 @@ func TestTopologyAggregation(t *testing.T) {
 		if tc.hasSelectedNode {
 			selectedNode = &nodes.Items[0]
 		}
+
+		topologyKeys := lookupTopologyKeys(kubeClient, csiClient, testDriverName, selectedNode)
 		requirements, err := GenerateAccessibilityRequirements(
+			topologyKeys,
 			kubeClient,
-			csiClient,
 			testDriverName,
 			nil, /* allowedTopologies */
 			selectedNode,
@@ -849,9 +862,10 @@ func TestPreferredTopologies(t *testing.T) {
 		csiClient := fakecsiclientset.NewSimpleClientset(nodeInfos)
 		selectedNode := &nodes.Items[0]
 
+		topologyKeys := lookupTopologyKeys(kubeClient, csiClient, testDriverName, selectedNode)
 		requirements, err := GenerateAccessibilityRequirements(
+			topologyKeys,
 			kubeClient,
-			csiClient,
 			testDriverName,
 			tc.allowedTopologies,
 			selectedNode,
