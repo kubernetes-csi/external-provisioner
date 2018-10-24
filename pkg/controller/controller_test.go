@@ -1521,12 +1521,12 @@ func TestProvisionWithTopology(t *testing.T) {
 				{
 					MatchExpressions: []v1.NodeSelectorRequirement{
 						{
-							Key:      "com.example.csi/zone",
+							Key:      "com.example.csi.topology.kubernetes.io/zone",
 							Operator: v1.NodeSelectorOpIn,
 							Values:   []string{"zone1"},
 						},
 						{
-							Key:      "com.example.csi/rack",
+							Key:      "com.example.csi.topology.kubernetes.io/rack",
 							Operator: v1.NodeSelectorOpIn,
 							Values:   []string{"rack2"},
 						},

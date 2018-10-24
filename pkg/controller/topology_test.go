@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"strings"
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -57,7 +58,7 @@ func TestGenerateVolumeNodeAffinity(t *testing.T) {
 						{
 							MatchExpressions: []v1.NodeSelectorRequirement{
 								{
-									Key:      "com.example.csi/zone",
+									Key:      "com.example.csi.topology.kubernetes.io/zone",
 									Operator: v1.NodeSelectorOpIn,
 									Values:   []string{"zone1"},
 								},
@@ -82,12 +83,12 @@ func TestGenerateVolumeNodeAffinity(t *testing.T) {
 						{
 							MatchExpressions: []v1.NodeSelectorRequirement{
 								{
-									Key:      "com.example.csi/zone",
+									Key:      "com.example.csi.topology.kubernetes.io/zone",
 									Operator: v1.NodeSelectorOpIn,
 									Values:   []string{"zone1"},
 								},
 								{
-									Key:      "com.example.csi/rack",
+									Key:      "com.example.csi.topology.kubernetes.io/rack",
 									Operator: v1.NodeSelectorOpIn,
 									Values:   []string{"rack2"},
 								},
@@ -116,7 +117,7 @@ func TestGenerateVolumeNodeAffinity(t *testing.T) {
 						{
 							MatchExpressions: []v1.NodeSelectorRequirement{
 								{
-									Key:      "com.example.csi/zone",
+									Key:      "com.example.csi.topology.kubernetes.io/zone",
 									Operator: v1.NodeSelectorOpIn,
 									Values:   []string{"zone1"},
 								},
@@ -125,7 +126,7 @@ func TestGenerateVolumeNodeAffinity(t *testing.T) {
 						{
 							MatchExpressions: []v1.NodeSelectorRequirement{
 								{
-									Key:      "com.example.csi/zone",
+									Key:      "com.example.csi.topology.kubernetes.io/zone",
 									Operator: v1.NodeSelectorOpIn,
 									Values:   []string{"zone2"},
 								},
@@ -159,7 +160,7 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1"},
 						},
 					},
@@ -173,13 +174,33 @@ func TestAllowedTopologies(t *testing.T) {
 				},
 			},
 		},
+		"single expression, single value, pre-qualified topology-keys": {
+			topologyKeys: []string{"com.example.csi.topology.kubernetes.io/zone", "com.example.csi.topology.kubernetes.io/rack"},
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
+							Values: []string{"zone1"},
+						},
+					},
+				},
+			},
+			expectedRequisite: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi.topology.kubernetes.io/zone": "zone1",
+					},
+				},
+			},
+		},
 		"single expression, multiple values": {
 			topologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1", "zone2"},
 						},
 					},
@@ -204,11 +225,11 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1"},
 						},
 						{
-							Key:    "com.example.csi/rack",
+							Key:    "com.example.csi.topology.kubernetes.io/rack",
 							Values: []string{"rackA"},
 						},
 					},
@@ -229,11 +250,11 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1"},
 						},
 						{
-							Key:    "com.example.csi/rack",
+							Key:    "com.example.csi.topology.kubernetes.io/rack",
 							Values: []string{"rackA", "rackB"},
 						},
 					},
@@ -260,11 +281,11 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1", "zone2"},
 						},
 						{
-							Key:    "com.example.csi/rack",
+							Key:    "com.example.csi.topology.kubernetes.io/rack",
 							Values: []string{"rackA", "rackB"},
 						},
 					},
@@ -303,7 +324,7 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1"},
 						},
 					},
@@ -311,7 +332,7 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/rack",
+							Key:    "com.example.csi.topology.kubernetes.io/rack",
 							Values: []string{"rackA"},
 						},
 					},
@@ -336,7 +357,7 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1"},
 						},
 					},
@@ -344,7 +365,7 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone2"},
 						},
 					},
@@ -369,7 +390,7 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1", "zone2"},
 						},
 					},
@@ -377,7 +398,7 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone2", "zone3"},
 						},
 					},
@@ -408,7 +429,7 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1"},
 						},
 					},
@@ -416,11 +437,11 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1", "zone2"},
 						},
 						{
-							Key:    "com.example.csi/rack",
+							Key:    "com.example.csi.topology.kubernetes.io/rack",
 							Values: []string{"rackA", "rackB"},
 						},
 					},
@@ -464,11 +485,11 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1"},
 						},
 						{
-							Key:    "com.example.csi/rack",
+							Key:    "com.example.csi.topology.kubernetes.io/rack",
 							Values: []string{"rackB"},
 						},
 					},
@@ -476,11 +497,11 @@ func TestAllowedTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1", "zone2"},
 						},
 						{
-							Key:    "com.example.csi/rack",
+							Key:    "com.example.csi.topology.kubernetes.io/rack",
 							Values: []string{"rackA", "rackB"},
 						},
 					},
@@ -552,9 +573,9 @@ func TestTopologyAggregation(t *testing.T) {
 	}{
 		"same keys and values across cluster": {
 			nodeLabels: []map[string]string{
-				{"com.example.csi/zone": "zone1"},
-				{"com.example.csi/zone": "zone1"},
-				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
 			},
 			topologyKeys: []map[string][]string{
 				{testDriverName: []string{"com.example.csi/zone"}},
@@ -568,9 +589,9 @@ func TestTopologyAggregation(t *testing.T) {
 		"selected node; same keys and values across cluster": {
 			hasSelectedNode: true,
 			nodeLabels: []map[string]string{
-				{"com.example.csi/zone": "zone1"},
-				{"com.example.csi/zone": "zone1"},
-				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
 			},
 			topologyKeys: []map[string][]string{
 				{testDriverName: []string{"com.example.csi/zone"}},
@@ -583,9 +604,9 @@ func TestTopologyAggregation(t *testing.T) {
 		},
 		"different values across cluster": {
 			nodeLabels: []map[string]string{
-				{"com.example.csi/zone": "zone1"},
-				{"com.example.csi/zone": "zone2"},
-				{"com.example.csi/zone": "zone2"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone2"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone2"},
 			},
 			topologyKeys: []map[string][]string{
 				{testDriverName: []string{"com.example.csi/zone"}},
@@ -600,9 +621,9 @@ func TestTopologyAggregation(t *testing.T) {
 		"selected node; different values across cluster": {
 			hasSelectedNode: true,
 			nodeLabels: []map[string]string{
-				{"com.example.csi/zone": "zone1"},
-				{"com.example.csi/zone": "zone2"},
-				{"com.example.csi/zone": "zone2"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone2"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone2"},
 			},
 			topologyKeys: []map[string][]string{
 				{testDriverName: []string{"com.example.csi/zone"}},
@@ -635,9 +656,9 @@ func TestTopologyAggregation(t *testing.T) {
 		"selected node: different keys across cluster": {
 			hasSelectedNode: true,
 			nodeLabels: []map[string]string{
-				{"com.example.csi/zone": "zone1"},
-				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
-				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1", "com.example.csi/rack": "rackA"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1", "com.example.csi/rack": "rackA"},
 			},
 			topologyKeys: []map[string][]string{
 				{testDriverName: []string{"com.example.csi/zone"}},
@@ -735,27 +756,27 @@ func TestPreferredTopologies(t *testing.T) {
 		nodeLabels        []map[string]string   // first node is selected node
 		topologyKeys      []map[string][]string // first entry is from the selected node
 		expectedPreferred []*csi.Topology
-		expectError       bool
+		expectedError     string
 	}{
 		"allowedTopologies specified": {
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1", "zone2"},
 						},
 						{
-							Key:    "com.example.csi/rack",
+							Key:    "com.example.csi.topology.kubernetes.io/rack",
 							Values: []string{"rackA", "rackB"},
 						},
 					},
 				},
 			},
 			nodeLabels: []map[string]string{
-				{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackA"},
-				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
-				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackB"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone2", "com.example.csi.topology.kubernetes.io/rack": "rackA"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1", "com.example.csi.topology.kubernetes.io/rack": "rackA"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1", "com.example.csi.topology.kubernetes.io/rack": "rackB"},
 			},
 			topologyKeys: []map[string][]string{
 				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
@@ -791,9 +812,9 @@ func TestPreferredTopologies(t *testing.T) {
 		},
 		"topology aggregation": {
 			nodeLabels: []map[string]string{
-				{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackA"},
-				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
-				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackB"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone2", "com.example.csi.topology.kubernetes.io/rack": "rackA"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1", "com.example.csi.topology.kubernetes.io/rack": "rackA"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1", "com.example.csi.topology.kubernetes.io/rack": "rackB"},
 			},
 			topologyKeys: []map[string][]string{
 				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
@@ -832,23 +853,46 @@ func TestPreferredTopologies(t *testing.T) {
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
 						{
-							Key:    "com.example.csi/zone",
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
 							Values: []string{"zone1"},
 						},
 					},
 				},
 			},
 			nodeLabels: []map[string]string{
-				{"com.example.csi/zone": "zone2"},
-				{"com.example.csi/zone": "zone1"},
-				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone2"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
 			},
 			topologyKeys: []map[string][]string{
 				{testDriverName: []string{"com.example.csi/zone"}},
 				{testDriverName: []string{"com.example.csi/zone"}},
 				{testDriverName: []string{"com.example.csi/zone"}},
 			},
-			expectError: true,
+			expectedError: `topology map[com.example.csi/zone:zone2] from selected node "node-0" is not in requisite`,
+		},
+		"topology keys do not map to labels in allowedTopologies": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi.topology.kubernetes.io/zone",
+							Values: []string{"zone1"},
+						},
+					},
+				},
+			},
+			nodeLabels: []map[string]string{
+				{"com.example.csi.topology.kubernetes.io/zone": "zone2"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
+				{"com.example.csi.topology.kubernetes.io/zone": "zone1"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/rack"}},
+			},
+			expectedError: `unknown required topology label "com.example.csi.topology.kubernetes.io/zone"; known topology labels are ["com.example.csi.topology.kubernetes.io/rack"]`,
 		},
 	}
 
@@ -871,13 +915,15 @@ func TestPreferredTopologies(t *testing.T) {
 			selectedNode,
 		)
 
-		if tc.expectError {
+		if len(tc.expectedError) > 0 {
 			if err == nil {
 				t.Error("expected error but got none")
+			} else if !strings.Contains(err.Error(), tc.expectedError) {
+				t.Errorf("expected error containing '%s' but got '%s'", tc.expectedError, err.Error())
 			}
 			continue
 		}
-		if !tc.expectError && err != nil {
+		if len(tc.expectedError) == 0 && err != nil {
 			t.Errorf("expected no error but got: %v", err)
 			continue
 		}

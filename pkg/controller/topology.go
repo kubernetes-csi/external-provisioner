@@ -22,6 +22,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
 	csiv1alpha1 "k8s.io/csi-api/pkg/apis/csi/v1alpha1"
 	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
@@ -47,7 +48,7 @@ func GenerateVolumeNodeAffinity(accessibleTopology []*csi.Topology) *v1.VolumeNo
 		var expressions []v1.NodeSelectorRequirement
 		for k, v := range topology.Segments {
 			expressions = append(expressions, v1.NodeSelectorRequirement{
-				Key:      k,
+				Key:      csiTopologyKeyToKubernetesLabelKey(k),
 				Operator: v1.NodeSelectorOpIn,
 				Values:   []string{v},
 			})
@@ -83,7 +84,11 @@ func GenerateAccessibilityRequirements(
 		}
 	} else {
 		// Distribute out one of the OR layers in allowedTopologies
-		requisiteTerms = flatten(allowedTopologies)
+		var err error
+		requisiteTerms, err = flatten(topologyKeys, allowedTopologies)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if len(requisiteTerms) == 0 {
@@ -215,7 +220,12 @@ func aggregateTopologies(topologyKeys []string, kubeClient kubernetes.Interface)
 //
 // This flattening is then applied to all TopologySelectorTerms in AllowedTopologies, and
 // the resulting terms are OR'd together.
-func flatten(allowedTopologies []v1.TopologySelectorTerm) []topologyTerm {
+func flatten(topologyKeys []string, allowedTopologies []v1.TopologySelectorTerm) ([]topologyTerm, error) {
+	labelToTopologyKey := map[string]string{}
+	for _, topologyKey := range topologyKeys {
+		labelToTopologyKey[csiTopologyKeyToKubernetesLabelKey(topologyKey)] = topologyKey
+	}
+
 	var finalTerms []topologyTerm
 	for _, selectorTerm := range allowedTopologies { // OR
 
@@ -226,14 +236,21 @@ func flatten(allowedTopologies []v1.TopologySelectorTerm) []topologyTerm {
 			for _, v := range selectorExpression.Values { // OR
 				// Distribute the OR over AND.
 
+				topologyKey := labelToTopologyKey[selectorExpression.Key]
+				if len(topologyKey) == 0 {
+					// this means the storage class topology selector is referencing a label the CSI driver doesn't consider a topology key.
+					knownLabels := sets.StringKeySet(labelToTopologyKey)
+					return nil, fmt.Errorf("unknown required topology label %q; known topology labels are %q", selectorExpression.Key, knownLabels.List())
+				}
+
 				if len(oldTerms) == 0 {
 					// No previous terms to distribute over. Simply append the new term.
-					newTerms = append(newTerms, topologyTerm{selectorExpression.Key: v})
+					newTerms = append(newTerms, topologyTerm{topologyKey: v})
 				} else {
 					for _, oldTerm := range oldTerms {
 						// "Distribute" by adding an entry to the term
 						newTerm := oldTerm.clone()
-						newTerm[selectorExpression.Key] = v
+						newTerm[topologyKey] = v
 						newTerms = append(newTerms, newTerm)
 					}
 				}
@@ -246,7 +263,7 @@ func flatten(allowedTopologies []v1.TopologySelectorTerm) []topologyTerm {
 		finalTerms = append(finalTerms, oldTerms...)
 	}
 
-	return finalTerms
+	return finalTerms, nil
 }
 
 func deduplicate(terms []topologyTerm) []topologyTerm {
@@ -291,7 +308,7 @@ func getTopologyKeys(nodeInfo *csiv1alpha1.CSINodeInfo, driverName string) []str
 func getTopologyFromNode(node *v1.Node, topologyKeys []string) (term topologyTerm, isMissingKey bool) {
 	term = make(topologyTerm)
 	for _, key := range topologyKeys {
-		v, ok := node.Labels[key]
+		v, ok := node.Labels[csiTopologyKeyToKubernetesLabelKey(key)]
 		if !ok {
 			return nil, true
 		}
@@ -304,7 +321,7 @@ func buildTopologyKeySelector(topologyKeys []string) (string, error) {
 	var expr []metav1.LabelSelectorRequirement
 	for _, key := range topologyKeys {
 		expr = append(expr, metav1.LabelSelectorRequirement{
-			Key:      key,
+			Key:      csiTopologyKeyToKubernetesLabelKey(key),
 			Operator: metav1.LabelSelectorOpExists,
 		})
 	}
@@ -362,4 +379,23 @@ func toCSITopology(terms []topologyTerm) []*csi.Topology {
 		out = append(out, &csi.Topology{Segments: term})
 	}
 	return out
+}
+
+const topologyNamespace = "topology.kubernetes.io"
+
+func csiTopologyKeyToKubernetesLabelKey(topologyKey string) string {
+	items := strings.SplitN(topologyKey, "/", 2)
+	if len(items) == 1 {
+		// "zone" -> "topology.kubernetes.io/zone"
+		return topologyNamespace + "/" + items[0]
+	}
+	namespace, name := items[0], items[1]
+	if namespace == topologyNamespace || strings.HasSuffix(namespace, "."+topologyNamespace) {
+		// "topology.kubernetes.io/zone" -> "topology.kubernetes.io/zone"
+		// "acme.com.topology.kubernetes.io/zone" -> "acme.com.topology.kubernetes.io/zone"
+		return topologyKey
+	}
+
+	// "acme.com/zone" -> "acme.com.topology.kubernetes.io/zone"
+	return namespace + "." + topologyNamespace + "/" + name
 }
