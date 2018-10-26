@@ -435,6 +435,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			p.client,
 			p.csiAPIClient,
 			driverState.driverName,
+			options.PVC.Name,
 			options.AllowedTopologies,
 			options.SelectedNode)
 		if err != nil {
