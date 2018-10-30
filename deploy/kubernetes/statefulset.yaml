@@ -1,49 +1,6 @@
-# This YAML file contains all API objects that are necessary to run external
-# CSI provisioner.
-#
-# In production, this needs to be in separate files, e.g. service account and
-# role and role binding needs to be created once, while stateful set may
-# require some tuning.
-#
-# In addition, mock CSI driver is hardcoded as the CSI driver.
-
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: csi-provisioner
-
----
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: external-provisioner-runner
-rules:
-  - apiGroups: [""]
-    resources: ["persistentvolumes"]
-    verbs: ["get", "list", "watch", "create", "delete"]
-  - apiGroups: [""]
-    resources: ["persistentvolumeclaims"]
-    verbs: ["get", "list", "watch", "update"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["list", "watch", "create", "update", "patch"]
-
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: csi-provisioner-role
-subjects:
-  - kind: ServiceAccount
-    name: csi-provisioner
-    namespace: default
-roleRef:
-  kind: ClusterRole
-  name: external-provisioner-runner
-  apiGroup: rbac.authorization.k8s.io
+# This YAML file demonstrates how to deploy the external
+# provisioner for use with the mock CSI driver. It
+# depends on the RBAC definitions from rbac.yaml.
 
 ---
 kind: Service
@@ -98,4 +55,3 @@ spec:
       volumes:
         - name: socket-dir
           emptyDir:
-
