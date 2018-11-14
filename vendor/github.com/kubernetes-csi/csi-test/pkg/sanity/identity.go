@@ -17,83 +17,86 @@ limitations under the License.
 package sanity
 
 import (
-	"context"
-	"fmt"
 	"regexp"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	context "golang.org/x/net/context"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
-var _ = DescribeSanity("Identity Service", func(sc *SanityContext) {
+var (
+	csiClientVersion = &csi.Version{
+		Major: 0,
+		Minor: 1,
+		Patch: 0,
+	}
+)
+
+var _ = Describe("GetSupportedVersions [Identity Server]", func() {
 	var (
 		c csi.IdentityClient
 	)
 
 	BeforeEach(func() {
-		c = csi.NewIdentityClient(sc.Conn)
+		c = csi.NewIdentityClient(conn)
 	})
 
-	Describe("GetPluginCapabilities", func() {
-		It("should return appropriate capabilities", func() {
-			req := &csi.GetPluginCapabilitiesRequest{}
-			res, err := c.GetPluginCapabilities(context.Background(), req)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(res).NotTo(BeNil())
+	It("should return an array of supported versions", func() {
+		res, err := c.GetSupportedVersions(
+			context.Background(),
+			&csi.GetSupportedVersionsRequest{})
 
-			By("checking successful response")
-			Expect(res.GetCapabilities()).NotTo(BeNil())
-			for _, cap := range res.GetCapabilities() {
-				switch cap.GetService().GetType() {
-				case csi.PluginCapability_Service_CONTROLLER_SERVICE:
-				case csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS:
-				default:
-					Fail(fmt.Sprintf("Unknown capability: %v\n", cap.GetService().GetType()))
-				}
-			}
+		By("checking response to have supported versions list")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.GetSupportedVersions()).NotTo(BeNil())
+		Expect(len(res.GetSupportedVersions()) >= 1).To(BeTrue())
 
-		})
+		By("checking each version")
+		for _, version := range res.GetSupportedVersions() {
+			Expect(version).NotTo(BeNil())
+			Expect(version.GetMajor()).To(BeNumerically("<", 100))
+			Expect(version.GetMinor()).To(BeNumerically("<", 100))
+			Expect(version.GetPatch()).To(BeNumerically("<", 100))
+		}
+	})
+})
 
+var _ = Describe("GetPluginInfo [Identity Server]", func() {
+	var (
+		c csi.IdentityClient
+	)
+
+	BeforeEach(func() {
+		c = csi.NewIdentityClient(conn)
 	})
 
-	Describe("Probe", func() {
-		It("should return appropriate information", func() {
-			req := &csi.ProbeRequest{}
-			res, err := c.Probe(context.Background(), req)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(res).NotTo(BeNil())
+	It("should fail when no version is provided", func() {
+		_, err := c.GetPluginInfo(context.Background(), &csi.GetPluginInfoRequest{})
+		Expect(err).To(HaveOccurred())
 
-			By("verifying return status")
-			serverError, ok := status.FromError(err)
-			Expect(ok).To(BeTrue())
-			Expect(serverError.Code() == codes.FailedPrecondition ||
-				serverError.Code() == codes.OK).To(BeTrue())
-
-			if res.GetReady() != nil {
-				Expect(res.GetReady().GetValue() == true ||
-					res.GetReady().GetValue() == false).To(BeTrue())
-			}
-		})
+		serverError, ok := status.FromError(err)
+		Expect(ok).To(BeTrue())
+		Expect(serverError.Code()).To(Equal(codes.InvalidArgument))
 	})
 
-	Describe("GetPluginInfo", func() {
-		It("should return appropriate information", func() {
-			req := &csi.GetPluginInfoRequest{}
-			res, err := c.GetPluginInfo(context.Background(), req)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(res).NotTo(BeNil())
+	It("should return appropriate information", func() {
+		req := &csi.GetPluginInfoRequest{
+			Version: csiClientVersion,
+		}
+		res, err := c.GetPluginInfo(context.Background(), req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res).NotTo(BeNil())
 
-			By("verifying name size and characters")
-			Expect(res.GetName()).ToNot(HaveLen(0))
-			Expect(len(res.GetName())).To(BeNumerically("<=", 63))
-			Expect(regexp.
-				MustCompile("^[a-zA-Z][A-Za-z0-9-\\.\\_]{0,61}[a-zA-Z]$").
-				MatchString(res.GetName())).To(BeTrue())
-		})
+		By("verifying name size and characters")
+		Expect(res.GetName()).ToNot(HaveLen(0))
+		Expect(len(res.GetName())).To(BeNumerically("<=", 63))
+		Expect(regexp.
+			MustCompile("^[a-zA-Z][A-Za-z0-9-\\.\\_]{0,61}[a-zA-Z]$").
+			MatchString(res.GetName())).To(BeTrue())
 	})
 })

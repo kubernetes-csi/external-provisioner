@@ -16,16 +16,13 @@ limitations under the License.
 package test
 
 import (
-	"context"
-	"fmt"
-	"reflect"
 	"testing"
 
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
-	"github.com/golang/mock/gomock"
-	"github.com/golang/protobuf/proto"
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	gomock "github.com/golang/mock/gomock"
 	mock_driver "github.com/kubernetes-csi/csi-test/driver"
 	mock_utils "github.com/kubernetes-csi/csi-test/utils"
+	"golang.org/x/net/context"
 )
 
 func TestPluginInfoResponse(t *testing.T) {
@@ -36,7 +33,13 @@ func TestPluginInfoResponse(t *testing.T) {
 	driver := mock_driver.NewMockIdentityServer(m)
 
 	// Setup input
-	in := &csi.GetPluginInfoRequest{}
+	in := &csi.GetPluginInfoRequest{
+		Version: &csi.Version{
+			Major: 0,
+			Minor: 1,
+			Patch: 0,
+		},
+	}
 
 	// Setup mock outout
 	out := &csi.GetPluginInfoResponse{
@@ -61,24 +64,6 @@ func TestPluginInfoResponse(t *testing.T) {
 	}
 }
 
-type pbMatcher struct {
-	x proto.Message
-}
-
-func (p pbMatcher) Matches(x interface{}) bool {
-	y := x.(proto.Message)
-	return proto.Equal(p.x, y)
-}
-
-func (p pbMatcher) String() string {
-	return fmt.Sprintf("pb equal to %v", p.x)
-}
-
-func pbMatch(x interface{}) gomock.Matcher {
-	v := x.(proto.Message)
-	return &pbMatcher{v}
-}
-
 func TestGRPCGetPluginInfoReponse(t *testing.T) {
 
 	// Setup mock
@@ -87,7 +72,13 @@ func TestGRPCGetPluginInfoReponse(t *testing.T) {
 	driver := mock_driver.NewMockIdentityServer(m)
 
 	// Setup input
-	in := &csi.GetPluginInfoRequest{}
+	in := &csi.GetPluginInfoRequest{
+		Version: &csi.Version{
+			Major: 0,
+			Minor: 1,
+			Patch: 0,
+		},
+	}
 
 	// Setup mock outout
 	out := &csi.GetPluginInfoResponse{
@@ -100,7 +91,7 @@ func TestGRPCGetPluginInfoReponse(t *testing.T) {
 
 	// Setup expectation
 	// !IMPORTANT!: Must set context expected value to gomock.Any() to match any value
-	driver.EXPECT().GetPluginInfo(gomock.Any(), pbMatch(in)).Return(out, nil).Times(1)
+	driver.EXPECT().GetPluginInfo(gomock.Any(), in).Return(out, nil).Times(1)
 
 	// Create a new RPC
 	server := mock_driver.NewMockCSIDriver(&mock_driver.MockCSIDriverServers{
@@ -122,67 +113,5 @@ func TestGRPCGetPluginInfoReponse(t *testing.T) {
 	name := r.GetName()
 	if name != "mock" {
 		t.Errorf("Unknown name: %s\n", name)
-	}
-}
-
-func TestGRPCAttach(t *testing.T) {
-
-	// Setup mock
-	m := gomock.NewController(&mock_utils.SafeGoroutineTester{})
-	defer m.Finish()
-	driver := mock_driver.NewMockControllerServer(m)
-
-	// Setup input
-	defaultVolumeID := "myname"
-	defaultNodeID := "MyNodeID"
-	defaultCaps := &csi.VolumeCapability{
-		AccessType: &csi.VolumeCapability_Mount{
-			Mount: &csi.VolumeCapability_MountVolume{},
-		},
-		AccessMode: &csi.VolumeCapability_AccessMode{
-			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
-		},
-	}
-	publishVolumeInfo := map[string]string{
-		"first":  "foo",
-		"second": "bar",
-		"third":  "baz",
-	}
-	defaultRequest := &csi.ControllerPublishVolumeRequest{
-		VolumeId:         defaultVolumeID,
-		NodeId:           defaultNodeID,
-		VolumeCapability: defaultCaps,
-		Readonly:         false,
-	}
-
-	// Setup mock outout
-	out := &csi.ControllerPublishVolumeResponse{
-		PublishInfo: publishVolumeInfo,
-	}
-
-	// Setup expectation
-	// !IMPORTANT!: Must set context expected value to gomock.Any() to match any value
-	driver.EXPECT().ControllerPublishVolume(gomock.Any(), pbMatch(defaultRequest)).Return(out, nil).Times(1)
-
-	// Create a new RPC
-	server := mock_driver.NewMockCSIDriver(&mock_driver.MockCSIDriverServers{
-		Controller: driver,
-	})
-	conn, err := server.Nexus()
-	if err != nil {
-		t.Errorf("Error: %s", err.Error())
-	}
-	defer server.Close()
-
-	// Make call
-	c := csi.NewControllerClient(conn)
-	r, err := c.ControllerPublishVolume(context.Background(), defaultRequest)
-	if err != nil {
-		t.Errorf("Error: %s", err.Error())
-	}
-
-	info := r.GetPublishInfo()
-	if !reflect.DeepEqual(info, publishVolumeInfo) {
-		t.Errorf("Invalid publish info: %v", info)
 	}
 }

@@ -1,11 +1,12 @@
 language: go
+install:
+  - curl https://glide.sh/get | sh
+  - glide install -v
 matrix:
   include:
-  - go: 1.10.3
+  - go: 1.9.2
 script:
-- make test
-after_success:
-  - if [ "${TRAVIS_PULL_REQUEST}" == "false" ]; then
-      docker login -u "${DOCKER_USERNAME}" -p "${DOCKER_PASSWORD}" quay.io;
-      make push;
-    fi
+- go fmt $(go list ./... | grep -v vendor) | wc -l | grep 0
+- go vet $(go list ./... | grep -v vendor)
+- go test $(go list ./... | grep -v vendor | grep -v "cmd/csi-sanity")
+- ./hack/e2e.sh

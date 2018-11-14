@@ -21,7 +21,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-test/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -36,13 +36,17 @@ type simpleDriver struct {
 	wg       sync.WaitGroup
 }
 
-func (s *simpleDriver) GetPluginCapabilities(context.Context, *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
-	// TODO: Return some simple Plugin Capabilities
-	return &csi.GetPluginCapabilitiesResponse{}, nil
-}
-
-func (s *simpleDriver) Probe(context.Context, *csi.ProbeRequest) (*csi.ProbeResponse, error) {
-	return &csi.ProbeResponse{}, nil
+func (s *simpleDriver) GetSupportedVersions(
+	context.Context, *csi.GetSupportedVersionsRequest) (*csi.GetSupportedVersionsResponse, error) {
+	return &csi.GetSupportedVersionsResponse{
+		SupportedVersions: []*csi.Version{
+			&csi.Version{
+				Major: 0,
+				Minor: 1,
+				Patch: 0,
+			},
+		},
+	}, nil
 }
 
 func (s *simpleDriver) GetPluginInfo(

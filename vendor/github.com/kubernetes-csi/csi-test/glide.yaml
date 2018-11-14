@@ -1,0 +1,16 @@
+package: github.com/kubernetes-csi/csi-test
+import:
+- package: github.com/container-storage-interface/spec
+  subpackages:
+  - lib/go/csi
+- package: google.golang.org/grpc
+  subpackages:
+  - reflection
+testImport:
+- package: github.com/golang/mock
+  subpackages:
+  - gomock
+  - mockgen
+- package: golang.org/x/net
+  subpackages:
+  - context

@@ -1,50 +1,32 @@
 #!/bin/bash
 
-TESTARGS=$@
-UDS="/tmp/e2e-csi-sanity.sock"
-CSI_ENDPOINTS="$CSI_ENDPOINTS ${UDS}"
-CSI_MOCK_VERSION="master"
+CSI_ENDPOINTS="tcp://127.0.0.1:9998"
+CSI_ENDPOINTS="$CSI_ENDPOINTS /tmp/e2e-csi-sanity.sock"
+CSI_ENDPOINTS="$CSI_ENDPOINTS unix:///tmp/e2e-csi-sanity.sock"
 
-#
-# $1 - endpoint for mock.
-# $2 - endpoint for csi-sanity in Grpc format.
-#      See https://github.com/grpc/grpc/blob/master/doc/naming.md
-runTest()
-{
-	CSI_ENDPOINT=$1 ./bin/mock &
-	local pid=$!
-
-	./cmd/csi-sanity/csi-sanity $TESTARGS --csi.endpoint=$2; ret=$?
-	kill -9 $pid
-
-	if [ $ret -ne 0 ] ; then
-		exit $ret
-	fi
-}
-
-runTestWithCreds()
-{
-	CSI_ENDPOINT=$1 CSI_ENABLE_CREDS=true ./bin/mock &
-	local pid=$!
-
-	./cmd/csi-sanity/csi-sanity $TESTARGS --csi.endpoint=$2 --csi.secrets=mock/mocksecret.yaml; ret=$?
-	kill -9 $pid
-
-	if [ $ret -ne 0 ] ; then
-		exit $ret
-	fi
-}
-
-go build -o bin/mock ./mock || exit 1
-
+go get -u github.com/thecodeteam/gocsi/mock
 cd cmd/csi-sanity
   make clean install || exit 1
 cd ../..
 
-runTest "${UDS}" "${UDS}"
-rm -f $UDS
+for endpoint in $CSI_ENDPOINTS ; do
+	if ! echo $endpoint | grep tcp > /dev/null 2>&1 ; then
+		rm -f $endpoint
+	fi
 
-runTestWithCreds "${UDS}" "${UDS}"
-rm -f $UDS
+	CSI_ENDPOINT=$endpoint mock &
+	pid=$!
+
+	csi-sanity $@ --ginkgo.skip=MOCKERRORS --csi.endpoint=$endpoint ; ret=$?
+	kill -9 $pid
+
+	if ! echo $endpoint | grep tcp > /dev/null 2>&1 ; then
+		rm -f $endpoint
+	fi
+
+	if [ $ret -ne 0 ] ; then
+		exit $ret
+	fi
+done
 
 exit 0
