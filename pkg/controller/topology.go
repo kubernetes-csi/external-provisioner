@@ -18,18 +18,19 @@ package controller
 
 import (
 	"fmt"
+	"hash/fnv"
+	"math/rand"
+	"sort"
+	"strconv"
+	"strings"
+
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/golang/glog"
-	"hash/fnv"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	csiv1alpha1 "k8s.io/csi-api/pkg/apis/csi/v1alpha1"
 	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
-	"math/rand"
-	"sort"
-	"strconv"
-	"strings"
 )
 
 // topologyTerm represents a single term where its topology key value pairs are AND'd together.
@@ -128,7 +129,7 @@ func GenerateAccessibilityRequirements(
 			//   constraint.
 			// - Otherwise, the aggregated topology is guaranteed to contain topology information from the
 			//   selected node.
-			return nil, fmt.Errorf("topology %v from selected node %q is not in requisite", selectedTopology, selectedNode.Name)
+			return nil, fmt.Errorf("topology %v from selected node %q is not in requisite: %v", selectedTopology, selectedNode.Name, requisiteTerms)
 		}
 	}
 	requirement.Preferred = toCSITopology(preferredTerms)
