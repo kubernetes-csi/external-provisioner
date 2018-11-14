@@ -48,7 +48,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/status"
 
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
 
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
@@ -200,7 +200,7 @@ func getDriverCapabilities(conn *grpc.ClientConn, timeout time.Duration) (sets.I
 		switch service.GetType() {
 		case csi.PluginCapability_Service_CONTROLLER_SERVICE:
 			capabilities.Insert(PluginCapability_CONTROLLER_SERVICE)
-		case csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS:
+		case csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS:
 			capabilities.Insert(PluginCapability_ACCESSIBILITY_CONSTRAINTS)
 		}
 	}
@@ -458,7 +458,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	if err != nil {
 		return nil, err
 	}
-	req.ControllerCreateSecrets = provisionerCredentials
+	req.Secrets = provisionerCredentials
 
 	// Resolve controller publish, node stage, node publish secret references
 	controllerPublishSecretRef, err := getSecretReference(controllerPublishSecretNameKey, controllerPublishSecretNamespaceKey, options.Parameters, pvName, options.PVC)
@@ -503,16 +503,16 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		glog.V(3).Infof("create volume rep: %+v", *rep.Volume)
 	}
 	volumeAttributes := map[string]string{provisionerIDKey: p.identity}
-	for k, v := range rep.Volume.Attributes {
+	for k, v := range rep.Volume.VolumeContext {
 		volumeAttributes[k] = v
 	}
 	respCap := rep.GetVolume().GetCapacityBytes()
 	if respCap < volSizeBytes {
 		capErr := fmt.Errorf("created volume capacity %v less than requested capacity %v", respCap, volSizeBytes)
 		delReq := &csi.DeleteVolumeRequest{
-			VolumeId: rep.GetVolume().GetId(),
+			VolumeId: rep.GetVolume().GetVolumeId(),
 		}
-		delReq.ControllerDeleteSecrets = provisionerCredentials
+		delReq.Secrets = provisionerCredentials
 		ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 		defer cancel()
 		_, err := p.csiClient.DeleteVolume(ctx, delReq)
@@ -537,7 +537,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
 					Driver:                     driverState.driverName,
-					VolumeHandle:               p.volumeIdToHandle(rep.Volume.Id),
+					VolumeHandle:               p.volumeIdToHandle(rep.Volume.VolumeId),
 					FSType:                     fsType,
 					VolumeAttributes:           volumeAttributes,
 					ControllerPublishSecretRef: controllerPublishSecretRef,
@@ -584,7 +584,7 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions
 
 	snapshotSource := csi.VolumeContentSource_Snapshot{
 		Snapshot: &csi.VolumeContentSource_SnapshotSource{
-			Id: snapContentObj.Spec.VolumeSnapshotSource.CSI.SnapshotHandle,
+			SnapshotId: snapContentObj.Spec.VolumeSnapshotSource.CSI.SnapshotHandle,
 		},
 	}
 	glog.V(5).Infof("VolumeContentSource_Snapshot %+v", snapshotSource)
@@ -641,7 +641,7 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 			if err != nil {
 				return err
 			}
-			req.ControllerDeleteSecrets = credentials
+			req.Secrets = credentials
 		}
 
 	}

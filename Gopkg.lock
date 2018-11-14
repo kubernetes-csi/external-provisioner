@@ -29,12 +29,12 @@
   revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
 
 [[projects]]
-  digest = "1:cf4f5171128e62b46299b0a7cd79543f50e62f483d2ca9364e4957c7bbee7a38"
+  digest = "1:44982bd5390cb16b8a4dc65976503f907a9ffd07879fbddd3c06a9ef7e5b05c3"
   name = "github.com/container-storage-interface/spec"
-  packages = ["lib/go/csi/v0"]
+  packages = ["lib/go/csi"]
   pruneopts = ""
-  revision = "2178fdeea87f1150a17a63252eee28d4d8141f72"
-  version = "v0.3.0"
+  revision = "8efcc85c45550571fba8134182013ed7dc34038a"
+  version = "v1.0.0-rc2"
 
 [[projects]]
   digest = "1:0deddd908b6b4b768cfc272c16ee61e7088a60f7fe2f06c547bd3d8e1f8b8e77"
@@ -197,15 +197,15 @@
   version = "v1.0.1"
 
 [[projects]]
-  digest = "1:22ad77fdbab387190795e89ccc407f8eb1a25588cfe644921d287fcb8d59fc93"
+  digest = "1:d17a296973591f13eed8399016d5ec748cfb9c92086a84e00b33139b92ba4858"
   name = "github.com/kubernetes-csi/csi-test"
   packages = [
     "driver",
     "utils",
   ]
   pruneopts = ""
-  revision = "d6869a2704bb7e603ab294a42fbb893c18b8e46e"
-  version = "v0.3.0-2"
+  revision = "31b2baed861ae5c166922808be5d1982346adf7d"
+  version = "v0.1.0-2"
 
 [[projects]]
   digest = "1:4239620b2c39a3d5e920e1b5967ce45e7a973a66c95c7b8160e1bc198cb1ce8c"
@@ -587,6 +587,7 @@
   name = "k8s.io/apiserver"
   packages = [
     "pkg/util/feature",
+    "pkg/util/feature/testing",
     "pkg/util/flag",
   ]
   pruneopts = ""
@@ -809,7 +810,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
-    "github.com/container-storage-interface/spec/lib/go/csi/v0",
+    "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/glog",
     "github.com/golang/mock/gomock",
     "github.com/kubernetes-csi/csi-test/driver",
@@ -833,6 +834,7 @@
     "k8s.io/apimachinery/pkg/util/validation",
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/apiserver/pkg/util/feature",
+    "k8s.io/apiserver/pkg/util/feature/testing",
     "k8s.io/apiserver/pkg/util/flag",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/kubernetes/fake",
