@@ -4,7 +4,7 @@ services:
   - docker
 matrix:
   include:
-  - go: 1.10.3
+  - go: 1.11.1
 script:
 - go fmt $(go list ./... | grep -v vendor) | wc -l | grep 0
 - go vet $(go list ./... | grep -v vendor)

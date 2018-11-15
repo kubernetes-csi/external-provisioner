@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-test/driver"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
@@ -34,6 +34,7 @@ import (
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 	"google.golang.org/grpc"
 	"k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -287,7 +288,7 @@ func TestGetDriverCapabilities(t *testing.T) {
 					switch *cap {
 					case csi.PluginCapability_Service_CONTROLLER_SERVICE:
 						ok = ok && capabilities.Has(PluginCapability_CONTROLLER_SERVICE)
-					case csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS:
+					case csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS:
 						ok = ok && capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS)
 					}
 				}
@@ -434,16 +435,16 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	// Requested PVC with requestedBytes storage
 	opts := controller.VolumeOptions{
 		PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-		PVName:     "test-name",
-		PVC:        createFakePVC(requestedBytes),
-		Parameters: map[string]string{},
+		PVName:                        "test-name",
+		PVC:                           createFakePVC(requestedBytes),
+		Parameters:                    map[string]string{},
 	}
 
 	// Drivers CreateVolume response with lower capacity bytes than request
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: requestedBytes - 1,
-			Id:            "test-volume-id",
+			VolumeId:      "test-volume-id",
 		},
 	}
 
@@ -544,7 +545,7 @@ func provisionWithTopologyMockServerSetupExpectations(identityServer *driver.Moc
 			{
 				Type: &csi.PluginCapability_Service_{
 					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS,
+						Type: csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS,
 					},
 				},
 			},
@@ -734,8 +735,8 @@ func TestProvision(t *testing.T) {
 		"normal provision": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVName:                        "test-name",
+				PVC:                           createFakePVC(requestedBytes),
 				Parameters: map[string]string{
 					"fstype": "ext3",
 				},
@@ -759,7 +760,7 @@ func TestProvision(t *testing.T) {
 		"provision with access mode multi node multi writer": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -807,7 +808,7 @@ func TestProvision(t *testing.T) {
 		"provision with access mode multi node multi readonly": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -855,7 +856,7 @@ func TestProvision(t *testing.T) {
 		"provision with access mode single writer": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -903,7 +904,7 @@ func TestProvision(t *testing.T) {
 		"provision with multiple access modes": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -1042,7 +1043,7 @@ func TestProvision(t *testing.T) {
 		"provision with mount options": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -1133,7 +1134,7 @@ func TestProvision(t *testing.T) {
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
 				CapacityBytes: requestedBytes,
-				Id:            "test-volume-id",
+				VolumeId:      "test-volume-id",
 			},
 		}
 
@@ -1220,7 +1221,7 @@ func newSnapshot(name, className, boundToContent, snapshotUID, claimName string,
 			SelfLink:        "/apis/snapshot.storage.k8s.io/v1alpha1/namespaces/" + "default" + "/volumesnapshots/" + name,
 		},
 		Spec: crdv1.VolumeSnapshotSpec{
-			Source: &crdv1.TypedLocalObjectReference{
+			Source: &corev1.TypedLocalObjectReference{
 				Name: claimName,
 				Kind: "PersistentVolumeClaim",
 			},
@@ -1307,7 +1308,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		"provision with volume snapshot data source": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -1512,7 +1513,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
 				CapacityBytes: requestedBytes,
-				Id:            "test-volume-id",
+				VolumeId:      "test-volume-id",
 			},
 		}
 
@@ -1607,7 +1608,7 @@ func TestProvisionWithTopology(t *testing.T) {
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes:      requestBytes,
-			Id:                 "test-volume-id",
+			VolumeId:           "test-volume-id",
 			AccessibleTopology: accessibleTopology,
 		},
 	}
@@ -1645,7 +1646,7 @@ func TestProvisionWithMountOptions(t *testing.T) {
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: requestBytes,
-			Id:            "test-volume-id",
+			VolumeId:      "test-volume-id",
 		},
 	}
 
