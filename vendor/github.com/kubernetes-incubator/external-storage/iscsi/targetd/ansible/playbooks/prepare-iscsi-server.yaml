@@ -1,4 +1,0 @@
----
-- hosts: targetd
-  roles:
-  - role: prepare-iscsi-server

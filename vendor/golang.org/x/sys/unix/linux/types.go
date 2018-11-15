@@ -48,6 +48,7 @@ package unix
 #include <sys/wait.h>
 #include <linux/filter.h>
 #include <linux/icmpv6.h>
+#include <linux/if_pppox.h>
 #include <linux/keyctl.h>
 #include <linux/netfilter/nf_tables.h>
 #include <linux/netfilter/nfnetlink.h>
@@ -75,6 +76,7 @@ package unix
 #include <linux/rtc.h>
 #include <linux/blkpg.h>
 #include <linux/net_namespace.h>
+#include <linux/net_tstamp.h>
 #include <linux/if_xdp.h>
 #include <linux/ncsi.h>
 
@@ -167,6 +169,7 @@ union sockaddr_all {
 	struct sockaddr_un s4;
 	struct sockaddr_ll s5;
 	struct sockaddr_nl s6;
+	struct sockaddr_pppox s7;
 };
 
 struct sockaddr_any {
@@ -431,6 +434,8 @@ type RawSockaddrVM C.struct_sockaddr_vm
 
 type RawSockaddrXDP C.struct_sockaddr_xdp
 
+type RawSockaddrPPPoX [C.sizeof_struct_sockaddr_pppox]byte
+
 type RawSockaddr C.struct_sockaddr
 
 type RawSockaddrAny C.struct_sockaddr_any
@@ -479,6 +484,7 @@ const (
 	SizeofSockaddrALG       = C.sizeof_struct_sockaddr_alg
 	SizeofSockaddrVM        = C.sizeof_struct_sockaddr_vm
 	SizeofSockaddrXDP       = C.sizeof_struct_sockaddr_xdp
+	SizeofSockaddrPPPoX     = C.sizeof_struct_sockaddr_pppox
 	SizeofLinger            = C.sizeof_struct_linger
 	SizeofIovec             = C.sizeof_struct_iovec
 	SizeofIPMreq            = C.sizeof_struct_ip_mreq
@@ -1611,4 +1617,27 @@ const (
 	NCSI_CHANNEL_ATTR_FORCED        = C.NCSI_CHANNEL_ATTR_FORCED
 	NCSI_CHANNEL_ATTR_VLAN_LIST     = C.NCSI_CHANNEL_ATTR_VLAN_LIST
 	NCSI_CHANNEL_ATTR_VLAN_ID       = C.NCSI_CHANNEL_ATTR_VLAN_ID
+)
+
+// SO_TIMESTAMPING flags
+
+const (
+	SOF_TIMESTAMPING_TX_HARDWARE  = C.SOF_TIMESTAMPING_TX_HARDWARE
+	SOF_TIMESTAMPING_TX_SOFTWARE  = C.SOF_TIMESTAMPING_TX_SOFTWARE
+	SOF_TIMESTAMPING_RX_HARDWARE  = C.SOF_TIMESTAMPING_RX_HARDWARE
+	SOF_TIMESTAMPING_RX_SOFTWARE  = C.SOF_TIMESTAMPING_RX_SOFTWARE
+	SOF_TIMESTAMPING_SOFTWARE     = C.SOF_TIMESTAMPING_SOFTWARE
+	SOF_TIMESTAMPING_SYS_HARDWARE = C.SOF_TIMESTAMPING_SYS_HARDWARE
+	SOF_TIMESTAMPING_RAW_HARDWARE = C.SOF_TIMESTAMPING_RAW_HARDWARE
+	SOF_TIMESTAMPING_OPT_ID       = C.SOF_TIMESTAMPING_OPT_ID
+	SOF_TIMESTAMPING_TX_SCHED     = C.SOF_TIMESTAMPING_TX_SCHED
+	SOF_TIMESTAMPING_TX_ACK       = C.SOF_TIMESTAMPING_TX_ACK
+	SOF_TIMESTAMPING_OPT_CMSG     = C.SOF_TIMESTAMPING_OPT_CMSG
+	SOF_TIMESTAMPING_OPT_TSONLY   = C.SOF_TIMESTAMPING_OPT_TSONLY
+	SOF_TIMESTAMPING_OPT_STATS    = C.SOF_TIMESTAMPING_OPT_STATS
+	SOF_TIMESTAMPING_OPT_PKTINFO  = C.SOF_TIMESTAMPING_OPT_PKTINFO
+	SOF_TIMESTAMPING_OPT_TX_SWHW  = C.SOF_TIMESTAMPING_OPT_TX_SWHW
+
+	SOF_TIMESTAMPING_LAST = C.SOF_TIMESTAMPING_LAST
+	SOF_TIMESTAMPING_MASK = C.SOF_TIMESTAMPING_MASK
 )
