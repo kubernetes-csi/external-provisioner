@@ -34,6 +34,7 @@ import (
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 	"google.golang.org/grpc"
 	"k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -287,7 +288,7 @@ func TestGetDriverCapabilities(t *testing.T) {
 					switch *cap {
 					case csi.PluginCapability_Service_CONTROLLER_SERVICE:
 						ok = ok && capabilities.Has(PluginCapability_CONTROLLER_SERVICE)
-					case csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS:
+					case csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS:
 						ok = ok && capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS)
 					}
 				}
@@ -443,7 +444,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: requestedBytes - 1,
-			Id:            "test-volume-id",
+			VolumeId:      "test-volume-id",
 		},
 	}
 
@@ -544,7 +545,7 @@ func provisionWithTopologyMockServerSetupExpectations(identityServer *driver.Moc
 			{
 				Type: &csi.PluginCapability_Service_{
 					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS,
+						Type: csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS,
 					},
 				},
 			},
@@ -1133,7 +1134,7 @@ func TestProvision(t *testing.T) {
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
 				CapacityBytes: requestedBytes,
-				Id:            "test-volume-id",
+				VolumeId:      "test-volume-id",
 			},
 		}
 
@@ -1220,7 +1221,7 @@ func newSnapshot(name, className, boundToContent, snapshotUID, claimName string,
 			SelfLink:        "/apis/snapshot.storage.k8s.io/v1alpha1/namespaces/" + "default" + "/volumesnapshots/" + name,
 		},
 		Spec: crdv1.VolumeSnapshotSpec{
-			Source: &crdv1.TypedLocalObjectReference{
+			Source: &corev1.TypedLocalObjectReference{
 				Name: claimName,
 				Kind: "PersistentVolumeClaim",
 			},
@@ -1512,7 +1513,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
 				CapacityBytes: requestedBytes,
-				Id:            "test-volume-id",
+				VolumeId:      "test-volume-id",
 			},
 		}
 
@@ -1607,7 +1608,7 @@ func TestProvisionWithTopology(t *testing.T) {
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes:      requestBytes,
-			Id:                 "test-volume-id",
+			VolumeId:           "test-volume-id",
 			AccessibleTopology: accessibleTopology,
 		},
 	}
@@ -1645,7 +1646,7 @@ func TestProvisionWithMountOptions(t *testing.T) {
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: requestBytes,
-			Id:            "test-volume-id",
+			VolumeId:      "test-volume-id",
 		},
 	}
 
