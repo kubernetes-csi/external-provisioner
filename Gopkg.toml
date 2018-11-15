@@ -22,7 +22,7 @@
 
 [[constraint]]
   name = "github.com/container-storage-interface/spec"
-  version = "~0.3.0"
+  version = "1.0.0-rc2"
 
 [[constraint]]
   name = "github.com/golang/protobuf"
@@ -34,7 +34,7 @@
 
 [[constraint]]
   name = "github.com/kubernetes-csi/external-snapshotter"
-  version = "v0.4.1"
+  version = "1.0.0-rc2"
 
 [[constraint]]
   name = "github.com/kubernetes-incubator/external-storage"

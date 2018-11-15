@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -81,10 +80,7 @@ func TestCreateSnapshotSync(t *testing.T) {
 					size:       defaultSize,
 					snapshotId: "sid6-1",
 					timestamp:  timeNow,
-					status: &csi.SnapshotStatus{
-						Type:    csi.SnapshotStatus_READY,
-						Details: "success",
-					},
+					readyToUse: true,
 				},
 			},
 			errors: noerrors,
@@ -108,10 +104,7 @@ func TestCreateSnapshotSync(t *testing.T) {
 					size:       defaultSize,
 					snapshotId: "sid6-2",
 					timestamp:  timeNow,
-					status: &csi.SnapshotStatus{
-						Type:    csi.SnapshotStatus_READY,
-						Details: "success",
-					},
+					readyToUse: true,
 				},
 			},
 			errors: noerrors,
@@ -137,10 +130,7 @@ func TestCreateSnapshotSync(t *testing.T) {
 					size:       defaultSize,
 					snapshotId: "sid6-3",
 					timestamp:  timeNow,
-					status: &csi.SnapshotStatus{
-						Type:    csi.SnapshotStatus_READY,
-						Details: "success",
-					},
+					readyToUse: true,
 				},
 			},
 			errors: noerrors,
@@ -166,10 +156,7 @@ func TestCreateSnapshotSync(t *testing.T) {
 					size:       defaultSize,
 					snapshotId: "sid6-4",
 					timestamp:  timeNow,
-					status: &csi.SnapshotStatus{
-						Type:    csi.SnapshotStatus_READY,
-						Details: "success",
-					},
+					readyToUse: true,
 				},
 			},
 			errors: noerrors,
@@ -193,10 +180,7 @@ func TestCreateSnapshotSync(t *testing.T) {
 					size:       defaultSize,
 					snapshotId: "sid6-5",
 					timestamp:  timeNow,
-					status: &csi.SnapshotStatus{
-						Type:    csi.SnapshotStatus_READY,
-						Details: "success",
-					},
+					readyToUse: true,
 				},
 			},
 			errors: noerrors,
@@ -220,10 +204,7 @@ func TestCreateSnapshotSync(t *testing.T) {
 					size:       defaultSize,
 					snapshotId: "sid6-6",
 					timestamp:  timeNow,
-					status: &csi.SnapshotStatus{
-						Type:    csi.SnapshotStatus_READY,
-						Details: "success",
-					},
+					readyToUse: true,
 				},
 			},
 			errors: noerrors,
@@ -234,7 +215,7 @@ func TestCreateSnapshotSync(t *testing.T) {
 			initialContents:   nocontents,
 			expectedContents:  nocontents,
 			initialSnapshots:  newSnapshotArray("snap7-1", classNonExisting, "", "snapuid7-1", "claim7-1", false, nil, nil, nil),
-			expectedSnapshots: newSnapshotArray("snap7-1", classNonExisting, "", "snapuid7-1", "claim7-1", false, newVolumeError("Failed to create snapshot: failed to retrieve snapshot class non-existing from the API server: \"volumesnapshotclass.snapshot.storage.k8s.io \\\"non-existing\\\" not found\""), nil, nil),
+			expectedSnapshots: newSnapshotArray("snap7-1", classNonExisting, "", "snapuid7-1", "claim7-1", false, newVolumeError("Failed to create snapshot: failed to retrieve snapshot class non-existing from the informer: \"volumesnapshotclass.snapshot.storage.k8s.io \\\"non-existing\\\" not found\""), nil, nil),
 			initialClaims:     newClaimArray("claim7-1", "pvc-uid7-1", "1Gi", "volume7-1", v1.ClaimBound, &classEmpty),
 			initialVolumes:    newVolumeArray("volume7-1", "pv-uid7-1", "pv-handle7-1", "1Gi", "pvc-uid7-1", "claim7-1", v1.VolumeBound, v1.PersistentVolumeReclaimDelete, classEmpty),
 			expectedEvents:    []string{"Warning SnapshotCreationFailed"},
@@ -258,7 +239,7 @@ func TestCreateSnapshotSync(t *testing.T) {
 			initialContents:       nocontents,
 			expectedContents:      nocontents,
 			initialSnapshots:      newSnapshotArray("snap7-3", "", "", "snapuid7-3", "claim7-3", false, nil, nil, nil),
-			expectedSnapshots:     newSnapshotArray("snap7-3", "", "", "snapuid7-3", "claim7-3", false, newVolumeError("Failed to create snapshot: failed to retrieve snapshot class  from the API server: \"volumesnapshotclass.snapshot.storage.k8s.io \\\"\\\" not found\""), nil, nil),
+			expectedSnapshots:     newSnapshotArray("snap7-3", "", "", "snapuid7-3", "claim7-3", false, newVolumeError("Failed to create snapshot: failed to retrieve snapshot class  from the informer: \"volumesnapshotclass.snapshot.storage.k8s.io \\\"\\\" not found\""), nil, nil),
 			initialClaims:         newClaimArray("claim7-3", "pvc-uid7-3", "1Gi", "volume7-3", v1.ClaimBound, &classEmpty),
 			initialVolumes:        newVolumeArray("volume7-3", "pv-uid7-3", "pv-handle7-3", "1Gi", "pvc-uid7-3", "claim7-3", v1.VolumeBound, v1.PersistentVolumeReclaimDelete, classEmpty),
 			initialStorageClasses: []*storage.StorageClass{diffDriverStorageClass},
@@ -338,10 +319,7 @@ func TestCreateSnapshotSync(t *testing.T) {
 					size:       defaultSize,
 					snapshotId: "sid7-8",
 					timestamp:  timeNow,
-					status: &csi.SnapshotStatus{
-						Type:    csi.SnapshotStatus_READY,
-						Details: "success",
-					},
+					readyToUse: true,
 				},
 			},
 			errors: []reactorError{
@@ -372,10 +350,7 @@ func TestCreateSnapshotSync(t *testing.T) {
 					size:       defaultSize,
 					snapshotId: "sid7-9",
 					timestamp:  timeNow,
-					status: &csi.SnapshotStatus{
-						Type:    csi.SnapshotStatus_READY,
-						Details: "success",
-					},
+					readyToUse: true,
 				},
 			},
 			errors: []reactorError{

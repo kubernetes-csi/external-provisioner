@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/golang/glog"
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
 	"k8s.io/api/core/v1"
@@ -77,6 +76,7 @@ import (
 // In the future version, a retry policy will be added.
 
 const pvcKind = "PersistentVolumeClaim"
+const apiGroup = ""
 const controllerUpdateFailMsg = "snapshot controller failed to update"
 
 const IsDefaultSnapshotClassAnnotation = "snapshot.storage.kubernetes.io/is-default-class"
@@ -146,7 +146,7 @@ func (ctrl *csiSnapshotController) syncSnapshot(snapshot *crdv1.VolumeSnapshot) 
 	}
 }
 
-// syncReadySnapshot checks the snapshot which has been bound to snapshot content succesfully before.
+// syncReadySnapshot checks the snapshot which has been bound to snapshot content successfully before.
 // If there is any problem with the binding (e.g., snapshot points to a non-exist snapshot content), update the snapshot status and emit event.
 func (ctrl *csiSnapshotController) syncReadySnapshot(snapshot *crdv1.VolumeSnapshot) error {
 	if snapshot.Spec.SnapshotContentName == "" {
@@ -267,7 +267,7 @@ func (ctrl *csiSnapshotController) getMatchSnapshotContent(snapshot *crdv1.Volum
 // deleteSnapshotContent starts delete action.
 func (ctrl *csiSnapshotController) deleteSnapshotContent(content *crdv1.VolumeSnapshotContent) {
 	operationName := fmt.Sprintf("delete-%s[%s]", content.Name, string(content.UID))
-	glog.V(5).Infof("Snapshotter is about to delete volume snapshot and the operation named %s", operationName)
+	glog.V(5).Infof("Snapshotter is about to delete volume snapshot content and the operation named %s", operationName)
 	ctrl.scheduleOperation(operationName, func() error {
 		return ctrl.deleteSnapshotContentOperation(content)
 	})
@@ -552,7 +552,7 @@ func (ctrl *csiSnapshotController) createSnapshotOperation(snapshot *crdv1.Volum
 	}
 
 	if err != nil {
-		// Save failed. Now we have a storage asset outside of Kubernetes,
+		// Save failed. Now we have a snapshot asset outside of Kubernetes,
 		// but we don't have appropriate volumesnapshot content object for it.
 		// Emit some event here and controller should try to create the content in next sync period.
 		strerr := fmt.Sprintf("Error creating volume snapshot content object for snapshot %s: %v.", snapshotKey(snapshot), err)
@@ -666,8 +666,8 @@ func (ctrl *csiSnapshotController) updateSnapshotContentSize(content *crdv1.Volu
 }
 
 // UpdateSnapshotStatus converts snapshot status to crdv1.VolumeSnapshotCondition
-func (ctrl *csiSnapshotController) updateSnapshotStatus(snapshot *crdv1.VolumeSnapshot, csistatus *csi.SnapshotStatus, createdAt, size int64, bound bool) (*crdv1.VolumeSnapshot, error) {
-	glog.V(5).Infof("updating VolumeSnapshot[]%s, set status %v, timestamp %v", snapshotKey(snapshot), csistatus, createdAt)
+func (ctrl *csiSnapshotController) updateSnapshotStatus(snapshot *crdv1.VolumeSnapshot, readyToUse bool, createdAt, size int64, bound bool) (*crdv1.VolumeSnapshot, error) {
+	glog.V(5).Infof("updating VolumeSnapshot[]%s, readyToUse %v, timestamp %v", snapshotKey(snapshot), readyToUse, createdAt)
 	status := snapshot.Status
 	change := false
 	timeAt := &metav1.Time{
@@ -675,6 +675,20 @@ func (ctrl *csiSnapshotController) updateSnapshotStatus(snapshot *crdv1.VolumeSn
 	}
 
 	snapshotClone := snapshot.DeepCopy()
+	if readyToUse {
+		if bound {
+			status.Ready = true
+			// Remove the error if checking snapshot is already bound and ready
+			status.Error = nil
+			change = true
+		}
+		if status.CreationTime == nil {
+			status.CreationTime = timeAt
+			change = true
+		}
+	}
+
+	/* TODO FIXME
 	switch csistatus.Type {
 	case csi.SnapshotStatus_READY:
 		if bound {
@@ -703,6 +717,7 @@ func (ctrl *csiSnapshotController) updateSnapshotStatus(snapshot *crdv1.VolumeSn
 			change = true
 		}
 	}
+	*/
 	if change {
 		if size > 0 {
 			status.RestoreSize = resource.NewQuantity(size, resource.BinarySI)
@@ -770,8 +785,8 @@ func (ctrl *csiSnapshotController) GetSnapshotClass(className string) (*crdv1.Vo
 
 	class, err := ctrl.classLister.Get(className)
 	if err != nil {
-		glog.Errorf("failed to retrieve snapshot class %s from the API server: %q", className, err)
-		return nil, fmt.Errorf("failed to retrieve snapshot class %s from the API server: %q", className, err)
+		glog.Errorf("failed to retrieve snapshot class %s from the informer: %q", className, err)
+		return nil, fmt.Errorf("failed to retrieve snapshot class %s from the informer: %q", className, err)
 	}
 
 	return class, nil
@@ -824,12 +839,18 @@ func (ctrl *csiSnapshotController) SetDefaultSnapshotClass(snapshot *crdv1.Volum
 
 // getClaimFromVolumeSnapshot is a helper function to get PVC from VolumeSnapshot.
 func (ctrl *csiSnapshotController) getClaimFromVolumeSnapshot(snapshot *crdv1.VolumeSnapshot) (*v1.PersistentVolumeClaim, error) {
-	if snapshot.Spec.Source == nil || snapshot.Spec.Source.Kind != pvcKind {
-		return nil, fmt.Errorf("The snapshot source is not the right type. Expected %s, Got %v", pvcKind, snapshot.Spec.Source)
+	if snapshot.Spec.Source == nil {
+		return nil, fmt.Errorf("the snapshot source is not specified.")
+	}
+	if snapshot.Spec.Source.Kind != pvcKind {
+		return nil, fmt.Errorf("the snapshot source is not the right type. Expected %s, Got %v", pvcKind, snapshot.Spec.Source.Kind)
 	}
 	pvcName := snapshot.Spec.Source.Name
 	if pvcName == "" {
 		return nil, fmt.Errorf("the PVC name is not specified in snapshot %s", snapshotKey(snapshot))
+	}
+	if snapshot.Spec.Source.APIGroup != nil && *(snapshot.Spec.Source.APIGroup) != apiGroup {
+		return nil, fmt.Errorf("the snapshot source does not have the right APIGroup. Expected empty string, Got %s", *(snapshot.Spec.Source.APIGroup))
 	}
 
 	pvc, err := ctrl.client.CoreV1().PersistentVolumeClaims(snapshot.Namespace).Get(pvcName, metav1.GetOptions{})
