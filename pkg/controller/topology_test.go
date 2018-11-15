@@ -18,7 +18,9 @@ package controller
 
 import (
 	"fmt"
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"testing"
+
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -26,7 +28,6 @@ import (
 	csiv1alpha1 "k8s.io/csi-api/pkg/apis/csi/v1alpha1"
 	fakecsiclientset "k8s.io/csi-api/pkg/client/clientset/versioned/fake"
 	"k8s.io/kubernetes/pkg/apis/core/helper"
-	"testing"
 )
 
 const testDriverName = "com.example.csi/test-driver"

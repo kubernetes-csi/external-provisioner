@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-test/driver"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
@@ -434,9 +434,9 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	// Requested PVC with requestedBytes storage
 	opts := controller.VolumeOptions{
 		PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-		PVName:     "test-name",
-		PVC:        createFakePVC(requestedBytes),
-		Parameters: map[string]string{},
+		PVName:                        "test-name",
+		PVC:                           createFakePVC(requestedBytes),
+		Parameters:                    map[string]string{},
 	}
 
 	// Drivers CreateVolume response with lower capacity bytes than request
@@ -734,8 +734,8 @@ func TestProvision(t *testing.T) {
 		"normal provision": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVName:                        "test-name",
+				PVC:                           createFakePVC(requestedBytes),
 				Parameters: map[string]string{
 					"fstype": "ext3",
 				},
@@ -759,7 +759,7 @@ func TestProvision(t *testing.T) {
 		"provision with access mode multi node multi writer": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -807,7 +807,7 @@ func TestProvision(t *testing.T) {
 		"provision with access mode multi node multi readonly": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -855,7 +855,7 @@ func TestProvision(t *testing.T) {
 		"provision with access mode single writer": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -903,7 +903,7 @@ func TestProvision(t *testing.T) {
 		"provision with multiple access modes": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -1042,7 +1042,7 @@ func TestProvision(t *testing.T) {
 		"provision with mount options": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -1307,7 +1307,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		"provision with volume snapshot data source": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				PVName: "test-name",
+				PVName:                        "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
