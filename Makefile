@@ -14,7 +14,7 @@
 
 REGISTRY_NAME=quay.io/k8scsi
 IMAGE_NAME=csi-provisioner
-IMAGE_VERSION=v1.0.0
+IMAGE_VERSION=v1.0-canary
 IMAGE_TAG=$(REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_VERSION)
 
 REV=$(shell git describe --long --tags --match='v*' --dirty)
