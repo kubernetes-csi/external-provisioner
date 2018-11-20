@@ -32,6 +32,7 @@ import (
 	"github.com/golang/glog"
 
 	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
+	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/util"
 
 	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
@@ -108,6 +109,7 @@ const (
 )
 
 var _ controller.Provisioner = &csiProvisioner{}
+var _ controller.BlockProvisioner = &csiProvisioner{}
 
 var (
 	// Each provisioner have a identify string to distinguish with others. This
@@ -332,6 +334,58 @@ func makeVolumeName(prefix, pvcUID string, volumeNameUUIDLength int) (string, er
 
 }
 
+func getAccessTypeBlock() *csi.VolumeCapability_Block {
+	return &csi.VolumeCapability_Block{
+		Block: &csi.VolumeCapability_BlockVolume{},
+	}
+}
+
+func getAccessTypeMount(fsType string, mountFlags []string) *csi.VolumeCapability_Mount {
+	return &csi.VolumeCapability_Mount{
+		Mount: &csi.VolumeCapability_MountVolume{
+			FsType:     fsType,
+			MountFlags: mountFlags,
+		},
+	}
+}
+
+func getAccessMode(pvcAccessMode v1.PersistentVolumeAccessMode) *csi.VolumeCapability_AccessMode {
+	switch pvcAccessMode {
+	case v1.ReadWriteOnce:
+		return &csi.VolumeCapability_AccessMode{
+			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+		}
+	case v1.ReadWriteMany:
+		return &csi.VolumeCapability_AccessMode{
+			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+		}
+	case v1.ReadOnlyMany:
+		return &csi.VolumeCapability_AccessMode{
+			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+		}
+	default:
+		return nil
+	}
+}
+
+func getVolumeCapability(
+	pvcOptions controller.VolumeOptions,
+	pvcAccessMode v1.PersistentVolumeAccessMode,
+	fsType string,
+) *csi.VolumeCapability {
+	if util.CheckPersistentVolumeClaimModeBlock(pvcOptions.PVC) {
+		return &csi.VolumeCapability{
+			AccessType: getAccessTypeBlock(),
+			AccessMode: getAccessMode(pvcAccessMode),
+		}
+	} else {
+		return &csi.VolumeCapability{
+			AccessType: getAccessTypeMount(fsType, pvcOptions.MountOptions),
+			AccessMode: getAccessMode(pvcAccessMode),
+		}
+	}
+}
+
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
 	if options.PVC.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim Selector is not supported")
@@ -375,44 +429,14 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 
-	accessType := &csi.VolumeCapability_Mount{
-		Mount: &csi.VolumeCapability_MountVolume{
-			FsType:     fsType,
-			MountFlags: options.MountOptions,
-		},
-	}
-
 	// Get access mode
 	volumeCaps := make([]*csi.VolumeCapability, 0)
-	for _, cap := range options.PVC.Spec.AccessModes {
-		switch cap {
-		case v1.ReadWriteOnce:
-			volumeCaps = append(volumeCaps, &csi.VolumeCapability{
-				AccessMode: &csi.VolumeCapability_AccessMode{
-					Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-				},
-				AccessType: accessType,
-			})
-		case v1.ReadWriteMany:
-			volumeCaps = append(volumeCaps, &csi.VolumeCapability{
-				AccessMode: &csi.VolumeCapability_AccessMode{
-					Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
-				},
-				AccessType: accessType,
-			})
-		case v1.ReadOnlyMany:
-			volumeCaps = append(volumeCaps, &csi.VolumeCapability{
-				AccessMode: &csi.VolumeCapability_AccessMode{
-					Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
-				},
-				AccessType: accessType,
-			})
-		}
+	for _, pvcAccessMode := range options.PVC.Spec.AccessModes {
+		volumeCaps = append(volumeCaps, getVolumeCapability(options, pvcAccessMode, fsType))
 	}
 
 	// Create a CSI CreateVolumeRequest and Response
 	req := csi.CreateVolumeRequest{
-
 		Name:               pvName,
 		Parameters:         options.Parameters,
 		VolumeCapabilities: volumeCaps,
@@ -538,7 +562,6 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 				CSI: &v1.CSIPersistentVolumeSource{
 					Driver:                     driverState.driverName,
 					VolumeHandle:               p.volumeIdToHandle(rep.Volume.VolumeId),
-					FSType:                     fsType,
 					VolumeAttributes:           volumeAttributes,
 					ControllerPublishSecretRef: controllerPublishSecretRef,
 					NodeStageSecretRef:         nodeStageSecretRef,
@@ -551,6 +574,15 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	if driverState.capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) &&
 		utilfeature.DefaultFeatureGate.Enabled(features.Topology) {
 		pv.Spec.NodeAffinity = GenerateVolumeNodeAffinity(rep.Volume.AccessibleTopology)
+	}
+
+	// Set VolumeMode to PV if it is passed via PVC spec when Block feature is enabled
+	if options.PVC.Spec.VolumeMode != nil {
+		pv.Spec.VolumeMode = options.PVC.Spec.VolumeMode
+	}
+	// Set FSType if PV is not Block Volume
+	if !util.CheckPersistentVolumeClaimModeBlock(options.PVC) {
+		pv.Spec.PersistentVolumeSource.CSI.FSType = fsType
 	}
 
 	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
@@ -651,6 +683,14 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	_, err = p.csiClient.DeleteVolume(ctx, &req)
 
 	return err
+}
+
+func (p *csiProvisioner) SupportsBlock() bool {
+	// SupportsBlock always return true, because current CSI spec doesn't allow checking
+	// drivers' capability of block volume before creating volume.
+	// Drivers that don't support block volume should return error for CreateVolume called
+	// by Provision if block AccessType is specified.
+	return true
 }
 
 //TODO use a unique volume handle from and to Id
