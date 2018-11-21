@@ -1187,21 +1187,23 @@ func buildNodeInfos(nodeInfos []map[string][]string) *csiv1alpha1.CSINodeInfoLis
 				Name: nodeName,
 			},
 		}
+		var csiDrivers []csiv1alpha1.CSIDriverInfoSpec
 		for driver, topologyKeys := range nodeInfo {
-			driverInfos := []csiv1alpha1.CSIDriverInfo{
+			driverInfos := []csiv1alpha1.CSIDriverInfoSpec{
 				{
-					Driver:       driver,
+					Name:         driver,
 					NodeID:       nodeName,
 					TopologyKeys: topologyKeys,
 				},
 				{
-					Driver:       "net.example.storage/other-driver",
+					Name:         "net.example.storage/other-driver",
 					NodeID:       nodeName,
 					TopologyKeys: []string{"net.example.storage/rack"},
 				},
 			}
-			n.CSIDrivers = append(n.CSIDrivers, driverInfos...)
+			csiDrivers = append(csiDrivers, driverInfos...)
 		}
+		n.Spec = csiv1alpha1.CSINodeInfoSpec{Drivers: csiDrivers}
 		list.Items = append(list.Items, n)
 		i++
 	}

@@ -298,8 +298,8 @@ func sortAndShift(terms []topologyTerm, primary topologyTerm, shiftIndex uint32)
 }
 
 func getTopologyKeys(nodeInfo *csiv1alpha1.CSINodeInfo, driverName string) []string {
-	for _, driver := range nodeInfo.CSIDrivers {
-		if driver.Driver == driverName {
+	for _, driver := range nodeInfo.Spec.Drivers {
+		if driver.Name == driverName {
 			return driver.TopologyKeys
 		}
 	}
