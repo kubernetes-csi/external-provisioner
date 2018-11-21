@@ -533,7 +533,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	defer mockController.Finish()
 	defer driver.Stop()
 
-	csiProvisioner := NewCSIProvisioner(nil, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+	csiProvisioner := NewCSIProvisioner(nil, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, nil, csiConn.conn, nil)
 
 	// Requested PVC with requestedBytes storage
 	opts := controller.VolumeOptions{
@@ -671,6 +671,14 @@ func provisionWithTopologyMockServerSetupExpectations(identityServer *driver.Moc
 	}, nil).Times(1)
 }
 
+func generateCheckParameterFunc(t *testing.T, params map[string]string) func(ctx context.Context, req *csi.CreateVolumeRequest) {
+	return func(ctx context.Context, req *csi.CreateVolumeRequest) {
+		if !reflect.DeepEqual(req.Parameters, params) {
+			t.Errorf("Parameters passed are different from expected ones. actual: %v, expected:%v", req.Parameters, params)
+		}
+	}
+}
+
 // Minimal PVC required for tests to function
 func createFakePVC(requestBytes int64) *v1.PersistentVolumeClaim {
 	return &v1.PersistentVolumeClaim{
@@ -692,6 +700,13 @@ func createFakePVC(requestBytes int64) *v1.PersistentVolumeClaim {
 func createFakePVCWithVolumeMode(requestBytes int64, volumeMode v1.PersistentVolumeMode) *v1.PersistentVolumeClaim {
 	claim := createFakePVC(requestBytes)
 	claim.Spec.VolumeMode = &volumeMode
+	return claim
+}
+
+// createFakePVCWithAnnotation returns PVC with Annotation
+func createFakePVCWithAnnotation(requestBytes int64, annotations map[string]string) *v1.PersistentVolumeClaim {
+	claim := createFakePVC(requestBytes)
+	claim.Annotations = annotations
 	return claim
 }
 
@@ -848,17 +863,18 @@ func TestGetSecretReference(t *testing.T) {
 }
 
 type provisioningTestcase struct {
-	volOpts           controller.VolumeOptions
-	notNilSelector    bool
-	driverNotReady    bool
-	makeVolumeNameErr bool
-	getSecretRefErr   bool
-	getCredentialsErr bool
-	volWithLessCap    bool
-	expectedPVSpec    *pvSpec
-	withSecretRefs    bool
-	expectErr         bool
-	expectCreateVolDo interface{}
+	volOpts               controller.VolumeOptions
+	notNilSelector        bool
+	driverNotReady        bool
+	makeVolumeNameErr     bool
+	getSecretRefErr       bool
+	getCredentialsErr     bool
+	volWithLessCap        bool
+	pvcAnnotationMappings map[string]string
+	expectedPVSpec        *pvSpec
+	withSecretRefs        bool
+	expectErr             bool
+	expectCreateVolDo     interface{}
 }
 
 type pvSpec struct {
@@ -1322,6 +1338,80 @@ func TestProvision(t *testing.T) {
 				}
 			},
 		},
+		"provision pvc with annotations by not specifying pvcAnnotationMappings": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName:                        "test-name",
+				PVC:                           createFakePVCWithAnnotation(requestedBytes, map[string]string{"annotation1": "a1", "annotation2": "a2"}),
+				Parameters:                    map[string]string{"param1": "p1"},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: generateCheckParameterFunc(t, map[string]string{"param1": "p1"}),
+		},
+		"provision pvc with annotations by specifying pvcAnnotationMappings that map annotation1 to annotation1": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName:                        "test-name",
+				PVC:                           createFakePVCWithAnnotation(requestedBytes, map[string]string{"annotation1": "a1", "annotation2": "a2"}),
+				Parameters:                    map[string]string{"param1": "p1"},
+			},
+			pvcAnnotationMappings: map[string]string{"annotation1": "annotation1"},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: generateCheckParameterFunc(t, map[string]string{"param1": "p1", "annotation1": "a1"}),
+		},
+		"provision pvc with annotations by specifying pvcAnnotationMappings that map annotation1 to param2": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName:                        "test-name",
+				PVC:                           createFakePVCWithAnnotation(requestedBytes, map[string]string{"annotation1": "a1", "annotation2": "a2"}),
+				Parameters:                    map[string]string{"param1": "p1"},
+			},
+			pvcAnnotationMappings: map[string]string{"annotation1": "param2"},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: generateCheckParameterFunc(t, map[string]string{"param1": "p1", "param2": "a1"}),
+		},
 	}
 
 	for k, tc := range testcases {
@@ -1391,7 +1481,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		clientSet = fakeclientset.NewSimpleClientset()
 	}
 
-	csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+	csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, tc.pvcAnnotationMappings, csiConn.conn, nil)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1746,7 +1836,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			return true, content, nil
 		})
 
-		csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client)
+		csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, nil, csiConn.conn, client)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -1841,7 +1931,7 @@ func TestProvisionWithTopology(t *testing.T) {
 
 	clientSet := fakeclientset.NewSimpleClientset()
 	csiClientSet := fakecsiclientset.NewSimpleClientset()
-	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, nil, csiConn.conn, nil)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1879,7 +1969,7 @@ func TestProvisionWithMountOptions(t *testing.T) {
 
 	clientSet := fakeclientset.NewSimpleClientset()
 	csiClientSet := fakecsiclientset.NewSimpleClientset()
-	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, nil, csiConn.conn, nil)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{

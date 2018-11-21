@@ -149,16 +149,17 @@ var (
 
 // CSIProvisioner struct
 type csiProvisioner struct {
-	client               kubernetes.Interface
-	csiClient            csi.ControllerClient
-	csiAPIClient         csiclientset.Interface
-	grpcClient           *grpc.ClientConn
-	snapshotClient       snapclientset.Interface
-	timeout              time.Duration
-	identity             string
-	volumeNamePrefix     string
-	volumeNameUUIDLength int
-	config               *rest.Config
+	client                kubernetes.Interface
+	csiClient             csi.ControllerClient
+	csiAPIClient          csiclientset.Interface
+	grpcClient            *grpc.ClientConn
+	snapshotClient        snapclientset.Interface
+	timeout               time.Duration
+	identity              string
+	volumeNamePrefix      string
+	volumeNameUUIDLength  int
+	pvcAnnotationMappings map[string]string
+	config                *rest.Config
 }
 
 type driverState struct {
@@ -325,20 +326,22 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	identity string,
 	volumeNamePrefix string,
 	volumeNameUUIDLength int,
+	pvcAnnotationMappings map[string]string,
 	grpcClient *grpc.ClientConn,
 	snapshotClient snapclientset.Interface) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
-		client:               client,
-		grpcClient:           grpcClient,
-		csiClient:            csiClient,
-		csiAPIClient:         csiAPIClient,
-		snapshotClient:       snapshotClient,
-		timeout:              connectionTimeout,
-		identity:             identity,
-		volumeNamePrefix:     volumeNamePrefix,
-		volumeNameUUIDLength: volumeNameUUIDLength,
+		client:                client,
+		grpcClient:            grpcClient,
+		csiClient:             csiClient,
+		csiAPIClient:          csiAPIClient,
+		snapshotClient:        snapshotClient,
+		timeout:               connectionTimeout,
+		identity:              identity,
+		volumeNamePrefix:      volumeNamePrefix,
+		volumeNameUUIDLength:  volumeNameUUIDLength,
+		pvcAnnotationMappings: pvcAnnotationMappings,
 	}
 	return provisioner
 }
@@ -575,6 +578,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	if err != nil {
 		return nil, fmt.Errorf("failed to strip CSI Parameters of prefixed keys: %v", err)
 	}
+	req.Parameters = addSpecifiedAnnotationsToParameters(req.Parameters, options.PVC.Annotations, p.pvcAnnotationMappings)
 
 	opts := wait.Backoff{Duration: backoffDuration, Factor: backoffFactor, Steps: backoffSteps}
 	err = wait.ExponentialBackoff(opts, func() (bool, error) {
@@ -693,6 +697,24 @@ func removePrefixedParameters(param map[string]string) (map[string]string, error
 		}
 	}
 	return newParam, nil
+}
+
+func addSpecifiedAnnotationsToParameters(param map[string]string, annotation map[string]string, mapping map[string]string) map[string]string {
+	newParam := map[string]string{}
+	// Copy all existing parameters
+	for k, v := range param {
+		newParam[k] = v
+	}
+
+	// Copy a parameter from annotation, if a mapping for the parameter exists.
+	// Key is replaced with the value that is specified as value of the mapping.
+	for k, v := range annotation {
+		if newKey, ok := mapping[k]; ok {
+			newParam[newKey] = v
+		}
+	}
+
+	return newParam
 }
 
 func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions) (*csi.VolumeContentSource, error) {

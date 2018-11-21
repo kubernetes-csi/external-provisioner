@@ -45,15 +45,16 @@ import (
 )
 
 var (
-	master               = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
-	kubeconfig           = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
-	csiEndpoint          = flag.String("csi-address", "/run/csi/socket", "The gRPC endpoint for Target CSI Volume.")
-	connectionTimeout    = flag.Duration("connection-timeout", 10*time.Second, "Timeout for waiting for CSI driver socket.")
-	volumeNamePrefix     = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume.")
-	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
-	showVersion          = flag.Bool("version", false, "Show version.")
-	enableLeaderElection = flag.Bool("enable-leader-election", false, "Enables leader election. If leader election is enabled, additional RBAC rules are required. Please refer to the Kubernetes CSI documentation for instructions on setting up these RBAC rules.")
-	featureGates         map[string]bool
+	master                = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
+	kubeconfig            = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
+	csiEndpoint           = flag.String("csi-address", "/run/csi/socket", "The gRPC endpoint for Target CSI Volume.")
+	connectionTimeout     = flag.Duration("connection-timeout", 10*time.Second, "Timeout for waiting for CSI driver socket.")
+	volumeNamePrefix      = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume.")
+	volumeNameUUIDLength  = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
+	showVersion           = flag.Bool("version", false, "Show version.")
+	enableLeaderElection  = flag.Bool("enable-leader-election", false, "Enables leader election. If leader election is enabled, additional RBAC rules are required. Please refer to the Kubernetes CSI documentation for instructions on setting up these RBAC rules.")
+	featureGates          map[string]bool
+	pvcAnnotationMappings map[string]string
 
 	provisionController *controller.ProvisionController
 	version             = "unknown"
@@ -65,6 +66,7 @@ func init() {
 
 	flag.Var(utilflag.NewMapStringBool(&featureGates), "feature-gates", "A set of key=value pairs that describe feature gates for alpha/experimental features. "+
 		"Options are:\n"+strings.Join(utilfeature.DefaultFeatureGate.KnownFeatures(), "\n"))
+	flag.Var(utilflag.NewMapStringString(&pvcAnnotationMappings), "pvc-annotation-mappings", "A set of key=value pairs that describe how pvc annotation should be mapped to parameters that are passed to csi drivers.")
 
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Parse()
@@ -145,7 +147,7 @@ func init() {
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient)
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, pvcAnnotationMappings, grpcClient, snapClient)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		provisionerName,
