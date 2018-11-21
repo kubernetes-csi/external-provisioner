@@ -51,6 +51,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
 
+	"github.com/kubernetes-csi/external-provisioner/pkg/csigrpc"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 )
@@ -119,9 +120,9 @@ var (
 //TODO consolidate ane librarize
 func logGRPC(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	glog.V(5).Infof("GRPC call: %s", method)
-	glog.V(5).Infof("GRPC request: %+v", req)
+	glog.V(5).Infof("GRPC request: %s", csigrpc.StripSecrets(req))
 	err := invoker(ctx, method, req, reply, cc, opts...)
-	glog.V(5).Infof("GRPC response: %+v", reply)
+	glog.V(5).Infof("GRPC response: %s", csigrpc.StripSecrets(reply))
 	glog.V(5).Infof("GRPC error: %v", err)
 	return err
 }

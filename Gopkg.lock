@@ -102,6 +102,7 @@
   digest = "1:3dd078fda7500c341bc26cfbc6c6a34614f295a2457149fc1045cab767cbcf18"
   name = "github.com/golang/protobuf"
   packages = [
+    "descriptor",
     "proto",
     "protoc-gen-go/descriptor",
     "ptypes",
@@ -283,6 +284,14 @@
   version = "v2.0.1"
 
 [[projects]]
+  digest = "1:256484dbbcd271f9ecebc6795b2df8cad4c458dd0f5fd82a8c2fa0c29f233411"
+  name = "github.com/pmezard/go-difflib"
+  packages = ["difflib"]
+  pruneopts = ""
+  revision = "792786c7400a136282c1664665ae0a8db921c6c2"
+  version = "v1.0.0"
+
+[[projects]]
   digest = "1:f3e56d302f80d760e718743f89f4e7eaae532d4218ba330e979bd051f78de141"
   name = "github.com/prometheus/client_golang"
   packages = [
@@ -334,6 +343,14 @@
   pruneopts = ""
   revision = "298182f68c66c05229eb03ac171abe6e309ee79a"
   version = "v1.0.3"
+
+[[projects]]
+  digest = "1:c587772fb8ad29ad4db67575dad25ba17a51f072ff18a22b4f0257a4d9c24f75"
+  name = "github.com/stretchr/testify"
+  packages = ["assert"]
+  pruneopts = ""
+  revision = "f35b8ab0b5a2cef36673838d662e249dd9c94686"
+  version = "v1.2.2"
 
 [[projects]]
   branch = "master"
@@ -813,12 +830,16 @@
     "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/glog",
     "github.com/golang/mock/gomock",
+    "github.com/golang/protobuf/descriptor",
+    "github.com/golang/protobuf/proto",
+    "github.com/golang/protobuf/protoc-gen-go/descriptor",
     "github.com/kubernetes-csi/csi-test/driver",
     "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake",
     "github.com/kubernetes-incubator/external-storage/lib/controller",
     "github.com/spf13/pflag",
+    "github.com/stretchr/testify/assert",
     "google.golang.org/grpc",
     "google.golang.org/grpc/codes",
     "google.golang.org/grpc/connectivity",
