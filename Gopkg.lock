@@ -208,7 +208,7 @@
   version = "v1.0.0-rc2"
 
 [[projects]]
-  digest = "1:b2a0c30d7f061553bda00f5f2a60507faeee00055ad93a96c83b75557113445a"
+  digest = "1:459b9594f891e8b707192976d0cb38d723a0ad71ccd81e58cd842807e5919298"
   name = "github.com/kubernetes-csi/external-snapshotter"
   packages = [
     "pkg/apis/volumesnapshot/v1alpha1",
@@ -219,8 +219,8 @@
     "pkg/client/clientset/versioned/typed/volumesnapshot/v1alpha1/fake",
   ]
   pruneopts = ""
-  revision = "bdd3a9bbc88b0c38bbe25e265149532b2219a74a"
-  version = "v1.0.0-rc3"
+  revision = "7f0070ed917ebab6e931cfa403e7e3e0e4490138"
+  version = "v1.0.0-rc4"
 
 [[projects]]
   digest = "1:5cfa5be1a5843dd9fb09cc36a57087748c6aaff22b2e64e1b2fdf8120f7b9332"
@@ -856,6 +856,7 @@
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake",
     "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller",
+    "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/util",
     "github.com/spf13/pflag",
     "google.golang.org/grpc",
     "google.golang.org/grpc/codes",
