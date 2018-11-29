@@ -29,7 +29,7 @@ import (
 
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
-	"github.com/kubernetes-incubator/external-storage/lib/controller"
+	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
 	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
 
 	"google.golang.org/grpc"

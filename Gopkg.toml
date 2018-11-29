@@ -38,11 +38,11 @@
 
 [[constraint]]
   name = "github.com/kubernetes-csi/external-snapshotter"
-  version = "1.0.0-rc2"
+  version = "1.0.0-rc4"
 
 [[constraint]]
-  name = "github.com/kubernetes-incubator/external-storage"
-  version = "v5.2.0"
+  name = "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner"
+  version = "v2.0.0-alpha"
 
 [[constraint]]
   name = "google.golang.org/grpc"
@@ -50,20 +50,20 @@
 
 [[constraint]]
   name = "k8s.io/apimachinery"
-  version = "kubernetes-1.12.0"
+  version = "kubernetes-1.13.0-beta.1"
 
 [[constraint]]
   name = "k8s.io/client-go"
-  version = "kubernetes-1.12.0"
+  version = "kubernetes-1.13.0-beta.1"
 
 [[constraint]]
   name = "k8s.io/api"
-  version = "kubernetes-1.12.0"
+  version = "kubernetes-1.13.0-beta.1"
 
 [[constraint]]
   name = "k8s.io/csi-api"
-  version = "kubernetes-1.12.0"
+  version = "kubernetes-1.13.0-beta.1"
 
 [[constraint]]
   name = "k8s.io/apiserver"
-  version = "kubernetes-1.12.0"
+  version = "kubernetes-1.13.0-beta.1"
