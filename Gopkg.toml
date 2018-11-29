@@ -38,7 +38,7 @@
 
 [[constraint]]
   name = "github.com/kubernetes-csi/external-snapshotter"
-  version = "1.0.0-rc3"
+  version = "1.0.0-rc4"
 
 [[constraint]]
   name = "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner"
