@@ -1290,7 +1290,7 @@ func newSnapshot(name, className, boundToContent, snapshotUID, claimName string,
 		},
 		Status: crdv1.VolumeSnapshotStatus{
 			CreationTime: creationTime,
-			Ready:        ready,
+			ReadyToUse:   ready,
 			Error:        err,
 			RestoreSize:  size,
 		},

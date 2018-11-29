@@ -595,7 +595,7 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions
 	if err != nil {
 		return nil, fmt.Errorf("error getting snapshot %s from api server: %v", options.PVC.Spec.DataSource.Name, err)
 	}
-	if snapshotObj.Status.Ready == false {
+	if snapshotObj.Status.ReadyToUse == false {
 		return nil, fmt.Errorf("snapshot %s is not Ready", options.PVC.Spec.DataSource.Name)
 	}
 
