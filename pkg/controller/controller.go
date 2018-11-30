@@ -57,7 +57,37 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 )
 
+type deprecatedSecretParamsMap struct {
+	name                         string
+	deprecatedSecretNameKey      string
+	deprecatedSecretNamespaceKey string
+	secretNameKey                string
+	secretNamespaceKey           string
+}
+
 const (
+	// CSI Parameters prefixed with csiParameterPrefix are not passed through
+	// to the driver on CreateVolumeRequest calls. Instead they are intended
+	// to used by the CSI external-provisioner and maybe used to populate
+	// fields in subsequent CSI calls or Kubernetes API objects.
+	csiParameterPrefix = "csi.storage.k8s.io/"
+
+	prefixedFsTypeKey = csiParameterPrefix + "fstype"
+
+	prefixedProvisionerSecretNameKey      = csiParameterPrefix + "provisioner-secret-name"
+	prefixedProvisionerSecretNamespaceKey = csiParameterPrefix + "provisioner-secret-namespace"
+
+	prefixedControllerPublishSecretNameKey      = csiParameterPrefix + "controller-publish-secret-name"
+	prefixedControllerPublishSecretNamespaceKey = csiParameterPrefix + "controller-publish-secret-namespace"
+
+	prefixedNodeStageSecretNameKey      = csiParameterPrefix + "node-stage-secret-name"
+	prefixedNodeStageSecretNamespaceKey = csiParameterPrefix + "node-stage-secret-namespace"
+
+	prefixedNodePublishSecretNameKey      = csiParameterPrefix + "node-publish-secret-name"
+	prefixedNodePublishSecretNamespaceKey = csiParameterPrefix + "node-publish-secret-namespace"
+
+	// [Deprecated] CSI Parameters that are put into fields but
+	// NOT stripped from the parameters passed to CreateVolume
 	provisionerSecretNameKey      = "csiProvisionerSecretName"
 	provisionerSecretNamespaceKey = "csiProvisionerSecretNamespace"
 
@@ -81,6 +111,40 @@ const (
 
 	snapshotKind     = "VolumeSnapshot"
 	snapshotAPIGroup = snapapi.GroupName // "snapshot.storage.k8s.io"
+)
+
+var (
+	provisionerSecretParams = deprecatedSecretParamsMap{
+		name:                         "Provisioner",
+		deprecatedSecretNameKey:      provisionerSecretNameKey,
+		deprecatedSecretNamespaceKey: provisionerSecretNamespaceKey,
+		secretNameKey:                prefixedProvisionerSecretNameKey,
+		secretNamespaceKey:           prefixedProvisionerSecretNamespaceKey,
+	}
+
+	nodePublishSecretParams = deprecatedSecretParamsMap{
+		name:                         "NodePublish",
+		deprecatedSecretNameKey:      nodePublishSecretNameKey,
+		deprecatedSecretNamespaceKey: nodePublishSecretNamespaceKey,
+		secretNameKey:                prefixedNodePublishSecretNameKey,
+		secretNamespaceKey:           prefixedNodePublishSecretNamespaceKey,
+	}
+
+	controllerPublishSecretParams = deprecatedSecretParamsMap{
+		name:                         "ControllerPublish",
+		deprecatedSecretNameKey:      controllerPublishSecretNameKey,
+		deprecatedSecretNamespaceKey: controllerPublishSecretNamespaceKey,
+		secretNameKey:                prefixedControllerPublishSecretNameKey,
+		secretNamespaceKey:           prefixedControllerPublishSecretNamespaceKey,
+	}
+
+	nodeStageSecretParams = deprecatedSecretParamsMap{
+		name:                         "NodeStage",
+		deprecatedSecretNameKey:      nodeStageSecretNameKey,
+		deprecatedSecretNamespaceKey: nodeStageSecretNamespaceKey,
+		secretNameKey:                prefixedNodeStageSecretNameKey,
+		secretNamespaceKey:           prefixedNodeStageSecretNamespaceKey,
+	}
 )
 
 // CSIProvisioner struct
@@ -416,12 +480,20 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, err
 	}
 
+	fsTypesFound := 0
 	fsType := ""
 	for k, v := range options.Parameters {
-		switch strings.ToLower(k) {
-		case "fstype":
+		if strings.ToLower(k) == "fstype" {
 			fsType = v
+			fsTypesFound += 1
+			glog.Warningf(deprecationWarning("fstype", prefixedFsTypeKey, ""))
+		} else if k == prefixedFsTypeKey {
+			fsType = v
+			fsTypesFound += 1
 		}
+	}
+	if fsTypesFound > 1 {
+		return nil, fmt.Errorf("fstype specified in parameters with both \"fstype\" and \"%s\" keys", prefixedFsTypeKey)
 	}
 	if len(fsType) == 0 {
 		fsType = defaultFSType
@@ -475,7 +547,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 
 	// Resolve provision secret credentials.
 	// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
-	provisionerSecretRef, err := getSecretReference(provisionerSecretNameKey, provisionerSecretNamespaceKey, options.Parameters, pvName, nil)
+	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, options.Parameters, pvName, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -486,17 +558,22 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	req.Secrets = provisionerCredentials
 
 	// Resolve controller publish, node stage, node publish secret references
-	controllerPublishSecretRef, err := getSecretReference(controllerPublishSecretNameKey, controllerPublishSecretNamespaceKey, options.Parameters, pvName, options.PVC)
+	controllerPublishSecretRef, err := getSecretReference(controllerPublishSecretParams, options.Parameters, pvName, options.PVC)
 	if err != nil {
 		return nil, err
 	}
-	nodeStageSecretRef, err := getSecretReference(nodeStageSecretNameKey, nodeStageSecretNamespaceKey, options.Parameters, pvName, options.PVC)
+	nodeStageSecretRef, err := getSecretReference(nodeStageSecretParams, options.Parameters, pvName, options.PVC)
 	if err != nil {
 		return nil, err
 	}
-	nodePublishSecretRef, err := getSecretReference(nodePublishSecretNameKey, nodePublishSecretNamespaceKey, options.Parameters, pvName, options.PVC)
+	nodePublishSecretRef, err := getSecretReference(nodePublishSecretParams, options.Parameters, pvName, options.PVC)
 	if err != nil {
 		return nil, err
+	}
+
+	req.Parameters, err = removePrefixedParameters(options.Parameters)
+	if err != nil {
+		return nil, fmt.Errorf("failed to strip CSI Parameters of prefixed keys: %v", err)
 	}
 
 	opts := wait.Backoff{Duration: backoffDuration, Factor: backoffFactor, Steps: backoffSteps}
@@ -591,6 +668,33 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	return pv, nil
 }
 
+func removePrefixedParameters(param map[string]string) (map[string]string, error) {
+	newParam := map[string]string{}
+	for k, v := range param {
+		if strings.HasPrefix(k, csiParameterPrefix) {
+			// Check if its well known
+			switch k {
+			case prefixedFsTypeKey:
+			case prefixedProvisionerSecretNameKey:
+			case prefixedProvisionerSecretNamespaceKey:
+			case prefixedControllerPublishSecretNameKey:
+			case prefixedControllerPublishSecretNamespaceKey:
+			case prefixedNodeStageSecretNameKey:
+			case prefixedNodeStageSecretNamespaceKey:
+			case prefixedNodePublishSecretNameKey:
+			case prefixedNodePublishSecretNamespaceKey:
+			default:
+				return map[string]string{}, fmt.Errorf("found unknown parameter key \"%s\" with reserved namespace %s", k, csiParameterPrefix)
+			}
+		} else {
+			// Don't strip, add this key-value to new map
+			// Deprecated parameters prefixed with "csi" are not stripped to preserve backwards compatibility
+			newParam[k] = v
+		}
+	}
+	return newParam, nil
+}
+
 func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions) (*csi.VolumeContentSource, error) {
 	snapshotObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshots(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
 	if err != nil {
@@ -666,7 +770,7 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 		if storageClass, err := p.client.StorageV1().StorageClasses().Get(storageClassName, metav1.GetOptions{}); err == nil {
 			// Resolve provision secret credentials.
 			// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
-			provisionerSecretRef, err := getSecretReference(provisionerSecretNameKey, provisionerSecretNamespaceKey, storageClass.Parameters, volume.Name, nil)
+			provisionerSecretRef, err := getSecretReference(provisionerSecretParams, storageClass.Parameters, volume.Name, nil)
 			if err != nil {
 				return err
 			}
@@ -703,8 +807,54 @@ func (p *csiProvisioner) volumeHandleToId(handle string) string {
 	return handle
 }
 
-// getSecretReference returns a reference to the secret specified in the given nameKey and namespaceKey parameters, or an error if the parameters are not specified correctly.
-// if neither the name or namespace parameter are set, a nil reference and no error is returned.
+// verifyAndGetSecretNameAndNamespaceTemplate gets the values (templates) associated
+// with the parameters specified in "secret" and verifies that they are specified correctly.
+func verifyAndGetSecretNameAndNamespaceTemplate(secret deprecatedSecretParamsMap, storageClassParams map[string]string) (nameTemplate, namespaceTemplate string, err error) {
+	numName := 0
+	numNamespace := 0
+
+	if t, ok := storageClassParams[secret.deprecatedSecretNameKey]; ok {
+		nameTemplate = t
+		numName += 1
+		glog.Warning(deprecationWarning(secret.deprecatedSecretNameKey, secret.secretNameKey, ""))
+	}
+	if t, ok := storageClassParams[secret.deprecatedSecretNamespaceKey]; ok {
+		namespaceTemplate = t
+		numNamespace += 1
+		glog.Warning(deprecationWarning(secret.deprecatedSecretNamespaceKey, secret.secretNamespaceKey, ""))
+	}
+	if t, ok := storageClassParams[secret.secretNameKey]; ok {
+		nameTemplate = t
+		numName += 1
+	}
+	if t, ok := storageClassParams[secret.secretNamespaceKey]; ok {
+		namespaceTemplate = t
+		numNamespace += 1
+	}
+
+	if numName > 1 || numNamespace > 1 {
+		// Double specified error
+		return "", "", fmt.Errorf("%s secrets specified in parameters with both \"csi\" and \"%s\" keys", secret.name, csiParameterPrefix)
+	} else if numName != numNamespace {
+		// Not both 0 or both 1
+		return "", "", fmt.Errorf("either name and namespace for %s secrets specified, Both must be specified", secret.name)
+	} else if numName == 1 {
+		// Case where we've found a name and a namespace template
+		if nameTemplate == "" || namespaceTemplate == "" {
+			return "", "", fmt.Errorf("%s secrets specified in parameters but value of either namespace or name is empty", secret.name)
+		}
+		return nameTemplate, namespaceTemplate, nil
+	} else if numName == 0 {
+		// No secrets specified
+		return "", "", nil
+	} else {
+		// THIS IS NOT A VALID CASE
+		return "", "", fmt.Errorf("unknown error with getting secret name and namespace templates")
+	}
+}
+
+// getSecretReference returns a reference to the secret specified in the given nameTemplate
+//  and namespaceTemplate, or an error if the templates are not specified correctly.
 // no lookup of the referenced secret is performed, and the secret may or may not exist.
 //
 // supported tokens for name resolution:
@@ -718,24 +868,19 @@ func (p *csiProvisioner) volumeHandleToId(handle string) string {
 // - ${pvc.namespace}
 //
 // an error is returned in the following situations:
-// - only one of name or namespace is provided
-// - the name or namespace parameter contains a token that cannot be resolved
+// - the nameTemplate or namespaceTemplate contains a token that cannot be resolved
 // - the resolved name is not a valid secret name
 // - the resolved namespace is not a valid namespace name
-func getSecretReference(nameKey, namespaceKey string, storageClassParams map[string]string, pvName string, pvc *v1.PersistentVolumeClaim) (*v1.SecretReference, error) {
-	nameTemplate, hasName := storageClassParams[nameKey]
-	namespaceTemplate, hasNamespace := storageClassParams[namespaceKey]
-
-	if !hasName && !hasNamespace {
+func getSecretReference(secretParams deprecatedSecretParamsMap, storageClassParams map[string]string, pvName string, pvc *v1.PersistentVolumeClaim) (*v1.SecretReference, error) {
+	nameTemplate, namespaceTemplate, err := verifyAndGetSecretNameAndNamespaceTemplate(secretParams, storageClassParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get name and namespace template from params: %v", err)
+	}
+	if nameTemplate == "" && namespaceTemplate == "" {
 		return nil, nil
 	}
 
-	if len(nameTemplate) == 0 || len(namespaceTemplate) == 0 {
-		return nil, fmt.Errorf("%s and %s parameters must be specified together", nameKey, namespaceKey)
-	}
-
 	ref := &v1.SecretReference{}
-
 	{
 		// Secret namespace template can make use of the PV name or the PVC namespace.
 		// Note that neither of those things are under the control of the PVC user.
@@ -746,13 +891,13 @@ func getSecretReference(nameKey, namespaceKey string, storageClassParams map[str
 
 		resolvedNamespace, err := resolveTemplate(namespaceTemplate, namespaceParams)
 		if err != nil {
-			return nil, fmt.Errorf("error resolving %s value %q: %v", namespaceKey, namespaceTemplate, err)
+			return nil, fmt.Errorf("error resolving value %q: %v", namespaceTemplate, err)
 		}
 		if len(validation.IsDNS1123Label(resolvedNamespace)) > 0 {
 			if namespaceTemplate != resolvedNamespace {
-				return nil, fmt.Errorf("%s parameter %q resolved to %q which is not a valid namespace name", namespaceKey, namespaceTemplate, resolvedNamespace)
+				return nil, fmt.Errorf("%q resolved to %q which is not a valid namespace name", namespaceTemplate, resolvedNamespace)
 			}
-			return nil, fmt.Errorf("%s parameter %q is not a valid namespace name", namespaceKey, namespaceTemplate)
+			return nil, fmt.Errorf("%q is not a valid namespace name", namespaceTemplate)
 		}
 		ref.Namespace = resolvedNamespace
 	}
@@ -770,13 +915,13 @@ func getSecretReference(nameKey, namespaceKey string, storageClassParams map[str
 		}
 		resolvedName, err := resolveTemplate(nameTemplate, nameParams)
 		if err != nil {
-			return nil, fmt.Errorf("error resolving %s value %q: %v", nameKey, nameTemplate, err)
+			return nil, fmt.Errorf("error resolving value %q: %v", nameTemplate, err)
 		}
 		if len(validation.IsDNS1123Subdomain(resolvedName)) > 0 {
 			if nameTemplate != resolvedName {
-				return nil, fmt.Errorf("%s parameter %q resolved to %q which is not a valid secret name", nameKey, nameTemplate, resolvedName)
+				return nil, fmt.Errorf("%q resolved to %q which is not a valid secret name", nameTemplate, resolvedName)
 			}
-			return nil, fmt.Errorf("%s parameter %q is not a valid secret name", nameKey, nameTemplate)
+			return nil, fmt.Errorf("%q is not a valid secret name", nameTemplate)
 		}
 		ref.Name = resolvedName
 	}
@@ -834,4 +979,15 @@ func bytesToGiQuantity(bytes int64) resource.Quantity {
 	}
 	stringQuantity := fmt.Sprintf("%v%s", num, suffix)
 	return resource.MustParse(stringQuantity)
+}
+
+func deprecationWarning(deprecatedParam, newParam, removalVersion string) string {
+	if removalVersion == "" {
+		removalVersion = "a future release"
+	}
+	newParamPhrase := ""
+	if len(newParam) != 0 {
+		newParamPhrase = fmt.Sprintf(", please use \"%s\" instead", newParam)
+	}
+	return fmt.Sprintf("\"%s\" is deprecated and will be removed in %s%s", deprecatedParam, removalVersion, newParamPhrase)
 }
