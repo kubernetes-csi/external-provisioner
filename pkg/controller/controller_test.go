@@ -52,6 +52,11 @@ const (
 	timeout = 10 * time.Second
 )
 
+var (
+	volumeModeFileSystem = v1.PersistentVolumeFilesystem
+	volumeModeBlock      = v1.PersistentVolumeBlock
+)
+
 type csiConnection struct {
 	conn *grpc.ClientConn
 }
@@ -146,6 +151,104 @@ func TestGetPluginName(t *testing.T) {
 
 	if oldName == newName {
 		t.Errorf("test: %s failed, driver's names should not match", test.name)
+	}
+}
+
+func TestStripPrefixedCSIParams(t *testing.T) {
+	testcases := []struct {
+		name           string
+		params         map[string]string
+		expectedParams map[string]string
+		expectErr      bool
+	}{
+		{
+			name:           "no prefix",
+			params:         map[string]string{"csiFoo": "bar", "bim": "baz"},
+			expectedParams: map[string]string{"csiFoo": "bar", "bim": "baz"},
+		},
+		{
+			name:           "one prefixed",
+			params:         map[string]string{prefixedControllerPublishSecretNameKey: "bar", "bim": "baz"},
+			expectedParams: map[string]string{"bim": "baz"},
+		},
+		{
+			name:           "prefix in value",
+			params:         map[string]string{"foo": prefixedFsTypeKey, "bim": "baz"},
+			expectedParams: map[string]string{"foo": prefixedFsTypeKey, "bim": "baz"},
+		},
+		{
+			name: "all known prefixed",
+			params: map[string]string{
+				prefixedFsTypeKey:                           "csiBar",
+				prefixedProvisionerSecretNameKey:            "csiBar",
+				prefixedProvisionerSecretNamespaceKey:       "csiBar",
+				prefixedControllerPublishSecretNameKey:      "csiBar",
+				prefixedControllerPublishSecretNamespaceKey: "csiBar",
+				prefixedNodeStageSecretNameKey:              "csiBar",
+				prefixedNodeStageSecretNamespaceKey:         "csiBar",
+				prefixedNodePublishSecretNameKey:            "csiBar",
+				prefixedNodePublishSecretNamespaceKey:       "csiBar",
+			},
+			expectedParams: map[string]string{},
+		},
+		{
+			name: "all known deprecated params not stripped",
+			params: map[string]string{
+				"fstype":                            "csiBar",
+				provisionerSecretNameKey:            "csiBar",
+				provisionerSecretNamespaceKey:       "csiBar",
+				controllerPublishSecretNameKey:      "csiBar",
+				controllerPublishSecretNamespaceKey: "csiBar",
+				nodeStageSecretNameKey:              "csiBar",
+				nodeStageSecretNamespaceKey:         "csiBar",
+				nodePublishSecretNameKey:            "csiBar",
+				nodePublishSecretNamespaceKey:       "csiBar",
+			},
+			expectedParams: map[string]string{
+				"fstype":                            "csiBar",
+				provisionerSecretNameKey:            "csiBar",
+				provisionerSecretNamespaceKey:       "csiBar",
+				controllerPublishSecretNameKey:      "csiBar",
+				controllerPublishSecretNamespaceKey: "csiBar",
+				nodeStageSecretNameKey:              "csiBar",
+				nodeStageSecretNamespaceKey:         "csiBar",
+				nodePublishSecretNameKey:            "csiBar",
+				nodePublishSecretNamespaceKey:       "csiBar",
+			},
+		},
+
+		{
+			name:      "unknown prefixed var",
+			params:    map[string]string{csiParameterPrefix + "bim": "baz"},
+			expectErr: true,
+		},
+		{
+			name:           "empty",
+			params:         map[string]string{},
+			expectedParams: map[string]string{},
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Logf("test: %v", tc.name)
+
+		newParams, err := removePrefixedParameters(tc.params)
+		if err != nil {
+			if tc.expectErr {
+				continue
+			} else {
+				t.Fatalf("Encountered unexpected error: %v", err)
+			}
+		} else {
+			if tc.expectErr {
+				t.Fatalf("Did not get error when one was expected")
+			}
+		}
+
+		eq := reflect.DeepEqual(newParams, tc.expectedParams)
+		if !eq {
+			t.Fatalf("Stripped parameters: %v not equal to expected parameters: %v", newParams, tc.expectedParams)
+		}
 	}
 }
 
@@ -594,75 +697,99 @@ func createFakePVCWithVolumeMode(requestBytes int64, volumeMode v1.PersistentVol
 
 func TestGetSecretReference(t *testing.T) {
 	testcases := map[string]struct {
-		nameKey      string
-		namespaceKey string
+		secretParams deprecatedSecretParamsMap
 		params       map[string]string
 		pvName       string
 		pvc          *v1.PersistentVolumeClaim
 
 		expectRef *v1.SecretReference
-		expectErr error
+		expectErr bool
 	}{
 		"no params": {
-			nameKey:      nodePublishSecretNameKey,
-			namespaceKey: nodePublishSecretNamespaceKey,
+			secretParams: nodePublishSecretParams,
 			params:       nil,
 			expectRef:    nil,
-			expectErr:    nil,
 		},
 		"empty err": {
-			nameKey:      nodePublishSecretNameKey,
-			namespaceKey: nodePublishSecretNamespaceKey,
+			secretParams: nodePublishSecretParams,
 			params:       map[string]string{nodePublishSecretNameKey: "", nodePublishSecretNamespaceKey: ""},
-			expectErr:    fmt.Errorf("csiNodePublishSecretName and csiNodePublishSecretNamespace parameters must be specified together"),
+			expectErr:    true,
+		},
+		"[deprecated] name, no namespace": {
+			secretParams: nodePublishSecretParams,
+			params:       map[string]string{nodePublishSecretNameKey: "foo"},
+			expectErr:    true,
 		},
 		"name, no namespace": {
-			nameKey:      nodePublishSecretNameKey,
-			namespaceKey: nodePublishSecretNamespaceKey,
-			params:       map[string]string{nodePublishSecretNameKey: "foo"},
-			expectErr:    fmt.Errorf("csiNodePublishSecretName and csiNodePublishSecretNamespace parameters must be specified together"),
+			secretParams: nodePublishSecretParams,
+			params:       map[string]string{prefixedNodePublishSecretNameKey: "foo"},
+			expectErr:    true,
+		},
+		"[deprecated] namespace, no name": {
+			secretParams: nodePublishSecretParams,
+			params:       map[string]string{nodePublishSecretNamespaceKey: "foo"},
+			expectErr:    true,
 		},
 		"namespace, no name": {
-			nameKey:      nodePublishSecretNameKey,
-			namespaceKey: nodePublishSecretNamespaceKey,
-			params:       map[string]string{nodePublishSecretNamespaceKey: "foo"},
-			expectErr:    fmt.Errorf("csiNodePublishSecretName and csiNodePublishSecretNamespace parameters must be specified together"),
+			secretParams: nodePublishSecretParams,
+			params:       map[string]string{prefixedNodePublishSecretNamespaceKey: "foo"},
+			expectErr:    true,
 		},
-		"simple - valid": {
-			nameKey:      nodePublishSecretNameKey,
-			namespaceKey: nodePublishSecretNamespaceKey,
+		"[deprecated] simple - valid": {
+			secretParams: nodePublishSecretParams,
 			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "ns"},
 			pvc:          &v1.PersistentVolumeClaim{},
 			expectRef:    &v1.SecretReference{Name: "name", Namespace: "ns"},
-			expectErr:    nil,
+		},
+		"deprecated and new both": {
+			secretParams: nodePublishSecretParams,
+			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "ns", prefixedNodePublishSecretNameKey: "name", prefixedNodePublishSecretNamespaceKey: "ns"},
+			expectErr:    true,
+		},
+		"deprecated and new names": {
+			secretParams: nodePublishSecretParams,
+			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "ns", prefixedNodePublishSecretNameKey: "name"},
+			expectErr:    true,
+		},
+		"deprecated and new namespace": {
+			secretParams: nodePublishSecretParams,
+			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "ns", prefixedNodePublishSecretNamespaceKey: "ns"},
+			expectErr:    true,
+		},
+		"deprecated and new mixed": {
+			secretParams: nodePublishSecretParams,
+			params:       map[string]string{nodePublishSecretNameKey: "name", prefixedNodePublishSecretNamespaceKey: "ns"},
+			pvc:          &v1.PersistentVolumeClaim{},
+			expectRef:    &v1.SecretReference{Name: "name", Namespace: "ns"},
+		},
+		"simple - valid": {
+			secretParams: nodePublishSecretParams,
+			params:       map[string]string{prefixedNodePublishSecretNameKey: "name", prefixedNodePublishSecretNamespaceKey: "ns"},
+			pvc:          &v1.PersistentVolumeClaim{},
+			expectRef:    &v1.SecretReference{Name: "name", Namespace: "ns"},
 		},
 		"simple - valid, no pvc": {
-			nameKey:      provisionerSecretNameKey,
-			namespaceKey: provisionerSecretNamespaceKey,
+			secretParams: provisionerSecretParams,
 			params:       map[string]string{provisionerSecretNameKey: "name", provisionerSecretNamespaceKey: "ns"},
 			pvc:          nil,
 			expectRef:    &v1.SecretReference{Name: "name", Namespace: "ns"},
-			expectErr:    nil,
 		},
 		"simple - invalid name": {
-			nameKey:      nodePublishSecretNameKey,
-			namespaceKey: nodePublishSecretNamespaceKey,
+			secretParams: nodePublishSecretParams,
 			params:       map[string]string{nodePublishSecretNameKey: "bad name", nodePublishSecretNamespaceKey: "ns"},
 			pvc:          &v1.PersistentVolumeClaim{},
 			expectRef:    nil,
-			expectErr:    fmt.Errorf(`csiNodePublishSecretName parameter "bad name" is not a valid secret name`),
+			expectErr:    true,
 		},
 		"simple - invalid namespace": {
-			nameKey:      nodePublishSecretNameKey,
-			namespaceKey: nodePublishSecretNamespaceKey,
+			secretParams: nodePublishSecretParams,
 			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "bad ns"},
 			pvc:          &v1.PersistentVolumeClaim{},
 			expectRef:    nil,
-			expectErr:    fmt.Errorf(`csiNodePublishSecretNamespace parameter "bad ns" is not a valid namespace name`),
+			expectErr:    true,
 		},
 		"template - valid": {
-			nameKey:      nodePublishSecretNameKey,
-			namespaceKey: nodePublishSecretNamespaceKey,
+			secretParams: nodePublishSecretParams,
 			params: map[string]string{
 				nodePublishSecretNameKey:      "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
 				nodePublishSecretNamespaceKey: "static-${pv.name}-${pvc.namespace}",
@@ -676,37 +803,42 @@ func TestGetSecretReference(t *testing.T) {
 				},
 			},
 			expectRef: &v1.SecretReference{Name: "static-pvname-pvcnamespace-pvcname-avalue", Namespace: "static-pvname-pvcnamespace"},
-			expectErr: nil,
 		},
 		"template - invalid namespace tokens": {
-			nameKey:      nodePublishSecretNameKey,
-			namespaceKey: nodePublishSecretNamespaceKey,
+			secretParams: nodePublishSecretParams,
 			params: map[string]string{
 				nodePublishSecretNameKey:      "myname",
 				nodePublishSecretNamespaceKey: "mynamespace${bar}",
 			},
 			pvc:       &v1.PersistentVolumeClaim{},
 			expectRef: nil,
-			expectErr: fmt.Errorf(`error resolving csiNodePublishSecretNamespace value "mynamespace${bar}": invalid tokens: ["bar"]`),
+			expectErr: true,
 		},
 		"template - invalid name tokens": {
-			nameKey:      nodePublishSecretNameKey,
-			namespaceKey: nodePublishSecretNamespaceKey,
+			secretParams: nodePublishSecretParams,
 			params: map[string]string{
 				nodePublishSecretNameKey:      "myname${foo}",
 				nodePublishSecretNamespaceKey: "mynamespace",
 			},
 			pvc:       &v1.PersistentVolumeClaim{},
 			expectRef: nil,
-			expectErr: fmt.Errorf(`error resolving csiNodePublishSecretName value "myname${foo}": invalid tokens: ["foo"]`),
+			expectErr: true,
 		},
 	}
 
 	for k, tc := range testcases {
 		t.Run(k, func(t *testing.T) {
-			ref, err := getSecretReference(tc.nameKey, tc.namespaceKey, tc.params, tc.pvName, tc.pvc)
-			if !reflect.DeepEqual(err, tc.expectErr) {
-				t.Errorf("Expected %v, got %v", tc.expectErr, err)
+			ref, err := getSecretReference(tc.secretParams, tc.params, tc.pvName, tc.pvc)
+			if err != nil {
+				if tc.expectErr {
+					return
+				} else {
+					t.Fatalf("Did not expect error but got: %v", err)
+				}
+			} else {
+				if tc.expectErr {
+					t.Fatalf("Expected error but got none")
+				}
 			}
 			if !reflect.DeepEqual(ref, tc.expectRef) {
 				t.Errorf("Expected %v, got %v", tc.expectRef, ref)
@@ -715,36 +847,32 @@ func TestGetSecretReference(t *testing.T) {
 	}
 }
 
+type provisioningTestcase struct {
+	volOpts           controller.VolumeOptions
+	notNilSelector    bool
+	driverNotReady    bool
+	makeVolumeNameErr bool
+	getSecretRefErr   bool
+	getCredentialsErr bool
+	volWithLessCap    bool
+	expectedPVSpec    *pvSpec
+	withSecretRefs    bool
+	expectErr         bool
+	expectCreateVolDo interface{}
+}
+
+type pvSpec struct {
+	Name          string
+	ReclaimPolicy v1.PersistentVolumeReclaimPolicy
+	AccessModes   []v1.PersistentVolumeAccessMode
+	VolumeMode    *v1.PersistentVolumeMode
+	Capacity      v1.ResourceList
+	CSIPVS        *v1.CSIPersistentVolumeSource
+}
+
 func TestProvision(t *testing.T) {
-
-	var (
-		requestedBytes       int64 = 100
-		volumeModeFileSystem       = v1.PersistentVolumeFilesystem
-		volumeModeBlock            = v1.PersistentVolumeBlock
-	)
-
-	type pvSpec struct {
-		Name          string
-		ReclaimPolicy v1.PersistentVolumeReclaimPolicy
-		AccessModes   []v1.PersistentVolumeAccessMode
-		VolumeMode    *v1.PersistentVolumeMode
-		Capacity      v1.ResourceList
-		CSIPVS        *v1.CSIPersistentVolumeSource
-	}
-
-	testcases := map[string]struct {
-		volOpts           controller.VolumeOptions
-		notNilSelector    bool
-		driverNotReady    bool
-		makeVolumeNameErr bool
-		getSecretRefErr   bool
-		getCredentialsErr bool
-		volWithLessCap    bool
-		expectedPVSpec    *pvSpec
-		withSecretRefs    bool
-		expectErr         bool
-		expectCreateVolDo interface{}
-	}{
+	var requestedBytes int64 = 100
+	testcases := map[string]provisioningTestcase{
 		"normal provision": {
 			volOpts: controller.VolumeOptions{
 				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
@@ -768,6 +896,48 @@ func TestProvision(t *testing.T) {
 						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
 					},
 				},
+			},
+		},
+		"multiple fsType provision": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName:                        "test-name",
+				PVC:                           createFakePVC(requestedBytes),
+				Parameters: map[string]string{
+					"fstype":          "ext3",
+					prefixedFsTypeKey: "ext4",
+				},
+			},
+			expectErr: true,
+		},
+		"provision with prefixed FS Type key": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName:                        "test-name",
+				PVC:                           createFakePVC(requestedBytes),
+				Parameters: map[string]string{
+					prefixedFsTypeKey: "ext3",
+				},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext3",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+				if len(req.Parameters) != 0 {
+					t.Errorf("Parameters should have been stripped")
+				}
 			},
 		},
 		"provision with access mode multi node multi writer": {
@@ -1154,119 +1324,8 @@ func TestProvision(t *testing.T) {
 		},
 	}
 
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mockController.Finish()
-	defer driver.Stop()
-
 	for k, tc := range testcases {
-		var clientSet kubernetes.Interface
-
-		if tc.withSecretRefs {
-			clientSet = fakeclientset.NewSimpleClientset(&v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "ctrlpublishsecret",
-					Namespace: "default",
-				},
-			}, &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "nodestagesecret",
-					Namespace: "default",
-				},
-			}, &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "nodepublishsecret",
-					Namespace: "default",
-				},
-			})
-		} else {
-			clientSet = fakeclientset.NewSimpleClientset()
-		}
-
-		csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
-
-		out := &csi.CreateVolumeResponse{
-			Volume: &csi.Volume{
-				CapacityBytes: requestedBytes,
-				VolumeId:      "test-volume-id",
-			},
-		}
-
-		if tc.withSecretRefs {
-			tc.volOpts.Parameters[controllerPublishSecretNameKey] = "ctrlpublishsecret"
-			tc.volOpts.Parameters[controllerPublishSecretNamespaceKey] = "default"
-			tc.volOpts.Parameters[nodeStageSecretNameKey] = "nodestagesecret"
-			tc.volOpts.Parameters[nodeStageSecretNamespaceKey] = "default"
-			tc.volOpts.Parameters[nodePublishSecretNameKey] = "nodepublishsecret"
-			tc.volOpts.Parameters[nodePublishSecretNamespaceKey] = "default"
-		}
-
-		if tc.notNilSelector {
-			tc.volOpts.PVC.Spec.Selector = &metav1.LabelSelector{}
-		} else if tc.driverNotReady {
-			identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(nil, errors.New("driver not ready")).Times(1)
-		} else if tc.makeVolumeNameErr {
-			tc.volOpts.PVC.ObjectMeta.UID = ""
-			provisionMockServerSetupExpectations(identityServer, controllerServer)
-		} else if tc.getSecretRefErr {
-			tc.volOpts.Parameters[provisionerSecretNameKey] = ""
-			provisionMockServerSetupExpectations(identityServer, controllerServer)
-		} else if tc.getCredentialsErr {
-			tc.volOpts.Parameters[provisionerSecretNameKey] = "secretx"
-			tc.volOpts.Parameters[provisionerSecretNamespaceKey] = "default"
-			provisionMockServerSetupExpectations(identityServer, controllerServer)
-		} else if tc.volWithLessCap {
-			out.Volume.CapacityBytes = int64(80)
-			provisionMockServerSetupExpectations(identityServer, controllerServer)
-			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
-			controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
-		} else if tc.expectCreateVolDo != nil {
-			provisionMockServerSetupExpectations(identityServer, controllerServer)
-			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(tc.expectCreateVolDo).Return(out, nil).Times(1)
-		} else {
-			// Setup regular mock call expectations.
-			provisionMockServerSetupExpectations(identityServer, controllerServer)
-			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
-		}
-
-		pv, err := csiProvisioner.Provision(tc.volOpts)
-		if tc.expectErr && err == nil {
-			t.Errorf("test %q: Expected error, got none", k)
-		}
-		if !tc.expectErr && err != nil {
-			t.Errorf("test %q: got error: %v", k, err)
-		}
-
-		if tc.expectedPVSpec != nil {
-			if pv.Name != tc.expectedPVSpec.Name {
-				t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
-			}
-
-			if pv.Spec.PersistentVolumeReclaimPolicy != tc.expectedPVSpec.ReclaimPolicy {
-				t.Errorf("test %q: expected reclaim policy: %v, got: %v", k, tc.expectedPVSpec.ReclaimPolicy, pv.Spec.PersistentVolumeReclaimPolicy)
-			}
-
-			if !reflect.DeepEqual(pv.Spec.AccessModes, tc.expectedPVSpec.AccessModes) {
-				t.Errorf("test %q: expected access modes: %v, got: %v", k, tc.expectedPVSpec.AccessModes, pv.Spec.AccessModes)
-			}
-
-			if !reflect.DeepEqual(pv.Spec.VolumeMode, tc.expectedPVSpec.VolumeMode) {
-				t.Errorf("test %q: expected volumeMode: %v, got: %v", k, tc.expectedPVSpec.VolumeMode, pv.Spec.VolumeMode)
-			}
-
-			if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
-				t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
-			}
-
-			if tc.expectedPVSpec.CSIPVS != nil {
-				if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
-					t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
-				}
-			}
-
-		}
+		runProvisionTest(t, k, tc, requestedBytes)
 	}
 }
 
@@ -1297,6 +1356,125 @@ func newSnapshot(name, className, boundToContent, snapshotUID, claimName string,
 	}
 
 	return &snapshot
+}
+
+func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requestedBytes int64) {
+	t.Logf("Running test: %v", k)
+
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	var clientSet kubernetes.Interface
+
+	if tc.withSecretRefs {
+		clientSet = fakeclientset.NewSimpleClientset(&v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ctrlpublishsecret",
+				Namespace: "default",
+			},
+		}, &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nodestagesecret",
+				Namespace: "default",
+			},
+		}, &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nodepublishsecret",
+				Namespace: "default",
+			},
+		})
+	} else {
+		clientSet = fakeclientset.NewSimpleClientset()
+	}
+
+	csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+
+	out := &csi.CreateVolumeResponse{
+		Volume: &csi.Volume{
+			CapacityBytes: requestedBytes,
+			VolumeId:      "test-volume-id",
+		},
+	}
+
+	if tc.withSecretRefs {
+		tc.volOpts.Parameters[controllerPublishSecretNameKey] = "ctrlpublishsecret"
+		tc.volOpts.Parameters[controllerPublishSecretNamespaceKey] = "default"
+		tc.volOpts.Parameters[nodeStageSecretNameKey] = "nodestagesecret"
+		tc.volOpts.Parameters[nodeStageSecretNamespaceKey] = "default"
+		tc.volOpts.Parameters[nodePublishSecretNameKey] = "nodepublishsecret"
+		tc.volOpts.Parameters[nodePublishSecretNamespaceKey] = "default"
+	}
+
+	if tc.notNilSelector {
+		tc.volOpts.PVC.Spec.Selector = &metav1.LabelSelector{}
+	} else if tc.driverNotReady {
+		identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(nil, errors.New("driver not ready")).Times(1)
+	} else if tc.makeVolumeNameErr {
+		tc.volOpts.PVC.ObjectMeta.UID = ""
+		provisionMockServerSetupExpectations(identityServer, controllerServer)
+	} else if tc.getSecretRefErr {
+		tc.volOpts.Parameters[provisionerSecretNameKey] = ""
+		provisionMockServerSetupExpectations(identityServer, controllerServer)
+	} else if tc.getCredentialsErr {
+		tc.volOpts.Parameters[provisionerSecretNameKey] = "secretx"
+		tc.volOpts.Parameters[provisionerSecretNamespaceKey] = "default"
+		provisionMockServerSetupExpectations(identityServer, controllerServer)
+	} else if tc.volWithLessCap {
+		out.Volume.CapacityBytes = int64(80)
+		provisionMockServerSetupExpectations(identityServer, controllerServer)
+		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+		controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
+	} else if tc.expectCreateVolDo != nil {
+		provisionMockServerSetupExpectations(identityServer, controllerServer)
+		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(tc.expectCreateVolDo).Return(out, nil).Times(1)
+	} else {
+		// Setup regular mock call expectations.
+		provisionMockServerSetupExpectations(identityServer, controllerServer)
+		if !tc.expectErr {
+			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+		}
+	}
+
+	pv, err := csiProvisioner.Provision(tc.volOpts)
+	if tc.expectErr && err == nil {
+		t.Errorf("test %q: Expected error, got none", k)
+	}
+	if !tc.expectErr && err != nil {
+		t.Errorf("test %q: got error: %v", k, err)
+	}
+
+	if tc.expectedPVSpec != nil {
+		if pv.Name != tc.expectedPVSpec.Name {
+			t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
+		}
+
+		if pv.Spec.PersistentVolumeReclaimPolicy != tc.expectedPVSpec.ReclaimPolicy {
+			t.Errorf("test %q: expected reclaim policy: %v, got: %v", k, tc.expectedPVSpec.ReclaimPolicy, pv.Spec.PersistentVolumeReclaimPolicy)
+		}
+
+		if !reflect.DeepEqual(pv.Spec.AccessModes, tc.expectedPVSpec.AccessModes) {
+			t.Errorf("test %q: expected access modes: %v, got: %v", k, tc.expectedPVSpec.AccessModes, pv.Spec.AccessModes)
+		}
+
+		if !reflect.DeepEqual(pv.Spec.VolumeMode, tc.expectedPVSpec.VolumeMode) {
+			t.Errorf("test %q: expected volumeMode: %v, got: %v", k, tc.expectedPVSpec.VolumeMode, pv.Spec.VolumeMode)
+		}
+
+		if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
+			t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
+		}
+
+		if tc.expectedPVSpec.CSIPVS != nil {
+			if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
+				t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+			}
+		}
+
+	}
 }
 
 // newContent returns a new content with given attributes
