@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"crypto/md5"
 	"fmt"
 	"math"
 	"net"
@@ -403,9 +404,10 @@ func (p *csiProvisioner) makeVolumeName(pvcNamespace, pvcName, pvcUID string) (s
 		if(len(pvcName) == 0) {
 			return "", fmt.Errorf("corrupted PVC object, it is missing name")
 		}
+		pvcHash := md5.Sum([]byte(pvcNamespace + "/" + pvcName))
 		pvcNamespace = strings.Replace(pvcNamespace, "-", "", -1)
 		pvcName = strings.Replace(pvcName, "-", "", -1)
-		fullName = fmt.Sprintf("%s-%s-%s", pvcNamespace, pvcName, pvcUID)
+		fullName = fmt.Sprintf("%s-%s-%x", pvcNamespace, pvcName, pvcHash)
 	} else {
 		fullName = pvcUID
 	}
