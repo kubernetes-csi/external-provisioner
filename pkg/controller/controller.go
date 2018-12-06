@@ -158,6 +158,7 @@ type csiProvisioner struct {
 	identity             string
 	volumeNamePrefix     string
 	volumeNameUUIDLength int
+	volumeNamesReadable  bool
 	config               *rest.Config
 }
 
@@ -325,6 +326,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	identity string,
 	volumeNamePrefix string,
 	volumeNameUUIDLength int,
+	volumeNamesReadable bool,
 	grpcClient *grpc.ClientConn,
 	snapshotClient snapclientset.Interface) controller.Provisioner {
 
@@ -339,6 +341,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		identity:             identity,
 		volumeNamePrefix:     volumeNamePrefix,
 		volumeNameUUIDLength: volumeNameUUIDLength,
+		volumeNamesReadable:  volumeNamesReadable,
 	}
 	return provisioner
 }
@@ -381,22 +384,35 @@ func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration, needSn
 	}, nil
 }
 
-func makeVolumeName(prefix, pvcUID string, volumeNameUUIDLength int) (string, error) {
+func (p *csiProvisioner) makeVolumeName(pvcNamespace, pvcName, pvcUID string) (string, error) {
 	// create persistent name based on a volumeNamePrefix and volumeNameUUIDLength
-	// of PVC's UID
-	if len(prefix) == 0 {
+	// of PVC's UID; if enabled, utilize PVC namespace and name as well
+	if(len(p.volumeNamePrefix) == 0) {
 		return "", fmt.Errorf("Volume name prefix cannot be of length 0")
 	}
 	if len(pvcUID) == 0 {
 		return "", fmt.Errorf("corrupted PVC object, it is missing UID")
 	}
-	if volumeNameUUIDLength == -1 {
-		// Default behavior is to not truncate or remove dashes
-		return fmt.Sprintf("%s-%s", prefix, pvcUID), nil
-	}
-	// Else we remove all dashes from UUID and truncate to volumeNameUUIDLength
-	return fmt.Sprintf("%s-%s", prefix, strings.Replace(string(pvcUID), "-", "", -1)[0:volumeNameUUIDLength]), nil
+	pvcUID = strings.Replace(pvcUID, "-", "", -1)
 
+	var fullName string
+	if(p.volumeNamesReadable) {
+		if(len(pvcNamespace) == 0) {
+			return "", fmt.Errorf("corrupted PVC object, it is missing namespace")
+		}
+		if(len(pvcName) == 0) {
+			return "", fmt.Errorf("corrupted PVC object, it is missing name")
+		}
+		pvcNamespace = strings.Replace(pvcNamespace, "-", "", -1)
+		pvcName = strings.Replace(pvcName, "-", "", -1)
+		fullName = fmt.Sprintf("%s-%s-%s", pvcNamespace, pvcName, pvcUID)
+	} else {
+		fullName = pvcUID
+	}
+	if(p.volumeNameUUIDLength == -1) {
+		return fmt.Sprintf("%s-%s", p.volumeNamePrefix, fullName), nil
+	}
+	return fmt.Sprintf("%s-%s", p.volumeNamePrefix, fullName[0:p.volumeNameUUIDLength]), nil
 }
 
 func getAccessTypeBlock() *csi.VolumeCapability_Block {
@@ -475,7 +491,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, err
 	}
 
-	pvName, err := makeVolumeName(p.volumeNamePrefix, fmt.Sprintf("%s", options.PVC.ObjectMeta.UID), p.volumeNameUUIDLength)
+	pvName, err := p.makeVolumeName(options.PVC.Namespace, options.PVC.Name, string(options.PVC.ObjectMeta.UID))
 	if err != nil {
 		return nil, err
 	}

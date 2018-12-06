@@ -52,6 +52,7 @@ var (
 	connectionTimeout    = flag.Duration("connection-timeout", 10*time.Second, "Timeout for waiting for CSI driver socket.")
 	volumeNamePrefix     = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume.")
 	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
+	volumeNamesReadable  = flag.Bool("volume-names-readable", false, "If enabled, includes the PVC namespace and name in VolumeRequests' suggested names.  Note that, combined with --volume-name-uuid-length, this can cause naming collisions.")
 	showVersion          = flag.Bool("version", false, "Show version.")
 	enableLeaderElection = flag.Bool("enable-leader-election", false, "Enables leader election. If leader election is enabled, additional RBAC rules are required. Please refer to the Kubernetes CSI documentation for instructions on setting up these RBAC rules.")
 	featureGates         map[string]bool
@@ -148,7 +149,7 @@ func init() {
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient)
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, *volumeNamesReadable, grpcClient, snapClient)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		*provisioner,
