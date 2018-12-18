@@ -29,7 +29,7 @@ bin/hostpathplugin --drivername mydriver  --endpoint unix://tmp/csi.sock --nodei
 ### Start external provisioner
 
 ```bash
-bin/csi-provisioner -kubeconfig /var/run/kubernetes/admin.kubeconfig -alsologtostderr -provisioner csi-flex
+bin/csi-provisioner --kubeconfig /var/run/kubernetes/admin.kubeconfig --alsologtostderr
 ```
 
 ### Create Storage class, PVC, and Pod
