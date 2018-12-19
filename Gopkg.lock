@@ -102,6 +102,7 @@
   digest = "1:3dd078fda7500c341bc26cfbc6c6a34614f295a2457149fc1045cab767cbcf18"
   name = "github.com/golang/protobuf"
   packages = [
+    "descriptor",
     "proto",
     "protoc-gen-go/descriptor",
     "ptypes",
@@ -195,6 +196,14 @@
   pruneopts = ""
   revision = "5c8c8bd35d3832f5d134ae1e1e375b69a4d25242"
   version = "v1.0.1"
+
+[[projects]]
+  digest = "1:d1f1992c09d7b77bc5102cd8c369025d31d28dd5e6ca2a3a1a4ec9434724a4f5"
+  name = "github.com/kubernetes-csi/csi-lib-utils"
+  packages = ["protosanitizer"]
+  pruneopts = ""
+  revision = "5853414e1d4771302e0df10d1870c444c2135799"
+  version = "v0.2.0"
 
 [[projects]]
   digest = "1:22ad77fdbab387190795e89ccc407f8eb1a25588cfe644921d287fcb8d59fc93"
@@ -587,6 +596,7 @@
   name = "k8s.io/apiserver"
   packages = [
     "pkg/util/feature",
+    "pkg/util/feature/testing",
     "pkg/util/flag",
   ]
   pruneopts = ""
@@ -812,6 +822,7 @@
     "github.com/container-storage-interface/spec/lib/go/csi/v0",
     "github.com/golang/glog",
     "github.com/golang/mock/gomock",
+    "github.com/kubernetes-csi/csi-lib-utils/protosanitizer",
     "github.com/kubernetes-csi/csi-test/driver",
     "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",
@@ -833,6 +844,7 @@
     "k8s.io/apimachinery/pkg/util/validation",
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/apiserver/pkg/util/feature",
+    "k8s.io/apiserver/pkg/util/feature/testing",
     "k8s.io/apiserver/pkg/util/flag",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/kubernetes/fake",
