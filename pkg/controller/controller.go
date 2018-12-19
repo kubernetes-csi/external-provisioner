@@ -29,6 +29,7 @@ import (
 	_ "k8s.io/apimachinery/pkg/util/json"
 
 	"github.com/golang/glog"
+	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 
@@ -122,9 +123,9 @@ var (
 //TODO consolidate ane librarize
 func logGRPC(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	glog.V(5).Infof("GRPC call: %s", method)
-	glog.V(5).Infof("GRPC request: %+v", req)
+	glog.V(5).Infof("GRPC request: %s", protosanitizer.StripSecretsCSI03(req))
 	err := invoker(ctx, method, req, reply, cc, opts...)
-	glog.V(5).Infof("GRPC response: %+v", reply)
+	glog.V(5).Infof("GRPC response: %s", protosanitizer.StripSecretsCSI03(reply))
 	glog.V(5).Infof("GRPC error: %v", err)
 	return err
 }
