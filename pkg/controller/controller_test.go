@@ -33,8 +33,8 @@ import (
 	"github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake"
 	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
 	"google.golang.org/grpc"
-	"k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -571,7 +571,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 func provisionMockServerSetupExpectations(identityServer *driver.MockIdentityServer, controllerServer *driver.MockControllerServer) {
 	identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(&csi.GetPluginCapabilitiesResponse{
 		Capabilities: []*csi.PluginCapability{
-			&csi.PluginCapability{
+			{
 				Type: &csi.PluginCapability_Service_{
 					Service: &csi.PluginCapability_Service{
 						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
@@ -582,7 +582,7 @@ func provisionMockServerSetupExpectations(identityServer *driver.MockIdentitySer
 	}, nil).Times(1)
 	controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), gomock.Any()).Return(&csi.ControllerGetCapabilitiesResponse{
 		Capabilities: []*csi.ControllerServiceCapability{
-			&csi.ControllerServiceCapability{
+			{
 				Type: &csi.ControllerServiceCapability_Rpc{
 					Rpc: &csi.ControllerServiceCapability_RPC{
 						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
@@ -832,9 +832,8 @@ func TestGetSecretReference(t *testing.T) {
 			if err != nil {
 				if tc.expectErr {
 					return
-				} else {
-					t.Fatalf("Did not expect error but got: %v", err)
 				}
+				t.Fatalf("Did not expect error but got: %v", err)
 			} else {
 				if tc.expectErr {
 					t.Fatalf("Expected error but got none")
