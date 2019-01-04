@@ -443,12 +443,12 @@ func getVolumeCapability(
 			AccessType: getAccessTypeBlock(),
 			AccessMode: getAccessMode(pvcAccessMode),
 		}
-	} else {
-		return &csi.VolumeCapability{
-			AccessType: getAccessTypeMount(fsType, pvcOptions.MountOptions),
-			AccessMode: getAccessMode(pvcAccessMode),
-		}
 	}
+	return &csi.VolumeCapability{
+		AccessType: getAccessTypeMount(fsType, pvcOptions.MountOptions),
+		AccessMode: getAccessMode(pvcAccessMode),
+	}
+
 }
 
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
@@ -815,21 +815,21 @@ func verifyAndGetSecretNameAndNamespaceTemplate(secret deprecatedSecretParamsMap
 
 	if t, ok := storageClassParams[secret.deprecatedSecretNameKey]; ok {
 		nameTemplate = t
-		numName += 1
+		numName++
 		glog.Warning(deprecationWarning(secret.deprecatedSecretNameKey, secret.secretNameKey, ""))
 	}
 	if t, ok := storageClassParams[secret.deprecatedSecretNamespaceKey]; ok {
 		namespaceTemplate = t
-		numNamespace += 1
+		numNamespace++
 		glog.Warning(deprecationWarning(secret.deprecatedSecretNamespaceKey, secret.secretNamespaceKey, ""))
 	}
 	if t, ok := storageClassParams[secret.secretNameKey]; ok {
 		nameTemplate = t
-		numName += 1
+		numName++
 	}
 	if t, ok := storageClassParams[secret.secretNamespaceKey]; ok {
 		namespaceTemplate = t
-		numNamespace += 1
+		numNamespace++
 	}
 
 	if numName > 1 || numNamespace > 1 {
