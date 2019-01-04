@@ -25,6 +25,8 @@ else
 TESTARGS =
 endif
 
+TESTBIN:=./test.sh
+
 all: csi-provisioner
 
 csi-provisioner:
@@ -41,5 +43,4 @@ push: container
 	docker push $(IMAGE_TAG)
 
 test:
-	go test `go list ./... | grep -v 'vendor'` $(TESTARGS)
-	go vet `go list ./... | grep -v vendor`
+	$(TESTBIN) $(TESTARGS)
