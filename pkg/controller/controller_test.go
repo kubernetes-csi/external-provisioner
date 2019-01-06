@@ -1516,11 +1516,11 @@ func newContent(name, className, snapshotHandle, volumeUID, volumeName, boundToS
 
 // TestProvisionFromSnapshot tests create volume from snapshot
 func TestProvisionFromSnapshot(t *testing.T) {
-	var apiGrp string = "snapshot.storage.k8s.io"
-	var unsupportedAPIGrp string = "unsupported.group.io"
+	var apiGrp = "snapshot.storage.k8s.io"
+	var unsupportedAPIGrp = "unsupported.group.io"
 	var requestedBytes int64 = 1000
-	var snapName string = "test-snapshot"
-	var snapClassName string = "test-snapclass"
+	var snapName = "test-snapshot"
+	var snapClassName = "test-snapclass"
 	var timeNow = time.Now().UnixNano()
 	var metaTimeNowUnix = &metav1.Time{
 		Time: time.Unix(0, timeNow),

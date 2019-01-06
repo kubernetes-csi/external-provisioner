@@ -485,11 +485,11 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	for k, v := range options.Parameters {
 		if strings.ToLower(k) == "fstype" {
 			fsType = v
-			fsTypesFound += 1
+			fsTypesFound++
 			glog.Warningf(deprecationWarning("fstype", prefixedFsTypeKey, ""))
 		} else if k == prefixedFsTypeKey {
 			fsType = v
-			fsTypesFound += 1
+			fsTypesFound++
 		}
 	}
 	if fsTypesFound > 1 {
