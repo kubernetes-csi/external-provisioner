@@ -1,8 +1,8 @@
 [![Build Status](https://travis-ci.org/kubernetes-csi/external-provisioner.svg?branch=master)](https://travis-ci.org/kubernetes-csi/external-provisioner)
-# Kubernetes external provisioner that works with CSI volumes.
+
+# Kubernetes external provisioner that works with CSI volumes
 
 This is an example external provisioner for Kubernetes which provisions using CSI Volume drivers..  It's under heavy development, so at this time README.md is notes for the developers coding.  Once complete this will change to something user friendly.
-
 
 # Build
 
@@ -12,7 +12,7 @@ make csi-provisioner
 
 # Test
 
-### Start Kubernetes
+## Start Kubernetes
 
 Run a local kubernetes cluster built from latest master code
 
@@ -41,6 +41,7 @@ kubectl create -f example/pod.yaml
 ```
 
 ### Delete PVC
+
 ```bash
 kubectl delete -f example/pvc1.yaml
 ```
