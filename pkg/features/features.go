@@ -19,8 +19,6 @@ package features
 import utilfeature "k8s.io/apiserver/pkg/util/feature"
 
 const (
-	// owner: @verult
-	// alpha: v0.4
 	Topology utilfeature.Feature = "Topology"
 )
 
