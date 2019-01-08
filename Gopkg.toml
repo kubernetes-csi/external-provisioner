@@ -38,7 +38,7 @@
 
 [[constraint]]
   name = "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner"
-  version = "v2.0.0-alpha"
+  version = "v2.0.0"
 
 [[constraint]]
   name = "google.golang.org/grpc"
