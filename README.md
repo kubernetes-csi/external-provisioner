@@ -42,7 +42,7 @@ kubectl create -f example/pod.yaml
 
 ### Delete PVC
 ```bash
-kubectl delete pvc pv1
+kubectl delete pvc example-pvc
 ```
 
 ## Community, discussion, contribution, and support
