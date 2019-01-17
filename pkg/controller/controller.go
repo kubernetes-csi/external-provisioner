@@ -159,11 +159,7 @@ type csiProvisioner struct {
 	volumeNamePrefix     string
 	volumeNameUUIDLength int
 	config               *rest.Config
-}
-
-type driverState struct {
-	driverName   string
-	capabilities sets.Int
+	driverName           string
 }
 
 const (
@@ -326,7 +322,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	volumeNamePrefix string,
 	volumeNameUUIDLength int,
 	grpcClient *grpc.ClientConn,
-	snapshotClient snapclientset.Interface) controller.Provisioner {
+	snapshotClient snapclientset.Interface,
+	driverName string) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
@@ -339,6 +336,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		identity:             identity,
 		volumeNamePrefix:     volumeNamePrefix,
 		volumeNameUUIDLength: volumeNameUUIDLength,
+		driverName:           driverName,
 	}
 	return provisioner
 }
@@ -346,7 +344,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 // This function get called before any attempt to communicate with the driver.
 // Before initiating Create/Delete API calls provisioner checks if Capabilities:
 // PluginControllerService,  ControllerCreateVolume sre supported and gets the  driver name.
-func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration, needSnapshotSupport bool) (*driverState, error) {
+func checkDriverCapabilities(grpcClient *grpc.ClientConn, timeout time.Duration, needSnapshotSupport bool) (sets.Int, error) {
 	capabilities, err := getDriverCapabilities(grpcClient, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get capabilities: %v", err)
@@ -371,14 +369,7 @@ func checkDriverState(grpcClient *grpc.ClientConn, timeout time.Duration, needSn
 		}
 	}
 
-	driverName, err := GetDriverName(grpcClient, timeout)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get driver info: %v", err)
-	}
-	return &driverState{
-		driverName:   driverName,
-		capabilities: capabilities,
-	}, nil
+	return capabilities, nil
 }
 
 func makeVolumeName(prefix, pvcUID string, volumeNameUUIDLength int) (string, error) {
@@ -470,7 +461,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		}
 		needSnapshotSupport = true
 	}
-	driverState, err := checkDriverState(p.grpcClient, p.timeout, needSnapshotSupport)
+	capabilities, err := checkDriverCapabilities(p.grpcClient, p.timeout, needSnapshotSupport)
 	if err != nil {
 		return nil, err
 	}
@@ -526,12 +517,12 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		req.VolumeContentSource = volumeContentSource
 	}
 
-	if driverState.capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) &&
+	if capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) &&
 		utilfeature.DefaultFeatureGate.Enabled(features.Topology) {
 		requirements, err := GenerateAccessibilityRequirements(
 			p.client,
 			p.csiAPIClient,
-			driverState.driverName,
+			p.driverName,
 			options.PVC.Name,
 			options.AllowedTopologies,
 			options.SelectedNode)
@@ -638,7 +629,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:                     driverState.driverName,
+					Driver:                     p.driverName,
 					VolumeHandle:               p.volumeIdToHandle(rep.Volume.VolumeId),
 					VolumeAttributes:           volumeAttributes,
 					ControllerPublishSecretRef: controllerPublishSecretRef,
@@ -649,7 +640,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		},
 	}
 
-	if driverState.capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) &&
+	if capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) &&
 		utilfeature.DefaultFeatureGate.Enabled(features.Topology) {
 		pv.Spec.NodeAffinity = GenerateVolumeNodeAffinity(rep.Volume.AccessibleTopology)
 	}
@@ -756,7 +747,7 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	}
 	volumeId := p.volumeHandleToId(volume.Spec.CSI.VolumeHandle)
 
-	_, err := checkDriverState(p.grpcClient, p.timeout, false)
+	_, err := checkDriverCapabilities(p.grpcClient, p.timeout, false)
 	if err != nil {
 		return err
 	}

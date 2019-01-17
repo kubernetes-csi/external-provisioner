@@ -49,7 +49,8 @@ import (
 )
 
 const (
-	timeout = 10 * time.Second
+	timeout    = 10 * time.Second
+	driverName = "test-driver"
 )
 
 var (
@@ -533,7 +534,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	defer mockController.Finish()
 	defer driver.Stop()
 
-	csiProvisioner := NewCSIProvisioner(nil, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+	csiProvisioner := NewCSIProvisioner(nil, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
 
 	// Requested PVC with requestedBytes storage
 	opts := controller.VolumeOptions{
@@ -591,10 +592,6 @@ func provisionMockServerSetupExpectations(identityServer *driver.MockIdentitySer
 			},
 		},
 	}, nil).Times(1)
-	identityServer.EXPECT().GetPluginInfo(gomock.Any(), gomock.Any()).Return(&csi.GetPluginInfoResponse{
-		Name:          "test-driver",
-		VendorVersion: "test-vendor",
-	}, nil).Times(1)
 }
 
 // provisionFromSnapshotMockServerSetupExpectations mocks plugin and controller capabilities reported
@@ -629,10 +626,6 @@ func provisionFromSnapshotMockServerSetupExpectations(identityServer *driver.Moc
 			},
 		},
 	}, nil).Times(1)
-	identityServer.EXPECT().GetPluginInfo(gomock.Any(), gomock.Any()).Return(&csi.GetPluginInfoResponse{
-		Name:          "test-driver",
-		VendorVersion: "test-vendor",
-	}, nil).Times(1)
 }
 
 func provisionWithTopologyMockServerSetupExpectations(identityServer *driver.MockIdentityServer, controllerServer *driver.MockControllerServer) {
@@ -664,10 +657,6 @@ func provisionWithTopologyMockServerSetupExpectations(identityServer *driver.Moc
 				},
 			},
 		},
-	}, nil).Times(1)
-	identityServer.EXPECT().GetPluginInfo(gomock.Any(), gomock.Any()).Return(&csi.GetPluginInfoResponse{
-		Name:          "test-driver",
-		VendorVersion: "test-vendor",
 	}, nil).Times(1)
 }
 
@@ -1390,7 +1379,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		clientSet = fakeclientset.NewSimpleClientset()
 	}
 
-	csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+	csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1745,7 +1734,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			return true, content, nil
 		})
 
-		csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client)
+		csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client, driverName)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -1840,7 +1829,7 @@ func TestProvisionWithTopology(t *testing.T) {
 
 	clientSet := fakeclientset.NewSimpleClientset()
 	csiClientSet := fakecsiclientset.NewSimpleClientset()
-	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1878,7 +1867,7 @@ func TestProvisionWithMountOptions(t *testing.T) {
 
 	clientSet := fakeclientset.NewSimpleClientset()
 	csiClientSet := fakecsiclientset.NewSimpleClientset()
-	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
