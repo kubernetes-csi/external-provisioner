@@ -12,34 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-REGISTRY_NAME=quay.io/k8scsi
-IMAGE_NAME=csi-provisioner
-IMAGE_VERSION=canary
-IMAGE_TAG=$(REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_VERSION)
+CMDS=csi-provisioner
+all: build
 
-REV=$(shell git describe --long --tags --match='v*' --dirty)
-
-ifdef V
-TESTARGS = -v -args -alsologtostderr -v 5
-else
-TESTARGS =
-endif
-
-all: csi-provisioner
-
-csi-provisioner:
-	mkdir -p bin
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X main.version=$(REV) -extldflags "-static"' -o ./bin/csi-provisioner ./cmd/csi-provisioner
-
-clean:
-	rm -rf bin deploy/docker/csi-provisioner
-
-container: csi-provisioner
-	docker build -t $(IMAGE_TAG) .
-
-push: container
-	docker push $(IMAGE_TAG)
-
-test:
-	go test `go list ./... | grep -v 'vendor'` $(TESTARGS)
-	go vet `go list ./... | grep -v vendor`
+include release-tools/build.make
