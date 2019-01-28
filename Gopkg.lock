@@ -823,8 +823,7 @@
   name = "k8s.io/klog"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "a5bc97fbc634d635061f3146511332c7e313a55a"
-  version = "v0.1.0"
+  revision = "8139d8cb77af419532b33dfa7dd09fbc5f1d344f"
 
 [[projects]]
   branch = "master"
@@ -858,7 +857,6 @@
   analyzer-version = 1
   input-imports = [
     "github.com/container-storage-interface/spec/lib/go/csi",
-    "github.com/golang/glog",
     "github.com/golang/mock/gomock",
     "github.com/kubernetes-csi/csi-lib-utils/protosanitizer",
     "github.com/kubernetes-csi/csi-test/driver",
@@ -893,6 +891,7 @@
     "k8s.io/csi-api/pkg/apis/csi/v1alpha1",
     "k8s.io/csi-api/pkg/client/clientset/versioned",
     "k8s.io/csi-api/pkg/client/clientset/versioned/fake",
+    "k8s.io/klog",
     "k8s.io/kubernetes/pkg/apis/core/helper",
   ]
   solver-name = "gps-cdcl"
