@@ -66,6 +66,7 @@ func init() {
 		"Options are:\n"+strings.Join(utilfeature.DefaultFeatureGate.KnownFeatures(), "\n"))
 
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
+	klog.InitFlags(nil)
 	flag.Parse()
 	flag.Set("logtostderr", "true")
 
