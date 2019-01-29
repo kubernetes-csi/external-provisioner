@@ -660,6 +660,40 @@ func provisionWithTopologyMockServerSetupExpectations(identityServer *driver.Moc
 	}, nil).Times(1)
 }
 
+// provisionFromPVCMockServerSetupExpectations mocks plugin and controller capabilities reported
+// by a CSI plugin that supports the snapshot feature
+func provisionFromPVCMockServerSetupExpectations(identityServer *driver.MockIdentityServer, controllerServer *driver.MockControllerServer) {
+	identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(&csi.GetPluginCapabilitiesResponse{
+		Capabilities: []*csi.PluginCapability{
+			{
+				Type: &csi.PluginCapability_Service_{
+					Service: &csi.PluginCapability_Service{
+						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
+					},
+				},
+			},
+		},
+	}, nil).Times(1)
+	controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), gomock.Any()).Return(&csi.ControllerGetCapabilitiesResponse{
+		Capabilities: []*csi.ControllerServiceCapability{
+			{
+				Type: &csi.ControllerServiceCapability_Rpc{
+					Rpc: &csi.ControllerServiceCapability_RPC{
+						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+					},
+				},
+			},
+			{
+				Type: &csi.ControllerServiceCapability_Rpc{
+					Rpc: &csi.ControllerServiceCapability_RPC{
+						Type: csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
+					},
+				},
+			},
+		},
+	}, nil).Times(1)
+}
+
 // Minimal PVC required for tests to function
 func createFakePVC(requestBytes int64) *v1.PersistentVolumeClaim {
 	return &v1.PersistentVolumeClaim{
@@ -1889,5 +1923,139 @@ func TestProvisionWithMountOptions(t *testing.T) {
 
 	if !reflect.DeepEqual(pv.Spec.MountOptions, expectedOptions) {
 		t.Errorf("expected mount options %v; got: %v", expectedOptions, pv.Spec.MountOptions)
+	}
+}
+
+// TestProvisionFromPVC tests create volume from snapshot
+func TestProvisionFromPVC(t *testing.T) {
+	var requestedBytes int64 = 1000
+	var pvcName = "src-pvc"
+	//var timeNow = time.Now().UnixNano()
+	//var metaTimeNowUnix = &metav1.Time{
+	//		Time: time.Unix(0, timeNow),
+	//	}
+
+	type pvSpec struct {
+		Name          string
+		ReclaimPolicy v1.PersistentVolumeReclaimPolicy
+		AccessModes   []v1.PersistentVolumeAccessMode
+		Capacity      v1.ResourceList
+		CSIPVS        *v1.CSIPersistentVolumeSource
+	}
+
+	testcases := map[string]struct {
+		volOpts              controller.VolumeOptions
+		restoredVolSizeSmall bool
+		wrongDataSource      bool
+		pvcStatusReady       bool
+		expectedPVSpec       *pvSpec
+		expectErr            bool
+	}{
+		"provision with pvc data source": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName:                        "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name: pvcName,
+							Kind: "PersistentVolumeClaim",
+						},
+					},
+				},
+				Parameters: map[string]string{},
+			},
+			pvcStatusReady: true,
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+	}
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	for k, tc := range testcases {
+		var clientSet kubernetes.Interface
+		clientSet = fakeclientset.NewSimpleClientset()
+		client := &fake.Clientset{}
+
+		client.AddReactor("get", "persistentvolumeclaim", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+			pvc := createFakePVC(requestedBytes)
+			pvc.Name = pvcName
+			return true, pvc, nil
+		})
+
+		csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client, driverName)
+
+		out := &csi.CreateVolumeResponse{
+			Volume: &csi.Volume{
+				CapacityBytes: requestedBytes,
+				VolumeId:      "test-volume-id",
+			},
+		}
+
+		if tc.wrongDataSource == false {
+			provisionFromPVCMockServerSetupExpectations(identityServer, controllerServer)
+		}
+		// If tc.restoredVolSizeSmall is true, or tc.wrongDataSource is true, or
+		// tc.snapshotStatusReady is false,  create volume from snapshot operation will fail
+		// early and therefore CreateVolume is not expected to be called.
+		// When the following if condition is met, it is a valid create volume from snapshot
+		// operation and CreateVolume is expected to be called.
+		if tc.restoredVolSizeSmall == false && tc.wrongDataSource == false && tc.pvcStatusReady {
+			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+		}
+
+		pv, err := csiProvisioner.Provision(tc.volOpts)
+		if tc.expectErr && err == nil {
+			t.Errorf("test %q: Expected error, got none", k)
+		}
+
+		if !tc.expectErr && err != nil {
+			t.Errorf("test %q: got error: %v", k, err)
+		}
+
+		if tc.expectedPVSpec != nil {
+			if pv.Name != tc.expectedPVSpec.Name {
+				t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
+			}
+
+			if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
+				t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
+			}
+
+			if tc.expectedPVSpec.CSIPVS != nil {
+				if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
+					t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+				}
+			}
+		}
 	}
 }
