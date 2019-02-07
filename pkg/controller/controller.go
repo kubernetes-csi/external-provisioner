@@ -40,14 +40,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
-	"google.golang.org/grpc/status"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
@@ -566,26 +563,9 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		return nil, fmt.Errorf("failed to strip CSI Parameters of prefixed keys: %v", err)
 	}
 
-	opts := wait.Backoff{Duration: backoffDuration, Factor: backoffFactor, Steps: backoffSteps}
-	err = wait.ExponentialBackoff(opts, func() (bool, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
-		defer cancel()
-		rep, err = p.csiClient.CreateVolume(ctx, &req)
-		if err == nil {
-			// CreateVolume has finished successfully
-			return true, nil
-		}
-
-		if status, ok := status.FromError(err); ok {
-			if status.Code() == codes.DeadlineExceeded {
-				// CreateVolume timed out, give it another chance to complete
-				klog.Warningf("CreateVolume timeout: %s has expired, operation will be retried", p.timeout.String())
-				return false, nil
-			}
-		}
-		// CreateVolume failed , no reason to retry, bailing from ExponentialBackoff
-		return false, err
-	})
+	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
+	defer cancel()
+	rep, err = p.csiClient.CreateVolume(ctx, &req)
 
 	if err != nil {
 		return nil, err
