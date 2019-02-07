@@ -25,7 +25,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
+
 	flag "github.com/spf13/pflag"
 	"google.golang.org/grpc"
 
@@ -65,57 +66,58 @@ func init() {
 	flag.Var(utilflag.NewMapStringBool(&featureGates), "feature-gates", "A set of key=value pairs that describe feature gates for alpha/experimental features. "+
 		"Options are:\n"+strings.Join(utilfeature.DefaultFeatureGate.KnownFeatures(), "\n"))
 
+	klog.InitFlags(nil)
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-	flag.Parse()
 	flag.Set("logtostderr", "true")
+	flag.Parse()
 
 	if err := utilfeature.DefaultFeatureGate.SetFromMap(featureGates); err != nil {
-		glog.Fatal(err)
+		klog.Fatal(err)
 	}
 
 	if *showVersion {
 		fmt.Println(os.Args[0], version)
 		os.Exit(0)
 	}
-	glog.Infof("Version: %s", version)
+	klog.Infof("Version: %s", version)
 
 	// get the KUBECONFIG from env if specified (useful for local/debug cluster)
 	kubeconfigEnv := os.Getenv("KUBECONFIG")
 
 	if kubeconfigEnv != "" {
-		glog.Infof("Found KUBECONFIG environment variable set, using that..")
+		klog.Infof("Found KUBECONFIG environment variable set, using that..")
 		kubeconfig = &kubeconfigEnv
 	}
 
 	if *master != "" || *kubeconfig != "" {
-		glog.Infof("Either master or kubeconfig specified. building kube config from that..")
+		klog.Infof("Either master or kubeconfig specified. building kube config from that..")
 		config, err = clientcmd.BuildConfigFromFlags(*master, *kubeconfig)
 	} else {
-		glog.Infof("Building kube configs for running in cluster...")
+		klog.Infof("Building kube configs for running in cluster...")
 		config, err = rest.InClusterConfig()
 	}
 	if err != nil {
-		glog.Fatalf("Failed to create config: %v", err)
+		klog.Fatalf("Failed to create config: %v", err)
 	}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		glog.Fatalf("Failed to create client: %v", err)
+		klog.Fatalf("Failed to create client: %v", err)
 	}
 	// snapclientset.NewForConfig creates a new Clientset for VolumesnapshotV1alpha1Client
 	snapClient, err := snapclientset.NewForConfig(config)
 	if err != nil {
-		glog.Fatalf("Failed to create snapshot client: %v", err)
+		klog.Fatalf("Failed to create snapshot client: %v", err)
 	}
 	csiAPIClient, err := csiclientset.NewForConfig(config)
 	if err != nil {
-		glog.Fatalf("Failed to create CSI API client: %v", err)
+		klog.Fatalf("Failed to create CSI API client: %v", err)
 	}
 
 	// The controller needs to know what the server version is because out-of-tree
 	// provisioners aren't officially supported until 1.5
 	serverVersion, err := clientset.Discovery().ServerVersion()
 	if err != nil {
-		glog.Fatalf("Error getting server version: %v", err)
+		klog.Fatalf("Error getting server version: %v", err)
 	}
 
 	// Provisioner will stay in Init until driver opens csi socket, once it's done
@@ -134,9 +136,9 @@ func init() {
 	// Autodetect provisioner name
 	provisionerName, err := ctrl.GetDriverName(grpcClient, *connectionTimeout)
 	if err != nil {
-		glog.Fatalf("Error getting CSI driver name: %s", err)
+		klog.Fatalf("Error getting CSI driver name: %s", err)
 	}
-	glog.V(2).Infof("Detected CSI driver %s", provisionerName)
+	klog.V(2).Infof("Detected CSI driver %s", provisionerName)
 
 	// Generate a unique ID for this provisioner
 	timeStamp := time.Now().UnixNano() / int64(time.Millisecond)

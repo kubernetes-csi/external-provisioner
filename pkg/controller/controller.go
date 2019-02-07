@@ -28,8 +28,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	_ "k8s.io/apimachinery/pkg/util/json"
-
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
 	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/util"
@@ -181,16 +180,16 @@ var (
 // from external-attacher/pkg/connection
 //TODO consolidate ane librarize
 func logGRPC(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	glog.V(5).Infof("GRPC call: %s", method)
-	glog.V(5).Infof("GRPC request: %s", protosanitizer.StripSecrets(req))
+	klog.V(5).Infof("GRPC call: %s", method)
+	klog.V(5).Infof("GRPC request: %s", protosanitizer.StripSecrets(req))
 	err := invoker(ctx, method, req, reply, cc, opts...)
-	glog.V(5).Infof("GRPC response: %s", protosanitizer.StripSecrets(reply))
-	glog.V(5).Infof("GRPC error: %v", err)
+	klog.V(5).Infof("GRPC response: %s", protosanitizer.StripSecrets(reply))
+	klog.V(5).Infof("GRPC error: %v", err)
 	return err
 }
 
 func Connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
-	glog.V(2).Infof("Connecting to %s", address)
+	klog.V(2).Infof("Connecting to %s", address)
 	dialOptions := []grpc.DialOption{
 		grpc.WithInsecure(),
 		grpc.WithBackoffMaxDelay(time.Second),
@@ -210,14 +209,14 @@ func Connect(address string, timeout time.Duration) (*grpc.ClientConn, error) {
 	defer cancel()
 	for {
 		if !conn.WaitForStateChange(ctx, conn.GetState()) {
-			glog.V(4).Infof("Connection timed out")
+			klog.V(4).Infof("Connection timed out")
 			return conn, fmt.Errorf("Connection timed out")
 		}
 		if conn.GetState() == connectivity.Ready {
-			glog.V(3).Infof("Connected")
+			klog.V(3).Infof("Connected")
 			return conn, nil
 		}
-		glog.V(4).Infof("Still trying, connection is %s", conn.GetState())
+		klog.V(4).Infof("Still trying, connection is %s", conn.GetState())
 	}
 }
 
@@ -477,7 +476,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		if strings.ToLower(k) == "fstype" {
 			fsType = v
 			fsTypesFound++
-			glog.Warningf(deprecationWarning("fstype", prefixedFsTypeKey, ""))
+			klog.Warningf(deprecationWarning("fstype", prefixedFsTypeKey, ""))
 		} else if k == prefixedFsTypeKey {
 			fsType = v
 			fsTypesFound++
@@ -532,7 +531,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		req.AccessibilityRequirements = requirements
 	}
 
-	glog.V(5).Infof("CreateVolumeRequest %+v", req)
+	klog.V(5).Infof("CreateVolumeRequest %+v", req)
 
 	rep := &csi.CreateVolumeResponse{}
 
@@ -580,7 +579,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		if status, ok := status.FromError(err); ok {
 			if status.Code() == codes.DeadlineExceeded {
 				// CreateVolume timed out, give it another chance to complete
-				glog.Warningf("CreateVolume timeout: %s has expired, operation will be retried", p.timeout.String())
+				klog.Warningf("CreateVolume timeout: %s has expired, operation will be retried", p.timeout.String())
 				return false, nil
 			}
 		}
@@ -593,7 +592,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	}
 
 	if rep.Volume != nil {
-		glog.V(3).Infof("create volume rep: %+v", *rep.Volume)
+		klog.V(3).Infof("create volume rep: %+v", *rep.Volume)
 	}
 	volumeAttributes := map[string]string{provisionerIDKey: p.identity}
 	for k, v := range rep.Volume.VolumeContext {
@@ -654,7 +653,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		pv.Spec.PersistentVolumeSource.CSI.FSType = fsType
 	}
 
-	glog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
+	klog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
 
 	return pv, nil
 }
@@ -698,13 +697,13 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions
 	if snapshotObj.ObjectMeta.DeletionTimestamp != nil {
 		return nil, fmt.Errorf("snapshot %s is currently being deleted", options.PVC.Spec.DataSource.Name)
 	}
-	glog.V(5).Infof("VolumeSnapshot %+v", snapshotObj)
+	klog.V(5).Infof("VolumeSnapshot %+v", snapshotObj)
 
 	snapContentObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshotContents().Get(snapshotObj.Spec.SnapshotContentName, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting snapshot:snapshotcontent %s:%s from api server: %v", snapshotObj.Name, snapshotObj.Spec.SnapshotContentName, err)
 	}
-	glog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
+	klog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
 
 	if snapContentObj.Spec.VolumeSnapshotSource.CSI == nil {
 		return nil, fmt.Errorf("error getting snapshot source from snapshot:snapshotcontent %s:%s", snapshotObj.Name, snapshotObj.Spec.SnapshotContentName)
@@ -715,7 +714,7 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions
 			SnapshotId: snapContentObj.Spec.VolumeSnapshotSource.CSI.SnapshotHandle,
 		},
 	}
-	glog.V(5).Infof("VolumeContentSource_Snapshot %+v", snapshotSource)
+	klog.V(5).Infof("VolumeContentSource_Snapshot %+v", snapshotSource)
 
 	if snapshotObj.Status.RestoreSize != nil {
 		capacity, exists := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
@@ -723,14 +722,14 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions
 			return nil, fmt.Errorf("error getting capacity for PVC %s when creating snapshot %s", options.PVC.Name, snapshotObj.Name)
 		}
 		volSizeBytes := capacity.Value()
-		glog.V(5).Infof("Requested volume size is %d and snapshot size is %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
+		klog.V(5).Infof("Requested volume size is %d and snapshot size is %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
 		// When restoring volume from a snapshot, the volume size should
 		// be equal to or larger than its snapshot size.
 		if int64(volSizeBytes) < int64(snapshotObj.Status.RestoreSize.Value()) {
 			return nil, fmt.Errorf("requested volume size %d is less than the size %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
 		}
 		if int64(volSizeBytes) > int64(snapshotObj.Status.RestoreSize.Value()) {
-			glog.Warningf("requested volume size %d is greater than the size %d for the source snapshot %s. Volume plugin needs to handle volume expansion.", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
+			klog.Warningf("requested volume size %d is greater than the size %d for the source snapshot %s. Volume plugin needs to handle volume expansion.", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
 		}
 	}
 
@@ -807,12 +806,12 @@ func verifyAndGetSecretNameAndNamespaceTemplate(secret deprecatedSecretParamsMap
 	if t, ok := storageClassParams[secret.deprecatedSecretNameKey]; ok {
 		nameTemplate = t
 		numName++
-		glog.Warning(deprecationWarning(secret.deprecatedSecretNameKey, secret.secretNameKey, ""))
+		klog.Warning(deprecationWarning(secret.deprecatedSecretNameKey, secret.secretNameKey, ""))
 	}
 	if t, ok := storageClassParams[secret.deprecatedSecretNamespaceKey]; ok {
 		namespaceTemplate = t
 		numNamespace++
-		glog.Warning(deprecationWarning(secret.deprecatedSecretNamespaceKey, secret.secretNamespaceKey, ""))
+		klog.Warning(deprecationWarning(secret.deprecatedSecretNamespaceKey, secret.secretNamespaceKey, ""))
 	}
 	if t, ok := storageClassParams[secret.secretNameKey]; ok {
 		nameTemplate = t

@@ -29,16 +29,12 @@
   version = "v1.0.0-1"
 
 [[constraint]]
-  branch = "master"
-  name = "github.com/golang/glog"
-
-[[constraint]]
   name = "github.com/kubernetes-csi/external-snapshotter"
   version = "1.0.0-rc4"
 
 [[constraint]]
   name = "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner"
-  version = "v2.0.0"
+  version = "v2.2.0"
 
 [[constraint]]
   name = "google.golang.org/grpc"
