@@ -232,7 +232,7 @@
   version = "v1.0.0-rc4"
 
 [[projects]]
-  digest = "1:62ae8171b490b175ddc0c1ef6fa0433ff7521f56c338a2e297678c997fb0e716"
+  digest = "1:c20dc06168b9d2cc276b0ba050c0154dfe37b30e382c7049716af2c7cf1fe83e"
   name = "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner"
   packages = [
     "controller",
@@ -240,8 +240,8 @@
     "util",
   ]
   pruneopts = "NUT"
-  revision = "05ed9a38505973ea4f1c269bdf3d1dc9e44b777c"
-  version = "v2.0.0"
+  revision = "99ac517d9c047238af8b8a6c411084b9f7888a87"
+  version = "v2.2.0"
 
 [[projects]]
   digest = "1:5985ef4caf91ece5d54817c11ea25f182697534f8ae6521eadcd628c142ac4b6"
