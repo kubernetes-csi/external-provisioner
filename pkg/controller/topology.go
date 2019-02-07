@@ -25,12 +25,12 @@ import (
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	csiv1alpha1 "k8s.io/csi-api/pkg/apis/csi/v1alpha1"
 	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
+	"k8s.io/klog"
 )
 
 // topologyTerm represents a single term where its topology key value pairs are AND'd together.
@@ -148,7 +148,7 @@ func aggregateTopologies(
 		nodeInfos, err := csiAPIClient.CsiV1alpha1().CSINodeInfos().List(metav1.ListOptions{})
 		if err != nil {
 			// We must support provisioning if CSINodeInfo is missing, for backward compatibility.
-			glog.Warningf("error listing CSINodeInfos: %v; proceeding to provision without topology information", err)
+			klog.Warningf("error listing CSINodeInfos: %v; proceeding to provision without topology information", err)
 			return nil, nil
 		}
 
@@ -168,7 +168,7 @@ func aggregateTopologies(
 		selectedNodeInfo, err := csiAPIClient.CsiV1alpha1().CSINodeInfos().Get(selectedNode.Name, metav1.GetOptions{})
 		if err != nil {
 			// We must support provisioning if CSINodeInfo is missing, for backward compatibility.
-			glog.Warningf("error getting CSINodeInfo for selected node %q: %v; proceeding to provision without topology information", selectedNode.Name, err)
+			klog.Warningf("error getting CSINodeInfo for selected node %q: %v; proceeding to provision without topology information", selectedNode.Name, err)
 			return nil, nil
 		}
 		topologyKeys = getTopologyKeys(selectedNodeInfo, driverName)
