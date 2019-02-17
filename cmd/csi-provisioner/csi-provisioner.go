@@ -59,6 +59,7 @@ var (
 	retryIntervalStart     = flag.Duration("retry-interval-start", time.Second, "Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to retry-interval-max.")
 	retryIntervalMax       = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
 	workerThreads          = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
+	operationTimeout       = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for creation or deletion of a volume")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -152,7 +153,7 @@ func init() {
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *csiEndpoint, *connectionTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient, provisionerName)
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *csiEndpoint, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient, provisionerName)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		provisionerName,
