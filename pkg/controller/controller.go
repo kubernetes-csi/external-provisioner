@@ -312,7 +312,6 @@ func getControllerCapabilities(conn *grpc.ClientConn, timeout time.Duration) ([]
 // NewCSIProvisioner creates new CSI provisioner
 func NewCSIProvisioner(client kubernetes.Interface,
 	csiAPIClient csiclientset.Interface,
-	csiEndpoint string,
 	connectionTimeout time.Duration,
 	identity string,
 	volumeNamePrefix string,
