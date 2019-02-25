@@ -534,7 +534,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	defer mockController.Finish()
 	defer driver.Stop()
 
-	csiProvisioner := NewCSIProvisioner(nil, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
+	csiProvisioner := NewCSIProvisioner(nil, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
 
 	// Requested PVC with requestedBytes storage
 	opts := controller.VolumeOptions{
@@ -1379,7 +1379,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		clientSet = fakeclientset.NewSimpleClientset()
 	}
 
-	csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
+	csiProvisioner := NewCSIProvisioner(clientSet, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1734,7 +1734,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			return true, content, nil
 		})
 
-		csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client, driverName)
+		csiProvisioner := NewCSIProvisioner(clientSet, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client, driverName)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -1829,7 +1829,7 @@ func TestProvisionWithTopology(t *testing.T) {
 
 	clientSet := fakeclientset.NewSimpleClientset()
 	csiClientSet := fakecsiclientset.NewSimpleClientset()
-	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1867,7 +1867,7 @@ func TestProvisionWithMountOptions(t *testing.T) {
 
 	clientSet := fakeclientset.NewSimpleClientset()
 	csiClientSet := fakecsiclientset.NewSimpleClientset()
-	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
