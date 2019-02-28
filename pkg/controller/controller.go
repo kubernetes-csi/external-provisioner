@@ -25,32 +25,28 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	_ "k8s.io/apimachinery/pkg/util/json"
-	"k8s.io/klog"
-
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
+	"github.com/kubernetes-csi/external-provisioner/pkg/features"
+	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
+	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
 	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/util"
 
-	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
-	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
-	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
-
+	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	_ "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
+	"k8s.io/klog"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
-
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
-
-	"github.com/kubernetes-csi/external-provisioner/pkg/features"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 )
 
 type deprecatedSecretParamsMap struct {
@@ -107,6 +103,10 @@ const (
 
 	snapshotKind     = "VolumeSnapshot"
 	snapshotAPIGroup = snapapi.GroupName // "snapshot.storage.k8s.io"
+
+	tokenPVNameKey       = "pv.name"
+	tokenPVCNameKey      = "pvc.name"
+	tokenPVCNameSpaceKey = "pvc.namespace"
 )
 
 var (
@@ -469,13 +469,12 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	fsTypesFound := 0
 	fsType := ""
 	for k, v := range options.Parameters {
+		if strings.ToLower(k) == "fstype" || k == prefixedFsTypeKey {
+			fsType = v
+			fsTypesFound++
+		}
 		if strings.ToLower(k) == "fstype" {
-			fsType = v
-			fsTypesFound++
 			klog.Warningf(deprecationWarning("fstype", prefixedFsTypeKey, ""))
-		} else if k == prefixedFsTypeKey {
-			fsType = v
-			fsTypesFound++
 		}
 	}
 	if fsTypesFound > 1 {
@@ -853,9 +852,9 @@ func getSecretReference(secretParams deprecatedSecretParamsMap, storageClassPara
 	{
 		// Secret namespace template can make use of the PV name or the PVC namespace.
 		// Note that neither of those things are under the control of the PVC user.
-		namespaceParams := map[string]string{"pv.name": pvName}
+		namespaceParams := map[string]string{tokenPVNameKey: pvName}
 		if pvc != nil {
-			namespaceParams["pvc.namespace"] = pvc.Namespace
+			namespaceParams[tokenPVCNameSpaceKey] = pvc.Namespace
 		}
 
 		resolvedNamespace, err := resolveTemplate(namespaceTemplate, namespaceParams)
@@ -874,10 +873,10 @@ func getSecretReference(secretParams deprecatedSecretParamsMap, storageClassPara
 	{
 		// Secret name template can make use of the PV name, PVC name or namespace, or a PVC annotation.
 		// Note that PVC name and annotations are under the PVC user's control.
-		nameParams := map[string]string{"pv.name": pvName}
+		nameParams := map[string]string{tokenPVNameKey: pvName}
 		if pvc != nil {
-			nameParams["pvc.name"] = pvc.Name
-			nameParams["pvc.namespace"] = pvc.Namespace
+			nameParams[tokenPVCNameKey] = pvc.Name
+			nameParams[tokenPVCNameSpaceKey] = pvc.Namespace
 			for k, v := range pvc.Annotations {
 				nameParams["pvc.annotations['"+k+"']"] = v
 			}
