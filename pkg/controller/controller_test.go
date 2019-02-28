@@ -20,6 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"testing"
@@ -27,6 +30,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
+	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-test/driver"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
@@ -62,8 +66,8 @@ type csiConnection struct {
 	conn *grpc.ClientConn
 }
 
-func New(address string, timeout time.Duration) (csiConnection, error) {
-	conn, err := Connect(address, timeout)
+func New(address string) (csiConnection, error) {
+	conn, err := connection.Connect(address)
 	if err != nil {
 		return csiConnection{}, err
 	}
@@ -72,7 +76,7 @@ func New(address string, timeout time.Duration) (csiConnection, error) {
 	}, nil
 }
 
-func createMockServer(t *testing.T) (*gomock.Controller,
+func createMockServer(t *testing.T, tmpdir string) (*gomock.Controller,
 	*driver.MockCSIDriver,
 	*driver.MockIdentityServer,
 	*driver.MockControllerServer,
@@ -85,16 +89,24 @@ func createMockServer(t *testing.T) (*gomock.Controller,
 		Identity:   identityServer,
 		Controller: controllerServer,
 	})
-	drv.Start()
+	drv.StartOnAddress("unix", filepath.Join(tmpdir, "csi.sock"))
 
 	// Create a client connection to it
 	addr := drv.Address()
-	csiConn, err := New(addr, timeout)
+	csiConn, err := New(addr)
 	if err != nil {
 		return nil, nil, nil, nil, csiConnection{}, err
 	}
 
 	return mockController, drv, identityServer, controllerServer, csiConn, nil
+}
+
+func tempDir(t *testing.T) string {
+	dir, err := ioutil.TempDir("", "external-attacher-test-")
+	if err != nil {
+		t.Fatalf("Cannot create temporary directory: %s", err)
+	}
+	return dir
 }
 
 func TestGetPluginName(t *testing.T) {
@@ -121,7 +133,9 @@ func TestGetPluginName(t *testing.T) {
 		},
 	}
 
-	mockController, driver, identityServer, _, csiConn, err := createMockServer(t)
+	tmpdir := tempDir(t)
+	defer os.RemoveAll(tmpdir)
+	mockController, driver, identityServer, _, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +340,9 @@ func TestGetDriverCapabilities(t *testing.T) {
 		},
 	}...)
 
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	tmpdir := tempDir(t)
+	defer os.RemoveAll(tmpdir)
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +464,9 @@ func TestGetDriverName(t *testing.T) {
 		},
 	}
 
-	mockController, driver, identityServer, _, csiConn, err := createMockServer(t)
+	tmpdir := tempDir(t)
+	defer os.RemoveAll(tmpdir)
+	mockController, driver, identityServer, _, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +545,10 @@ func TestBytesToQuantity(t *testing.T) {
 func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	// Set up mocks
 	var requestedBytes int64 = 100
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+
+	tmpdir := tempDir(t)
+	defer os.RemoveAll(tmpdir)
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1349,7 +1370,9 @@ func newSnapshot(name, className, boundToContent, snapshotUID, claimName string,
 func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requestedBytes int64) {
 	t.Logf("Running test: %v", k)
 
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	tmpdir := tempDir(t)
+	defer os.RemoveAll(tmpdir)
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1712,7 +1735,9 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		},
 	}
 
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	tmpdir := tempDir(t)
+	defer os.RemoveAll(tmpdir)
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1820,7 +1845,10 @@ func TestProvisionWithTopology(t *testing.T) {
 	}
 
 	const requestBytes = 100
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+
+	tmpdir := tempDir(t)
+	defer os.RemoveAll(tmpdir)
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1858,7 +1886,10 @@ func TestProvisionWithTopology(t *testing.T) {
 func TestProvisionWithMountOptions(t *testing.T) {
 	expectedOptions := []string{"foo=bar", "baz=qux"}
 	const requestBytes = 100
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+
+	tmpdir := tempDir(t)
+	defer os.RemoveAll(tmpdir)
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}

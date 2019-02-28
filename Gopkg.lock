@@ -197,8 +197,8 @@
     "protosanitizer",
   ]
   pruneopts = "NUT"
-  revision = "e581edfed23c6ce10243bc0efb2292cf68b83e1d"
-  version = "v0.3.1"
+  revision = "8053f37bf1d11d769c20f9514538c4b3b906e1f7"
+  version = "v0.4.0-rc1"
 
 [[projects]]
   digest = "1:0f47ba38b647bb8e7cddb71c3341134b2c2eaa8cef2af82291b5c9870ee7f572"
