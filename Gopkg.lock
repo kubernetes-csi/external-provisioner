@@ -190,23 +190,26 @@
   version = "v1.0.1"
 
 [[projects]]
-  digest = "1:610f50d23ee3e0fa37d77fc23bf2c3b6897d2dc1c934739f13cdf551e9fc57d9"
+  digest = "1:b09c9ac14d93f481c768e73a12d4e8527ac25232d593f2ad918ffe462901b654"
   name = "github.com/kubernetes-csi/csi-lib-utils"
-  packages = ["protosanitizer"]
+  packages = [
+    "connection",
+    "protosanitizer",
+  ]
   pruneopts = "NUT"
-  revision = "1628ab5351eafa4fc89a96862a08a891e601e03a"
-  version = "v0.1.0"
+  revision = "8053f37bf1d11d769c20f9514538c4b3b906e1f7"
+  version = "v0.4.0-rc1"
 
 [[projects]]
-  digest = "1:cab5d1fe86e273b35887f707dbec779d77d87613d9f2f14ea23002912197ce81"
+  digest = "1:0f47ba38b647bb8e7cddb71c3341134b2c2eaa8cef2af82291b5c9870ee7f572"
   name = "github.com/kubernetes-csi/csi-test"
   packages = [
     "driver",
     "utils",
   ]
   pruneopts = "NUT"
-  revision = "619da6853e10bef67ddcc8f1c2b68b73154bf11d"
-  version = "v1.0.0-rc2"
+  revision = "722eead38c269060656e0fc91f280610ea56f19b"
+  version = "v1.0.3"
 
 [[projects]]
   digest = "1:70e121796a8b5b538b08bf54c8d34245069a82300d8f6e8476874e4dfa450bf6"
@@ -851,6 +854,7 @@
   input-imports = [
     "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/mock/gomock",
+    "github.com/kubernetes-csi/csi-lib-utils/connection",
     "github.com/kubernetes-csi/csi-lib-utils/protosanitizer",
     "github.com/kubernetes-csi/csi-test/driver",
     "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1",
@@ -860,9 +864,6 @@
     "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/util",
     "github.com/spf13/pflag",
     "google.golang.org/grpc",
-    "google.golang.org/grpc/codes",
-    "google.golang.org/grpc/connectivity",
-    "google.golang.org/grpc/status",
     "k8s.io/api/core/v1",
     "k8s.io/api/storage/v1beta1",
     "k8s.io/apimachinery/pkg/api/resource",
@@ -881,6 +882,7 @@
     "k8s.io/client-go/rest",
     "k8s.io/client-go/testing",
     "k8s.io/client-go/tools/clientcmd",
+    "k8s.io/client-go/util/workqueue",
     "k8s.io/csi-api/pkg/apis/csi/v1alpha1",
     "k8s.io/csi-api/pkg/client/clientset/versioned",
     "k8s.io/csi-api/pkg/client/clientset/versioned/fake",

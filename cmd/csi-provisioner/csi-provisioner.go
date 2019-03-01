@@ -28,7 +28,6 @@ import (
 	"k8s.io/klog"
 
 	flag "github.com/spf13/pflag"
-	"google.golang.org/grpc"
 
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
@@ -49,7 +48,7 @@ var (
 	master                 = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
 	kubeconfig             = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
 	csiEndpoint            = flag.String("csi-address", "/run/csi/socket", "The gRPC endpoint for Target CSI Volume.")
-	connectionTimeout      = flag.Duration("connection-timeout", 10*time.Second, "Timeout for waiting for CSI driver socket.")
+	connectionTimeout      = flag.Duration("connection-timeout", 0, "This option is deprecated.")
 	volumeNamePrefix       = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume.")
 	volumeNameUUIDLength   = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
 	showVersion            = flag.Bool("version", false, "Show version.")
@@ -77,6 +76,10 @@ func init() {
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Set("logtostderr", "true")
 	flag.Parse()
+
+	if *connectionTimeout != 0 {
+		klog.Warningf("Warning: option -connection-timeout is deprecated and has no effect")
+	}
 
 	if err := utilfeature.DefaultFeatureGate.SetFromMap(featureGates); err != nil {
 		klog.Fatal(err)
@@ -127,17 +130,16 @@ func init() {
 		klog.Fatalf("Error getting server version: %v", err)
 	}
 
-	// Provisioner will stay in Init until driver opens csi socket, once it's done
-	// controller will exit this loop and proceed normally.
-	socketDown := true
-	grpcClient := &grpc.ClientConn{}
-	for socketDown {
-		grpcClient, err = ctrl.Connect(*csiEndpoint, *connectionTimeout)
-		if err == nil {
-			socketDown = false
-			continue
-		}
-		time.Sleep(10 * time.Second)
+	grpcClient, err := ctrl.Connect(*csiEndpoint)
+	if err != nil {
+		klog.Error(err.Error())
+		os.Exit(1)
+	}
+
+	err = ctrl.Probe(grpcClient, *operationTimeout)
+	if err != nil {
+		klog.Error(err.Error())
+		os.Exit(1)
 	}
 
 	// Autodetect provisioner name
