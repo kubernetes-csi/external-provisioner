@@ -143,7 +143,7 @@ func init() {
 	}
 
 	// Autodetect provisioner name
-	provisionerName, err := ctrl.GetDriverName(grpcClient, *connectionTimeout)
+	provisionerName, err := ctrl.GetDriverName(grpcClient, *operationTimeout)
 	if err != nil {
 		klog.Fatalf("Error getting CSI driver name: %s", err)
 	}
