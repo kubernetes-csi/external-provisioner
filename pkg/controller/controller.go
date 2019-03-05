@@ -26,7 +26,6 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
-	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
@@ -172,17 +171,6 @@ var (
 	// identify string will be added in PV annoations under this key.
 	provisionerIDKey = "storage.kubernetes.io/csiProvisionerIdentity"
 )
-
-// from external-attacher/pkg/connection
-//TODO consolidate ane librarize
-func logGRPC(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	klog.V(5).Infof("GRPC call: %s", method)
-	klog.V(5).Infof("GRPC request: %s", protosanitizer.StripSecrets(req))
-	err := invoker(ctx, method, req, reply, cc, opts...)
-	klog.V(5).Infof("GRPC response: %s", protosanitizer.StripSecrets(reply))
-	klog.V(5).Infof("GRPC error: %v", err)
-	return err
-}
 
 func Connect(address string) (*grpc.ClientConn, error) {
 	return connection.Connect(address, connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
