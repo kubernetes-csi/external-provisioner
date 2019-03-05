@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -37,8 +36,8 @@ import (
 	"github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake"
 	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
 	"google.golang.org/grpc"
+	"k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -267,170 +266,6 @@ func TestStripPrefixedCSIParams(t *testing.T) {
 	}
 }
 
-func TestGetDriverCapabilities(t *testing.T) {
-	type testcase struct {
-		name                   string
-		pluginCapabilities     []*csi.PluginCapability_Service_Type
-		controllerCapabilities []*csi.ControllerServiceCapability_RPC_Type
-		injectPluginError      bool
-		injectControllerError  bool
-		expectError            bool
-	}
-	tests := []testcase{{}}
-
-	// Generate test cases by creating all possible combination of capabilities
-	for capName, capValue := range csi.PluginCapability_Service_Type_value {
-		cap := csi.PluginCapability_Service_Type(capValue)
-		var newTests []testcase
-		for _, test := range tests {
-			newTest := testcase{
-				name: fmt.Sprintf("%s,Plugin_%s", test.name, capName),
-			}
-			copy(newTest.pluginCapabilities, append(test.pluginCapabilities, &cap))
-			copy(newTest.controllerCapabilities, test.controllerCapabilities)
-			newTests = append(newTests, newTest)
-		}
-		tests = newTests
-	}
-	for capName, capValue := range csi.ControllerServiceCapability_RPC_Type_value {
-		cap := csi.ControllerServiceCapability_RPC_Type(capValue)
-		var newTests []testcase
-		for _, test := range tests {
-			newTest := testcase{
-				name: fmt.Sprintf("%s,Plugin_%s", test.name, capName),
-			}
-			copy(newTest.pluginCapabilities, test.pluginCapabilities)
-			copy(newTest.controllerCapabilities, append(test.controllerCapabilities, &cap))
-			newTests = append(newTests, newTest)
-		}
-		tests = newTests
-	}
-
-	// nil capabilities tests
-	dummyPluginCap := csi.PluginCapability_Service_CONTROLLER_SERVICE
-	dummyControllerCap := csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME
-	tests = append(tests, []testcase{
-		{
-			name:                   "plugin capabilities with nil entries",
-			pluginCapabilities:     []*csi.PluginCapability_Service_Type{nil},
-			controllerCapabilities: []*csi.ControllerServiceCapability_RPC_Type{&dummyControllerCap},
-		},
-		{
-			name:                   "controller capabilities with nil entries",
-			pluginCapabilities:     []*csi.PluginCapability_Service_Type{&dummyPluginCap},
-			controllerCapabilities: []*csi.ControllerServiceCapability_RPC_Type{nil},
-		},
-	}...)
-
-	// gRPC errors
-	tests = append(tests, []testcase{
-		{
-			name:                   "plugin capabilities call with gRPC error",
-			pluginCapabilities:     []*csi.PluginCapability_Service_Type{&dummyPluginCap},
-			controllerCapabilities: []*csi.ControllerServiceCapability_RPC_Type{&dummyControllerCap},
-			injectPluginError:      true,
-			expectError:            true,
-		},
-		{
-			name:                   "controller capabilities call with gRPC error",
-			pluginCapabilities:     []*csi.PluginCapability_Service_Type{&dummyPluginCap},
-			controllerCapabilities: []*csi.ControllerServiceCapability_RPC_Type{&dummyControllerCap},
-			injectControllerError:  true,
-			expectError:            true,
-		},
-	}...)
-
-	tmpdir := tempDir(t)
-	defer os.RemoveAll(tmpdir)
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mockController.Finish()
-	defer driver.Stop()
-	for _, test := range tests {
-
-		var injectedPluginErr, injectedControllerErr error
-		if test.injectPluginError {
-			injectedPluginErr = fmt.Errorf("mock error")
-		}
-		if test.injectControllerError {
-			injectedControllerErr = fmt.Errorf("mock error")
-		}
-
-		var pluginCaps []*csi.PluginCapability
-		for _, cap := range test.pluginCapabilities {
-			var c *csi.PluginCapability
-			if cap == nil {
-				c = &csi.PluginCapability{Type: nil}
-			} else {
-				c = &csi.PluginCapability{
-					Type: &csi.PluginCapability_Service_{
-						Service: &csi.PluginCapability_Service{
-							Type: *cap,
-						},
-					},
-				}
-			}
-			pluginCaps = append(pluginCaps, c)
-		}
-		pluginResponse := &csi.GetPluginCapabilitiesResponse{Capabilities: pluginCaps}
-
-		var controllerCaps []*csi.ControllerServiceCapability
-		for _, cap := range test.controllerCapabilities {
-			var c *csi.ControllerServiceCapability
-			if cap == nil {
-				c = &csi.ControllerServiceCapability{Type: nil}
-			} else {
-				c = &csi.ControllerServiceCapability{
-					Type: &csi.ControllerServiceCapability_Rpc{
-						Rpc: &csi.ControllerServiceCapability_RPC{
-							Type: *cap,
-						},
-					},
-				}
-			}
-			controllerCaps = append(controllerCaps, c)
-		}
-		controllerResponse := &csi.ControllerGetCapabilitiesResponse{Capabilities: controllerCaps}
-
-		identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), &csi.GetPluginCapabilitiesRequest{}).Return(pluginResponse, injectedPluginErr).Times(1)
-		controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), &csi.ControllerGetCapabilitiesRequest{}).Return(controllerResponse, injectedControllerErr).MinTimes(0).MaxTimes(1)
-
-		capabilities, err := getDriverCapabilities(csiConn.conn, timeout)
-		if err != nil && !test.expectError {
-			t.Errorf("test %q failed with error: %v\n", test.name, err)
-		}
-		if err == nil {
-			ok := true
-			for _, cap := range test.pluginCapabilities {
-				if cap != nil {
-					switch *cap {
-					case csi.PluginCapability_Service_CONTROLLER_SERVICE:
-						ok = ok && capabilities.Has(PluginCapability_CONTROLLER_SERVICE)
-					case csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS:
-						ok = ok && capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS)
-					}
-				}
-			}
-			for _, cap := range test.controllerCapabilities {
-				if cap != nil {
-					switch *cap {
-					case csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:
-						ok = ok && capabilities.Has(ControllerCapability_CREATE_DELETE_VOLUME)
-					case csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT:
-						ok = ok && capabilities.Has(ControllerCapability_CREATE_DELETE_SNAPSHOT)
-					}
-				}
-			}
-
-			if !ok {
-				t.Errorf("test %q: missing capabilities", test.name)
-			}
-		}
-	}
-}
-
 func TestGetDriverName(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -548,14 +383,15 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 
 	tmpdir := tempDir(t)
 	defer os.RemoveAll(tmpdir)
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer mockController.Finish()
 	defer driver.Stop()
 
-	csiProvisioner := NewCSIProvisioner(nil, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
+	pluginCaps, controllerCaps := provisionCapabilities()
+	csiProvisioner := NewCSIProvisioner(nil, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps)
 
 	// Requested PVC with requestedBytes storage
 	opts := controller.VolumeOptions{
@@ -574,7 +410,6 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	}
 
 	// Set up Mocks
-	provisionMockServerSetupExpectations(identityServer, controllerServer)
 	controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 	// Since capacity returned by driver is invalid, we expect the provision call to clean up the volume
 	controllerServer.EXPECT().DeleteVolume(gomock.Any(), &csi.DeleteVolumeRequest{
@@ -590,95 +425,30 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	t.Logf("Provision encountered an error: %v, expected: create volume capacity less than requested capacity", err)
 }
 
-func provisionMockServerSetupExpectations(identityServer *driver.MockIdentityServer, controllerServer *driver.MockControllerServer) {
-	identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(&csi.GetPluginCapabilitiesResponse{
-		Capabilities: []*csi.PluginCapability{
-			{
-				Type: &csi.PluginCapability_Service_{
-					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
-					},
-				},
-			},
-		},
-	}, nil).Times(1)
-	controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), gomock.Any()).Return(&csi.ControllerGetCapabilitiesResponse{
-		Capabilities: []*csi.ControllerServiceCapability{
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-					},
-				},
-			},
-		},
-	}, nil).Times(1)
+func provisionCapabilities() (connection.PluginCapabilitySet, connection.ControllerCapabilitySet) {
+	return connection.PluginCapabilitySet{
+			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
+		}, connection.ControllerCapabilitySet{
+			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
+		}
 }
 
-// provisionFromSnapshotMockServerSetupExpectations mocks plugin and controller capabilities reported
-// by a CSI plugin that supports the snapshot feature
-func provisionFromSnapshotMockServerSetupExpectations(identityServer *driver.MockIdentityServer, controllerServer *driver.MockControllerServer) {
-	identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(&csi.GetPluginCapabilitiesResponse{
-		Capabilities: []*csi.PluginCapability{
-			{
-				Type: &csi.PluginCapability_Service_{
-					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
-					},
-				},
-			},
-		},
-	}, nil).Times(1)
-	controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), gomock.Any()).Return(&csi.ControllerGetCapabilitiesResponse{
-		Capabilities: []*csi.ControllerServiceCapability{
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-					},
-				},
-			},
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
-					},
-				},
-			},
-		},
-	}, nil).Times(1)
+func provisionFromSnapshotCapabilities() (connection.PluginCapabilitySet, connection.ControllerCapabilitySet) {
+	return connection.PluginCapabilitySet{
+			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
+		}, connection.ControllerCapabilitySet{
+			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:   true,
+			csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: true,
+		}
 }
 
-func provisionWithTopologyMockServerSetupExpectations(identityServer *driver.MockIdentityServer, controllerServer *driver.MockControllerServer) {
-	identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(&csi.GetPluginCapabilitiesResponse{
-		Capabilities: []*csi.PluginCapability{
-			{
-				Type: &csi.PluginCapability_Service_{
-					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
-					},
-				},
-			},
-			{
-				Type: &csi.PluginCapability_Service_{
-					Service: &csi.PluginCapability_Service{
-						Type: csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS,
-					},
-				},
-			},
-		},
-	}, nil).Times(1)
-	controllerServer.EXPECT().ControllerGetCapabilities(gomock.Any(), gomock.Any()).Return(&csi.ControllerGetCapabilitiesResponse{
-		Capabilities: []*csi.ControllerServiceCapability{
-			{
-				Type: &csi.ControllerServiceCapability_Rpc{
-					Rpc: &csi.ControllerServiceCapability_RPC{
-						Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-					},
-				},
-			},
-		},
-	}, nil).Times(1)
+func provisionWithTopologyCapabilities() (connection.PluginCapabilitySet, connection.ControllerCapabilitySet) {
+	return connection.PluginCapabilitySet{
+			csi.PluginCapability_Service_CONTROLLER_SERVICE:               true,
+			csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS: true,
+		}, connection.ControllerCapabilitySet{
+			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
+		}
 }
 
 // Minimal PVC required for tests to function
@@ -859,7 +629,6 @@ func TestGetSecretReference(t *testing.T) {
 type provisioningTestcase struct {
 	volOpts           controller.VolumeOptions
 	notNilSelector    bool
-	driverNotReady    bool
 	makeVolumeNameErr bool
 	getSecretRefErr   bool
 	getCredentialsErr bool
@@ -1241,14 +1010,6 @@ func TestProvision(t *testing.T) {
 			notNilSelector: true,
 			expectErr:      true,
 		},
-		"fail driver not ready": {
-			volOpts: controller.VolumeOptions{
-				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
-			},
-			driverNotReady: true,
-			expectErr:      true,
-		},
 		"fail to make volume name": {
 			volOpts: controller.VolumeOptions{
 				PVName: "test-name",
@@ -1372,7 +1133,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 
 	tmpdir := tempDir(t)
 	defer os.RemoveAll(tmpdir)
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1402,7 +1163,8 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		clientSet = fakeclientset.NewSimpleClientset()
 	}
 
-	csiProvisioner := NewCSIProvisioner(clientSet, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
+	pluginCaps, controllerCaps := provisionCapabilities()
+	csiProvisioner := NewCSIProvisioner(clientSet, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1422,29 +1184,21 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 
 	if tc.notNilSelector {
 		tc.volOpts.PVC.Spec.Selector = &metav1.LabelSelector{}
-	} else if tc.driverNotReady {
-		identityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(nil, errors.New("driver not ready")).Times(1)
 	} else if tc.makeVolumeNameErr {
 		tc.volOpts.PVC.ObjectMeta.UID = ""
-		provisionMockServerSetupExpectations(identityServer, controllerServer)
 	} else if tc.getSecretRefErr {
 		tc.volOpts.Parameters[provisionerSecretNameKey] = ""
-		provisionMockServerSetupExpectations(identityServer, controllerServer)
 	} else if tc.getCredentialsErr {
 		tc.volOpts.Parameters[provisionerSecretNameKey] = "secretx"
 		tc.volOpts.Parameters[provisionerSecretNamespaceKey] = "default"
-		provisionMockServerSetupExpectations(identityServer, controllerServer)
 	} else if tc.volWithLessCap {
 		out.Volume.CapacityBytes = int64(80)
-		provisionMockServerSetupExpectations(identityServer, controllerServer)
 		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 		controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
 	} else if tc.expectCreateVolDo != nil {
-		provisionMockServerSetupExpectations(identityServer, controllerServer)
 		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(tc.expectCreateVolDo).Return(out, nil).Times(1)
 	} else {
 		// Setup regular mock call expectations.
-		provisionMockServerSetupExpectations(identityServer, controllerServer)
 		if !tc.expectErr {
 			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 		}
@@ -1737,7 +1491,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 
 	tmpdir := tempDir(t)
 	defer os.RemoveAll(tmpdir)
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1759,7 +1513,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			return true, content, nil
 		})
 
-		csiProvisioner := NewCSIProvisioner(clientSet, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client, driverName)
+		pluginCaps, controllerCaps := provisionFromSnapshotCapabilities()
+		csiProvisioner := NewCSIProvisioner(clientSet, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client, driverName, pluginCaps, controllerCaps)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -1768,13 +1523,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			},
 		}
 
-		// Setup mock call expectations. If tc.wrongDataSource is false, DataSource is valid
-		// and the controller will proceed to check whether the plugin supports snapshot.
-		// So in this case, we need the plugin to report snapshot support capabilities;
-		// Otherwise, the controller will fail the operation so it won't check the capabilities.
-		if tc.wrongDataSource == false {
-			provisionFromSnapshotMockServerSetupExpectations(identityServer, controllerServer)
-		}
+		// Setup mock call expectations.
 		// If tc.restoredVolSizeSmall is true, or tc.wrongDataSource is true, or
 		// tc.snapshotStatusReady is false,  create volume from snapshot operation will fail
 		// early and therefore CreateVolume is not expected to be called.
@@ -1848,7 +1597,7 @@ func TestProvisionWithTopology(t *testing.T) {
 
 	tmpdir := tempDir(t)
 	defer os.RemoveAll(tmpdir)
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1857,7 +1606,8 @@ func TestProvisionWithTopology(t *testing.T) {
 
 	clientSet := fakeclientset.NewSimpleClientset()
 	csiClientSet := fakecsiclientset.NewSimpleClientset()
-	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
+	pluginCaps, controllerCaps := provisionWithTopologyCapabilities()
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1867,7 +1617,6 @@ func TestProvisionWithTopology(t *testing.T) {
 		},
 	}
 
-	provisionWithTopologyMockServerSetupExpectations(identityServer, controllerServer)
 	controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 
 	pv, err := csiProvisioner.Provision(controller.VolumeOptions{
@@ -1889,7 +1638,7 @@ func TestProvisionWithMountOptions(t *testing.T) {
 
 	tmpdir := tempDir(t)
 	defer os.RemoveAll(tmpdir)
-	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1898,7 +1647,8 @@ func TestProvisionWithMountOptions(t *testing.T) {
 
 	clientSet := fakeclientset.NewSimpleClientset()
 	csiClientSet := fakecsiclientset.NewSimpleClientset()
-	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName)
+	pluginCaps, controllerCaps := provisionCapabilities()
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1907,7 +1657,6 @@ func TestProvisionWithMountOptions(t *testing.T) {
 		},
 	}
 
-	provisionWithTopologyMockServerSetupExpectations(identityServer, controllerServer)
 	controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 
 	pv, err := csiProvisioner.Provision(controller.VolumeOptions{
