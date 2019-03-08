@@ -31,8 +31,8 @@ import (
 
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
-	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
 	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"

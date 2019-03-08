@@ -35,7 +35,6 @@ import (
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
 	"github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake"
-	"github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/controller"
 	"google.golang.org/grpc"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
@@ -50,6 +49,7 @@ import (
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 	fakecsiclientset "k8s.io/csi-api/pkg/client/clientset/versioned/fake"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 )
 
 const (
