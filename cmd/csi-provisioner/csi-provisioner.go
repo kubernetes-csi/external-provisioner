@@ -59,6 +59,7 @@ var (
 	retryIntervalMax       = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
 	workerThreads          = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
 	operationTimeout       = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for creation or deletion of a volume")
+	provisioner            = flag.String("provisioner", "", "This option is deprecated")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -79,6 +80,9 @@ func init() {
 
 	if *connectionTimeout != 0 {
 		klog.Warningf("Warning: option -connection-timeout is deprecated and has no effect")
+	}
+	if *provisioner != "" {
+		klog.Warningf("Warning: option -provisioner is deprecated and has no effect")
 	}
 
 	if err := utilfeature.DefaultFeatureGate.SetFromMap(featureGates); err != nil {
