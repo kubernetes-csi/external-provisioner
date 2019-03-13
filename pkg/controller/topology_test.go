@@ -21,12 +21,11 @@ import (
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+	storage "k8s.io/api/storage/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
-	csiv1alpha1 "k8s.io/csi-api/pkg/apis/csi/v1alpha1"
-	fakecsiclientset "k8s.io/csi-api/pkg/client/clientset/versioned/fake"
 	"k8s.io/kubernetes/pkg/apis/core/helper"
 )
 
@@ -386,15 +385,13 @@ func TestStatefulSetSpreading(t *testing.T) {
 	nodes := buildNodes(nodeLabels)
 	nodeInfos := buildNodeInfos(topologyKeys)
 
-	kubeClient := fakeclientset.NewSimpleClientset(nodes)
-	csiClient := fakecsiclientset.NewSimpleClientset(nodeInfos)
+	kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
 
 	for name, tc := range testcases {
 		t.Logf("test: %s", name)
 
 		requirements, err := GenerateAccessibilityRequirements(
 			kubeClient,
-			csiClient,
 			testDriverName,
 			tc.pvcName,
 			tc.allowedTopologies,
@@ -782,7 +779,6 @@ func TestAllowedTopologies(t *testing.T) {
 		t.Logf("test: %s", name)
 		requirements, err := GenerateAccessibilityRequirements(
 			nil,           /* kubeClient */
-			nil,           /* csiAPIClient */
 			"test-driver", /* driverName */
 			"testpvc",
 			tc.allowedTopologies,
@@ -950,15 +946,13 @@ func TestTopologyAggregation(t *testing.T) {
 		nodes := buildNodes(tc.nodeLabels)
 		nodeInfos := buildNodeInfos(tc.topologyKeys)
 
-		kubeClient := fakeclientset.NewSimpleClientset(nodes)
-		csiClient := fakecsiclientset.NewSimpleClientset(nodeInfos)
+		kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
 		var selectedNode *v1.Node
 		if tc.hasSelectedNode {
 			selectedNode = &nodes.Items[0]
 		}
 		requirements, err := GenerateAccessibilityRequirements(
 			kubeClient,
-			csiClient,
 			testDriverName,
 			"testpvc",
 			nil, /* allowedTopologies */
@@ -1121,13 +1115,11 @@ func TestPreferredTopologies(t *testing.T) {
 		nodes := buildNodes(tc.nodeLabels)
 		nodeInfos := buildNodeInfos(tc.topologyKeys)
 
-		kubeClient := fakeclientset.NewSimpleClientset(nodes)
-		csiClient := fakecsiclientset.NewSimpleClientset(nodeInfos)
+		kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
 		selectedNode := &nodes.Items[0]
 
 		requirements, err := GenerateAccessibilityRequirements(
 			kubeClient,
-			csiClient,
 			testDriverName,
 			"testpvc",
 			tc.allowedTopologies,
@@ -1177,19 +1169,19 @@ func buildNodes(nodeLabels []map[string]string) *v1.NodeList {
 	return list
 }
 
-func buildNodeInfos(nodeInfos []map[string][]string) *csiv1alpha1.CSINodeInfoList {
-	list := &csiv1alpha1.CSINodeInfoList{}
+func buildNodeInfos(nodeInfos []map[string][]string) *storage.CSINodeList {
+	list := &storage.CSINodeList{}
 	i := 0
 	for _, nodeInfo := range nodeInfos {
 		nodeName := fmt.Sprintf("node-%d", i)
-		n := csiv1alpha1.CSINodeInfo{
+		n := storage.CSINode{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: nodeName,
 			},
 		}
-		var csiDrivers []csiv1alpha1.CSIDriverInfoSpec
+		var csiDrivers []storage.CSINodeDriver
 		for driver, topologyKeys := range nodeInfo {
-			driverInfos := []csiv1alpha1.CSIDriverInfoSpec{
+			driverInfos := []storage.CSINodeDriver{
 				{
 					Name:         driver,
 					NodeID:       nodeName,
@@ -1203,7 +1195,7 @@ func buildNodeInfos(nodeInfos []map[string][]string) *csiv1alpha1.CSINodeInfoLis
 			}
 			csiDrivers = append(csiDrivers, driverInfos...)
 		}
-		n.Spec = csiv1alpha1.CSINodeInfoSpec{Drivers: csiDrivers}
+		n.Spec = storage.CSINodeSpec{Drivers: csiDrivers}
 		list.Items = append(list.Items, n)
 		i++
 	}
