@@ -391,7 +391,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	defer driver.Stop()
 
 	pluginCaps, controllerCaps := provisionCapabilities()
-	csiProvisioner := NewCSIProvisioner(nil, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps)
+	csiProvisioner := NewCSIProvisioner(nil, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "")
 
 	// Requested PVC with requestedBytes storage
 	opts := controller.VolumeOptions{
@@ -1164,7 +1164,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 	}
 
 	pluginCaps, controllerCaps := provisionCapabilities()
-	csiProvisioner := NewCSIProvisioner(clientSet, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps)
+	csiProvisioner := NewCSIProvisioner(clientSet, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "")
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1514,7 +1514,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		})
 
 		pluginCaps, controllerCaps := provisionFromSnapshotCapabilities()
-		csiProvisioner := NewCSIProvisioner(clientSet, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client, driverName, pluginCaps, controllerCaps)
+		csiProvisioner := NewCSIProvisioner(clientSet, nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client, driverName, pluginCaps, controllerCaps, "")
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -1607,7 +1607,7 @@ func TestProvisionWithTopology(t *testing.T) {
 	clientSet := fakeclientset.NewSimpleClientset()
 	csiClientSet := fakecsiclientset.NewSimpleClientset()
 	pluginCaps, controllerCaps := provisionWithTopologyCapabilities()
-	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps)
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "")
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1648,7 +1648,7 @@ func TestProvisionWithMountOptions(t *testing.T) {
 	clientSet := fakeclientset.NewSimpleClientset()
 	csiClientSet := fakecsiclientset.NewSimpleClientset()
 	pluginCaps, controllerCaps := provisionCapabilities()
-	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps)
+	csiProvisioner := NewCSIProvisioner(clientSet, csiClientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "")
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
