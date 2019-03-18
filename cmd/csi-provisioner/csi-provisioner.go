@@ -27,6 +27,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 
+	"github.com/kubernetes-csi/csi-lib-utils/deprecatedflags"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
@@ -47,7 +48,7 @@ var (
 	master               = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
 	kubeconfig           = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
 	csiEndpoint          = flag.String("csi-address", "/run/csi/socket", "The gRPC endpoint for Target CSI Volume.")
-	connectionTimeout    = flag.Duration("connection-timeout", 0, "This option is deprecated.")
+	_                    = deprecatedflags.Add("connection-timeout")
 	volumeNamePrefix     = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume.")
 	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
 	showVersion          = flag.Bool("version", false, "Show version.")
@@ -56,7 +57,7 @@ var (
 	retryIntervalMax     = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
 	workerThreads        = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
 	operationTimeout     = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for creation or deletion of a volume")
-	provisioner          = flag.String("provisioner", "", "This option is deprecated")
+	_                    = deprecatedflags.Add("provisioner")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -74,13 +75,6 @@ func init() {
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Set("logtostderr", "true")
 	flag.Parse()
-
-	if *connectionTimeout != 0 {
-		klog.Warningf("Warning: option -connection-timeout is deprecated and has no effect")
-	}
-	if *provisioner != "" {
-		klog.Warningf("Warning: option -provisioner is deprecated and has no effect")
-	}
 
 	if err := utilfeature.DefaultFeatureGate.SetFromMap(featureGates); err != nil {
 		klog.Fatal(err)

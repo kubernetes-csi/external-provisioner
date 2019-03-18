@@ -141,26 +141,27 @@
   version = "v1.1.6"
 
 [[projects]]
-  digest = "1:b09c9ac14d93f481c768e73a12d4e8527ac25232d593f2ad918ffe462901b654"
+  digest = "1:bee5467f0581e0bbc0c776908cfe02a7dc114bfefa895f59244d32f95be25401"
   name = "github.com/kubernetes-csi/csi-lib-utils"
   packages = [
     "connection",
+    "deprecatedflags",
     "protosanitizer",
   ]
   pruneopts = "NUT"
-  revision = "0ce529dbd3fa19d36b0c9a579f2819db64d430ad"
-  version = "0.4.0"
+  revision = "2d2f98bf7ee876e6fe9bf23dc3bd71dbdd21b44b"
+  version = "0.5.0"
 
 [[projects]]
-  digest = "1:0f47ba38b647bb8e7cddb71c3341134b2c2eaa8cef2af82291b5c9870ee7f572"
+  digest = "1:189ada87769e6bd22de67cf8d5ac2f348070e7bcc4cdc5be3aaa5b19758e8fc2"
   name = "github.com/kubernetes-csi/csi-test"
   packages = [
     "driver",
     "utils",
   ]
   pruneopts = "NUT"
-  revision = "722eead38c269060656e0fc91f280610ea56f19b"
-  version = "v1.0.3"
+  revision = "5421d9f3c37be3b95b241b44a094a3db11bee789"
+  version = "v2.0.0"
 
 [[projects]]
   branch = "master"
@@ -186,12 +187,12 @@
   version = "v1.0.1"
 
 [[projects]]
-  digest = "1:e68c51f73a9fa89a6cfbd25f24543b37f96a7ac142dcf4e2adcadad6fec230e3"
+  digest = "1:e624132565a00fcc120432b96f71c71e8a049a4c22905c63220712f1f108acc9"
   name = "github.com/miekg/dns"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "cc8cd02140663157ce797c6650488d6c8563f31f"
-  version = "v1.1.6"
+  revision = "73601d4aed9d844322611759d7f3619110b7c88e"
+  version = "v1.1.8"
 
 [[projects]]
   digest = "1:2f42fa12d6911c7b7659738758631bec870b7e9b4c6be5444f963cdcfccc191f"
@@ -374,7 +375,7 @@
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = "NUT"
-  revision = "d831d65fe17df2e52bcc4316d4a9f7a418701f43"
+  revision = "f467c93bbac2133ff463e1f93d18d8f9f3f04451"
 
 [[projects]]
   digest = "1:119dce30813e7fe92f031c730bd2fb3ff1bac6fc6bb9d1450507e8bf0ad77620"
@@ -771,11 +772,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:03a96603922fc1f6895ae083e1e16d943b55ef0656b56965351bd87e7d90485f"
+  digest = "1:42674e29bf0cf4662d49bd9528e24b9ecc4895b32d0be281f9cf04d3a7671846"
   name = "k8s.io/kube-openapi"
   packages = ["pkg/util/proto"]
   pruneopts = "NUT"
-  revision = "5e45bb682580c9be5ffa4d27d367f0eeba125c7b"
+  revision = "94e1e7b7574c44c4c0f2007de6fe617e259191f3"
 
 [[projects]]
   digest = "1:e659d3cc6d0d04f28cd63ef3f55b18a5eb5185d6c317780be324b6bb541b3cb4"
@@ -827,6 +828,7 @@
     "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/golang/mock/gomock",
     "github.com/kubernetes-csi/csi-lib-utils/connection",
+    "github.com/kubernetes-csi/csi-lib-utils/deprecatedflags",
     "github.com/kubernetes-csi/csi-test/driver",
     "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",

@@ -25,10 +25,9 @@
   name = "github.com/container-storage-interface/spec"
   version = "1.0"
 
-# TODO: update to latest
 [[constraint]]
   name = "github.com/kubernetes-csi/csi-test"
-  version = "~v1.0.3"
+  version = "2.0"
 
 # TODO: remove when official 3.0.0 tagged
 [[constraint]]
