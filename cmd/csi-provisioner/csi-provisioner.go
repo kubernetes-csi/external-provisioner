@@ -25,8 +25,6 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/klog"
-
 	flag "github.com/spf13/pflag"
 
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
@@ -39,6 +37,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilflag "k8s.io/apiserver/pkg/util/flag"
@@ -151,13 +150,18 @@ func init() {
 	}
 	klog.V(2).Infof("Detected CSI driver %s", provisionerName)
 
+	pluginCapabilities, controllerCapabilities, err := ctrl.GetDriverCapabilities(grpcClient, *operationTimeout)
+	if err != nil {
+		klog.Fatalf("Error getting CSI driver capabilities: %s", err)
+	}
+
 	// Generate a unique ID for this provisioner
 	timeStamp := time.Now().UnixNano() / int64(time.Millisecond)
 	identity := strconv.FormatInt(timeStamp, 10) + "-" + strconv.Itoa(rand.Intn(10000)) + "-" + provisionerName
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient, provisionerName)
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient, provisionerName, pluginCapabilities, controllerCapabilities)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		provisionerName,

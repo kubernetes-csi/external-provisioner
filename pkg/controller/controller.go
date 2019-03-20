@@ -143,25 +143,20 @@ var (
 
 // CSIProvisioner struct
 type csiProvisioner struct {
-	client               kubernetes.Interface
-	csiClient            csi.ControllerClient
-	csiAPIClient         csiclientset.Interface
-	grpcClient           *grpc.ClientConn
-	snapshotClient       snapclientset.Interface
-	timeout              time.Duration
-	identity             string
-	volumeNamePrefix     string
-	volumeNameUUIDLength int
-	config               *rest.Config
-	driverName           string
+	client                 kubernetes.Interface
+	csiClient              csi.ControllerClient
+	csiAPIClient           csiclientset.Interface
+	grpcClient             *grpc.ClientConn
+	snapshotClient         snapclientset.Interface
+	timeout                time.Duration
+	identity               string
+	volumeNamePrefix       string
+	volumeNameUUIDLength   int
+	config                 *rest.Config
+	driverName             string
+	pluginCapabilities     connection.PluginCapabilitySet
+	controllerCapabilities connection.ControllerCapabilitySet
 }
-
-const (
-	PluginCapability_CONTROLLER_SERVICE = iota
-	PluginCapability_ACCESSIBILITY_CONSTRAINTS
-	ControllerCapability_CREATE_DELETE_VOLUME
-	ControllerCapability_CREATE_DELETE_SNAPSHOT
-)
 
 var _ controller.Provisioner = &csiProvisioner{}
 var _ controller.BlockProvisioner = &csiProvisioner{}
@@ -186,47 +181,23 @@ func GetDriverName(conn *grpc.ClientConn, timeout time.Duration) (string, error)
 	return connection.GetDriverName(ctx, conn)
 }
 
-func getDriverCapabilities(conn *grpc.ClientConn, timeout time.Duration) (sets.Int, error) {
-	pluginCaps, err := getPluginCapabilities(conn, timeout)
-	if err != nil {
-		return nil, err
-	}
-
-	controllerCaps, err := getControllerCapabilities(conn, timeout)
-	if err != nil {
-		return nil, err
-	}
-
-	capabilities := make(sets.Int)
-	for cap := range pluginCaps {
-		switch cap {
-		case csi.PluginCapability_Service_CONTROLLER_SERVICE:
-			capabilities.Insert(PluginCapability_CONTROLLER_SERVICE)
-		case csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS:
-			capabilities.Insert(PluginCapability_ACCESSIBILITY_CONSTRAINTS)
-		}
-	}
-	for cap := range controllerCaps {
-		switch cap {
-		case csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:
-			capabilities.Insert(ControllerCapability_CREATE_DELETE_VOLUME)
-		case csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT:
-			capabilities.Insert(ControllerCapability_CREATE_DELETE_SNAPSHOT)
-		}
-	}
-	return capabilities, nil
-}
-
-func getPluginCapabilities(conn *grpc.ClientConn, timeout time.Duration) (connection.PluginCapabilitySet, error) {
+func GetDriverCapabilities(conn *grpc.ClientConn, timeout time.Duration) (connection.PluginCapabilitySet, connection.ControllerCapabilitySet, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return connection.GetPluginCapabilities(ctx, conn)
-}
+	pluginCapabilities, err := connection.GetPluginCapabilities(ctx, conn)
+	if err != nil {
+		return nil, nil, err
+	}
 
-func getControllerCapabilities(conn *grpc.ClientConn, timeout time.Duration) (connection.ControllerCapabilitySet, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	/* Each CSI operation gets its own timeout / context */
+	ctx, cancel = context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return connection.GetControllerCapabilities(ctx, conn)
+	controllerCapabilities, err := connection.GetControllerCapabilities(ctx, conn)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return pluginCapabilities, controllerCapabilities, nil
 }
 
 // NewCSIProvisioner creates new CSI provisioner
@@ -238,20 +209,24 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	volumeNameUUIDLength int,
 	grpcClient *grpc.ClientConn,
 	snapshotClient snapclientset.Interface,
-	driverName string) controller.Provisioner {
+	driverName string,
+	pluginCapabilities connection.PluginCapabilitySet,
+	controllerCapabilities connection.ControllerCapabilitySet) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
-		client:               client,
-		grpcClient:           grpcClient,
-		csiClient:            csiClient,
-		csiAPIClient:         csiAPIClient,
-		snapshotClient:       snapshotClient,
-		timeout:              connectionTimeout,
-		identity:             identity,
-		volumeNamePrefix:     volumeNamePrefix,
-		volumeNameUUIDLength: volumeNameUUIDLength,
-		driverName:           driverName,
+		client:                 client,
+		grpcClient:             grpcClient,
+		csiClient:              csiClient,
+		csiAPIClient:           csiAPIClient,
+		snapshotClient:         snapshotClient,
+		timeout:                connectionTimeout,
+		identity:               identity,
+		volumeNamePrefix:       volumeNamePrefix,
+		volumeNameUUIDLength:   volumeNameUUIDLength,
+		driverName:             driverName,
+		pluginCapabilities:     pluginCapabilities,
+		controllerCapabilities: controllerCapabilities,
 	}
 	return provisioner
 }
@@ -259,32 +234,24 @@ func NewCSIProvisioner(client kubernetes.Interface,
 // This function get called before any attempt to communicate with the driver.
 // Before initiating Create/Delete API calls provisioner checks if Capabilities:
 // PluginControllerService,  ControllerCreateVolume sre supported and gets the  driver name.
-func checkDriverCapabilities(grpcClient *grpc.ClientConn, timeout time.Duration, needSnapshotSupport bool) (sets.Int, error) {
-	capabilities, err := getDriverCapabilities(grpcClient, timeout)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get capabilities: %v", err)
+func (p *csiProvisioner) checkDriverCapabilities(needSnapshotSupport bool) error {
+	if !p.pluginCapabilities[csi.PluginCapability_Service_CONTROLLER_SERVICE] {
+		return fmt.Errorf("CSI driver does not support dynamic provisioning: plugin CONTROLLER_SERVICE capability is not reported")
 	}
 
-	if !capabilities.Has(PluginCapability_CONTROLLER_SERVICE) {
-		return nil, fmt.Errorf("no plugin controller service support detected")
+	if !p.controllerCapabilities[csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME] {
+		return fmt.Errorf("CSI driver does not support dynamic provisioning: controller CREATE_DELETE_VOLUME capability is not reported")
 	}
 
-	if !capabilities.Has(ControllerCapability_CREATE_DELETE_VOLUME) {
-		return nil, fmt.Errorf("no create/delete volume support detected")
-	}
-
-	// If PVC.Spec.DataSource is not nil, it indicates the request is to create volume
-	// from snapshot and therefore we should check for snapshot support;
-	// otherwise we don't need to check for snapshot support.
 	if needSnapshotSupport {
 		// Check whether plugin supports create snapshot
 		// If not, create volume from snapshot cannot proceed
-		if !capabilities.Has(ControllerCapability_CREATE_DELETE_SNAPSHOT) {
-			return nil, fmt.Errorf("no create/delete snapshot support detected. Cannot create volume from snapshot")
+		if !p.controllerCapabilities[csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT] {
+			return fmt.Errorf("CSI driver does not support snapshot restore: controller CREATE_DELETE_SNAPSHOT capability is not reported")
 		}
 	}
 
-	return capabilities, nil
+	return nil
 }
 
 func makeVolumeName(prefix, pvcUID string, volumeNameUUIDLength int) (string, error) {
@@ -358,10 +325,6 @@ func getVolumeCapability(
 }
 
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
-	if options.PVC.Spec.Selector != nil {
-		return nil, fmt.Errorf("claim Selector is not supported")
-	}
-
 	var needSnapshotSupport bool
 	if options.PVC.Spec.DataSource != nil {
 		// PVC.Spec.DataSource.Name is the name of the VolumeSnapshot API object
@@ -376,9 +339,13 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		}
 		needSnapshotSupport = true
 	}
-	capabilities, err := checkDriverCapabilities(p.grpcClient, p.timeout, needSnapshotSupport)
-	if err != nil {
+
+	if err := p.checkDriverCapabilities(needSnapshotSupport); err != nil {
 		return nil, err
+	}
+
+	if options.PVC.Spec.Selector != nil {
+		return nil, fmt.Errorf("claim Selector is not supported")
 	}
 
 	pvName, err := makeVolumeName(p.volumeNamePrefix, fmt.Sprintf("%s", options.PVC.ObjectMeta.UID), p.volumeNameUUIDLength)
@@ -431,8 +398,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		req.VolumeContentSource = volumeContentSource
 	}
 
-	if capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) &&
-		utilfeature.DefaultFeatureGate.Enabled(features.Topology) {
+	if p.supportsTopology() {
 		requirements, err := GenerateAccessibilityRequirements(
 			p.client,
 			p.csiAPIClient,
@@ -537,8 +503,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 		},
 	}
 
-	if capabilities.Has(PluginCapability_ACCESSIBILITY_CONSTRAINTS) &&
-		utilfeature.DefaultFeatureGate.Enabled(features.Topology) {
+	if p.supportsTopology() {
 		pv.Spec.NodeAffinity = GenerateVolumeNodeAffinity(rep.Volume.AccessibleTopology)
 	}
 
@@ -554,6 +519,11 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	klog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
 
 	return pv, nil
+}
+
+func (p *csiProvisioner) supportsTopology() bool {
+	return p.pluginCapabilities[csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS] &&
+		utilfeature.DefaultFeatureGate.Enabled(features.Topology)
 }
 
 func removePrefixedParameters(param map[string]string) (map[string]string, error) {
@@ -644,8 +614,7 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	}
 	volumeId := p.volumeHandleToId(volume.Spec.CSI.VolumeHandle)
 
-	_, err := checkDriverCapabilities(p.grpcClient, p.timeout, false)
-	if err != nil {
+	if err := p.checkDriverCapabilities(false); err != nil {
 		return err
 	}
 
@@ -673,7 +642,7 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
-	_, err = p.csiClient.DeleteVolume(ctx, &req)
+	_, err := p.csiClient.DeleteVolume(ctx, &req)
 
 	return err
 }
