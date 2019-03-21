@@ -76,6 +76,9 @@ const (
 	prefixedNodePublishSecretNameKey      = csiParameterPrefix + "node-publish-secret-name"
 	prefixedNodePublishSecretNamespaceKey = csiParameterPrefix + "node-publish-secret-namespace"
 
+	prefixedResizerSecretNameKey      = csiParameterPrefix + "resizer-secret-name"
+	prefixedResizerSecretNamespaceKey = csiParameterPrefix + "resizer-secret-namespace"
+
 	// [Deprecated] CSI Parameters that are put into fields but
 	// NOT stripped from the parameters passed to CreateVolume
 	provisionerSecretNameKey      = "csiProvisionerSecretName"
@@ -541,6 +544,8 @@ func removePrefixedParameters(param map[string]string) (map[string]string, error
 			case prefixedNodeStageSecretNamespaceKey:
 			case prefixedNodePublishSecretNameKey:
 			case prefixedNodePublishSecretNamespaceKey:
+			case prefixedResizerSecretNameKey:
+			case prefixedResizerSecretNamespaceKey:
 			default:
 				return map[string]string{}, fmt.Errorf("found unknown parameter key \"%s\" with reserved namespace %s", k, csiParameterPrefix)
 			}

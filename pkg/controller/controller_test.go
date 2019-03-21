@@ -202,6 +202,8 @@ func TestStripPrefixedCSIParams(t *testing.T) {
 				prefixedNodeStageSecretNamespaceKey:         "csiBar",
 				prefixedNodePublishSecretNameKey:            "csiBar",
 				prefixedNodePublishSecretNamespaceKey:       "csiBar",
+				prefixedResizerSecretNameKey:                "csiBar",
+				prefixedResizerSecretNamespaceKey:           "csiBar",
 			},
 			expectedParams: map[string]string{},
 		},
