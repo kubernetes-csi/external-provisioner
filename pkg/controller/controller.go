@@ -42,6 +42,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
+	csitranslationlib "k8s.io/csi-translation-lib"
 	"k8s.io/klog"
 
 	"google.golang.org/grpc"
@@ -146,19 +147,20 @@ var (
 
 // CSIProvisioner struct
 type csiProvisioner struct {
-	client                 kubernetes.Interface
-	csiClient              csi.ControllerClient
-	csiAPIClient           csiclientset.Interface
-	grpcClient             *grpc.ClientConn
-	snapshotClient         snapclientset.Interface
-	timeout                time.Duration
-	identity               string
-	volumeNamePrefix       string
-	volumeNameUUIDLength   int
-	config                 *rest.Config
-	driverName             string
-	pluginCapabilities     connection.PluginCapabilitySet
-	controllerCapabilities connection.ControllerCapabilitySet
+	client                                kubernetes.Interface
+	csiClient                             csi.ControllerClient
+	csiAPIClient                          csiclientset.Interface
+	grpcClient                            *grpc.ClientConn
+	snapshotClient                        snapclientset.Interface
+	timeout                               time.Duration
+	identity                              string
+	volumeNamePrefix                      string
+	volumeNameUUIDLength                  int
+	config                                *rest.Config
+	driverName                            string
+	pluginCapabilities                    connection.PluginCapabilitySet
+	controllerCapabilities                connection.ControllerCapabilitySet
+	supportsMigrationFromInTreePluginName string
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -214,22 +216,24 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	snapshotClient snapclientset.Interface,
 	driverName string,
 	pluginCapabilities connection.PluginCapabilitySet,
-	controllerCapabilities connection.ControllerCapabilitySet) controller.Provisioner {
+	controllerCapabilities connection.ControllerCapabilitySet,
+	supportsMigrationFromInTreePluginName string) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
-		client:                 client,
-		grpcClient:             grpcClient,
-		csiClient:              csiClient,
-		csiAPIClient:           csiAPIClient,
-		snapshotClient:         snapshotClient,
-		timeout:                connectionTimeout,
-		identity:               identity,
-		volumeNamePrefix:       volumeNamePrefix,
-		volumeNameUUIDLength:   volumeNameUUIDLength,
-		driverName:             driverName,
-		pluginCapabilities:     pluginCapabilities,
-		controllerCapabilities: controllerCapabilities,
+		client:                                client,
+		grpcClient:                            grpcClient,
+		csiClient:                             csiClient,
+		csiAPIClient:                          csiAPIClient,
+		snapshotClient:                        snapshotClient,
+		timeout:                               connectionTimeout,
+		identity:                              identity,
+		volumeNamePrefix:                      volumeNamePrefix,
+		volumeNameUUIDLength:                  volumeNameUUIDLength,
+		driverName:                            driverName,
+		pluginCapabilities:                    pluginCapabilities,
+		controllerCapabilities:                controllerCapabilities,
+		supportsMigrationFromInTreePluginName: supportsMigrationFromInTreePluginName,
 	}
 	return provisioner
 }
@@ -328,6 +332,31 @@ func getVolumeCapability(
 }
 
 func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
+	createVolumeRequestParameters := options.Parameters
+	migratedVolume := false
+	if p.supportsMigrationFromInTreePluginName != "" {
+		storageClassName := options.PVC.Spec.StorageClassName
+		// TODO(https://github.com/kubernetes-csi/external-provisioner/issues/256): use informers
+		// NOTE: we cannot depend on PVC.Annotations[volume.beta.kubernetes.io/storage-provisioner] to get
+		// the in-tree provisioner name in case of CSI migration scenarios. The annotation will be
+		// set to the CSI provisioner name by PV controller for migration scenarios
+		// so that external provisioner can correctly pick up the PVC pointing to an in-tree plugin
+		storageClass, err := p.client.StorageV1().StorageClasses().Get(*storageClassName, metav1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get storage class named %s: %v", *storageClassName, err)
+		}
+		if storageClass.Provisioner == p.supportsMigrationFromInTreePluginName {
+			klog.V(2).Infof("translating storage class parameters for in-tree plugin %s to CSI", storageClass.Provisioner)
+			createVolumeRequestParameters, err = csitranslationlib.TranslateInTreeStorageClassParametersToCSI(p.supportsMigrationFromInTreePluginName, options.Parameters)
+			if err != nil {
+				return nil, fmt.Errorf("failed to translate storage class parameters: %v", err)
+			}
+			migratedVolume = true
+		} else {
+			klog.V(4).Infof("skip translation of storage class parameters for plugin: %s", storageClass.Provisioner)
+		}
+	}
+
 	var needSnapshotSupport bool
 	if options.PVC.Spec.DataSource != nil {
 		// PVC.Spec.DataSource.Name is the name of the VolumeSnapshot API object
@@ -358,7 +387,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 
 	fsTypesFound := 0
 	fsType := ""
-	for k, v := range options.Parameters {
+	for k, v := range createVolumeRequestParameters {
 		if strings.ToLower(k) == "fstype" || k == prefixedFsTypeKey {
 			fsType = v
 			fsTypesFound++
@@ -386,7 +415,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	// Create a CSI CreateVolumeRequest and Response
 	req := csi.CreateVolumeRequest{
 		Name:               pvName,
-		Parameters:         options.Parameters,
+		Parameters:         createVolumeRequestParameters,
 		VolumeCapabilities: volumeCaps,
 		CapacityRange: &csi.CapacityRange{
 			RequiredBytes: int64(volSizeBytes),
@@ -421,7 +450,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 
 	// Resolve provision secret credentials.
 	// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
-	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, options.Parameters, pvName, nil)
+	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, createVolumeRequestParameters, pvName, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -432,20 +461,20 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	req.Secrets = provisionerCredentials
 
 	// Resolve controller publish, node stage, node publish secret references
-	controllerPublishSecretRef, err := getSecretReference(controllerPublishSecretParams, options.Parameters, pvName, options.PVC)
+	controllerPublishSecretRef, err := getSecretReference(controllerPublishSecretParams, createVolumeRequestParameters, pvName, options.PVC)
 	if err != nil {
 		return nil, err
 	}
-	nodeStageSecretRef, err := getSecretReference(nodeStageSecretParams, options.Parameters, pvName, options.PVC)
+	nodeStageSecretRef, err := getSecretReference(nodeStageSecretParams, createVolumeRequestParameters, pvName, options.PVC)
 	if err != nil {
 		return nil, err
 	}
-	nodePublishSecretRef, err := getSecretReference(nodePublishSecretParams, options.Parameters, pvName, options.PVC)
+	nodePublishSecretRef, err := getSecretReference(nodePublishSecretParams, createVolumeRequestParameters, pvName, options.PVC)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Parameters, err = removePrefixedParameters(options.Parameters)
+	req.Parameters, err = removePrefixedParameters(createVolumeRequestParameters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to strip CSI Parameters of prefixed keys: %v", err)
 	}
@@ -517,6 +546,15 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	// Set FSType if PV is not Block Volume
 	if !util.CheckPersistentVolumeClaimModeBlock(options.PVC) {
 		pv.Spec.PersistentVolumeSource.CSI.FSType = fsType
+	}
+
+	if migratedVolume {
+		pv, err = csitranslationlib.TranslateCSIPVToInTree(pv)
+		if err != nil {
+			klog.Warningf("failed to translate CSI PV to in-tree due to: %v. Deleting provisioned PV", err)
+			p.Delete(pv)
+			return nil, err
+		}
 	}
 
 	klog.Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)

@@ -678,6 +678,13 @@
     "util/workqueue"
   ]
   revision = "94c2b28f7daad3bd8a35083cc4f8cbe93f027cb3"
+  version = "kubernetes-1.14.0-beta.2"
+
+[[projects]]
+  branch = "master"
+  name = "k8s.io/cloud-provider"
+  packages = ["volume"]
+  revision = "c76aa0a348b5ae804635f81a4732e1b3b095003d"
 
 [[projects]]
   name = "k8s.io/csi-api"
@@ -691,6 +698,15 @@
   ]
   revision = "504ff913b8b7b6ee9cca269105b6c4a4c7923655"
   version = "kubernetes-1.13.0-beta.1"
+
+[[projects]]
+  branch = "master"
+  name = "k8s.io/csi-translation-lib"
+  packages = [
+    ".",
+    "plugins"
+  ]
+  revision = "7f5cabc6aac80cb6cdcf30c37d23947401f26a21"
 
 [[projects]]
   name = "k8s.io/klog"
@@ -742,6 +758,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ce2c07d02b259096f8edfa9a796c02607c08aa82466d2a511fff40850a9c0f75"
+  inputs-digest = "920dcfb3d924745b88b8a29762d4b955b72e584576d0ae1fc532c538a4b057a3"
   solver-name = "gps-cdcl"
   solver-version = 1

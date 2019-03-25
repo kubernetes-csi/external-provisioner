@@ -41,6 +41,7 @@ import (
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilflag "k8s.io/apiserver/pkg/util/flag"
+	csitranslationlib "k8s.io/csi-translation-lib"
 )
 
 var (
@@ -159,19 +160,33 @@ func init() {
 	timeStamp := time.Now().UnixNano() / int64(time.Millisecond)
 	identity := strconv.FormatInt(timeStamp, 10) + "-" + strconv.Itoa(rand.Intn(10000)) + "-" + provisionerName
 
-	// Create the provisioner: it implements the Provisioner interface expected by
-	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient, provisionerName, pluginCapabilities, controllerCapabilities)
-	provisionController = controller.NewProvisionController(
-		clientset,
-		provisionerName,
-		csiProvisioner,
-		serverVersion.GitVersion,
+	provisionerOptions := []func(*controller.ProvisionController) error{
 		controller.LeaderElection(*enableLeaderElection),
 		controller.FailedProvisionThreshold(0),
 		controller.FailedDeleteThreshold(0),
 		controller.RateLimiter(workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)),
 		controller.Threadiness(int(*workerThreads)),
+	}
+
+	supportsMigrationFromInTreePluginName := ""
+	if csitranslationlib.IsMigratedCSIDriverByName(provisionerName) {
+		supportsMigrationFromInTreePluginName, err = csitranslationlib.GetInTreeNameFromCSIName(provisionerName)
+		if err != nil {
+			klog.Fatalf("Failed to get InTree plugin name for migrated CSI plugin %s: %v", provisionerName, err)
+		}
+		klog.V(2).Infof("Supports migration from in-tree plugin: %s", supportsMigrationFromInTreePluginName)
+		provisionerOptions = append(provisionerOptions, controller.AdditionalProvisionerNames([]string{supportsMigrationFromInTreePluginName}))
+	}
+
+	// Create the provisioner: it implements the Provisioner interface expected by
+	// the controller
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient, provisionerName, pluginCapabilities, controllerCapabilities, supportsMigrationFromInTreePluginName)
+	provisionController = controller.NewProvisionController(
+		clientset,
+		provisionerName,
+		csiProvisioner,
+		serverVersion.GitVersion,
+		provisionerOptions...,
 	)
 }
 
