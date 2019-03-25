@@ -1562,8 +1562,62 @@ func TestProvisionFromSnapshot(t *testing.T) {
 }
 
 // TestProvisionWithTopology is a basic test of provisioner integration with topology functions.
-func TestProvisionWithTopology(t *testing.T) {
+func TestProvisionWithTopologyEnabled(t *testing.T) {
 	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, true)()
+
+	const requestBytes = 100
+
+	testcases := map[string]struct {
+		driverSupportsTopology bool
+		nodeLabels             []map[string]string
+		topologyKeys           []map[string][]string
+		expectedNodeAffinity   *v1.VolumeNodeAffinity
+		expectError            bool
+	}{
+		"topology success": {
+			driverSupportsTopology: true,
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rack1"},
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rack2"},
+			},
+			topologyKeys: []map[string][]string{
+				{driverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+				{driverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+			},
+			expectedNodeAffinity: &v1.VolumeNodeAffinity{
+				Required: &v1.NodeSelector{
+					NodeSelectorTerms: []v1.NodeSelectorTerm{
+						{
+							MatchExpressions: []v1.NodeSelectorRequirement{
+								{
+									Key:      "com.example.csi/zone",
+									Operator: v1.NodeSelectorOpIn,
+									Values:   []string{"zone1"},
+								},
+								{
+									Key:      "com.example.csi/rack",
+									Operator: v1.NodeSelectorOpIn,
+									Values:   []string{"rack2"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"topology fail": {
+			driverSupportsTopology: true,
+			topologyKeys: []map[string][]string{
+				{driverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+				{driverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+			},
+			expectError: true,
+		},
+		"driver doesn't support topology": {
+			driverSupportsTopology: false,
+			expectError:            false,
+		},
+	}
 
 	accessibleTopology := []*csi.Topology{
 		{
@@ -1573,23 +1627,81 @@ func TestProvisionWithTopology(t *testing.T) {
 			},
 		},
 	}
-	expectedNodeAffinity := &v1.VolumeNodeAffinity{
-		Required: &v1.NodeSelector{
-			NodeSelectorTerms: []v1.NodeSelectorTerm{
-				{
-					MatchExpressions: []v1.NodeSelectorRequirement{
-						{
-							Key:      "com.example.csi/zone",
-							Operator: v1.NodeSelectorOpIn,
-							Values:   []string{"zone1"},
-						},
-						{
-							Key:      "com.example.csi/rack",
-							Operator: v1.NodeSelectorOpIn,
-							Values:   []string{"rack2"},
-						},
-					},
-				},
+
+	createVolumeOut := &csi.CreateVolumeResponse{
+		Volume: &csi.Volume{
+			CapacityBytes:      requestBytes,
+			VolumeId:           "test-volume-id",
+			AccessibleTopology: accessibleTopology,
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			tmpdir := tempDir(t)
+			defer os.RemoveAll(tmpdir)
+			mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mockController.Finish()
+			defer driver.Stop()
+
+			if !tc.expectError {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(createVolumeOut, nil).Times(1)
+			}
+
+			nodes := buildNodes(tc.nodeLabels, k8sTopologyBetaVersion.String())
+			nodeInfos := buildNodeInfos(tc.topologyKeys)
+
+			var (
+				pluginCaps     connection.PluginCapabilitySet
+				controllerCaps connection.ControllerCapabilitySet
+			)
+
+			if tc.driverSupportsTopology {
+				pluginCaps, controllerCaps = provisionWithTopologyCapabilities()
+			} else {
+				pluginCaps, controllerCaps = provisionCapabilities()
+			}
+
+			clientSet := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
+			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "")
+
+			pv, err := csiProvisioner.Provision(controller.VolumeOptions{
+				PVC: createFakePVC(requestBytes),
+			})
+			if !tc.expectError {
+				if err != nil {
+					t.Fatalf("test %q failed: got error from Provision call: %v", name, err)
+				}
+
+				if !volumeNodeAffinitiesEqual(pv.Spec.NodeAffinity, tc.expectedNodeAffinity) {
+					t.Errorf("test %q failed: expected node affinity %+v; got: %+v", name, tc.expectedNodeAffinity, pv.Spec.NodeAffinity)
+				}
+			}
+			if tc.expectError {
+				if err == nil {
+					t.Errorf("test %q failed: expected error from Provision call, got success", name)
+				}
+				if pv != nil {
+					t.Errorf("test %q failed: expected nil PV, got %+v", name, pv)
+				}
+			}
+		})
+	}
+}
+
+// TestProvisionWithTopologyDisabled checks that missing Node and CSINode objects, selectedNode
+// are ignored and topology is not set on the PV
+func TestProvisionWithTopologyDisabled(t *testing.T) {
+	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, false)()
+
+	accessibleTopology := []*csi.Topology{
+		{
+			Segments: map[string]string{
+				"com.example.csi/zone": "zone1",
+				"com.example.csi/rack": "rack2",
 			},
 		},
 	}
@@ -1620,14 +1732,19 @@ func TestProvisionWithTopology(t *testing.T) {
 	controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 
 	pv, err := csiProvisioner.Provision(controller.VolumeOptions{
-		PVC: createFakePVC(requestBytes), // dummy PVC
+		PVC: createFakePVC(requestBytes),
+		SelectedNode: &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "some-node",
+			},
+		},
 	})
 	if err != nil {
 		t.Errorf("got error from Provision call: %v", err)
 	}
 
-	if !volumeNodeAffinitiesEqual(pv.Spec.NodeAffinity, expectedNodeAffinity) {
-		t.Errorf("expected node affinity %v; got: %v", expectedNodeAffinity, pv.Spec.NodeAffinity)
+	if pv.Spec.NodeAffinity != nil {
+		t.Errorf("expected nil PV node affinity; got: %v", pv.Spec.NodeAffinity)
 	}
 }
 
@@ -1663,7 +1780,7 @@ func TestProvisionWithMountOptions(t *testing.T) {
 		MountOptions: expectedOptions,
 	})
 	if err != nil {
-		t.Errorf("got error from Provision call: %v", err)
+		t.Fatalf("got error from Provision call: %v", err)
 	}
 
 	if !reflect.DeepEqual(pv.Spec.MountOptions, expectedOptions) {
