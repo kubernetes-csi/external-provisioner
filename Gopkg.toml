@@ -43,7 +43,7 @@
 # TODO: remove when official 11.0.0 tagged
 [[constraint]]
   name = "k8s.io/client-go"
-  version = "kubernetes-1.14.0-beta.2"
+  branch = "release-11.0"
 
 # TODO: remove when official 0.4.0 tagged
 [[constraint]]
