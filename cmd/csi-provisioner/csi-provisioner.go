@@ -166,6 +166,7 @@ func init() {
 		controller.FailedDeleteThreshold(0),
 		controller.RateLimiter(workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)),
 		controller.Threadiness(int(*workerThreads)),
+		controller.CreateProvisionedPVLimiter(workqueue.DefaultControllerRateLimiter()),
 	}
 
 	supportsMigrationFromInTreePluginName := ""
