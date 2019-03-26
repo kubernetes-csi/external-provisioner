@@ -1,8 +1,13 @@
 approvers:
-- saad-ali
 - childsb
-- lpabon
 - jsafrane
+- lpabon
+- msau42
+- saad-ali
 reviewers:
-- sbezverk
 - davidz627
+- jsafrane
+- lpabon
+- msau42
+- saad-ali
+- sbezverk

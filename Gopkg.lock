@@ -60,12 +60,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/golang/glog"
-  packages = ["."]
-  revision = "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
-
-[[projects]]
-  branch = "master"
   name = "github.com/golang/groupcache"
   packages = ["lru"]
   revision = "c65c006176ff7ff98bb916961c7abbc6b0afc0aa"
@@ -93,12 +87,6 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/google/btree"
-  packages = ["."]
-  revision = "4030bb1f1f0c35b30ca7009e9ebd06849dd45306"
-
-[[projects]]
-  branch = "master"
   name = "github.com/google/gofuzz"
   packages = ["."]
   revision = "24818f796faf91cd76ec7bddd72458fbced7a6c1"
@@ -118,15 +106,6 @@
   ]
   revision = "7c663266750e7d82587642f65e60bc4083f1f84e"
   version = "v0.2.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/gregjones/httpcache"
-  packages = [
-    ".",
-    "diskcache"
-  ]
-  revision = "c63ab54fda8f77302f8d414e19933f2b6026a089"
 
 [[projects]]
   name = "github.com/hashicorp/golang-lru"
@@ -157,9 +136,12 @@
 
 [[projects]]
   name = "github.com/kubernetes-csi/csi-lib-utils"
-  packages = ["protosanitizer"]
-  revision = "1628ab5351eafa4fc89a96862a08a891e601e03a"
-  version = "v0.1.0"
+  packages = [
+    "connection",
+    "protosanitizer"
+  ]
+  revision = "8053f37bf1d11d769c20f9514538c4b3b906e1f7"
+  version = "v0.4.0-rc1"
 
 [[projects]]
   name = "github.com/kubernetes-csi/csi-test"
@@ -167,10 +149,11 @@
     "driver",
     "utils"
   ]
-  revision = "619da6853e10bef67ddcc8f1c2b68b73154bf11d"
-  version = "v1.0.0-rc2"
+  revision = "722eead38c269060656e0fc91f280610ea56f19b"
+  version = "v1.0.3"
 
 [[projects]]
+  branch = "master"
   name = "github.com/kubernetes-csi/external-snapshotter"
   packages = [
     "pkg/apis/volumesnapshot/v1alpha1",
@@ -180,18 +163,7 @@
     "pkg/client/clientset/versioned/typed/volumesnapshot/v1alpha1",
     "pkg/client/clientset/versioned/typed/volumesnapshot/v1alpha1/fake"
   ]
-  revision = "7f0070ed917ebab6e931cfa403e7e3e0e4490138"
-  version = "v1.0.0-rc4"
-
-[[projects]]
-  name = "github.com/kubernetes-sigs/sig-storage-lib-external-provisioner"
-  packages = [
-    "controller",
-    "controller/metrics",
-    "util"
-  ]
-  revision = "5cc6f1a2e9555b70c13b6036a7c52a4722e9493c"
-  version = "v2.0.0-alpha"
+  revision = "aae81aa00c64f6a61a3825424161452a819a0be3"
 
 [[projects]]
   name = "github.com/matttproud/golang_protobuf_extensions"
@@ -222,18 +194,6 @@
   packages = ["."]
   revision = "adf5a7427709b9deb95d29d3fa8a2bf9cfd388f1"
   version = "v1.2"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/petar/GoLLRB"
-  packages = ["llrb"]
-  revision = "53be0d36a84c2a886ca057d34b6aa4468df9ccb4"
-
-[[projects]]
-  name = "github.com/peterbourgon/diskv"
-  packages = ["."]
-  revision = "5f041e8faa004a95c88a202771f4cc3e991971e6"
-  version = "v2.0.1"
 
 [[projects]]
   name = "github.com/prometheus/client_golang"
@@ -421,9 +381,9 @@
   version = "v2.2.1"
 
 [[projects]]
+  branch = "release-1.14"
   name = "k8s.io/api"
   packages = [
-    "admissionregistration/v1alpha1",
     "admissionregistration/v1beta1",
     "apps/v1",
     "apps/v1beta1",
@@ -440,15 +400,20 @@
     "batch/v1beta1",
     "batch/v2alpha1",
     "certificates/v1beta1",
+    "coordination/v1",
     "coordination/v1beta1",
     "core/v1",
     "events/v1beta1",
     "extensions/v1beta1",
     "networking/v1",
+    "networking/v1beta1",
+    "node/v1alpha1",
+    "node/v1beta1",
     "policy/v1beta1",
     "rbac/v1",
     "rbac/v1alpha1",
     "rbac/v1beta1",
+    "scheduling/v1",
     "scheduling/v1alpha1",
     "scheduling/v1beta1",
     "settings/v1alpha1",
@@ -456,10 +421,10 @@
     "storage/v1alpha1",
     "storage/v1beta1"
   ]
-  revision = "d01564359763a39d310efc27866b63d4f5c92f1d"
-  version = "kubernetes-1.13.0-beta.1"
+  revision = "aed3e58a5946ed43ef2008af9bc6d0d48e0682ea"
 
 [[projects]]
+  branch = "release-1.14"
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/api/errors",
@@ -507,8 +472,7 @@
     "third_party/forked/golang/json",
     "third_party/forked/golang/reflect"
   ]
-  revision = "0028e7a3cc82b29fea214c5793c77c24a23bb3ef"
-  version = "kubernetes-1.13.0-beta.1"
+  revision = "52b84f9b724722e77633d2fe022d2d8d57bb16a9"
 
 [[projects]]
   name = "k8s.io/apiserver"
@@ -527,7 +491,6 @@
     "discovery/fake",
     "informers",
     "informers/admissionregistration",
-    "informers/admissionregistration/v1alpha1",
     "informers/admissionregistration/v1beta1",
     "informers/apps",
     "informers/apps/v1",
@@ -546,6 +509,7 @@
     "informers/certificates",
     "informers/certificates/v1beta1",
     "informers/coordination",
+    "informers/coordination/v1",
     "informers/coordination/v1beta1",
     "informers/core",
     "informers/core/v1",
@@ -556,6 +520,10 @@
     "informers/internalinterfaces",
     "informers/networking",
     "informers/networking/v1",
+    "informers/networking/v1beta1",
+    "informers/node",
+    "informers/node/v1alpha1",
+    "informers/node/v1beta1",
     "informers/policy",
     "informers/policy/v1beta1",
     "informers/rbac",
@@ -563,6 +531,7 @@
     "informers/rbac/v1alpha1",
     "informers/rbac/v1beta1",
     "informers/scheduling",
+    "informers/scheduling/v1",
     "informers/scheduling/v1alpha1",
     "informers/scheduling/v1beta1",
     "informers/settings",
@@ -574,8 +543,6 @@
     "kubernetes",
     "kubernetes/fake",
     "kubernetes/scheme",
-    "kubernetes/typed/admissionregistration/v1alpha1",
-    "kubernetes/typed/admissionregistration/v1alpha1/fake",
     "kubernetes/typed/admissionregistration/v1beta1",
     "kubernetes/typed/admissionregistration/v1beta1/fake",
     "kubernetes/typed/apps/v1",
@@ -608,6 +575,8 @@
     "kubernetes/typed/batch/v2alpha1/fake",
     "kubernetes/typed/certificates/v1beta1",
     "kubernetes/typed/certificates/v1beta1/fake",
+    "kubernetes/typed/coordination/v1",
+    "kubernetes/typed/coordination/v1/fake",
     "kubernetes/typed/coordination/v1beta1",
     "kubernetes/typed/coordination/v1beta1/fake",
     "kubernetes/typed/core/v1",
@@ -618,6 +587,12 @@
     "kubernetes/typed/extensions/v1beta1/fake",
     "kubernetes/typed/networking/v1",
     "kubernetes/typed/networking/v1/fake",
+    "kubernetes/typed/networking/v1beta1",
+    "kubernetes/typed/networking/v1beta1/fake",
+    "kubernetes/typed/node/v1alpha1",
+    "kubernetes/typed/node/v1alpha1/fake",
+    "kubernetes/typed/node/v1beta1",
+    "kubernetes/typed/node/v1beta1/fake",
     "kubernetes/typed/policy/v1beta1",
     "kubernetes/typed/policy/v1beta1/fake",
     "kubernetes/typed/rbac/v1",
@@ -626,6 +601,8 @@
     "kubernetes/typed/rbac/v1alpha1/fake",
     "kubernetes/typed/rbac/v1beta1",
     "kubernetes/typed/rbac/v1beta1/fake",
+    "kubernetes/typed/scheduling/v1",
+    "kubernetes/typed/scheduling/v1/fake",
     "kubernetes/typed/scheduling/v1alpha1",
     "kubernetes/typed/scheduling/v1alpha1/fake",
     "kubernetes/typed/scheduling/v1beta1",
@@ -638,7 +615,6 @@
     "kubernetes/typed/storage/v1alpha1/fake",
     "kubernetes/typed/storage/v1beta1",
     "kubernetes/typed/storage/v1beta1/fake",
-    "listers/admissionregistration/v1alpha1",
     "listers/admissionregistration/v1beta1",
     "listers/apps/v1",
     "listers/apps/v1beta1",
@@ -651,15 +627,20 @@
     "listers/batch/v1beta1",
     "listers/batch/v2alpha1",
     "listers/certificates/v1beta1",
+    "listers/coordination/v1",
     "listers/coordination/v1beta1",
     "listers/core/v1",
     "listers/events/v1beta1",
     "listers/extensions/v1beta1",
     "listers/networking/v1",
+    "listers/networking/v1beta1",
+    "listers/node/v1alpha1",
+    "listers/node/v1beta1",
     "listers/policy/v1beta1",
     "listers/rbac/v1",
     "listers/rbac/v1alpha1",
     "listers/rbac/v1beta1",
+    "listers/scheduling/v1",
     "listers/scheduling/v1alpha1",
     "listers/scheduling/v1beta1",
     "listers/settings/v1alpha1",
@@ -685,19 +666,25 @@
     "tools/metrics",
     "tools/pager",
     "tools/record",
+    "tools/record/util",
     "tools/reference",
     "transport",
-    "util/buffer",
     "util/cert",
     "util/connrotation",
     "util/flowcontrol",
     "util/homedir",
-    "util/integer",
+    "util/keyutil",
     "util/retry",
     "util/workqueue"
   ]
-  revision = "46a8dc78ec29761d6cb89a9eb50ddde947c84030"
-  version = "kubernetes-1.13.0-beta.1"
+  revision = "94c2b28f7daad3bd8a35083cc4f8cbe93f027cb3"
+  version = "kubernetes-1.14.0-beta.2"
+
+[[projects]]
+  branch = "master"
+  name = "k8s.io/cloud-provider"
+  packages = ["volume"]
+  revision = "c76aa0a348b5ae804635f81a4732e1b3b095003d"
 
 [[projects]]
   name = "k8s.io/csi-api"
@@ -711,6 +698,15 @@
   ]
   revision = "504ff913b8b7b6ee9cca269105b6c4a4c7923655"
   version = "kubernetes-1.13.0-beta.1"
+
+[[projects]]
+  branch = "master"
+  name = "k8s.io/csi-translation-lib"
+  packages = [
+    ".",
+    "plugins"
+  ]
+  revision = "7f5cabc6aac80cb6cdcf30c37d23947401f26a21"
 
 [[projects]]
   name = "k8s.io/klog"
@@ -734,6 +730,26 @@
   version = "v1.12.2"
 
 [[projects]]
+  branch = "master"
+  name = "k8s.io/utils"
+  packages = [
+    "buffer",
+    "integer",
+    "trace"
+  ]
+  revision = "21c4ce38f2a793ec01e925ddc31216500183b773"
+
+[[projects]]
+  name = "sigs.k8s.io/sig-storage-lib-external-provisioner"
+  packages = [
+    "controller",
+    "controller/metrics",
+    "util"
+  ]
+  revision = "0fcd2a19e047b6a1e9203b8ed3511ed8679b23f4"
+  version = "v3.0.0-beta"
+
+[[projects]]
   name = "sigs.k8s.io/yaml"
   packages = ["."]
   revision = "fd68e9863619f6ec2fdd8625fe1f02e7c877e480"
@@ -742,6 +758,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "c46eb207d43c638b3d444d8fa8d9e9bef1c9ddb0b118fca73523a062ab3b5323"
+  inputs-digest = "920dcfb3d924745b88b8a29762d4b955b72e584576d0ae1fc532c538a4b057a3"
   solver-name = "gps-cdcl"
   solver-version = 1
