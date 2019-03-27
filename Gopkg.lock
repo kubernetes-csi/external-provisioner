@@ -485,6 +485,7 @@
   version = "kubernetes-1.13.0-beta.1"
 
 [[projects]]
+  branch = "release-11.0"
   name = "k8s.io/client-go"
   packages = [
     "discovery",
@@ -677,27 +678,13 @@
     "util/retry",
     "util/workqueue"
   ]
-  revision = "94c2b28f7daad3bd8a35083cc4f8cbe93f027cb3"
-  version = "kubernetes-1.14.0-beta.2"
+  revision = "6ee68ca5fd8355d024d02f9db0b3b667e8357a0f"
 
 [[projects]]
   branch = "master"
   name = "k8s.io/cloud-provider"
   packages = ["volume"]
   revision = "c76aa0a348b5ae804635f81a4732e1b3b095003d"
-
-[[projects]]
-  name = "k8s.io/csi-api"
-  packages = [
-    "pkg/apis/csi/v1alpha1",
-    "pkg/client/clientset/versioned",
-    "pkg/client/clientset/versioned/fake",
-    "pkg/client/clientset/versioned/scheme",
-    "pkg/client/clientset/versioned/typed/csi/v1alpha1",
-    "pkg/client/clientset/versioned/typed/csi/v1alpha1/fake"
-  ]
-  revision = "504ff913b8b7b6ee9cca269105b6c4a4c7923655"
-  version = "kubernetes-1.13.0-beta.1"
 
 [[projects]]
   branch = "master"
@@ -758,6 +745,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "920dcfb3d924745b88b8a29762d4b955b72e584576d0ae1fc532c538a4b057a3"
+  inputs-digest = "acbabceede34efc58ec270feb428d964350e49f943565f0057fd39fc3b60a994"
   solver-name = "gps-cdcl"
   solver-version = 1

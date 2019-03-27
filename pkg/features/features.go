@@ -21,6 +21,7 @@ import utilfeature "k8s.io/apiserver/pkg/util/feature"
 const (
 	// owner: @verult
 	// alpha: v0.4
+	// beta: v2.0
 	Topology utilfeature.Feature = "Topology"
 )
 
@@ -31,5 +32,5 @@ func init() {
 // defaultKubernetesFeatureGates consists of all known feature keys specific to external-provisioner.
 // To add a new feature, define a key for it above and add it here.
 var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureSpec{
-	Topology: {Default: false, PreRelease: utilfeature.Alpha},
+	Topology: {Default: false, PreRelease: utilfeature.Beta},
 }

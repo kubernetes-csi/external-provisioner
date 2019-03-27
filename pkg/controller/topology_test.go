@@ -21,16 +21,18 @@ import (
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+	storage "k8s.io/api/storage/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
-	csiv1alpha1 "k8s.io/csi-api/pkg/apis/csi/v1alpha1"
-	fakecsiclientset "k8s.io/csi-api/pkg/client/clientset/versioned/fake"
 	"k8s.io/kubernetes/pkg/apis/core/helper"
 )
 
-const testDriverName = "com.example.csi/test-driver"
+const (
+	testDriverName     = "com.example.csi/test-driver"
+	preBetaNodeVersion = "1.13.0"
+)
 
 func TestGenerateVolumeNodeAffinity(t *testing.T) {
 	// TODO (verult) more test cases
@@ -383,18 +385,16 @@ func TestStatefulSetSpreading(t *testing.T) {
 		},
 	}
 
-	nodes := buildNodes(nodeLabels)
+	nodes := buildNodes(nodeLabels, k8sTopologyBetaVersion.String())
 	nodeInfos := buildNodeInfos(topologyKeys)
 
-	kubeClient := fakeclientset.NewSimpleClientset(nodes)
-	csiClient := fakecsiclientset.NewSimpleClientset(nodeInfos)
+	kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
 
 	for name, tc := range testcases {
 		t.Logf("test: %s", name)
 
 		requirements, err := GenerateAccessibilityRequirements(
 			kubeClient,
-			csiClient,
 			testDriverName,
 			tc.pvcName,
 			tc.allowedTopologies,
@@ -782,7 +782,6 @@ func TestAllowedTopologies(t *testing.T) {
 		t.Logf("test: %s", name)
 		requirements, err := GenerateAccessibilityRequirements(
 			nil,           /* kubeClient */
-			nil,           /* csiAPIClient */
 			"test-driver", /* driverName */
 			"testpvc",
 			tc.allowedTopologies,
@@ -805,12 +804,11 @@ func TestAllowedTopologies(t *testing.T) {
 func TestTopologyAggregation(t *testing.T) {
 	// Note: all test cases below include topology from another driver, in addition to the driver
 	//       specified in the test case.
-
-	// TODO (verult) more test cases
 	testcases := map[string]struct {
 		nodeLabels        []map[string]string
 		topologyKeys      []map[string][]string
 		hasSelectedNode   bool // if set, the first map in nodeLabels is for the selected node.
+		preBetaNode       bool // use a node before 1.14
 		expectedRequisite []*csi.Topology
 		expectError       bool
 	}{
@@ -912,53 +910,153 @@ func TestTopologyAggregation(t *testing.T) {
 				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
 			},
 		},
-		"random node: missing node info": {
-			nodeLabels:        []map[string]string{{}, {}, {}},
+		"random node: no nodes": {
+			nodeLabels: nil,
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expectedRequisite: nil,
+			expectError:       true,
+		},
+		"random node: missing matching node info": {
+			nodeLabels: []map[string]string{
+				{"com.example.csi/foo": "bar"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expectedRequisite: nil,
+			expectError:       true,
+		},
+		// Node has not been upgraded yet
+		"random node: no CSINodes": {
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi/zone": "zone2"},
+				{"com.example.csi/zone": "zone2"},
+			},
 			topologyKeys:      nil,
 			expectedRequisite: nil,
 		},
-		"selected node: missing node info": {
-			hasSelectedNode:   true,
-			nodeLabels:        []map[string]string{{}, {}, {}},
-			topologyKeys:      nil,
-			expectedRequisite: nil,
-		},
+		// Driver on node has not been updated to report topology keys
 		"random node: missing keys": {
-			nodeLabels: []map[string]string{{}, {}, {}},
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi/zone": "zone2"},
+				{"com.example.csi/zone": "zone2"},
+			},
 			topologyKeys: []map[string][]string{
 				{testDriverName: nil},
 				{testDriverName: nil},
 				{testDriverName: nil},
 			},
+			expectedRequisite: nil,
+		},
+		"random node: one node has been upgraded": {
+			nodeLabels: []map[string]string{
+				{"com.example.another/zone": "zone1"},
+				{"com.example.another/zone": "zone2"},
+				{"com.example.csi/zone": "zone3"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: nil},
+				{testDriverName: nil},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone3"}},
+			},
+		},
+		"random node: node labels already exist without CSINode": {
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi/zone": "zone2"},
+				{"com.example.csi/zone": "zone3"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: nil},
+				{testDriverName: nil},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3"}},
+			},
+		},
+		"selected node: missing matching node info": {
+			hasSelectedNode: true,
+			nodeLabels: []map[string]string{
+				{"com.example.csi/foo": "bar"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expectedRequisite: nil,
+			expectError:       true,
+		},
+		"selected node: no CSINode info": {
+			hasSelectedNode: true,
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi/zone": "zone2"},
+				{"com.example.csi/zone": "zone2"},
+			},
+			topologyKeys:      nil,
+			expectedRequisite: nil,
+			expectError:       true,
+		},
+		"selected node: no CSINode info pre-beta": {
+			hasSelectedNode: true,
+			preBetaNode:     true,
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi/zone": "zone2"},
+				{"com.example.csi/zone": "zone2"},
+			},
+			topologyKeys:      nil,
 			expectedRequisite: nil,
 		},
 		"selected node is missing keys": {
 			hasSelectedNode: true,
-			nodeLabels:      []map[string]string{{}, {}, {}},
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi/zone": "zone2"},
+				{"com.example.csi/zone": "zone2"},
+			},
 			topologyKeys: []map[string][]string{
 				{testDriverName: nil},
 				{testDriverName: nil},
 				{testDriverName: nil},
 			},
 			expectedRequisite: nil,
+			expectError:       true,
 		},
 	}
 
 	for name, tc := range testcases {
 		t.Logf("test: %s", name)
 
-		nodes := buildNodes(tc.nodeLabels)
+		nodeVersion := k8sTopologyBetaVersion.String()
+		if tc.preBetaNode {
+			nodeVersion = preBetaNodeVersion
+		}
+		nodes := buildNodes(tc.nodeLabels, nodeVersion)
 		nodeInfos := buildNodeInfos(tc.topologyKeys)
 
-		kubeClient := fakeclientset.NewSimpleClientset(nodes)
-		csiClient := fakecsiclientset.NewSimpleClientset(nodeInfos)
+		kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
 		var selectedNode *v1.Node
 		if tc.hasSelectedNode {
 			selectedNode = &nodes.Items[0]
 		}
 		requirements, err := GenerateAccessibilityRequirements(
 			kubeClient,
-			csiClient,
 			testDriverName,
 			"testpvc",
 			nil, /* allowedTopologies */
@@ -992,7 +1090,6 @@ func TestTopologyAggregation(t *testing.T) {
 }
 
 func TestPreferredTopologies(t *testing.T) {
-	// TODO (verult) more test cases
 	testcases := map[string]struct {
 		allowedTopologies []v1.TopologySelectorTerm
 		nodeLabels        []map[string]string   // first node is selected node
@@ -1052,6 +1149,56 @@ func TestPreferredTopologies(t *testing.T) {
 				},
 			},
 		},
+		"allowedTopologies specified: no CSINode": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1", "zone2"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackA", "rackB"},
+						},
+					},
+				},
+			},
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackA"},
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackB"},
+			},
+			topologyKeys: nil,
+			expectError:  true,
+		},
+		"allowedTopologies specified: mismatched key": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1", "zone2"},
+						},
+						{
+							Key:    "com.example.csi/rack",
+							Values: []string{"rackA", "rackB"},
+						},
+					},
+				},
+			},
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackA"},
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackB"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/foo", "com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/foo", "com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/foo", "com.example.csi/rack"}},
+			},
+			expectError: true,
+		},
 		"topology aggregation": {
 			nodeLabels: []map[string]string{
 				{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackA"},
@@ -1088,6 +1235,7 @@ func TestPreferredTopologies(t *testing.T) {
 			nodeLabels:        []map[string]string{{}, {}, {}},
 			topologyKeys:      []map[string][]string{{}, {}, {}},
 			expectedPreferred: nil,
+			expectError:       true,
 		},
 		// This case is never triggered in reality due to scheduler behavior
 		"topology from selected node is not in allowedTopologies": {
@@ -1118,16 +1266,14 @@ func TestPreferredTopologies(t *testing.T) {
 	for name, tc := range testcases {
 		t.Logf("test: %s", name)
 
-		nodes := buildNodes(tc.nodeLabels)
+		nodes := buildNodes(tc.nodeLabels, k8sTopologyBetaVersion.String())
 		nodeInfos := buildNodeInfos(tc.topologyKeys)
 
-		kubeClient := fakeclientset.NewSimpleClientset(nodes)
-		csiClient := fakecsiclientset.NewSimpleClientset(nodeInfos)
+		kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
 		selectedNode := &nodes.Items[0]
 
 		requirements, err := GenerateAccessibilityRequirements(
 			kubeClient,
-			csiClient,
 			testDriverName,
 			"testpvc",
 			tc.allowedTopologies,
@@ -1160,7 +1306,7 @@ func TestPreferredTopologies(t *testing.T) {
 	}
 }
 
-func buildNodes(nodeLabels []map[string]string) *v1.NodeList {
+func buildNodes(nodeLabels []map[string]string, nodeVersion string) *v1.NodeList {
 	list := &v1.NodeList{}
 	i := 0
 	for _, l := range nodeLabels {
@@ -1168,7 +1314,13 @@ func buildNodes(nodeLabels []map[string]string) *v1.NodeList {
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   fmt.Sprintf("node-%d", i),
 				Labels: l,
-			}}
+			},
+			Status: v1.NodeStatus{
+				NodeInfo: v1.NodeSystemInfo{
+					KubeletVersion: nodeVersion,
+				},
+			},
+		}
 		node.Labels["net.example.storage/rack"] = "rack1"
 		list.Items = append(list.Items, node)
 		i++
@@ -1177,19 +1329,19 @@ func buildNodes(nodeLabels []map[string]string) *v1.NodeList {
 	return list
 }
 
-func buildNodeInfos(nodeInfos []map[string][]string) *csiv1alpha1.CSINodeInfoList {
-	list := &csiv1alpha1.CSINodeInfoList{}
+func buildNodeInfos(nodeInfos []map[string][]string) *storage.CSINodeList {
+	list := &storage.CSINodeList{}
 	i := 0
 	for _, nodeInfo := range nodeInfos {
 		nodeName := fmt.Sprintf("node-%d", i)
-		n := csiv1alpha1.CSINodeInfo{
+		n := storage.CSINode{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: nodeName,
 			},
 		}
-		var csiDrivers []csiv1alpha1.CSIDriverInfoSpec
+		var csiDrivers []storage.CSINodeDriver
 		for driver, topologyKeys := range nodeInfo {
-			driverInfos := []csiv1alpha1.CSIDriverInfoSpec{
+			driverInfos := []storage.CSINodeDriver{
 				{
 					Name:         driver,
 					NodeID:       nodeName,
@@ -1203,7 +1355,7 @@ func buildNodeInfos(nodeInfos []map[string][]string) *csiv1alpha1.CSINodeInfoLis
 			}
 			csiDrivers = append(csiDrivers, driverInfos...)
 		}
-		n.Spec = csiv1alpha1.CSINodeInfoSpec{Drivers: csiDrivers}
+		n.Spec = storage.CSINodeSpec{Drivers: csiDrivers}
 		list.Items = append(list.Items, n)
 		i++
 	}
