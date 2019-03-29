@@ -236,9 +236,9 @@ func getSelectedCSINode(
 		//
 		// TODO (#257): Once K8s 1.13 is no longer supported, then this check can be removed
 		// and we can require that CSINode exists.
-		nodeVersion, err := version.ParseSemantic(selectedNode.Status.NodeInfo.KubeletVersion)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to parse kubelet version from node %q: %v", selectedNode.Name, err)
+		nodeVersion, parseErr := version.ParseSemantic(selectedNode.Status.NodeInfo.KubeletVersion)
+		if parseErr != nil {
+			return nil, fmt.Errorf("Failed to parse kubelet version from node %q: %v", selectedNode.Name, parseErr)
 		}
 		if nodeVersion.LessThan(k8sTopologyBetaVersion) {
 			klog.Warningf("Selected node %q version %q is less than %q, falling back to no topology", selectedNode.Name, nodeVersion, k8sTopologyBetaVersion)
