@@ -20,10 +20,10 @@
 #  name = "github.com/x/y"
 #  version = "2.4.0"
 
-# TODO: update to 1.1.0
+# This selects the latest 1.x.y version.
 [[constraint]]
   name = "github.com/container-storage-interface/spec"
-  version = "1.0.0"
+  version = "1.0"
 
 # TODO: update to latest
 [[constraint]]
@@ -35,20 +35,15 @@
   name = "sigs.k8s.io/sig-storage-lib-external-provisioner"
   version = ">=v3.0.0-beta"
 
-# TODO: can this be removed?
-[[constraint]]
-  name = "google.golang.org/grpc"
-  version = "1.9.2"
-
-# TODO: remove when official 11.0.0 tagged
-[[constraint]]
-  name = "k8s.io/client-go"
-  branch = "release-11.0"
-
 # TODO: remove when official 0.4.0 tagged
 [[constraint]]
   name = "github.com/kubernetes-csi/csi-lib-utils"
   version = ">=0.4.0-rc1"
+
+# TODO: remove when released
+[[constraint]]
+  name = "github.com/kubernetes-csi/external-snapshotter"
+  branch = "master"
 
 [prune]
   non-go = true
