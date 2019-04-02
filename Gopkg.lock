@@ -46,14 +46,6 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:e2b86e41f3d669fc36b50d31d32d22c8ac656c75aa5ea89717ce7177e134ff2a"
-  name = "github.com/golang/glog"
-  packages = ["."]
-  pruneopts = "NUT"
-  revision = "23def4e6c14b4da8ac2ed8007337bc5eb5007998"
-
-[[projects]]
-  branch = "master"
   digest = "1:b7cb6054d3dff43b38ad2e92492f220f57ae6087ee797dca298139776749ace8"
   name = "github.com/golang/groupcache"
   packages = ["lru"]
@@ -534,16 +526,15 @@
   version = "kubernetes-1.14.0"
 
 [[projects]]
-  branch = "release-1.10"
-  digest = "1:d829fe33f80deed5f9ad1fb11a1d1149c4a9f42b48e03d4992b59c226ff28fe7"
+  digest = "1:f7ae0f734e1726267c0476f55c62ed1f8473943b177f108b90e1b9324d7f733b"
   name = "k8s.io/apiserver"
   packages = [
     "pkg/util/feature",
     "pkg/util/feature/testing",
-    "pkg/util/flag",
   ]
   pruneopts = "NUT"
-  revision = "30d6a91f580b7a2a240dccebc1a35bff2a6940f6"
+  revision = "8b27c41bdbb11ff103caa673315e097bf0289171"
+  version = "kubernetes-1.14.0"
 
 [[projects]]
   digest = "1:85f25c196bc700354adc889a397f6550105865ad2588704094276f78f6e9d9ba"
@@ -752,6 +743,14 @@
   revision = "9c9d72d1bf90eb62005f5112f3eea019b272c44b"
 
 [[projects]]
+  digest = "1:dc54d24e166e75a89145883b6080306f5684db2e8ab7a068625f010dee604c6e"
+  name = "k8s.io/component-base"
+  packages = ["cli/flag"]
+  pruneopts = "NUT"
+  revision = "4a91899592f42b2f5859587cc5a676a5b94d2ee3"
+  version = "kubernetes-1.14.0"
+
+[[projects]]
   branch = "master"
   digest = "1:4f625748474cd525730ed105e6f0d344a555881207bc7aed241a4356b63804f0"
   name = "k8s.io/csi-translation-lib"
@@ -848,13 +847,13 @@
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/apiserver/pkg/util/feature",
     "k8s.io/apiserver/pkg/util/feature/testing",
-    "k8s.io/apiserver/pkg/util/flag",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/kubernetes/fake",
     "k8s.io/client-go/rest",
     "k8s.io/client-go/testing",
     "k8s.io/client-go/tools/clientcmd",
     "k8s.io/client-go/util/workqueue",
+    "k8s.io/component-base/cli/flag",
     "k8s.io/csi-translation-lib",
     "k8s.io/klog",
     "k8s.io/kubernetes/pkg/apis/core/helper",
