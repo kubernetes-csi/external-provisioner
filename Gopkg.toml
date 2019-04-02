@@ -44,6 +44,19 @@
   name = "github.com/kubernetes-csi/external-snapshotter"
   branch = "master"
 
+# We need a version which does not use glog, because pulling in glog clashes
+# with klog.Init. Anything >= 1.12 is fine, but we can't specify that
+# because of the lack of semantic versioning in Kubernetes. Therefore we
+# have to pick a certain release, otherwise we (more or less randomly) end
+# up with something older or master.
+[[constraint]]
+  name = "k8s.io/apiserver"
+  version = "kubernetes-1.14.0"
+
+[[constraint]]
+  name = "k8s.io/component-base"
+  version = "kubernetes-1.14.0"
+
 [prune]
   non-go = true
   go-tests = true

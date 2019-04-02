@@ -40,7 +40,7 @@ import (
 	"k8s.io/klog"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	utilflag "k8s.io/apiserver/pkg/util/flag"
+	utilflag "k8s.io/component-base/cli/flag"
 	csitranslationlib "k8s.io/csi-translation-lib"
 )
 
@@ -76,7 +76,7 @@ func init() {
 	flag.Set("logtostderr", "true")
 	flag.Parse()
 
-	if err := utilfeature.DefaultFeatureGate.SetFromMap(featureGates); err != nil {
+	if err := utilfeature.DefaultMutableFeatureGate.SetFromMap(featureGates); err != nil {
 		klog.Fatal(err)
 	}
 
