@@ -133,16 +133,17 @@
   version = "v1.1.6"
 
 [[projects]]
-  digest = "1:bee5467f0581e0bbc0c776908cfe02a7dc114bfefa895f59244d32f95be25401"
+  digest = "1:c74719aeb472ab2bd9ad14069f1a3ce97e54542de4143c4fc4c6c04dfd0dcf3c"
   name = "github.com/kubernetes-csi/csi-lib-utils"
   packages = [
     "connection",
     "deprecatedflags",
+    "leaderelection",
     "protosanitizer",
   ]
   pruneopts = "NUT"
-  revision = "2d2f98bf7ee876e6fe9bf23dc3bd71dbdd21b44b"
-  version = "0.5.0"
+  revision = "b8b7a89535d80e12f2c0f4c53cfb981add8aaca2"
+  version = "v0.6.1"
 
 [[projects]]
   digest = "1:189ada87769e6bd22de67cf8d5ac2f348070e7bcc4cdc5be3aaa5b19758e8fc2"
@@ -168,7 +169,7 @@
     "pkg/client/clientset/versioned/typed/volumesnapshot/v1alpha1/fake",
   ]
   pruneopts = "NUT"
-  revision = "84cca9386429a43aeed490f077e61e5004a7700c"
+  revision = "54a21f108e31331ab64c3c6b9fb199ee3070bc75"
 
 [[projects]]
   digest = "1:5985ef4caf91ece5d54817c11ea25f182697534f8ae6521eadcd628c142ac4b6"
@@ -248,7 +249,7 @@
   name = "github.com/prometheus/procfs"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "af7bedc223fba51343f25a6fa7aba84355d0357a"
+  revision = "ea9eea63887261e4d8ed8315f4078e88d540c725"
 
 [[projects]]
   digest = "1:9d8420bbf131d1618bde6530af37c3799340d3762cc47210c1d9532a4c3a2779"
@@ -290,7 +291,7 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "74de082e2cca95839e88aa0aeee5aadf6ce7710f"
+  revision = "b630fd6fe46bcfc98f989005d8b8ec1400e60a6e"
 
 [[projects]]
   branch = "master"
@@ -301,18 +302,18 @@
     "internal",
   ]
   pruneopts = "NUT"
-  revision = "c85d3e98c914e3a33234ad863dcbff5dbc425bb8"
+  revision = "9f3314589c9a9136388751d9adae6b0ed400978a"
 
 [[projects]]
   branch = "master"
-  digest = "1:af393301820919efc2288c08608a9aab90a3b293aa64e65a06739b7edbb7082f"
+  digest = "1:992976af3618fd8fb06e5e4c4fa177800a1e0880cbbbc91df3f952520808806c"
   name = "golang.org/x/sys"
   packages = [
     "unix",
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "9eb1bfa1ce65ae8a6ff3114b0aaf9a41a6cf3560"
+  revision = "81d4e9dc473e5e8c933f2aaeba2a3d81efb9aed2"
 
 [[projects]]
   digest = "1:e7071ed636b5422cc51c0e3a6cebc229d6c9fffc528814b519a980641422d619"
@@ -828,6 +829,7 @@
     "github.com/golang/mock/gomock",
     "github.com/kubernetes-csi/csi-lib-utils/connection",
     "github.com/kubernetes-csi/csi-lib-utils/deprecatedflags",
+    "github.com/kubernetes-csi/csi-lib-utils/leaderelection",
     "github.com/kubernetes-csi/csi-test/driver",
     "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",
