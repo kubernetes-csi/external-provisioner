@@ -1,0 +1,59 @@
+# This YAML file demonstrates how to deploy the external
+# provisioner for use with the mock CSI driver. It
+# depends on the RBAC definitions from rbac.yaml.
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: csi-provisioner
+  labels:
+    app: csi-provisioner
+spec:
+  selector:
+    app: csi-provisioner
+  ports:
+    - name: dummy
+      port: 12345
+
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: csi-provisioner
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: csi-provisioner
+  template:
+    metadata:
+      labels:
+        app: csi-provisioner
+    spec:
+      serviceAccount: csi-provisioner
+      containers:
+        - name: csi-provisioner
+          image: quay.io/k8scsi/csi-provisioner:canary
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--enable-leader-election"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/mock.socket
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+
+        - name: mock-driver
+          image: quay.io/k8scsi/mock-driver:canary
+          env:
+            - name: CSI_ENDPOINT
+              value: /var/lib/csi/sockets/pluginproxy/mock.socket
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+      volumes:
+        - name: socket-dir
+          emptyDir:

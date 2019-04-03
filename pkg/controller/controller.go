@@ -33,7 +33,7 @@ import (
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/util"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	_ "k8s.io/apimachinery/pkg/util/json"
@@ -42,7 +42,6 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
 	csitranslationlib "k8s.io/csi-translation-lib"
 	"k8s.io/klog"
 
@@ -150,7 +149,6 @@ var (
 type csiProvisioner struct {
 	client                                kubernetes.Interface
 	csiClient                             csi.ControllerClient
-	csiAPIClient                          csiclientset.Interface
 	grpcClient                            *grpc.ClientConn
 	snapshotClient                        snapclientset.Interface
 	timeout                               time.Duration
@@ -209,7 +207,6 @@ func GetDriverCapabilities(conn *grpc.ClientConn, timeout time.Duration) (connec
 
 // NewCSIProvisioner creates new CSI provisioner
 func NewCSIProvisioner(client kubernetes.Interface,
-	csiAPIClient csiclientset.Interface,
 	connectionTimeout time.Duration,
 	identity string,
 	volumeNamePrefix string,
@@ -227,7 +224,6 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		client:                                client,
 		grpcClient:                            grpcClient,
 		csiClient:                             csiClient,
-		csiAPIClient:                          csiAPIClient,
 		snapshotClient:                        snapshotClient,
 		timeout:                               connectionTimeout,
 		identity:                              identity,
@@ -451,7 +447,6 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	if p.supportsTopology() {
 		requirements, err := GenerateAccessibilityRequirements(
 			p.client,
-			p.csiAPIClient,
 			p.driverName,
 			options.PVC.Name,
 			options.AllowedTopologies,

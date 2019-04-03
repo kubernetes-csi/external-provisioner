@@ -27,9 +27,9 @@ import (
 
 	flag "github.com/spf13/pflag"
 
+	"github.com/kubernetes-csi/csi-lib-utils/deprecatedflags"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
-	csiclientset "k8s.io/csi-api/pkg/client/clientset/versioned"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -40,7 +40,7 @@ import (
 	"k8s.io/klog"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	utilflag "k8s.io/apiserver/pkg/util/flag"
+	utilflag "k8s.io/component-base/cli/flag"
 	csitranslationlib "k8s.io/csi-translation-lib"
 )
 
@@ -48,7 +48,7 @@ var (
 	master               = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
 	kubeconfig           = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
 	csiEndpoint          = flag.String("csi-address", "/run/csi/socket", "The gRPC endpoint for Target CSI Volume.")
-	connectionTimeout    = flag.Duration("connection-timeout", 0, "This option is deprecated.")
+	_                    = deprecatedflags.Add("connection-timeout")
 	volumeNamePrefix     = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume.")
 	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
 	volumeNamesReadable  = flag.Bool("volume-names-readable", false, "If enabled, includes the PVC namespace and name in VolumeRequests' suggested names.  Note that, combined with --volume-name-uuid-length, this can cause naming collisions.")
@@ -58,7 +58,7 @@ var (
 	retryIntervalMax     = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
 	workerThreads        = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
 	operationTimeout     = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for creation or deletion of a volume")
-	provisioner          = flag.String("provisioner", "", "This option is deprecated")
+	_                    = deprecatedflags.Add("provisioner")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -77,14 +77,7 @@ func init() {
 	flag.Set("logtostderr", "true")
 	flag.Parse()
 
-	if *connectionTimeout != 0 {
-		klog.Warningf("Warning: option -connection-timeout is deprecated and has no effect")
-	}
-	if *provisioner != "" {
-		klog.Warningf("Warning: option -provisioner is deprecated and has no effect")
-	}
-
-	if err := utilfeature.DefaultFeatureGate.SetFromMap(featureGates); err != nil {
+	if err := utilfeature.DefaultMutableFeatureGate.SetFromMap(featureGates); err != nil {
 		klog.Fatal(err)
 	}
 
@@ -120,10 +113,6 @@ func init() {
 	snapClient, err := snapclientset.NewForConfig(config)
 	if err != nil {
 		klog.Fatalf("Failed to create snapshot client: %v", err)
-	}
-	csiAPIClient, err := csiclientset.NewForConfig(config)
-	if err != nil {
-		klog.Fatalf("Failed to create CSI API client: %v", err)
 	}
 
 	// The controller needs to know what the server version is because out-of-tree
@@ -167,6 +156,7 @@ func init() {
 		controller.FailedDeleteThreshold(0),
 		controller.RateLimiter(workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)),
 		controller.Threadiness(int(*workerThreads)),
+		controller.CreateProvisionedPVLimiter(workqueue.DefaultControllerRateLimiter()),
 	}
 
 	supportsMigrationFromInTreePluginName := ""
@@ -181,7 +171,7 @@ func init() {
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, csiAPIClient, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, *volumeNamesReadable, grpcClient, snapClient, provisionerName, pluginCapabilities, controllerCapabilities, supportsMigrationFromInTreePluginName)
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, *volumeNamesReadable, grpcClient, snapClient, provisionerName, pluginCapabilities, controllerCapabilities, supportsMigrationFromInTreePluginName)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		provisionerName,
