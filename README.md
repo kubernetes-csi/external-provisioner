@@ -21,12 +21,14 @@ Various external-provisioner releases come with different alpha / beta features.
 
 Following table reflects the head of this branch.
 
-| Feature    | Status  | Default | Description                                                                                   |
-| ---------- | ------- | ------- | --------------------------------------------------------------------------------------------- |
-| Topology   | Beta    | Off     | [Topology aware dynamic provisioning](https://kubernetes-csi.github.io/docs/topology.html)  (requires kubelet 1.14 on nodes). |
-| Snapshots* | Alpha   | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html). |
+| Feature        | Status  | Default | Description                                                                                   |
+| -------------- | ------- | ------- | --------------------------------------------------------------------------------------------- |
+| Topology       | Beta    | Off     | [Topology aware dynamic provisioning](https://kubernetes-csi.github.io/docs/topology.html)  (requires kubelet 1.14 on nodes). |
+| Snapshots*     | Alpha   | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html). |
+| CSIMigration** | Alpha   | On      | [Migrating in-tree volume plugins to CSI](https://kubernetes.io/docs/concepts/storage/volumes/#csi-migration). |
 
-*) There is no special feature gate for snapshots, it is enabled by running [external-snapshotter](https://github.com/kubernetes-csi/external-snapshotter/) and creating its CRDs.
+*) There is no special feature gate for snapshots. It is enabled by running [external-snapshotter](https://github.com/kubernetes-csi/external-snapshotter/) and creating its CRDs.
+**) There is no special feature gate for CSI migration. It is enabled by turning on CSI migration in Kubernetes.
 
 All other external-provisioner features and the external-provisioner itself is considered GA and fully supported.
 
@@ -77,6 +79,7 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 #### Deprecated arguments
 * `--connection-timeout <duration>`: This option was used to limit establishing connection to CSI driver. Currently, the option does not have any effect and the external-provisioner tries to connect to CSI driver socket indefinitely. It is recommended to run ReadinessProbe on the driver to ensure that the driver comes up in reasonable time.
 
+* `--provisioner`: This option was used to set a provisioner name to look for in the StorageClass. Currently, the option does not have any effect and the external-provisioner uses the CSI driver name.
 
 ### CSI error and timeout handling
 The external-provisioner invokes all gRPC calls to CSI driver with timeout provided by `--timeout` command line argument (15 seconds by default).
