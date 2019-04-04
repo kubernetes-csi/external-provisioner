@@ -6,6 +6,9 @@
 ## Deprecations
 * Command line flag `--connection-timeout` is deprecated and has no effect.
 * Command line flag `--provisioner` is deprecated and has no effect.
+* Command line flag `--leader-election-type` is deprecated. Support for Endpoints-based
+  leader election will be removed in the future in favor of Lease-based leader election.
+  The default currently remains as `endpoints` for backwards compatibility.
 
 ## Notable Features
 * The Topology feature has been promoted to beta and uses the `storage.k8s.io/v1beta1` CSINode object ([#238](https://github.com/kubernetes-csi/external-provisioner/pull/238))
@@ -13,6 +16,8 @@
 * The external provisioner now tries to connect to the CSI driver indefinitely ([#234](https://github.com/kubernetes-csi/external-provisioner/pull/234))
 * A new --timeout parameter has been added for CSI operations ([#230](https://github.com/kubernetes-csi/external-provisioner/pull/230))
 * README.md has been signficantly enhanced ([#249](https://github.com/kubernetes-csi/external-provisioner/pull/249))
+* Add support for  Lease based leader election. Enable this by setting
+  `--leader-election-type=leases` ([#261](https://github.com/kubernetes-csi/external-provisioner/pull/261))
 
 ## Other Notable Changes
 * vendor: update to k8s.io 1.14, avoid glog ([#262](https://github.com/kubernetes-csi/external-provisioner/pull/262))

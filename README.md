@@ -81,6 +81,8 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 * `--provisioner`: This option was used to set a provisioner name to look for in the StorageClass. Currently, the option does not have any effect and the external-provisioner uses the CSI driver name.
 
+* `--leader-election-type`: This option was used to choose which leader election resource type to use. Currently, the option defaults to `endpoints`, but will be removed in the future to only support `Lease` based leader election.
+
 ### CSI error and timeout handling
 The external-provisioner invokes all gRPC calls to CSI driver with timeout provided by `--timeout` command line argument (15 seconds by default).
 
