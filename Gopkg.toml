@@ -29,10 +29,9 @@
   name = "github.com/kubernetes-csi/csi-test"
   version = "2.0"
 
-# TODO: remove when official 3.0.0 tagged
 [[constraint]]
   name = "sigs.k8s.io/sig-storage-lib-external-provisioner"
-  version = ">=v3.0.0-beta"
+  version = "v3.0.0"
 
 # TODO: remove when released
 [[constraint]]
