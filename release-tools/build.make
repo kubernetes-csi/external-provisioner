@@ -98,7 +98,7 @@ test:
 test: test-go
 test-go:
 	@ echo; echo "### $@:"
-	go test `go list ./... | grep -v 'vendor' $(TEST_GO_FILTER_CMD)` $(TESTARGS)
+	go test `go list ./... | grep -v -e 'vendor' -e '/test/e2e$$' $(TEST_GO_FILTER_CMD)` $(TESTARGS)
 
 .PHONY: test-vet
 test: test-vet
@@ -132,3 +132,22 @@ test: test-subtree
 test-subtree:
 	@ echo; echo "### $@:"
 	./release-tools/verify-subtree.sh release-tools
+
+# Components can extend the set of directories which must pass shellcheck.
+# The default is to check only the release-tools directory itself.
+TEST_SHELLCHECK_DIRS=release-tools
+.PHONY: test-shellcheck
+test: test-shellcheck
+test-shellcheck:
+	@ echo; echo "### $@:"
+	@ ret=0; \
+	if ! command -v docker; then \
+		echo "skipped, no Docker"; \
+		return 0; \
+        fi; \
+	for dir in $(abspath $(TEST_SHELLCHECK_DIRS)); do \
+		echo; \
+		echo "$$dir:"; \
+		./release-tools/verify-shellcheck.sh "$$dir" || ret=1; \
+	done; \
+	return $$ret
