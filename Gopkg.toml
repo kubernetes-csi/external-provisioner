@@ -31,7 +31,7 @@
 
 [[constraint]]
   name = "sigs.k8s.io/sig-storage-lib-external-provisioner"
-  version = "v3.0.0"
+  version = "v3.1.0"
 
 # TODO: remove when released
 [[constraint]]
