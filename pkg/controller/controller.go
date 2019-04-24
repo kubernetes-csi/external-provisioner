@@ -47,7 +47,8 @@ import (
 	"google.golang.org/grpc"
 )
 
-type deprecatedSecretParamsMap struct {
+//secretParamsMap provides a mapping of current as well as deprecated secret keys
+type secretParamsMap struct {
 	name                         string
 	deprecatedSecretNameKey      string
 	deprecatedSecretNamespaceKey string
@@ -111,7 +112,7 @@ const (
 )
 
 var (
-	provisionerSecretParams = deprecatedSecretParamsMap{
+	provisionerSecretParams = secretParamsMap{
 		name:                         "Provisioner",
 		deprecatedSecretNameKey:      provisionerSecretNameKey,
 		deprecatedSecretNamespaceKey: provisionerSecretNamespaceKey,
@@ -119,7 +120,7 @@ var (
 		secretNamespaceKey:           prefixedProvisionerSecretNamespaceKey,
 	}
 
-	nodePublishSecretParams = deprecatedSecretParamsMap{
+	nodePublishSecretParams = secretParamsMap{
 		name:                         "NodePublish",
 		deprecatedSecretNameKey:      nodePublishSecretNameKey,
 		deprecatedSecretNamespaceKey: nodePublishSecretNamespaceKey,
@@ -127,7 +128,7 @@ var (
 		secretNamespaceKey:           prefixedNodePublishSecretNamespaceKey,
 	}
 
-	controllerPublishSecretParams = deprecatedSecretParamsMap{
+	controllerPublishSecretParams = secretParamsMap{
 		name:                         "ControllerPublish",
 		deprecatedSecretNameKey:      controllerPublishSecretNameKey,
 		deprecatedSecretNamespaceKey: controllerPublishSecretNamespaceKey,
@@ -135,7 +136,7 @@ var (
 		secretNamespaceKey:           prefixedControllerPublishSecretNamespaceKey,
 	}
 
-	nodeStageSecretParams = deprecatedSecretParamsMap{
+	nodeStageSecretParams = secretParamsMap{
 		name:                         "NodeStage",
 		deprecatedSecretNameKey:      nodeStageSecretNameKey,
 		deprecatedSecretNamespaceKey: nodeStageSecretNamespaceKey,
@@ -704,7 +705,7 @@ func (p *csiProvisioner) volumeHandleToId(handle string) string {
 
 // verifyAndGetSecretNameAndNamespaceTemplate gets the values (templates) associated
 // with the parameters specified in "secret" and verifies that they are specified correctly.
-func verifyAndGetSecretNameAndNamespaceTemplate(secret deprecatedSecretParamsMap, storageClassParams map[string]string) (nameTemplate, namespaceTemplate string, err error) {
+func verifyAndGetSecretNameAndNamespaceTemplate(secret secretParamsMap, storageClassParams map[string]string) (nameTemplate, namespaceTemplate string, err error) {
 	numName := 0
 	numNamespace := 0
 
@@ -766,7 +767,7 @@ func verifyAndGetSecretNameAndNamespaceTemplate(secret deprecatedSecretParamsMap
 // - the nameTemplate or namespaceTemplate contains a token that cannot be resolved
 // - the resolved name is not a valid secret name
 // - the resolved namespace is not a valid namespace name
-func getSecretReference(secretParams deprecatedSecretParamsMap, storageClassParams map[string]string, pvName string, pvc *v1.PersistentVolumeClaim) (*v1.SecretReference, error) {
+func getSecretReference(secretParams secretParamsMap, storageClassParams map[string]string, pvName string, pvc *v1.PersistentVolumeClaim) (*v1.SecretReference, error) {
 	nameTemplate, namespaceTemplate, err := verifyAndGetSecretNameAndNamespaceTemplate(secretParams, storageClassParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get name and namespace template from params: %v", err)

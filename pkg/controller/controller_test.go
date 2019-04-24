@@ -478,7 +478,7 @@ func createFakePVCWithVolumeMode(requestBytes int64, volumeMode v1.PersistentVol
 
 func TestGetSecretReference(t *testing.T) {
 	testcases := map[string]struct {
-		secretParams deprecatedSecretParamsMap
+		secretParams secretParamsMap
 		params       map[string]string
 		pvName       string
 		pvc          *v1.PersistentVolumeClaim
