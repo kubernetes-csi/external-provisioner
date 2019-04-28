@@ -767,6 +767,7 @@ type provisioningTestcase struct {
 	getSecretRefErr   bool
 	getCredentialsErr bool
 	volWithLessCap    bool
+	volWithZeroCap    bool
 	expectedPVSpec    *pvSpec
 	withSecretRefs    bool
 	createVolumeError error
@@ -1341,6 +1342,34 @@ func TestProvision(t *testing.T) {
 			expectErr:   true,
 			expectState: controller.ProvisioningInBackground,
 		},
+		"provision with size 0": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+					ReclaimPolicy: &deletePolicy,
+				},
+				PVName: "test-name",
+				PVC:    createFakePVC(requestedBytes),
+			},
+			volWithZeroCap: true,
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext3",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
 	}
 
 	for k, tc := range testcases {
@@ -1451,6 +1480,9 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		out.Volume.CapacityBytes = int64(80)
 		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(1)
 		controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, tc.createVolumeError).Times(1)
+	} else if tc.volWithZeroCap {
+		out.Volume.CapacityBytes = int64(0)
+		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 	} else if tc.expectCreateVolDo != nil {
 		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(tc.expectCreateVolDo).Return(out, tc.createVolumeError).Times(1)
 	} else {
