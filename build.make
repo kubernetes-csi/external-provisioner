@@ -62,7 +62,7 @@ endif
 
 build-%:
 	mkdir -p bin
-	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X main.version=$(REV) -extldflags "-static"' -o ./bin/$* ./cmd/$*
+	GO111MODULE=on CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-X main.version=$(REV) -extldflags "-static"' -o ./bin/$* ./cmd/$*
 
 container-%: build-%
 	docker build -t $*:latest -f $(shell if [ -e ./cmd/$*/Dockerfile ]; then echo ./cmd/$*/Dockerfile; else echo Dockerfile; fi) --label revision=$(REV) .
@@ -122,10 +122,11 @@ test-fmt:
 test: test-vendor
 test-vendor:
 	@ echo; echo "### $@:"
-	@ case "$$(dep version 2>/dev/null | grep 'version *:')" in \
-		*v0.[56789]*) dep check && echo "vendor up-to-date" || false;; \
-		*) echo "skipping check, dep >= 0.5 required";; \
-	esac
+# is this necessary? we don't use dep now
+#	@ case "$$(dep version 2>/dev/null | grep 'version *:')" in \
+#		*v0.[56789]*) dep check && echo "vendor up-to-date" || false;; \
+#		*) echo "skipping check, dep >= 0.5 required";; \
+#	esac
 
 .PHONY: test-subtree
 test: test-subtree
