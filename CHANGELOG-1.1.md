@@ -1,3 +1,8 @@
+# Changelog since v1.1.0
+
+## Notable Changes
+* Handle deletion of volumes associated with in-tree plugins that are migrated to CSI ([#276](https://github.com/kubernetes-csi/external-provisioner/pull/276))
+
 # Changelog since v1.0.1
 
 ## Breaking Changes
