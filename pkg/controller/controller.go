@@ -647,12 +647,29 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions
 }
 
 func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
-	if volume == nil || volume.Spec.CSI == nil {
+	if volume == nil {
 		return fmt.Errorf("invalid CSI PV")
 	}
+
+	var err error
+	if csitranslationlib.IsPVMigratable(volume) {
+		// we end up here only if CSI migration is enabled in-tree (both overall
+		// and for the specific plugin that is migratable) causing in-tree PV
+		// controller to yield deletion of PVs with in-tree source to external provisioner
+		// based on AnnDynamicallyProvisioned annotation.
+		volume, err = csitranslationlib.TranslateInTreePVToCSI(volume)
+		if err != nil {
+			return err
+		}
+	}
+
+	if volume.Spec.CSI == nil {
+		return fmt.Errorf("invalid CSI PV")
+	}
+
 	volumeId := p.volumeHandleToId(volume.Spec.CSI.VolumeHandle)
 
-	if err := p.checkDriverCapabilities(false); err != nil {
+	if err = p.checkDriverCapabilities(false); err != nil {
 		return err
 	}
 
@@ -680,7 +697,7 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
-	_, err := p.csiClient.DeleteVolume(ctx, &req)
+	_, err = p.csiClient.DeleteVolume(ctx, &req)
 
 	return err
 }
