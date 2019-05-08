@@ -20,6 +20,7 @@
   `--leader-election-type=leases` ([#261](https://github.com/kubernetes-csi/external-provisioner/pull/261))
 
 ## Other Notable Changes
+* Handle deletion of volumes associated with in-tree plugins that are migrated to CSI ([#273](https://github.com/kubernetes-csi/external-provisioner/pull/273))
 * vendor: update to k8s.io 1.14, avoid glog ([#262](https://github.com/kubernetes-csi/external-provisioner/pull/262))
 * Deprecate provisioner arguments ([#255](https://github.com/kubernetes-csi/external-provisioner/pull/255))
 * Do not stop saving PVs to API server ([#251](https://github.com/kubernetes-csi/external-provisioner/pull/251))
