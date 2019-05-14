@@ -534,8 +534,8 @@
     "pkg/util/feature/testing",
   ]
   pruneopts = "NUT"
-  revision = "8b27c41bdbb11ff103caa673315e097bf0289171"
-  version = "kubernetes-1.14.0"
+  revision = "1ec86e4da56ce0573788fc12bb3a5530600c0e5d"
+  version = "kubernetes-1.14.1"
 
 [[projects]]
   digest = "1:85f25c196bc700354adc889a397f6550105865ad2588704094276f78f6e9d9ba"
@@ -802,7 +802,7 @@
   revision = "21c4ce38f2a793ec01e925ddc31216500183b773"
 
 [[projects]]
-  digest = "1:a2147c72c6ac436c7cbd3ffaefb3a8ca26264dd60fed5aec22cf4ed6d6c42690"
+  digest = "1:1628303a766eb8b6a1185756a064843933f453851720ad75e219489356dc26fa"
   name = "sigs.k8s.io/sig-storage-lib-external-provisioner"
   packages = [
     "controller",
@@ -810,8 +810,8 @@
     "util",
   ]
   pruneopts = "NUT"
-  revision = "3eea7193b4c5c034f885913c03105178e9e23a4f"
-  version = "v3.1.0"
+  revision = "d22b74e900af4bf90174d259c3e52c3680b41ab4"
+  version = "v4.0.0"
 
 [[projects]]
   digest = "1:8730e0150dfb2b7e173890c8b9868e7a273082ef8e39f4940e3506a481cf895c"
