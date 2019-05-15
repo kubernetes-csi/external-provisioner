@@ -26,6 +26,10 @@
   version = "1.0"
 
 [[constraint]]
+  name = "k8s.io/csi-translation-lib"
+  branch = "master"
+
+[[constraint]]
   name = "github.com/kubernetes-csi/csi-test"
   version = "v2.0.0"
 

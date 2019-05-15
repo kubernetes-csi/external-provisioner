@@ -753,14 +753,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:4f625748474cd525730ed105e6f0d344a555881207bc7aed241a4356b63804f0"
+  digest = "1:3579cdaf49281ad05bf2679d5a2740476c1618649a3db724e7f519f25d55ba1f"
   name = "k8s.io/csi-translation-lib"
   packages = [
     ".",
     "plugins",
   ]
   pruneopts = "NUT"
-  revision = "7f5cabc6aac80cb6cdcf30c37d23947401f26a21"
+  revision = "e1b42b89656a9ff97090d1e72559aec3b33c9dee"
 
 [[projects]]
   digest = "1:c263611800c3a97991dbcf9d3bc4de390f6224aaa8ca0a7226a9d734f65a416a"
@@ -837,6 +837,7 @@
     "github.com/spf13/pflag",
     "google.golang.org/grpc",
     "k8s.io/api/core/v1",
+    "k8s.io/api/storage/v1",
     "k8s.io/api/storage/v1beta1",
     "k8s.io/apimachinery/pkg/api/resource",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
