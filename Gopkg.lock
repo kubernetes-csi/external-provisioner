@@ -534,8 +534,8 @@
     "pkg/util/feature/testing",
   ]
   pruneopts = "NUT"
-  revision = "8b27c41bdbb11ff103caa673315e097bf0289171"
-  version = "kubernetes-1.14.0"
+  revision = "1ec86e4da56ce0573788fc12bb3a5530600c0e5d"
+  version = "kubernetes-1.14.1"
 
 [[projects]]
   digest = "1:85f25c196bc700354adc889a397f6550105865ad2588704094276f78f6e9d9ba"
@@ -753,14 +753,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:4f625748474cd525730ed105e6f0d344a555881207bc7aed241a4356b63804f0"
+  digest = "1:3579cdaf49281ad05bf2679d5a2740476c1618649a3db724e7f519f25d55ba1f"
   name = "k8s.io/csi-translation-lib"
   packages = [
     ".",
     "plugins",
   ]
   pruneopts = "NUT"
-  revision = "7f5cabc6aac80cb6cdcf30c37d23947401f26a21"
+  revision = "e1b42b89656a9ff97090d1e72559aec3b33c9dee"
 
 [[projects]]
   digest = "1:c263611800c3a97991dbcf9d3bc4de390f6224aaa8ca0a7226a9d734f65a416a"
@@ -802,7 +802,7 @@
   revision = "21c4ce38f2a793ec01e925ddc31216500183b773"
 
 [[projects]]
-  digest = "1:a2147c72c6ac436c7cbd3ffaefb3a8ca26264dd60fed5aec22cf4ed6d6c42690"
+  digest = "1:1628303a766eb8b6a1185756a064843933f453851720ad75e219489356dc26fa"
   name = "sigs.k8s.io/sig-storage-lib-external-provisioner"
   packages = [
     "controller",
@@ -810,8 +810,8 @@
     "util",
   ]
   pruneopts = "NUT"
-  revision = "3eea7193b4c5c034f885913c03105178e9e23a4f"
-  version = "v3.1.0"
+  revision = "d22b74e900af4bf90174d259c3e52c3680b41ab4"
+  version = "v4.0.0"
 
 [[projects]]
   digest = "1:8730e0150dfb2b7e173890c8b9868e7a273082ef8e39f4940e3506a481cf895c"
@@ -837,6 +837,7 @@
     "github.com/spf13/pflag",
     "google.golang.org/grpc",
     "k8s.io/api/core/v1",
+    "k8s.io/api/storage/v1",
     "k8s.io/api/storage/v1beta1",
     "k8s.io/apimachinery/pkg/api/resource",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
