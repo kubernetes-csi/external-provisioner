@@ -35,6 +35,7 @@ import (
 	"google.golang.org/grpc"
 	"k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	storage "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -774,6 +775,20 @@ func TestGetSecretReference(t *testing.T) {
 			pvc:          nil,
 			expectRef:    &v1.SecretReference{Name: "name", Namespace: "ns"},
 		},
+		"simple - valid, pvc name and namespace": {
+			secretParams: provisionerSecretParams,
+			params: map[string]string{
+				provisionerSecretNameKey:      "param-name",
+				provisionerSecretNamespaceKey: "param-ns",
+			},
+			pvc: &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "name",
+					Namespace: "ns",
+				},
+			},
+			expectRef: &v1.SecretReference{Name: "param-name", Namespace: "param-ns"},
+		},
 		"simple - invalid name": {
 			secretParams: nodePublishSecretParams,
 			params:       map[string]string{nodePublishSecretNameKey: "bad name", nodePublishSecretNamespaceKey: "ns"},
@@ -788,7 +803,20 @@ func TestGetSecretReference(t *testing.T) {
 			expectRef:    nil,
 			expectErr:    true,
 		},
-		"template - valid": {
+		"template - PVC name annotations not supported for Provision and Delete": {
+			secretParams: provisionerSecretParams,
+			params: map[string]string{
+				prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
+			},
+			pvc: &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "name",
+					Namespace: "ns",
+				},
+			},
+			expectErr: true,
+		},
+		"template - valid nodepublish secret ref": {
 			secretParams: nodePublishSecretParams,
 			params: map[string]string{
 				nodePublishSecretNameKey:      "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
@@ -803,6 +831,63 @@ func TestGetSecretReference(t *testing.T) {
 				},
 			},
 			expectRef: &v1.SecretReference{Name: "static-pvname-pvcnamespace-pvcname-avalue", Namespace: "static-pvname-pvcnamespace"},
+		},
+		"template - valid provisioner secret ref": {
+			secretParams: provisionerSecretParams,
+			params: map[string]string{
+				provisionerSecretNameKey:      "static-provisioner-${pv.name}-${pvc.namespace}-${pvc.name}",
+				provisionerSecretNamespaceKey: "static-provisioner-${pv.name}-${pvc.namespace}",
+			},
+			pvName: "pvname",
+			pvc: &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pvcname",
+					Namespace: "pvcnamespace",
+				},
+			},
+			expectRef: &v1.SecretReference{Name: "static-provisioner-pvname-pvcnamespace-pvcname", Namespace: "static-provisioner-pvname-pvcnamespace"},
+		},
+		"template - valid, with pvc.name": {
+			secretParams: provisionerSecretParams,
+			params: map[string]string{
+				provisionerSecretNameKey:      "${pvc.name}",
+				provisionerSecretNamespaceKey: "ns",
+			},
+			pvc: &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pvcname",
+					Namespace: "pvcns",
+				},
+			},
+			expectRef: &v1.SecretReference{Name: "pvcname", Namespace: "ns"},
+		},
+		"template - valid, provisioner with pvc name and namepsace": {
+			secretParams: provisionerSecretParams,
+			params: map[string]string{
+				provisionerSecretNameKey:      "${pvc.name}",
+				provisionerSecretNamespaceKey: "${pvc.namespace}",
+			},
+			pvc: &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pvcname",
+					Namespace: "pvcns",
+				},
+			},
+			expectRef: &v1.SecretReference{Name: "pvcname", Namespace: "pvcns"},
+		},
+		"template - valid, static pvc name and templated namespace": {
+			secretParams: provisionerSecretParams,
+			params: map[string]string{
+				provisionerSecretNameKey:      "static-name-1",
+				provisionerSecretNamespaceKey: "${pvc.namespace}",
+			},
+			pvc: &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "name",
+					Namespace: "ns",
+				},
+			},
+			expectRef: &v1.SecretReference{Name: "static-name-1", Namespace: "ns"},
 		},
 		"template - invalid namespace tokens": {
 			secretParams: nodePublishSecretParams,
@@ -1901,5 +1986,168 @@ func TestProvisionWithMountOptions(t *testing.T) {
 
 	if !reflect.DeepEqual(pv.Spec.MountOptions, expectedOptions) {
 		t.Errorf("expected mount options %v; got: %v", expectedOptions, pv.Spec.MountOptions)
+	}
+}
+
+type deleteTestcase struct {
+	persistentVolume   *v1.PersistentVolume
+	storageClass       *storagev1.StorageClass
+	expectCapabilities bool
+	mockDelete         bool
+	expectErr          bool
+}
+
+// TestDelete is a test of the delete operation
+func TestDelete(t *testing.T) {
+	tt := map[string]deleteTestcase{
+		"fail - nil PV": deleteTestcase{
+			persistentVolume: nil,
+			expectErr:        true,
+		},
+		"fail - nil volume.Spec.CSI": deleteTestcase{
+			persistentVolume: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pv",
+					Namespace: "ns",
+					Annotations: map[string]string{
+						prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
+					},
+				},
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{},
+				},
+			},
+			expectErr: true,
+		},
+		"fail - pvc.annotations not supported": deleteTestcase{
+			persistentVolume: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pv",
+					Namespace: "ns",
+				},
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							VolumeHandle: "vol-id-1",
+						},
+					},
+					ClaimRef: &v1.ObjectReference{
+						Name:      "sc-name",
+						Namespace: "ns",
+					},
+					StorageClassName: "sc-name",
+				},
+			},
+			storageClass: &storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "sc-name",
+					Namespace: "ns",
+				},
+				Parameters: map[string]string{
+					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
+				},
+			},
+			expectCapabilities: true,
+			expectErr:          true,
+		},
+		"simple - valid case": deleteTestcase{
+			persistentVolume: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pv",
+					Namespace: "ns",
+				},
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							VolumeHandle: "vol-id-1",
+						},
+					},
+				},
+			},
+			storageClass: &storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "sc-name",
+					Namespace: "ns",
+				},
+				Parameters: map[string]string{
+					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+				},
+			},
+			expectCapabilities: true,
+			expectErr:          false,
+			mockDelete:         true,
+		},
+		"simple - valid case with ClaimRef set": deleteTestcase{
+			persistentVolume: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pv",
+					Namespace: "ns",
+				},
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							VolumeHandle: "vol-id-1",
+						},
+					},
+					ClaimRef: &v1.ObjectReference{
+						Name:      "pvc-name",
+						Namespace: "ns",
+					},
+				},
+			},
+			storageClass: &storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "sc-name",
+					Namespace: "ns",
+				},
+				Parameters: map[string]string{
+					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+				},
+			},
+			expectCapabilities: true,
+			expectErr:          false,
+			mockDelete:         true,
+		},
+	}
+
+	for k, tc := range tt {
+		runDeleteTest(t, k, tc)
+	}
+}
+
+func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
+	t.Logf("Running test: %v", k)
+
+	mockController, driver, identityServer, controllerServer, csiConn, err := createMockServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	var clientSet *fakeclientset.Clientset
+
+	if tc.storageClass != nil {
+		clientSet = fakeclientset.NewSimpleClientset(tc.storageClass)
+	} else {
+		clientSet = fakeclientset.NewSimpleClientset()
+	}
+
+	if tc.mockDelete {
+		controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
+	}
+
+	if tc.expectCapabilities {
+		provisionMockServerSetupExpectations(identityServer, controllerServer)
+	}
+
+	csiProvisioner := NewCSIProvisioner(clientSet, nil, driver.Address(), 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil)
+
+	err = csiProvisioner.Delete(tc.persistentVolume)
+	if tc.expectErr && err == nil {
+		t.Errorf("test %q: Expected error, got none", k)
+	}
+	if !tc.expectErr && err != nil {
+		t.Errorf("test %q: got error: %v", k, err)
 	}
 }
