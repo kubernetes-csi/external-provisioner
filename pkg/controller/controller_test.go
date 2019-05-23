@@ -1603,6 +1603,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		snapshotStatusReady  bool
 		expectedPVSpec       *pvSpec
 		expectErr            bool
+		notPopulated         bool
 	}{
 		"provision with volume snapshot data source": {
 			volOpts: controller.ProvisionOptions{
@@ -1795,6 +1796,36 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			snapshotStatusReady: false,
 			expectErr:           true,
 		},
+		"fail not populated volume content source": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					Parameters: map[string]string{},
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady: true,
+			expectErr:           true,
+			notPopulated:        true,
+		},
 	}
 
 	tmpdir := tempDir(t)
@@ -1838,7 +1869,23 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		// When the following if condition is met, it is a valid create volume from snapshot
 		// operation and CreateVolume is expected to be called.
 		if tc.restoredVolSizeSmall == false && tc.wrongDataSource == false && tc.snapshotStatusReady {
-			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+			if tc.notPopulated {
+				out.Volume.ContentSource = nil
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+				controllerServer.EXPECT().DeleteVolume(gomock.Any(), &csi.DeleteVolumeRequest{
+					VolumeId: "test-volume-id",
+				}).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
+			} else {
+				snapshotSource := csi.VolumeContentSource_Snapshot{
+					Snapshot: &csi.VolumeContentSource_SnapshotSource{
+						SnapshotId: "sid",
+					},
+				}
+				out.Volume.ContentSource = &csi.VolumeContentSource{
+					Type: &snapshotSource,
+				}
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+			}
 		}
 
 		pv, err := csiProvisioner.Provision(tc.volOpts)
@@ -1851,17 +1898,19 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		}
 
 		if tc.expectedPVSpec != nil {
-			if pv.Name != tc.expectedPVSpec.Name {
-				t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
-			}
+			if pv != nil {
+				if pv.Name != tc.expectedPVSpec.Name {
+					t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
+				}
 
-			if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
-				t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
-			}
+				if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
+					t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
+				}
 
-			if tc.expectedPVSpec.CSIPVS != nil {
-				if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
-					t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+				if tc.expectedPVSpec.CSIPVS != nil {
+					if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
+						t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+					}
 				}
 			}
 		}
@@ -2572,8 +2621,15 @@ func TestProvisionFromPVC(t *testing.T) {
 
 		}
 		if !tc.expectErr {
+			volumeSource := csi.VolumeContentSource_Volume{
+				Volume: &csi.VolumeContentSource_VolumeSource{
+					VolumeId: tc.volOpts.PVC.Spec.DataSource.Name,
+				},
+			}
+			out.Volume.ContentSource = &csi.VolumeContentSource{
+				Type: &volumeSource,
+			}
 			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
-
 		}
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false)
 
@@ -2587,17 +2643,19 @@ func TestProvisionFromPVC(t *testing.T) {
 		}
 
 		if tc.expectedPVSpec != nil {
-			if pv.Name != tc.expectedPVSpec.Name {
-				t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
-			}
+			if pv != nil {
+				if pv.Name != tc.expectedPVSpec.Name {
+					t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
+				}
 
-			if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
-				t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
-			}
+				if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
+					t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
+				}
 
-			if tc.expectedPVSpec.CSIPVS != nil {
-				if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
-					t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+				if tc.expectedPVSpec.CSIPVS != nil {
+					if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
+						t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+					}
 				}
 			}
 		}
