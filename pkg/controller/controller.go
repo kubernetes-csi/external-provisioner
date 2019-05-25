@@ -159,6 +159,7 @@ type csiProvisioner struct {
 	pluginCapabilities                    connection.PluginCapabilitySet
 	controllerCapabilities                connection.ControllerCapabilitySet
 	supportsMigrationFromInTreePluginName string
+	strictTopology                        bool
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -214,7 +215,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	driverName string,
 	pluginCapabilities connection.PluginCapabilitySet,
 	controllerCapabilities connection.ControllerCapabilitySet,
-	supportsMigrationFromInTreePluginName string) controller.Provisioner {
+	supportsMigrationFromInTreePluginName string,
+	strictTopology bool) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
@@ -230,6 +232,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		pluginCapabilities:                    pluginCapabilities,
 		controllerCapabilities:                controllerCapabilities,
 		supportsMigrationFromInTreePluginName: supportsMigrationFromInTreePluginName,
+		strictTopology:                        strictTopology,
 	}
 	return provisioner
 }
@@ -432,7 +435,8 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			p.driverName,
 			options.PVC.Name,
 			options.AllowedTopologies,
-			options.SelectedNode)
+			options.SelectedNode,
+			p.strictTopology)
 		if err != nil {
 			return nil, fmt.Errorf("error generating accessibility requirements: %v", err)
 		}
