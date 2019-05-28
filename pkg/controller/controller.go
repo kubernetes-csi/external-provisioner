@@ -402,6 +402,13 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	if len(fsType) == 0 {
 		fsType = defaultFSType
 	}
+	if createVolumeRequestParameters == nil {
+		createVolumeRequestParameters = make(map[string]string)
+	}
+	createVolumeRequestParameters["persistentvolumeclaim"] = options.PVC.Name
+	createVolumeRequestParameters["namespace"] = options.PVC.Namespace
+	createVolumeRequestParameters["storageclass"] = *options.PVC.Spec.StorageClassName
+
 
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
