@@ -28,6 +28,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	_ "k8s.io/apimachinery/pkg/util/json"
+	"k8s.io/klog"
 
 	"github.com/golang/glog"
 
@@ -546,8 +547,12 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	rep := &csi.CreateVolumeResponse{}
 
 	// Resolve provision secret credentials.
-	// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
-	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, options.Parameters, pvName, nil)
+	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, options.Parameters, pvName, &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      options.PVC.Name,
+			Namespace: options.PVC.Namespace,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -769,18 +774,23 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	if len(storageClassName) != 0 {
 		if storageClass, err := p.client.StorageV1().StorageClasses().Get(storageClassName, metav1.GetOptions{}); err == nil {
 			// Resolve provision secret credentials.
-			// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
-			provisionerSecretRef, err := getSecretReference(provisionerSecretParams, storageClass.Parameters, volume.Name, nil)
+			provisionerSecretRef, err := getSecretReference(provisionerSecretParams, storageClass.Parameters, volume.Name, &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      volume.Spec.ClaimRef.Name,
+					Namespace: volume.Spec.ClaimRef.Namespace,
+				},
+			})
 			if err != nil {
 				return err
 			}
+
 			credentials, err := getCredentials(p.client, provisionerSecretRef)
 			if err != nil {
-				return err
+				// Continue with deletion, as the secret may have already been deleted.
+				klog.Errorf("Failed to get credentials for volume %s: %s", volume.Name, err.Error())
 			}
 			req.Secrets = credentials
 		}
-
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
