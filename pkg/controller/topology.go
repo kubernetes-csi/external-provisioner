@@ -139,12 +139,15 @@ func GenerateAccessibilityRequirements(
 	driverName string,
 	pvcName string,
 	allowedTopologies []v1.TopologySelectorTerm,
-	selectedNode *v1.Node) (*csi.TopologyRequirement, error) {
+	selectedNode *v1.Node,
+	strictTopology bool) (*csi.TopologyRequirement, error) {
 	requirement := &csi.TopologyRequirement{}
 
 	var (
-		selectedCSINode *storage.CSINode
-		err             error
+		selectedCSINode  *storage.CSINode
+		selectedTopology topologyTerm
+		requisiteTerms   []topologyTerm
+		err              error
 	)
 
 	// 1. Get CSINode for the selected node
@@ -158,20 +161,57 @@ func GenerateAccessibilityRequirements(
 			// This should only happen if the Node is on a pre-1.14 version
 			return nil, nil
 		}
+		topologyKeys := getTopologyKeys(selectedCSINode, driverName)
+		if len(topologyKeys) == 0 {
+			// The scheduler selected a node with no topology information.
+			// This can happen if:
+			//
+			// * the node driver is not deployed on all nodes.
+			// * the node driver is being restarted and has not re-registered yet. This should be
+			//   temporary and a retry should eventually succeed.
+			//
+			// Returning an error in provisioning will cause the scheduler to retry and potentially
+			// (but not guaranteed) pick a different node.
+			return nil, fmt.Errorf("no topology key found on CSINode %s", selectedCSINode.Name)
+		}
+		var isMissingKey bool
+		selectedTopology, isMissingKey = getTopologyFromNode(selectedNode, topologyKeys)
+		if isMissingKey {
+			return nil, fmt.Errorf("topology labels from selected node %v does not match topology keys from CSINode %v", selectedNode.Labels, topologyKeys)
+		}
+
+		if strictTopology {
+			// Make sure that selected node topology is in allowed topologies list
+			if len(allowedTopologies) != 0 {
+				allowedTopologiesFlatten := flatten(allowedTopologies)
+				found := false
+				for _, t := range allowedTopologiesFlatten {
+					if t.equal(selectedTopology) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, fmt.Errorf("selected node '%q' topology '%v' is not in allowed topologies: %v", selectedNode.Name, selectedTopology, allowedTopologiesFlatten)
+				}
+			}
+			// Only pass topology of selected node.
+			requisiteTerms = append(requisiteTerms, selectedTopology)
+		}
 	}
 
 	// 2. Generate CSI Requisite Terms
-	var requisiteTerms []topologyTerm
-	if len(allowedTopologies) == 0 {
-		// Aggregate existing topologies in nodes across the entire cluster.
-		var err error
-		requisiteTerms, err = aggregateTopologies(kubeClient, driverName, selectedCSINode)
-		if err != nil {
-			return nil, err
+	if len(requisiteTerms) == 0 {
+		if len(allowedTopologies) != 0 {
+			// Distribute out one of the OR layers in allowedTopologies
+			requisiteTerms = flatten(allowedTopologies)
+		} else {
+			// Aggregate existing topologies in nodes across the entire cluster.
+			requisiteTerms, err = aggregateTopologies(kubeClient, driverName, selectedCSINode)
+			if err != nil {
+				return nil, err
+			}
 		}
-	} else {
-		// Distribute out one of the OR layers in allowedTopologies
-		requisiteTerms = flatten(allowedTopologies)
 	}
 
 	// It might be possible to reach here if:
@@ -202,20 +242,19 @@ func GenerateAccessibilityRequirements(
 		preferredTerms = sortAndShift(requisiteTerms, nil, i)
 	} else {
 		// Delayed binding, use topology from that node to populate preferredTerms
-		topologyKeys := getTopologyKeys(selectedCSINode, driverName)
-		selectedTopology, isMissingKey := getTopologyFromNode(selectedNode, topologyKeys)
-		if isMissingKey {
-			return nil, fmt.Errorf("topology labels from selected node %v does not match topology keys from CSINode %v", selectedNode.Labels, topologyKeys)
-		}
-
-		preferredTerms = sortAndShift(requisiteTerms, selectedTopology, 0)
-		if preferredTerms == nil {
-			// Topology from selected node is not in requisite. This case should never be hit:
-			// - If AllowedTopologies is specified, the scheduler should choose a node satisfying the
-			//   constraint.
-			// - Otherwise, the aggregated topology is guaranteed to contain topology information from the
-			//   selected node.
-			return nil, fmt.Errorf("topology %v from selected node %q is not in requisite: %v", selectedTopology, selectedNode.Name, requisiteTerms)
+		if strictTopology {
+			// In case of strict topology, preferred = requisite
+			preferredTerms = requisiteTerms
+		} else {
+			preferredTerms = sortAndShift(requisiteTerms, selectedTopology, 0)
+			if preferredTerms == nil {
+				// Topology from selected node is not in requisite. This case should never be hit:
+				// - If AllowedTopologies is specified, the scheduler should choose a node satisfying the
+				//   constraint.
+				// - Otherwise, the aggregated topology is guaranteed to contain topology information from the
+				//   selected node.
+				return nil, fmt.Errorf("topology %v from selected node %q is not in requisite: %v", selectedTopology, selectedNode.Name, requisiteTerms)
+			}
 		}
 	}
 	requirement.Preferred = toCSITopology(preferredTerms)
