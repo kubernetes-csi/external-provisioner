@@ -159,7 +159,7 @@ func main() {
 	identity := strconv.FormatInt(timeStamp, 10) + "-" + strconv.Itoa(rand.Intn(10000)) + "-" + provisionerName
 
 	provisionerOptions := []func(*controller.ProvisionController) error{
-		controller.LeaderElection(*enableLeaderElection),
+		controller.LeaderElection(false),    // Always disable leader election in provisioner lib. Leader election should be done here in the CSI provisioner level instead.
 		controller.FailedProvisionThreshold(0),
 		controller.FailedDeleteThreshold(0),
 		controller.RateLimiter(workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)),
@@ -178,7 +178,7 @@ func main() {
 	}
 
 	// Create the provisioner: it implements the Provisioner interface expected by
-	// the controller
+	// the controllert
 	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient, provisionerName, pluginCapabilities, controllerCapabilities, supportsMigrationFromInTreePluginName, *strictTopology)
 	provisionController = controller.NewProvisionController(
 		clientset,
