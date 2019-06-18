@@ -201,8 +201,8 @@ func TestStripPrefixedCSIParams(t *testing.T) {
 				prefixedNodeStageSecretNamespaceKey:         "csiBar",
 				prefixedNodePublishSecretNameKey:            "csiBar",
 				prefixedNodePublishSecretNamespaceKey:       "csiBar",
-				prefixedResizerSecretNameKey:                "csiBar",
-				prefixedResizerSecretNamespaceKey:           "csiBar",
+				prefixedControllerExpandSecretNameKey:       "csiBar",
+				prefixedControllerExpandSecretNamespaceKey:  "csiBar",
 			},
 			expectedParams: map[string]string{},
 		},
@@ -1097,6 +1097,10 @@ func TestProvision(t *testing.T) {
 						Name:      "nodepublishsecret",
 						Namespace: "default",
 					},
+					ControllerExpandSecretRef: &v1.SecretReference{
+						Name:      "controllerexpandsecret",
+						Namespace: "default",
+					},
 				},
 			},
 		},
@@ -1324,6 +1328,11 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 				Name:      "nodepublishsecret",
 				Namespace: "default",
 			},
+		}, &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "controllerexpandsecret",
+				Namespace: "default",
+			},
 		})
 	} else {
 		clientSet = fakeclientset.NewSimpleClientset()
@@ -1346,6 +1355,8 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		tc.volOpts.StorageClass.Parameters[nodeStageSecretNamespaceKey] = "default"
 		tc.volOpts.StorageClass.Parameters[nodePublishSecretNameKey] = "nodepublishsecret"
 		tc.volOpts.StorageClass.Parameters[nodePublishSecretNamespaceKey] = "default"
+		tc.volOpts.StorageClass.Parameters[prefixedControllerExpandSecretNameKey] = "controllerexpandsecret"
+		tc.volOpts.StorageClass.Parameters[prefixedControllerExpandSecretNamespaceKey] = "default"
 	}
 
 	if tc.notNilSelector {
