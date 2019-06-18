@@ -47,6 +47,10 @@
 # because of the lack of semantic versioning in Kubernetes. Therefore we
 # have to pick a certain release, otherwise we (more or less randomly) end
 # up with something older or master.
+[[override]]
+  name = "k8s.io/api"
+  branch = "release-1.15"
+
 [[constraint]]
   name = "k8s.io/apiserver"
   version = "kubernetes-1.14.1"
