@@ -78,8 +78,8 @@ const (
 	prefixedNodePublishSecretNameKey      = csiParameterPrefix + "node-publish-secret-name"
 	prefixedNodePublishSecretNamespaceKey = csiParameterPrefix + "node-publish-secret-namespace"
 
-	prefixedResizerSecretNameKey      = csiParameterPrefix + "resizer-secret-name"
-	prefixedResizerSecretNamespaceKey = csiParameterPrefix + "resizer-secret-namespace"
+	prefixedControllerExpandSecretNameKey      = csiParameterPrefix + "controller-expand-secret-name"
+	prefixedControllerExpandSecretNamespaceKey = csiParameterPrefix + "controller-expand-secret-namespace"
 
 	// [Deprecated] CSI Parameters that are put into fields but
 	// NOT stripped from the parameters passed to CreateVolume
@@ -144,6 +144,12 @@ var (
 		deprecatedSecretNamespaceKey: nodeStageSecretNamespaceKey,
 		secretNameKey:                prefixedNodeStageSecretNameKey,
 		secretNamespaceKey:           prefixedNodeStageSecretNamespaceKey,
+	}
+
+	controllerExpandSecretParams = secretParamsMap{
+		name:               "ControllerExpand",
+		secretNameKey:      prefixedControllerExpandSecretNameKey,
+		secretNamespaceKey: prefixedControllerExpandSecretNamespaceKey,
 	}
 )
 
@@ -495,6 +501,10 @@ func (p *csiProvisioner) Provision(options controller.ProvisionOptions) (*v1.Per
 	if err != nil {
 		return nil, err
 	}
+	controllerExpandSecretRef, err := getSecretReference(controllerExpandSecretParams, options.StorageClass.Parameters, pvName, options.PVC)
+	if err != nil {
+		return nil, err
+	}
 
 	req.Parameters, err = removePrefixedParameters(options.StorageClass.Parameters)
 	if err != nil {
@@ -551,6 +561,7 @@ func (p *csiProvisioner) Provision(options controller.ProvisionOptions) (*v1.Per
 					ControllerPublishSecretRef: controllerPublishSecretRef,
 					NodeStageSecretRef:         nodeStageSecretRef,
 					NodePublishSecretRef:       nodePublishSecretRef,
+					ControllerExpandSecretRef:  controllerExpandSecretRef,
 				},
 			},
 		},
@@ -607,8 +618,8 @@ func removePrefixedParameters(param map[string]string) (map[string]string, error
 			case prefixedNodeStageSecretNamespaceKey:
 			case prefixedNodePublishSecretNameKey:
 			case prefixedNodePublishSecretNamespaceKey:
-			case prefixedResizerSecretNameKey:
-			case prefixedResizerSecretNamespaceKey:
+			case prefixedControllerExpandSecretNameKey:
+			case prefixedControllerExpandSecretNamespaceKey:
 			default:
 				return map[string]string{}, fmt.Errorf("found unknown parameter key \"%s\" with reserved namespace %s", k, csiParameterPrefix)
 			}
