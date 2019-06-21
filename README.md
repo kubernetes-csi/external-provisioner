@@ -11,9 +11,9 @@ The external-provisioner is an external controller that monitors `PersistentVolu
 
 This information reflects the head of this branch.
 
-| Compatible with CSI Version                                                                | Container Image                | Min K8s Version |
+| Compatible with CSI Version                                                                | Container Image                | Recommended K8s Version |
 | ------------------------------------------------------------------------------------------ | -------------------------------| --------------- |
-| [CSI Spec v1.0.0](https://github.com/container-storage-interface/spec/releases/tag/v1.0.0) | quay.io/k8scsi/csi-provisioner | 1.14            |
+| [CSI Spec v1.0.0](https://github.com/container-storage-interface/spec/releases/tag/v1.0.0) | quay.io/k8scsi/csi-provisioner | 1.15            |
 
 ## Feature status
 
@@ -21,14 +21,12 @@ Various external-provisioner releases come with different alpha / beta features.
 
 Following table reflects the head of this branch.
 
-| Feature        | Status  | Default | Description                                                                                   |
-| -------------- | ------- | ------- | --------------------------------------------------------------------------------------------- |
-| Topology       | Beta    | Off     | [Topology aware dynamic provisioning](https://kubernetes-csi.github.io/docs/topology.html)  (requires kubelet 1.14 on nodes). |
-| Snapshots*     | Alpha   | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html). |
-| CSIMigration** | Alpha   | On      | [Migrating in-tree volume plugins to CSI](https://kubernetes.io/docs/concepts/storage/volumes/#csi-migration). |
-
-*) There is no special feature gate for snapshots. It is enabled by running [external-snapshotter](https://github.com/kubernetes-csi/external-snapshotter/) and creating its CRDs.
-**) There is no special feature gate for CSI migration. It is enabled by turning on CSI migration in Kubernetes.
+| Feature        | Status  | Default | Description                                                                                   | Provisioner Feature Gate Required |
+| -------------- | ------- | ------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
+| Topology       | Beta    | Off     | [Topology aware dynamic provisioning](https://kubernetes-csi.github.io/docs/topology.html)  (requires kubelet 1.14 on nodes). | Yes |
+| Snapshots      | Alpha   | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html). | No |
+| CSIMigration   | Alpha   | On      | [Migrating in-tree volume plugins to CSI](https://kubernetes.io/docs/concepts/storage/volumes/#csi-migration). | No |
+| Cloning        | Alpha   | On      | [Cloning](https://kubernetes-csi.github.io/docs/volume-cloning.html). | No |
 
 All other external-provisioner features and the external-provisioner itself is considered GA and fully supported.
 
