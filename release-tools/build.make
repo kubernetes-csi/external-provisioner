@@ -20,7 +20,7 @@
 
 # This is the default. It can be overridden in the main Makefile after
 # including build.make.
-REGISTRY_NAME=quay.io/k8scsi
+REGISTRY_NAME=mcronce
 
 # Revision that gets built into each binary via the main.version
 # string. Uses the `git describe` output based on the most recent
