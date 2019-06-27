@@ -26,18 +26,16 @@
   version = "1.0"
 
 [[constraint]]
-  name = "github.com/kubernetes-csi/csi-test"
-  version = "2.0"
+  name = "k8s.io/csi-translation-lib"
+  branch = "master"
 
-# TODO: remove when official 3.0.0 tagged
+[[constraint]]
+  name = "github.com/kubernetes-csi/csi-test"
+  version = "v2.0.0"
+
 [[constraint]]
   name = "sigs.k8s.io/sig-storage-lib-external-provisioner"
-  version = ">=v3.0.0-beta"
-
-# TODO: remove when official 0.4.0 tagged
-[[constraint]]
-  name = "github.com/kubernetes-csi/csi-lib-utils"
-  version = ">=0.4.0-rc1"
+  version = "v4.0.0"
 
 # TODO: remove when released
 [[constraint]]
@@ -51,11 +49,19 @@
 # up with something older or master.
 [[constraint]]
   name = "k8s.io/apiserver"
-  version = "kubernetes-1.14.0"
+  version = "kubernetes-1.14.1"
 
 [[constraint]]
   name = "k8s.io/component-base"
   version = "kubernetes-1.14.0"
+
+[[constraint]]
+  name = "k8s.io/client-go"
+  version = "kubernetes-1.14.0"
+
+[[constraint]]
+  name = "github.com/kubernetes-csi/csi-lib-utils"
+  version = ">=0.6.1"
 
 [prune]
   non-go = true

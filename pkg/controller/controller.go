@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -48,7 +49,8 @@ import (
 	"google.golang.org/grpc"
 )
 
-type deprecatedSecretParamsMap struct {
+//secretParamsMap provides a mapping of current as well as deprecated secret keys
+type secretParamsMap struct {
 	name                         string
 	deprecatedSecretNameKey      string
 	deprecatedSecretNamespaceKey string
@@ -112,7 +114,7 @@ const (
 )
 
 var (
-	provisionerSecretParams = deprecatedSecretParamsMap{
+	provisionerSecretParams = secretParamsMap{
 		name:                         "Provisioner",
 		deprecatedSecretNameKey:      provisionerSecretNameKey,
 		deprecatedSecretNamespaceKey: provisionerSecretNamespaceKey,
@@ -120,7 +122,7 @@ var (
 		secretNamespaceKey:           prefixedProvisionerSecretNamespaceKey,
 	}
 
-	nodePublishSecretParams = deprecatedSecretParamsMap{
+	nodePublishSecretParams = secretParamsMap{
 		name:                         "NodePublish",
 		deprecatedSecretNameKey:      nodePublishSecretNameKey,
 		deprecatedSecretNamespaceKey: nodePublishSecretNamespaceKey,
@@ -128,7 +130,7 @@ var (
 		secretNamespaceKey:           prefixedNodePublishSecretNamespaceKey,
 	}
 
-	controllerPublishSecretParams = deprecatedSecretParamsMap{
+	controllerPublishSecretParams = secretParamsMap{
 		name:                         "ControllerPublish",
 		deprecatedSecretNameKey:      controllerPublishSecretNameKey,
 		deprecatedSecretNamespaceKey: controllerPublishSecretNamespaceKey,
@@ -136,7 +138,7 @@ var (
 		secretNamespaceKey:           prefixedControllerPublishSecretNamespaceKey,
 	}
 
-	nodeStageSecretParams = deprecatedSecretParamsMap{
+	nodeStageSecretParams = secretParamsMap{
 		name:                         "NodeStage",
 		deprecatedSecretNameKey:      nodeStageSecretNameKey,
 		deprecatedSecretNamespaceKey: nodeStageSecretNamespaceKey,
@@ -161,6 +163,7 @@ type csiProvisioner struct {
 	pluginCapabilities                    connection.PluginCapabilitySet
 	controllerCapabilities                connection.ControllerCapabilitySet
 	supportsMigrationFromInTreePluginName string
+	strictTopology                        bool
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -217,7 +220,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	driverName string,
 	pluginCapabilities connection.PluginCapabilitySet,
 	controllerCapabilities connection.ControllerCapabilitySet,
-	supportsMigrationFromInTreePluginName string) controller.Provisioner {
+	supportsMigrationFromInTreePluginName string,
+	strictTopology bool) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
@@ -234,6 +238,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		pluginCapabilities:                    pluginCapabilities,
 		controllerCapabilities:                controllerCapabilities,
 		supportsMigrationFromInTreePluginName: supportsMigrationFromInTreePluginName,
+		strictTopology:                        strictTopology,
 	}
 	return provisioner
 }
@@ -328,46 +333,44 @@ func getAccessMode(pvcAccessMode v1.PersistentVolumeAccessMode) *csi.VolumeCapab
 }
 
 func getVolumeCapability(
-	pvcOptions controller.VolumeOptions,
+	options controller.ProvisionOptions,
 	pvcAccessMode v1.PersistentVolumeAccessMode,
 	fsType string,
 ) *csi.VolumeCapability {
-	if util.CheckPersistentVolumeClaimModeBlock(pvcOptions.PVC) {
+	if util.CheckPersistentVolumeClaimModeBlock(options.PVC) {
 		return &csi.VolumeCapability{
 			AccessType: getAccessTypeBlock(),
 			AccessMode: getAccessMode(pvcAccessMode),
 		}
 	}
 	return &csi.VolumeCapability{
-		AccessType: getAccessTypeMount(fsType, pvcOptions.MountOptions),
+		AccessType: getAccessTypeMount(fsType, options.StorageClass.MountOptions),
 		AccessMode: getAccessMode(pvcAccessMode),
 	}
 
 }
 
-func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
-	createVolumeRequestParameters := options.Parameters
+func (p *csiProvisioner) Provision(options controller.ProvisionOptions) (*v1.PersistentVolume, error) {
+	if options.StorageClass == nil {
+		return nil, errors.New("storage class was nil")
+	}
+
 	migratedVolume := false
 	if p.supportsMigrationFromInTreePluginName != "" {
-		storageClassName := options.PVC.Spec.StorageClassName
-		// TODO(https://github.com/kubernetes-csi/external-provisioner/issues/256): use informers
 		// NOTE: we cannot depend on PVC.Annotations[volume.beta.kubernetes.io/storage-provisioner] to get
 		// the in-tree provisioner name in case of CSI migration scenarios. The annotation will be
 		// set to the CSI provisioner name by PV controller for migration scenarios
 		// so that external provisioner can correctly pick up the PVC pointing to an in-tree plugin
-		storageClass, err := p.client.StorageV1().StorageClasses().Get(*storageClassName, metav1.GetOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get storage class named %s: %v", *storageClassName, err)
-		}
-		if storageClass.Provisioner == p.supportsMigrationFromInTreePluginName {
-			klog.V(2).Infof("translating storage class parameters for in-tree plugin %s to CSI", storageClass.Provisioner)
-			createVolumeRequestParameters, err = csitranslationlib.TranslateInTreeStorageClassParametersToCSI(p.supportsMigrationFromInTreePluginName, options.Parameters)
+		if options.StorageClass.Provisioner == p.supportsMigrationFromInTreePluginName {
+			klog.V(2).Infof("translating storage class for in-tree plugin %s to CSI", options.StorageClass.Provisioner)
+			storageClass, err := csitranslationlib.TranslateInTreeStorageClassToCSI(p.supportsMigrationFromInTreePluginName, options.StorageClass)
 			if err != nil {
-				return nil, fmt.Errorf("failed to translate storage class parameters: %v", err)
+				return nil, fmt.Errorf("failed to translate storage class: %v", err)
 			}
+			options.StorageClass = storageClass
 			migratedVolume = true
 		} else {
-			klog.V(4).Infof("skip translation of storage class parameters for plugin: %s", storageClass.Provisioner)
+			klog.V(4).Infof("skip translation of storage class for plugin: %s", options.StorageClass.Provisioner)
 		}
 	}
 
@@ -401,7 +404,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 
 	fsTypesFound := 0
 	fsType := ""
-	for k, v := range createVolumeRequestParameters {
+	for k, v := range options.StorageClass.Parameters {
 		if strings.ToLower(k) == "fstype" || k == prefixedFsTypeKey {
 			fsType = v
 			fsTypesFound++
@@ -429,7 +432,7 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	// Create a CSI CreateVolumeRequest and Response
 	req := csi.CreateVolumeRequest{
 		Name:               pvName,
-		Parameters:         createVolumeRequestParameters,
+		Parameters:         options.StorageClass.Parameters,
 		VolumeCapabilities: volumeCaps,
 		CapacityRange: &csi.CapacityRange{
 			RequiredBytes: int64(volSizeBytes),
@@ -449,8 +452,9 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			p.client,
 			p.driverName,
 			options.PVC.Name,
-			options.AllowedTopologies,
-			options.SelectedNode)
+			options.StorageClass.AllowedTopologies,
+			options.SelectedNode,
+			p.strictTopology)
 		if err != nil {
 			return nil, fmt.Errorf("error generating accessibility requirements: %v", err)
 		}
@@ -462,8 +466,12 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	rep := &csi.CreateVolumeResponse{}
 
 	// Resolve provision secret credentials.
-	// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
-	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, createVolumeRequestParameters, pvName, nil)
+	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, options.StorageClass.Parameters, pvName, &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      options.PVC.Name,
+			Namespace: options.PVC.Namespace,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -474,20 +482,20 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 	req.Secrets = provisionerCredentials
 
 	// Resolve controller publish, node stage, node publish secret references
-	controllerPublishSecretRef, err := getSecretReference(controllerPublishSecretParams, createVolumeRequestParameters, pvName, options.PVC)
+	controllerPublishSecretRef, err := getSecretReference(controllerPublishSecretParams, options.StorageClass.Parameters, pvName, options.PVC)
 	if err != nil {
 		return nil, err
 	}
-	nodeStageSecretRef, err := getSecretReference(nodeStageSecretParams, createVolumeRequestParameters, pvName, options.PVC)
+	nodeStageSecretRef, err := getSecretReference(nodeStageSecretParams, options.StorageClass.Parameters, pvName, options.PVC)
 	if err != nil {
 		return nil, err
 	}
-	nodePublishSecretRef, err := getSecretReference(nodePublishSecretParams, createVolumeRequestParameters, pvName, options.PVC)
+	nodePublishSecretRef, err := getSecretReference(nodePublishSecretParams, options.StorageClass.Parameters, pvName, options.PVC)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Parameters, err = removePrefixedParameters(createVolumeRequestParameters)
+	req.Parameters, err = removePrefixedParameters(options.StorageClass.Parameters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to strip CSI Parameters of prefixed keys: %v", err)
 	}
@@ -528,9 +536,8 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 			Name: pvName,
 		},
 		Spec: v1.PersistentVolumeSpec{
-			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
-			AccessModes:                   options.PVC.Spec.AccessModes,
-			MountOptions:                  options.MountOptions,
+			AccessModes:  options.PVC.Spec.AccessModes,
+			MountOptions: options.StorageClass.MountOptions,
 			Capacity: v1.ResourceList{
 				v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(respCap),
 			},
@@ -546,6 +553,10 @@ func (p *csiProvisioner) Provision(options controller.VolumeOptions) (*v1.Persis
 				},
 			},
 		},
+	}
+
+	if options.StorageClass.ReclaimPolicy != nil {
+		pv.Spec.PersistentVolumeReclaimPolicy = *options.StorageClass.ReclaimPolicy
 	}
 
 	if p.supportsTopology() {
@@ -609,7 +620,7 @@ func removePrefixedParameters(param map[string]string) (map[string]string, error
 	return newParam, nil
 }
 
-func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions) (*csi.VolumeContentSource, error) {
+func (p *csiProvisioner) getVolumeContentSource(options controller.ProvisionOptions) (*csi.VolumeContentSource, error) {
 	snapshotObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshots(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting snapshot %s from api server: %v", options.PVC.Spec.DataSource.Name, err)
@@ -665,12 +676,29 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.VolumeOptions
 }
 
 func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
-	if volume == nil || volume.Spec.CSI == nil {
+	if volume == nil {
 		return fmt.Errorf("invalid CSI PV")
 	}
+
+	var err error
+	if csitranslationlib.IsPVMigratable(volume) {
+		// we end up here only if CSI migration is enabled in-tree (both overall
+		// and for the specific plugin that is migratable) causing in-tree PV
+		// controller to yield deletion of PVs with in-tree source to external provisioner
+		// based on AnnDynamicallyProvisioned annotation.
+		volume, err = csitranslationlib.TranslateInTreePVToCSI(volume)
+		if err != nil {
+			return err
+		}
+	}
+
+	if volume.Spec.CSI == nil {
+		return fmt.Errorf("invalid CSI PV")
+	}
+
 	volumeId := p.volumeHandleToId(volume.Spec.CSI.VolumeHandle)
 
-	if err := p.checkDriverCapabilities(false); err != nil {
+	if err = p.checkDriverCapabilities(false); err != nil {
 		return err
 	}
 
@@ -682,23 +710,28 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	if len(storageClassName) != 0 {
 		if storageClass, err := p.client.StorageV1().StorageClasses().Get(storageClassName, metav1.GetOptions{}); err == nil {
 			// Resolve provision secret credentials.
-			// No PVC is provided when resolving provision/delete secret names, since the PVC may or may not exist at delete time.
-			provisionerSecretRef, err := getSecretReference(provisionerSecretParams, storageClass.Parameters, volume.Name, nil)
+			provisionerSecretRef, err := getSecretReference(provisionerSecretParams, storageClass.Parameters, volume.Name, &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      volume.Spec.ClaimRef.Name,
+					Namespace: volume.Spec.ClaimRef.Namespace,
+				},
+			})
 			if err != nil {
 				return err
 			}
+
 			credentials, err := getCredentials(p.client, provisionerSecretRef)
 			if err != nil {
-				return err
+				// Continue with deletion, as the secret may have already been deleted.
+				klog.Errorf("Failed to get credentials for volume %s: %s", volume.Name, err.Error())
 			}
 			req.Secrets = credentials
 		}
-
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
-	_, err := p.csiClient.DeleteVolume(ctx, &req)
+	_, err = p.csiClient.DeleteVolume(ctx, &req)
 
 	return err
 }
@@ -722,7 +755,7 @@ func (p *csiProvisioner) volumeHandleToId(handle string) string {
 
 // verifyAndGetSecretNameAndNamespaceTemplate gets the values (templates) associated
 // with the parameters specified in "secret" and verifies that they are specified correctly.
-func verifyAndGetSecretNameAndNamespaceTemplate(secret deprecatedSecretParamsMap, storageClassParams map[string]string) (nameTemplate, namespaceTemplate string, err error) {
+func verifyAndGetSecretNameAndNamespaceTemplate(secret secretParamsMap, storageClassParams map[string]string) (nameTemplate, namespaceTemplate string, err error) {
 	numName := 0
 	numNamespace := 0
 
@@ -784,7 +817,7 @@ func verifyAndGetSecretNameAndNamespaceTemplate(secret deprecatedSecretParamsMap
 // - the nameTemplate or namespaceTemplate contains a token that cannot be resolved
 // - the resolved name is not a valid secret name
 // - the resolved namespace is not a valid namespace name
-func getSecretReference(secretParams deprecatedSecretParamsMap, storageClassParams map[string]string, pvName string, pvc *v1.PersistentVolumeClaim) (*v1.SecretReference, error) {
+func getSecretReference(secretParams secretParamsMap, storageClassParams map[string]string, pvName string, pvc *v1.PersistentVolumeClaim) (*v1.SecretReference, error) {
 	nameTemplate, namespaceTemplate, err := verifyAndGetSecretNameAndNamespaceTemplate(secretParams, storageClassParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get name and namespace template from params: %v", err)

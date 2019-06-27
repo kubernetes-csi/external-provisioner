@@ -391,31 +391,37 @@ func TestStatefulSetSpreading(t *testing.T) {
 	kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
 
 	for name, tc := range testcases {
-		t.Logf("test: %s", name)
+		for _, strictTopology := range []bool{false, true} {
+			if strictTopology {
+				name += " with strict topology"
+			}
+			t.Logf("test: %s", name)
 
-		requirements, err := GenerateAccessibilityRequirements(
-			kubeClient,
-			testDriverName,
-			tc.pvcName,
-			tc.allowedTopologies,
-			nil,
-		)
+			requirements, err := GenerateAccessibilityRequirements(
+				kubeClient,
+				testDriverName,
+				tc.pvcName,
+				tc.allowedTopologies,
+				nil,
+				strictTopology,
+			)
 
-		if err != nil {
-			t.Errorf("unexpected error found: %v", err)
-			continue
-		}
+			if err != nil {
+				t.Errorf("unexpected error found: %v", err)
+				continue
+			}
 
-		if requirements == nil {
-			t.Errorf("expected preferred to be %v but requirements is nil", tc.expectedPreferred)
-			continue
-		}
-		if requirements.Preferred == nil {
-			t.Errorf("expected preferred to be %v but requirements.Preferred is nil", tc.expectedPreferred)
-			continue
-		}
-		if !helper.Semantic.DeepEqual(requirements.Preferred, tc.expectedPreferred) {
-			t.Errorf("expected preferred requisite %v; got: %v", tc.expectedPreferred, requirements.Preferred)
+			if requirements == nil {
+				t.Errorf("expected preferred to be %v but requirements is nil", tc.expectedPreferred)
+				continue
+			}
+			if requirements.Preferred == nil {
+				t.Errorf("expected preferred to be %v but requirements.Preferred is nil", tc.expectedPreferred)
+				continue
+			}
+			if !helper.Semantic.DeepEqual(requirements.Preferred, tc.expectedPreferred) {
+				t.Errorf("expected preferred requisite %v; got: %v", tc.expectedPreferred, requirements.Preferred)
+			}
 		}
 	}
 }
@@ -779,24 +785,31 @@ func TestAllowedTopologies(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
-		t.Logf("test: %s", name)
-		requirements, err := GenerateAccessibilityRequirements(
-			nil,           /* kubeClient */
-			"test-driver", /* driverName */
-			"testpvc",
-			tc.allowedTopologies,
-			nil /* selectedNode */)
+		for _, strictTopology := range []bool{false, true} {
+			if strictTopology {
+				name += " with strict topology"
+			}
+			t.Logf("test: %s", name)
+			requirements, err := GenerateAccessibilityRequirements(
+				nil,           /* kubeClient */
+				"test-driver", /* driverName */
+				"testpvc",
+				tc.allowedTopologies,
+				nil, /* selectedNode */
+				strictTopology,
+			)
 
-		if err != nil {
-			t.Errorf("expected no error but got: %v", err)
-			continue
-		}
-		if requirements == nil {
-			t.Errorf("expected requirements not to be nil")
-			continue
-		}
-		if !requisiteEqual(requirements.Requisite, tc.expectedRequisite) {
-			t.Errorf("expected requisite %v; got: %v", tc.expectedRequisite, requirements.Requisite)
+			if err != nil {
+				t.Errorf("expected no error but got: %v", err)
+				continue
+			}
+			if requirements == nil {
+				t.Errorf("expected requirements not to be nil")
+				continue
+			}
+			if !requisiteEqual(requirements.Requisite, tc.expectedRequisite) {
+				t.Errorf("expected requisite %v; got: %v", tc.expectedRequisite, requirements.Requisite)
+			}
 		}
 	}
 }
@@ -805,12 +818,13 @@ func TestTopologyAggregation(t *testing.T) {
 	// Note: all test cases below include topology from another driver, in addition to the driver
 	//       specified in the test case.
 	testcases := map[string]struct {
-		nodeLabels        []map[string]string
-		topologyKeys      []map[string][]string
-		hasSelectedNode   bool // if set, the first map in nodeLabels is for the selected node.
-		preBetaNode       bool // use a node before 1.14
-		expectedRequisite []*csi.Topology
-		expectError       bool
+		nodeLabels              []map[string]string
+		topologyKeys            []map[string][]string
+		hasSelectedNode         bool // if set, the first map in nodeLabels is for the selected node.
+		preBetaNode             bool // use a node before 1.14
+		expectedRequisite       []*csi.Topology
+		expectedStrictRequisite []*csi.Topology
+		expectError             bool
 	}{
 		"same keys and values across cluster": {
 			nodeLabels: []map[string]string{
@@ -874,6 +888,9 @@ func TestTopologyAggregation(t *testing.T) {
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
 				{Segments: map[string]string{"com.example.csi/zone": "zone2"}},
+			},
+			expectedStrictRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
 			},
 		},
 		//"different keys across cluster": {
@@ -1041,61 +1058,72 @@ func TestTopologyAggregation(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
-		t.Logf("test: %s", name)
-
-		nodeVersion := k8sTopologyBetaVersion.String()
-		if tc.preBetaNode {
-			nodeVersion = preBetaNodeVersion
-		}
-		nodes := buildNodes(tc.nodeLabels, nodeVersion)
-		nodeInfos := buildNodeInfos(tc.topologyKeys)
-
-		kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
-		var selectedNode *v1.Node
-		if tc.hasSelectedNode {
-			selectedNode = &nodes.Items[0]
-		}
-		requirements, err := GenerateAccessibilityRequirements(
-			kubeClient,
-			testDriverName,
-			"testpvc",
-			nil, /* allowedTopologies */
-			selectedNode,
-		)
-
-		if tc.expectError {
-			if err == nil {
-				t.Error("expected error but got none")
+		for _, strictTopology := range []bool{false, true} {
+			if strictTopology {
+				name += " with strict topology"
 			}
-			continue
-		}
-		if !tc.expectError && err != nil {
-			t.Errorf("expected no error but got: %v", err)
-			continue
-		}
-		if requirements == nil {
-			if tc.expectedRequisite != nil {
-				t.Errorf("expected requisite to be %v but requirements is nil", tc.expectedRequisite)
+			t.Logf("test: %s", name)
+
+			nodeVersion := k8sTopologyBetaVersion.String()
+			if tc.preBetaNode {
+				nodeVersion = preBetaNodeVersion
 			}
-			continue
-		}
-		if requirements != nil && tc.expectedRequisite == nil {
-			t.Errorf("expected requirements to be nil but got requisite: %v", requirements.Requisite)
-			continue
-		}
-		if !requisiteEqual(requirements.Requisite, tc.expectedRequisite) {
-			t.Errorf("expected requisite %v; got: %v", tc.expectedRequisite, requirements.Requisite)
+			nodes := buildNodes(tc.nodeLabels, nodeVersion)
+			nodeInfos := buildNodeInfos(tc.topologyKeys)
+
+			kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
+			var selectedNode *v1.Node
+			if tc.hasSelectedNode {
+				selectedNode = &nodes.Items[0]
+			}
+			requirements, err := GenerateAccessibilityRequirements(
+				kubeClient,
+				testDriverName,
+				"testpvc",
+				nil, /* allowedTopologies */
+				selectedNode,
+				strictTopology,
+			)
+
+			if tc.expectError {
+				if err == nil {
+					t.Error("expected error but got none")
+				}
+				continue
+			}
+			if err != nil {
+				t.Errorf("expected no error but got: %v", err)
+				continue
+			}
+			expectedRequisite := tc.expectedRequisite
+			if strictTopology && tc.expectedStrictRequisite != nil {
+				expectedRequisite = tc.expectedStrictRequisite
+			}
+			if requirements == nil {
+				if expectedRequisite != nil {
+					t.Errorf("expected requisite to be %v but requirements is nil", expectedRequisite)
+				}
+				continue
+			}
+			if expectedRequisite == nil {
+				t.Errorf("expected requirements to be nil but got requisite: %v", requirements.Requisite)
+				continue
+			}
+			if !requisiteEqual(requirements.Requisite, expectedRequisite) {
+				t.Errorf("expected requisite %v; got: %v", tc.expectedRequisite, requirements.Requisite)
+			}
 		}
 	}
 }
 
 func TestPreferredTopologies(t *testing.T) {
 	testcases := map[string]struct {
-		allowedTopologies []v1.TopologySelectorTerm
-		nodeLabels        []map[string]string   // first node is selected node
-		topologyKeys      []map[string][]string // first entry is from the selected node
-		expectedPreferred []*csi.Topology
-		expectError       bool
+		allowedTopologies       []v1.TopologySelectorTerm
+		nodeLabels              []map[string]string   // first node is selected node
+		topologyKeys            []map[string][]string // first entry is from the selected node
+		expectedPreferred       []*csi.Topology
+		expectedStrictPreferred []*csi.Topology
+		expectError             bool
 	}{
 		"allowedTopologies specified": {
 			allowedTopologies: []v1.TopologySelectorTerm{
@@ -1145,6 +1173,14 @@ func TestPreferredTopologies(t *testing.T) {
 					Segments: map[string]string{
 						"com.example.csi/rack": "rackA",
 						"com.example.csi/zone": "zone1",
+					},
+				},
+			},
+			expectedStrictPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone2",
 					},
 				},
 			},
@@ -1230,6 +1266,14 @@ func TestPreferredTopologies(t *testing.T) {
 					},
 				},
 			},
+			expectedStrictPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/rack": "rackA",
+						"com.example.csi/zone": "zone2",
+					},
+				},
+			},
 		},
 		"topology aggregation with no topology info": {
 			nodeLabels:        []map[string]string{{}, {}, {}},
@@ -1264,44 +1308,54 @@ func TestPreferredTopologies(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
-		t.Logf("test: %s", name)
-
-		nodes := buildNodes(tc.nodeLabels, k8sTopologyBetaVersion.String())
-		nodeInfos := buildNodeInfos(tc.topologyKeys)
-
-		kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
-		selectedNode := &nodes.Items[0]
-
-		requirements, err := GenerateAccessibilityRequirements(
-			kubeClient,
-			testDriverName,
-			"testpvc",
-			tc.allowedTopologies,
-			selectedNode,
-		)
-
-		if tc.expectError {
-			if err == nil {
-				t.Error("expected error but got none")
+		for _, strictTopology := range []bool{false, true} {
+			if strictTopology {
+				name += " with strict topology"
 			}
-			continue
-		}
-		if !tc.expectError && err != nil {
-			t.Errorf("expected no error but got: %v", err)
-			continue
-		}
-		if requirements == nil {
-			if tc.expectedPreferred != nil {
-				t.Errorf("expected preferred to be %v but requirements is nil", tc.expectedPreferred)
+			t.Logf("test: %s", name)
+
+			nodes := buildNodes(tc.nodeLabels, k8sTopologyBetaVersion.String())
+			nodeInfos := buildNodeInfos(tc.topologyKeys)
+
+			kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
+			selectedNode := &nodes.Items[0]
+
+			requirements, err := GenerateAccessibilityRequirements(
+				kubeClient,
+				testDriverName,
+				"testpvc",
+				tc.allowedTopologies,
+				selectedNode,
+				strictTopology,
+			)
+
+			if tc.expectError {
+				if err == nil {
+					t.Error("expected error but got none")
+				}
+				continue
 			}
-			continue
-		}
-		if requirements != nil && tc.expectedPreferred == nil {
-			t.Errorf("expected requirements to be nil but got preferred: %v", requirements.Preferred)
-			continue
-		}
-		if !helper.Semantic.DeepEqual(requirements.Preferred, tc.expectedPreferred) {
-			t.Errorf("expected requisite %v; got: %v", tc.expectedPreferred, requirements.Preferred)
+			if err != nil {
+				t.Errorf("expected no error but got: %v", err)
+				continue
+			}
+			expectedPreferred := tc.expectedPreferred
+			if strictTopology && tc.expectedStrictPreferred != nil {
+				expectedPreferred = tc.expectedStrictPreferred
+			}
+			if requirements == nil {
+				if expectedPreferred != nil {
+					t.Errorf("expected preferred to be %v but requirements is nil", expectedPreferred)
+				}
+				continue
+			}
+			if expectedPreferred == nil {
+				t.Errorf("expected requirements to be nil but got preferred: %v", requirements.Preferred)
+				continue
+			}
+			if !helper.Semantic.DeepEqual(requirements.Preferred, expectedPreferred) {
+				t.Errorf("expected requisite %v; got: %v", tc.expectedPreferred, requirements.Preferred)
+			}
 		}
 	}
 }

@@ -133,16 +133,17 @@
   version = "v1.1.6"
 
 [[projects]]
-  digest = "1:bee5467f0581e0bbc0c776908cfe02a7dc114bfefa895f59244d32f95be25401"
+  digest = "1:c74719aeb472ab2bd9ad14069f1a3ce97e54542de4143c4fc4c6c04dfd0dcf3c"
   name = "github.com/kubernetes-csi/csi-lib-utils"
   packages = [
     "connection",
     "deprecatedflags",
+    "leaderelection",
     "protosanitizer",
   ]
   pruneopts = "NUT"
-  revision = "2d2f98bf7ee876e6fe9bf23dc3bd71dbdd21b44b"
-  version = "0.5.0"
+  revision = "b8b7a89535d80e12f2c0f4c53cfb981add8aaca2"
+  version = "v0.6.1"
 
 [[projects]]
   digest = "1:189ada87769e6bd22de67cf8d5ac2f348070e7bcc4cdc5be3aaa5b19758e8fc2"
@@ -168,7 +169,7 @@
     "pkg/client/clientset/versioned/typed/volumesnapshot/v1alpha1/fake",
   ]
   pruneopts = "NUT"
-  revision = "84cca9386429a43aeed490f077e61e5004a7700c"
+  revision = "54a21f108e31331ab64c3c6b9fb199ee3070bc75"
 
 [[projects]]
   digest = "1:5985ef4caf91ece5d54817c11ea25f182697534f8ae6521eadcd628c142ac4b6"
@@ -248,7 +249,7 @@
   name = "github.com/prometheus/procfs"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "af7bedc223fba51343f25a6fa7aba84355d0357a"
+  revision = "ea9eea63887261e4d8ed8315f4078e88d540c725"
 
 [[projects]]
   digest = "1:9d8420bbf131d1618bde6530af37c3799340d3762cc47210c1d9532a4c3a2779"
@@ -290,7 +291,7 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "74de082e2cca95839e88aa0aeee5aadf6ce7710f"
+  revision = "b630fd6fe46bcfc98f989005d8b8ec1400e60a6e"
 
 [[projects]]
   branch = "master"
@@ -301,18 +302,18 @@
     "internal",
   ]
   pruneopts = "NUT"
-  revision = "c85d3e98c914e3a33234ad863dcbff5dbc425bb8"
+  revision = "9f3314589c9a9136388751d9adae6b0ed400978a"
 
 [[projects]]
   branch = "master"
-  digest = "1:af393301820919efc2288c08608a9aab90a3b293aa64e65a06739b7edbb7082f"
+  digest = "1:992976af3618fd8fb06e5e4c4fa177800a1e0880cbbbc91df3f952520808806c"
   name = "golang.org/x/sys"
   packages = [
     "unix",
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "9eb1bfa1ce65ae8a6ff3114b0aaf9a41a6cf3560"
+  revision = "81d4e9dc473e5e8c933f2aaeba2a3d81efb9aed2"
 
 [[projects]]
   digest = "1:e7071ed636b5422cc51c0e3a6cebc229d6c9fffc528814b519a980641422d619"
@@ -533,8 +534,8 @@
     "pkg/util/feature/testing",
   ]
   pruneopts = "NUT"
-  revision = "8b27c41bdbb11ff103caa673315e097bf0289171"
-  version = "kubernetes-1.14.0"
+  revision = "1ec86e4da56ce0573788fc12bb3a5530600c0e5d"
+  version = "kubernetes-1.14.1"
 
 [[projects]]
   digest = "1:85f25c196bc700354adc889a397f6550105865ad2588704094276f78f6e9d9ba"
@@ -752,14 +753,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:4f625748474cd525730ed105e6f0d344a555881207bc7aed241a4356b63804f0"
+  digest = "1:026d302ec8c8f568cb6805891133e749e2f8b6b94068cd7375a3bbba232c9f38"
   name = "k8s.io/csi-translation-lib"
   packages = [
     ".",
     "plugins",
   ]
   pruneopts = "NUT"
-  revision = "7f5cabc6aac80cb6cdcf30c37d23947401f26a21"
+  revision = "9ff632302e7ee3b0b6118cd21569ce8b51f7f0f2"
 
 [[projects]]
   digest = "1:c263611800c3a97991dbcf9d3bc4de390f6224aaa8ca0a7226a9d734f65a416a"
@@ -801,7 +802,7 @@
   revision = "21c4ce38f2a793ec01e925ddc31216500183b773"
 
 [[projects]]
-  digest = "1:17ea996b5b90aeef13bb306bbf46ae1e6a572fa058528177d57cc6b537233132"
+  digest = "1:1628303a766eb8b6a1185756a064843933f453851720ad75e219489356dc26fa"
   name = "sigs.k8s.io/sig-storage-lib-external-provisioner"
   packages = [
     "controller",
@@ -809,8 +810,8 @@
     "util",
   ]
   pruneopts = "NUT"
-  revision = "0fcd2a19e047b6a1e9203b8ed3511ed8679b23f4"
-  version = "v3.0.0-beta"
+  revision = "d22b74e900af4bf90174d259c3e52c3680b41ab4"
+  version = "v4.0.0"
 
 [[projects]]
   digest = "1:8730e0150dfb2b7e173890c8b9868e7a273082ef8e39f4940e3506a481cf895c"
@@ -828,6 +829,7 @@
     "github.com/golang/mock/gomock",
     "github.com/kubernetes-csi/csi-lib-utils/connection",
     "github.com/kubernetes-csi/csi-lib-utils/deprecatedflags",
+    "github.com/kubernetes-csi/csi-lib-utils/leaderelection",
     "github.com/kubernetes-csi/csi-test/driver",
     "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1",
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned",
@@ -835,6 +837,7 @@
     "github.com/spf13/pflag",
     "google.golang.org/grpc",
     "k8s.io/api/core/v1",
+    "k8s.io/api/storage/v1",
     "k8s.io/api/storage/v1beta1",
     "k8s.io/apimachinery/pkg/api/resource",
     "k8s.io/apimachinery/pkg/apis/meta/v1",

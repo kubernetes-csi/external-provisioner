@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	goflag "flag"
 	"fmt"
 	"math/rand"
@@ -28,6 +29,7 @@ import (
 	flag "github.com/spf13/pflag"
 
 	"github.com/kubernetes-csi/csi-lib-utils/deprecatedflags"
+	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
@@ -53,19 +55,28 @@ var (
 	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
 	volumeNamesReadable  = flag.Bool("volume-names-readable", false, "If enabled, includes the PVC namespace and name in VolumeRequests' suggested names.  Note that, combined with --volume-name-uuid-length, this can cause naming collisions.")
 	showVersion          = flag.Bool("version", false, "Show version.")
-	enableLeaderElection = flag.Bool("enable-leader-election", false, "Enables leader election. If leader election is enabled, additional RBAC rules are required. Please refer to the Kubernetes CSI documentation for instructions on setting up these RBAC rules.")
 	retryIntervalStart   = flag.Duration("retry-interval-start", time.Second, "Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to retry-interval-max.")
 	retryIntervalMax     = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
 	workerThreads        = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
 	operationTimeout     = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for creation or deletion of a volume")
 	_                    = deprecatedflags.Add("provisioner")
 
+	enableLeaderElection    = flag.Bool("enable-leader-election", false, "Enables leader election. If leader election is enabled, additional RBAC rules are required. Please refer to the Kubernetes CSI documentation for instructions on setting up these RBAC rules.")
+	leaderElectionType      = flag.String("leader-election-type", "endpoints", "the type of leader election, options are 'endpoints' (default) or 'leases' (strongly recommended). The 'endpoints' option is deprecated in favor of 'leases'.")
+	leaderElectionNamespace = flag.String("leader-election-namespace", "", "Namespace where the leader election resource lives. Defaults to the pod namespace if not set.")
+	strictTopology          = flag.Bool("strict-topology", false, "Passes only selected node topology to CreateVolume Request, unlike default behavior of passing aggregated cluster topologies that match with topology keys of the selected node.")
+
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
 	version             = "unknown"
 )
 
-func init() {
+type leaderElection interface {
+	Run() error
+	WithNamespace(namespace string)
+}
+
+func main() {
 	var config *rest.Config
 	var err error
 
@@ -151,7 +162,7 @@ func init() {
 	identity := strconv.FormatInt(timeStamp, 10) + "-" + strconv.Itoa(rand.Intn(10000)) + "-" + provisionerName
 
 	provisionerOptions := []func(*controller.ProvisionController) error{
-		controller.LeaderElection(*enableLeaderElection),
+		controller.LeaderElection(false), // Always disable leader election in provisioner lib. Leader election should be done here in the CSI provisioner level instead.
 		controller.FailedProvisionThreshold(0),
 		controller.FailedDeleteThreshold(0),
 		controller.RateLimiter(workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)),
@@ -171,7 +182,7 @@ func init() {
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, *volumeNamesReadable, grpcClient, snapClient, provisionerName, pluginCapabilities, controllerCapabilities, supportsMigrationFromInTreePluginName)
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, *volumeNamesReadable, grpcClient, snapClient, provisionerName, pluginCapabilities, controllerCapabilities, supportsMigrationFromInTreePluginName, *strictTopology)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		provisionerName,
@@ -179,8 +190,36 @@ func init() {
 		serverVersion.GitVersion,
 		provisionerOptions...,
 	)
-}
 
-func main() {
-	provisionController.Run(wait.NeverStop)
+	run := func(context.Context) {
+		provisionController.Run(wait.NeverStop)
+	}
+
+	if !*enableLeaderElection {
+		run(context.TODO())
+	} else {
+		// this lock name pattern is also copied from sigs.k8s.io/sig-storage-lib-external-provisioner/controller
+		// to preserve backwards compatibility
+		lockName := strings.Replace(provisionerName, "/", "-", -1)
+
+		var le leaderElection
+		if *leaderElectionType == "endpoints" {
+			klog.Warning("The 'endpoints' leader election type is deprecated and will be removed in a future release. Use '--leader-election-type=leases' instead.")
+			le = leaderelection.NewLeaderElectionWithEndpoints(clientset, lockName, run)
+		} else if *leaderElectionType == "leases" {
+			le = leaderelection.NewLeaderElection(clientset, lockName, run)
+		} else {
+			klog.Error("--leader-election-type must be either 'endpoints' or 'lease'")
+			os.Exit(1)
+		}
+
+		if *leaderElectionNamespace != "" {
+			le.WithNamespace(*leaderElectionNamespace)
+		}
+
+		if err := le.Run(); err != nil {
+			klog.Fatalf("failed to initialize leader election: %v", err)
+		}
+	}
+
 }
