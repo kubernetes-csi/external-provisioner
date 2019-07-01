@@ -661,9 +661,18 @@ func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi
 	if sourcePVC.ObjectMeta.DeletionTimestamp != nil {
 		return nil, fmt.Errorf("the PVC DataSource %s is currently being deleted", options.PVC.Spec.DataSource.Name)
 	}
-	if sourcePVC.Spec.StorageClassName != options.PVC.Spec.StorageClassName {
+
+	if sourcePVC.Spec.StorageClassName == nil {
+		return nil, fmt.Errorf("the source PVC (%s) storageclass cannot be empty", sourcePVC.Name)
+	}
+
+	if options.PVC.Spec.StorageClassName == nil {
+		return nil, fmt.Errorf("the requested PVC (%s) storageclass cannot be empty", options.PVC.Name)
+	}
+
+	if *sourcePVC.Spec.StorageClassName != *options.PVC.Spec.StorageClassName {
 		return nil, fmt.Errorf("the source PVC and destination PVCs must be in the same storage class for cloning.  Source is in %v, but new PVC is in %v",
-			sourcePVC.Spec.StorageClassName, options.PVC.Spec.StorageClassName)
+			*sourcePVC.Spec.StorageClassName, *options.PVC.Spec.StorageClassName)
 	}
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	requestedSize := capacity.Value()
