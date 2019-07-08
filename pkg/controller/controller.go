@@ -671,9 +671,22 @@ func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi
 		return nil, fmt.Errorf("error, new PVC request must be greater than or equal in size to the specified PVC data source, requested %v but source is %v", requestedSize, sourcePVC.Spec.Size())
 	}
 
+	if sourcePVC.Spec.VolumeName == "" {
+		return nil, fmt.Errorf("volume name is empty in source PVC %s", sourcePVC.Name)
+	}
+
+	sourcePV, err := p.client.CoreV1().PersistentVolumes().Get(sourcePVC.Spec.VolumeName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error getting PV %s from api server: %v", sourcePVC.Spec.VolumeName, err)
+	}
+
+	if sourcePV.Spec.CSI == nil {
+		return nil, fmt.Errorf("error getting volume source from persistantVolumeClaim:persistanceVolume %s:%s", sourcePVC.Name, sourcePVC.Spec.VolumeName)
+	}
+
 	volumeSource := csi.VolumeContentSource_Volume{
 		Volume: &csi.VolumeContentSource_VolumeSource{
-			VolumeId: sourcePVC.Spec.VolumeName,
+			VolumeId: sourcePV.Spec.CSI.VolumeHandle,
 		},
 	}
 	klog.V(5).Infof("VolumeContentSource_Volume %+v", volumeSource)

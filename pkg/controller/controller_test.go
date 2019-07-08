@@ -2146,6 +2146,7 @@ func TestProvisionFromPVC(t *testing.T) {
 	var requestedBytes int64 = 1000
 	invalidSCName := "invalid-sc"
 	srcName := "fake-pvc"
+	pvName := "test-testi"
 	deletePolicy := v1.PersistentVolumeReclaimDelete
 
 	type pvSpec struct {
@@ -2171,7 +2172,7 @@ func TestProvisionFromPVC(t *testing.T) {
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
 				},
-				PVName: "test-name",
+				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -2193,7 +2194,7 @@ func TestProvisionFromPVC(t *testing.T) {
 			},
 			pvcStatusReady: true,
 			expectedPVSpec: &pvSpec{
-				Name:          "test-testi",
+				Name:          pvName,
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
 				Capacity: v1.ResourceList{
@@ -2216,7 +2217,7 @@ func TestProvisionFromPVC(t *testing.T) {
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
 				},
-				PVName: "test-name",
+				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -2247,7 +2248,7 @@ func TestProvisionFromPVC(t *testing.T) {
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
 				},
-				PVName: "test-name",
+				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -2270,7 +2271,7 @@ func TestProvisionFromPVC(t *testing.T) {
 			},
 			pvcStatusReady: true,
 			expectedPVSpec: nil,
-			cloneSupport:   false,
+			cloneSupport:   true,
 			expectErr:      true,
 		},
 		"provision with pvc data source destination too small": {
@@ -2279,7 +2280,7 @@ func TestProvisionFromPVC(t *testing.T) {
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
 				},
-				PVName: "test-name",
+				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -2302,7 +2303,7 @@ func TestProvisionFromPVC(t *testing.T) {
 			},
 			pvcStatusReady: true,
 			expectedPVSpec: nil,
-			cloneSupport:   false,
+			cloneSupport:   true,
 			expectErr:      true,
 		},
 		"provision with pvc data source not found": {
@@ -2311,7 +2312,7 @@ func TestProvisionFromPVC(t *testing.T) {
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
 				},
-				PVName: "test-name",
+				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -2334,7 +2335,7 @@ func TestProvisionFromPVC(t *testing.T) {
 			},
 			pvcStatusReady: true,
 			expectedPVSpec: nil,
-			cloneSupport:   false,
+			cloneSupport:   true,
 			expectErr:      true,
 		},
 		"provision with pvc data source destination too large": {
@@ -2343,7 +2344,7 @@ func TestProvisionFromPVC(t *testing.T) {
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
 				},
-				PVName: "test-name",
+				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						UID: "testid",
@@ -2366,7 +2367,39 @@ func TestProvisionFromPVC(t *testing.T) {
 			},
 			pvcStatusReady: true,
 			expectedPVSpec: nil,
-			cloneSupport:   false,
+			cloneSupport:   true,
+			expectErr:      true,
+		},
+		"provision with pvc data source when source pv not found": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+				},
+				PVName: "invalid-pv",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &invalidSCName,
+						Selector:         nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes+1, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name: srcName,
+							Kind: "PersistentVolumeClaim",
+						},
+					},
+				},
+			},
+			pvcStatusReady: true,
+			expectedPVSpec: nil,
+			cloneSupport:   true,
 			expectErr:      true,
 		},
 	}
@@ -2394,8 +2427,26 @@ func TestProvisionFromPVC(t *testing.T) {
 		clientSet = fakeclientset.NewSimpleClientset()
 
 		// Create a fake claim as our PVC DataSource
-		claim := fakeClaim(srcName, "fake-claim-uid", "1Gi", "test-pv", v1.ClaimBound, nil)
-		clientSet = fakeclientset.NewSimpleClientset(claim)
+		claim := fakeClaim(srcName, "fake-claim-uid", "1Gi", pvName, v1.ClaimBound, nil)
+
+		pv := &v1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: pvName,
+			},
+			Spec: v1.PersistentVolumeSpec{
+				PersistentVolumeSource: v1.PersistentVolumeSource{
+					CSI: &v1.CSIPersistentVolumeSource{
+						Driver:       "test-driver",
+						VolumeHandle: "test-volume-id",
+						FSType:       "ext3",
+						VolumeAttributes: map[string]string{
+							"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+						},
+					},
+				},
+			},
+		}
+		clientSet = fakeclientset.NewSimpleClientset(claim, pv)
 
 		pluginCaps, controllerCaps := provisionFromPVCCapabilities()
 		if !tc.cloneSupport {
