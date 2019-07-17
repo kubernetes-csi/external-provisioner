@@ -35,6 +35,8 @@ import (
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
 	"github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -721,7 +723,9 @@ type provisioningTestcase struct {
 	volWithLessCap    bool
 	expectedPVSpec    *pvSpec
 	withSecretRefs    bool
+	createVolumeError error
 	expectErr         bool
+	expectState       controller.ProvisioningState
 	expectCreateVolDo interface{}
 }
 
@@ -761,6 +765,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
+			expectState: controller.ProvisioningFinished,
 		},
 		"multiple fsType provision": {
 			volOpts: controller.VolumeOptions{
@@ -772,7 +777,8 @@ func TestProvision(t *testing.T) {
 					prefixedFsTypeKey: "ext4",
 				},
 			},
-			expectErr: true,
+			expectErr:   true,
+			expectState: controller.ProvisioningFinished,
 		},
 		"provision with prefixed FS Type key": {
 			volOpts: controller.VolumeOptions{
@@ -803,6 +809,7 @@ func TestProvision(t *testing.T) {
 					t.Errorf("Parameters should have been stripped")
 				}
 			},
+			expectState: controller.ProvisioningFinished,
 		},
 		"provision with access mode multi node multi writer": {
 			volOpts: controller.VolumeOptions{
@@ -851,6 +858,7 @@ func TestProvision(t *testing.T) {
 					t.Errorf("Expected multi_node_multi_writer")
 				}
 			},
+			expectState: controller.ProvisioningFinished,
 		},
 		"provision with access mode multi node multi readonly": {
 			volOpts: controller.VolumeOptions{
@@ -899,6 +907,7 @@ func TestProvision(t *testing.T) {
 					t.Errorf("Expected multi_node_reader_only")
 				}
 			},
+			expectState: controller.ProvisioningFinished,
 		},
 		"provision with access mode single writer": {
 			volOpts: controller.VolumeOptions{
@@ -947,6 +956,7 @@ func TestProvision(t *testing.T) {
 					t.Errorf("Expected single_node_writer")
 				}
 			},
+			expectState: controller.ProvisioningFinished,
 		},
 		"provision with multiple access modes": {
 			volOpts: controller.VolumeOptions{
@@ -1001,6 +1011,7 @@ func TestProvision(t *testing.T) {
 					t.Errorf("Expected single_node_writer")
 				}
 			},
+			expectState: controller.ProvisioningFinished,
 		},
 		"provision with secrets": {
 			volOpts: controller.VolumeOptions{
@@ -1035,6 +1046,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
+			expectState: controller.ProvisioningFinished,
 		},
 		"provision with volume mode(Filesystem)": {
 			volOpts: controller.VolumeOptions{
@@ -1057,6 +1069,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
+			expectState: controller.ProvisioningFinished,
 		},
 		"provision with volume mode(Block)": {
 			volOpts: controller.VolumeOptions{
@@ -1078,6 +1091,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
+			expectState: controller.ProvisioningFinished,
 		},
 		"fail to get secret reference": {
 			volOpts: controller.VolumeOptions{
@@ -1087,6 +1101,7 @@ func TestProvision(t *testing.T) {
 			},
 			getSecretRefErr: true,
 			expectErr:       true,
+			expectState:     controller.ProvisioningNoChange,
 		},
 		"fail not nil selector": {
 			volOpts: controller.VolumeOptions{
@@ -1095,6 +1110,7 @@ func TestProvision(t *testing.T) {
 			},
 			notNilSelector: true,
 			expectErr:      true,
+			expectState:    controller.ProvisioningFinished,
 		},
 		"fail to make volume name": {
 			volOpts: controller.VolumeOptions{
@@ -1103,6 +1119,7 @@ func TestProvision(t *testing.T) {
 			},
 			makeVolumeNameErr: true,
 			expectErr:         true,
+			expectState:       controller.ProvisioningFinished,
 		},
 		"fail to get credentials": {
 			volOpts: controller.VolumeOptions{
@@ -1112,6 +1129,7 @@ func TestProvision(t *testing.T) {
 			},
 			getCredentialsErr: true,
 			expectErr:         true,
+			expectState:       controller.ProvisioningNoChange,
 		},
 		"fail vol with less capacity": {
 			volOpts: controller.VolumeOptions{
@@ -1121,6 +1139,7 @@ func TestProvision(t *testing.T) {
 			},
 			volWithLessCap: true,
 			expectErr:      true,
+			expectState:    controller.ProvisioningInBackground,
 		},
 		"provision with mount options": {
 			volOpts: controller.VolumeOptions{
@@ -1177,6 +1196,59 @@ func TestProvision(t *testing.T) {
 					t.Errorf("Expected 2 mount options")
 				}
 			},
+			expectState: controller.ProvisioningFinished,
+		},
+		"provision with final error": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName:                        "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+					},
+				},
+			},
+			createVolumeError: status.Error(codes.Unauthenticated, "Mock final error"),
+			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+				// intentionally empty
+			},
+			expectErr:   true,
+			expectState: controller.ProvisioningFinished,
+		},
+		"provision with transient error": {
+			volOpts: controller.VolumeOptions{
+				PersistentVolumeReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				PVName:                        "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+					},
+				},
+			},
+			createVolumeError: status.Error(codes.DeadlineExceeded, "Mock timeout"),
+			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+				// intentionally empty
+			},
+			expectErr:   true,
+			expectState: controller.ProvisioningInBackground,
 		},
 	}
 
@@ -1279,23 +1351,30 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		tc.volOpts.Parameters[provisionerSecretNamespaceKey] = "default"
 	} else if tc.volWithLessCap {
 		out.Volume.CapacityBytes = int64(80)
-		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
-		controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
+		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(1)
+		controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, tc.createVolumeError).Times(1)
 	} else if tc.expectCreateVolDo != nil {
-		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(tc.expectCreateVolDo).Return(out, nil).Times(1)
+		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(tc.expectCreateVolDo).Return(out, tc.createVolumeError).Times(1)
 	} else {
 		// Setup regular mock call expectations.
 		if !tc.expectErr {
-			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(1)
 		}
 	}
 
-	pv, err := csiProvisioner.Provision(tc.volOpts)
+	pv, state, err := csiProvisioner.(controller.ProvisionerExt).ProvisionExt(tc.volOpts)
 	if tc.expectErr && err == nil {
 		t.Errorf("test %q: Expected error, got none", k)
 	}
 	if !tc.expectErr && err != nil {
 		t.Errorf("test %q: got error: %v", k, err)
+	}
+
+	if tc.expectState == "" {
+		tc.expectState = controller.ProvisioningFinished
+	}
+	if tc.expectState != state {
+		t.Errorf("test %q: expected ProvisioningState %s, got %s", k, tc.expectState, state)
 	}
 
 	if tc.expectedPVSpec != nil {
