@@ -540,7 +540,12 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		volumeAttributes[k] = v
 	}
 	respCap := rep.GetVolume().GetCapacityBytes()
-	if respCap < volSizeBytes {
+
+	//According to CSI spec CreateVolume should be able to return capacity = 0, which means it is unknown. for example NFS/FTP
+	if respCap == 0 {
+		respCap = volSizeBytes
+		klog.V(3).Infof("csiClient response volume with size 0, which is not supported by apiServer, will use claim size:%d", respCap)
+	} else if respCap < volSizeBytes {
 		capErr := fmt.Errorf("created volume capacity %v less than requested capacity %v", respCap, volSizeBytes)
 		delReq := &csi.DeleteVolumeRequest{
 			VolumeId: rep.GetVolume().GetVolumeId(),
