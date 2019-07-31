@@ -780,6 +780,7 @@ type pvSpec struct {
 	Name          string
 	ReclaimPolicy v1.PersistentVolumeReclaimPolicy
 	AccessModes   []v1.PersistentVolumeAccessMode
+	MountOptions  []string
 	VolumeMode    *v1.PersistentVolumeMode
 	Capacity      v1.ResourceList
 	CSIPVS        *v1.CSIPersistentVolumeSource
@@ -1252,6 +1253,7 @@ func TestProvision(t *testing.T) {
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				MountOptions:  []string{"foo=bar", "baz=qux"},
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
 				},
@@ -1526,6 +1528,10 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 
 		if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
 			t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
+		}
+
+		if !reflect.DeepEqual(pv.Spec.MountOptions, tc.expectedPVSpec.MountOptions) {
+			t.Errorf("test %q: expected mount options: %v, got: %v", k, tc.expectedPVSpec.MountOptions, pv.Spec.MountOptions)
 		}
 
 		if tc.expectedPVSpec.CSIPVS != nil {
@@ -2055,48 +2061,6 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 
 	if pv.Spec.NodeAffinity != nil {
 		t.Errorf("expected nil PV node affinity; got: %v", pv.Spec.NodeAffinity)
-	}
-}
-
-// TestProvisionWithMountOptions is a test of provisioner integration with mount options.
-func TestProvisionWithMountOptions(t *testing.T) {
-	expectedOptions := []string{"foo=bar", "baz=qux"}
-	const requestBytes = 100
-
-	tmpdir := tempDir(t)
-	defer os.RemoveAll(tmpdir)
-	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mockController.Finish()
-	defer driver.Stop()
-
-	clientSet := fakeclientset.NewSimpleClientset()
-	pluginCaps, controllerCaps := provisionCapabilities()
-	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false)
-
-	out := &csi.CreateVolumeResponse{
-		Volume: &csi.Volume{
-			CapacityBytes: requestBytes,
-			VolumeId:      "test-volume-id",
-		},
-	}
-
-	controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
-
-	pv, err := csiProvisioner.Provision(controller.ProvisionOptions{
-		StorageClass: &storagev1.StorageClass{
-			MountOptions: expectedOptions,
-		},
-		PVC: createFakePVC(requestBytes), // dummy PVC
-	})
-	if err != nil {
-		t.Fatalf("got error from Provision call: %v", err)
-	}
-
-	if !reflect.DeepEqual(pv.Spec.MountOptions, expectedOptions) {
-		t.Errorf("expected mount options %v; got: %v", expectedOptions, pv.Spec.MountOptions)
 	}
 }
 
