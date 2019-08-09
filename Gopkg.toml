@@ -42,6 +42,10 @@
   name = "github.com/kubernetes-csi/external-snapshotter"
   branch = "master"
 
+# TODO: all the k8s.io dependencies are overrides due to
+# csi-lib-utils constraints. Once 1.16.0 is released, update
+# all of these versions back to a constraint.
+
 # We need a version which does not use glog, because pulling in glog clashes
 # with klog.Init. Anything >= 1.12 is fine, but we can't specify that
 # because of the lack of semantic versioning in Kubernetes. Therefore we
@@ -49,19 +53,27 @@
 # up with something older or master.
 [[override]]
   name = "k8s.io/api"
-  branch = "release-1.15"
+  branch = "master"
 
-[[constraint]]
+[[override]]
+  name = "k8s.io/apimachinery"
+  branch = "master"
+
+[[override]]
   name = "k8s.io/apiserver"
-  version = "kubernetes-1.14.1"
+  branch = "master"
 
-[[constraint]]
+[[override]]
   name = "k8s.io/component-base"
-  version = "kubernetes-1.14.0"
+  branch = "master"
 
-[[constraint]]
+[[override]]
   name = "k8s.io/client-go"
-  version = "kubernetes-1.14.0"
+  revision = "dafe3c5e185134720effaffbf3ff320a8afa228e"
+
+[[override]]
+  name = "k8s.io/utils"
+  branch = "master"
 
 [[constraint]]
   name = "github.com/kubernetes-csi/csi-lib-utils"
