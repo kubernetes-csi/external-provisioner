@@ -42,6 +42,8 @@ import (
 	"k8s.io/klog"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/informers"
+	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 	utilflag "k8s.io/component-base/cli/flag"
 	csitrans "k8s.io/csi-translation-lib"
 )
@@ -181,11 +183,32 @@ func main() {
 		provisionerOptions = append(provisionerOptions, controller.AdditionalProvisionerNames([]string{supportsMigrationFromInTreePluginName}))
 	}
 
+	var csiNodeLister storagelisters.CSINodeLister
+	var factory informers.SharedInformerFactory
+	if ctrl.SupportsTopology(pluginCapabilities) {
+		// Create informer to prevent hit the API server for all resource request
+		factory = informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
+		csiNodeLister = factory.Storage().V1beta1().CSINodes().Lister()
+	}
+
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *operationTimeout, identity, *volumeNamePrefix,
-		*volumeNameUUIDLength, grpcClient, snapClient, provisionerName, pluginCapabilities,
-		controllerCapabilities, supportsMigrationFromInTreePluginName, *strictTopology, translator)
+	csiProvisioner := ctrl.NewCSIProvisioner(
+		clientset,
+		*operationTimeout,
+		identity,
+		*volumeNamePrefix,
+		*volumeNameUUIDLength,
+		grpcClient,
+		snapClient,
+		provisionerName,
+		pluginCapabilities,
+		controllerCapabilities,
+		supportsMigrationFromInTreePluginName,
+		*strictTopology,
+		translator,
+		csiNodeLister)
+
 	provisionController = controller.NewProvisionController(
 		clientset,
 		provisionerName,
@@ -195,6 +218,17 @@ func main() {
 	)
 
 	run := func(context.Context) {
+		if factory != nil {
+			stopCh := context.Background().Done()
+			factory.Start(stopCh)
+			cacheSyncResult := factory.WaitForCacheSync(stopCh)
+			for _, v := range cacheSyncResult {
+				if !v {
+					klog.Fatalf("Failed to sync CsiNodeInformer!")
+				}
+			}
+		}
+
 		provisionController.Run(wait.NeverStop)
 	}
 

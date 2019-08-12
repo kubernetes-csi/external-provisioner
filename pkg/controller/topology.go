@@ -25,11 +25,16 @@ import (
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	v1 "k8s.io/api/core/v1"
+	"github.com/kubernetes-csi/csi-lib-utils/connection"
+	"github.com/kubernetes-csi/external-provisioner/pkg/features"
+	"k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/version"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
+	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/klog"
 )
 
@@ -69,12 +74,18 @@ func GenerateVolumeNodeAffinity(accessibleTopology []*csi.Topology) *v1.VolumeNo
 	}
 }
 
+// SupportsTopology returns whether topology is supported both for plugin and external provisioner
+func SupportsTopology(pluginCapabilities connection.PluginCapabilitySet) bool {
+	return pluginCapabilities[csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS] &&
+		utilfeature.DefaultFeatureGate.Enabled(features.Topology)
+}
+
 // GenerateAccessibilityRequirements returns the CSI TopologyRequirement
 // to pass into the CSI CreateVolume request.
 //
 // This function is only called if the topology feature is enabled
 // in the external-provisioner and the CSI driver implements the
-// CSI accessbility capability. It is disabled by default.
+// CSI accessibility capability. It is disabled by default.
 //
 // If enabled, we require that the K8s API server is on at least
 // K8s 1.14, and that the K8s CSINode feature gate is enabled. In
@@ -140,7 +151,8 @@ func GenerateAccessibilityRequirements(
 	pvcName string,
 	allowedTopologies []v1.TopologySelectorTerm,
 	selectedNode *v1.Node,
-	strictTopology bool) (*csi.TopologyRequirement, error) {
+	strictTopology bool,
+	csiNodeLister storagelisters.CSINodeLister) (*csi.TopologyRequirement, error) {
 	requirement := &csi.TopologyRequirement{}
 
 	var (
@@ -152,7 +164,7 @@ func GenerateAccessibilityRequirements(
 
 	// 1. Get CSINode for the selected node
 	if selectedNode != nil {
-		selectedCSINode, err = getSelectedCSINode(kubeClient, selectedNode)
+		selectedCSINode, err = getSelectedCSINode(csiNodeLister, selectedNode)
 		if err != nil {
 			return nil, err
 		}
@@ -207,7 +219,7 @@ func GenerateAccessibilityRequirements(
 			requisiteTerms = flatten(allowedTopologies)
 		} else {
 			// Aggregate existing topologies in nodes across the entire cluster.
-			requisiteTerms, err = aggregateTopologies(kubeClient, driverName, selectedCSINode)
+			requisiteTerms, err = aggregateTopologies(kubeClient, driverName, selectedCSINode, csiNodeLister)
 			if err != nil {
 				return nil, err
 			}
@@ -263,11 +275,10 @@ func GenerateAccessibilityRequirements(
 
 // getSelectedCSINode returns the CSINode object for the given selectedNode.
 func getSelectedCSINode(
-	kubeClient kubernetes.Interface,
+	csiNodeLister storagelisters.CSINodeLister,
 	selectedNode *v1.Node) (*storage.CSINode, error) {
 
-	// TODO (#144): use informers
-	selectedNodeInfo, err := kubeClient.StorageV1beta1().CSINodes().Get(selectedNode.Name, metav1.GetOptions{})
+	selectedCSINode, err := csiNodeLister.Get(selectedNode.Name)
 	if err != nil {
 		// If the Node is before 1.14, then we fallback to "topology disabled" behavior
 		// to retain backwards compatibility in a single-topology environment with
@@ -289,7 +300,7 @@ func getSelectedCSINode(
 		// error with the API server.
 		return nil, fmt.Errorf("error getting CSINode for selected node %q: %v", selectedNode.Name, err)
 	}
-	return selectedNodeInfo, nil
+	return selectedCSINode, nil
 }
 
 // aggregateTopologies returns all the supported topology values in the cluster that
@@ -297,29 +308,27 @@ func getSelectedCSINode(
 func aggregateTopologies(
 	kubeClient kubernetes.Interface,
 	driverName string,
-	selectedCSINode *storage.CSINode) ([]topologyTerm, error) {
+	selectedCSINode *storage.CSINode,
+	csiNodeLister storagelisters.CSINodeLister) ([]topologyTerm, error) {
 
 	// 1. Determine topologyKeys to use for aggregation
 	var topologyKeys []string
 	if selectedCSINode == nil {
 		// Immediate binding
-
-		// TODO (#144): use informers
-		nodeInfos, err := kubeClient.StorageV1beta1().CSINodes().List(metav1.ListOptions{})
+		csiNodes, err := csiNodeLister.List(labels.Everything())
 		if err != nil {
 			// Require CSINode beta feature on K8s apiserver to be enabled.
 			// We don't want to fallback and provision in the wrong topology if there's some temporary
 			// error with the API server.
 			return nil, fmt.Errorf("error listing CSINodes: %v", err)
 		}
-
-		rand.Shuffle(len(nodeInfos.Items), func(i, j int) {
-			nodeInfos.Items[i], nodeInfos.Items[j] = nodeInfos.Items[j], nodeInfos.Items[i]
+		rand.Shuffle(len(csiNodes), func(i, j int) {
+			csiNodes[i], csiNodes[j] = csiNodes[j], csiNodes[i]
 		})
 
 		// Pick the first node with topology keys
-		for _, nodeInfo := range nodeInfos.Items {
-			topologyKeys = getTopologyKeys(&nodeInfo, driverName)
+		for _, csiNode := range csiNodes {
+			topologyKeys = getTopologyKeys(csiNode, driverName)
 			if topologyKeys != nil {
 				break
 			}
@@ -478,8 +487,8 @@ func sortAndShift(terms []topologyTerm, primary topologyTerm, shiftIndex uint32)
 	return preferredTerms
 }
 
-func getTopologyKeys(nodeInfo *storage.CSINode, driverName string) []string {
-	for _, driver := range nodeInfo.Spec.Drivers {
+func getTopologyKeys(csiNode *storage.CSINode, driverName string) []string {
+	for _, driver := range csiNode.Spec.Drivers {
 		if driver.Name == driverName {
 			return driver.TopologyKeys
 		}
