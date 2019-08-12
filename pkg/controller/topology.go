@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/version"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/klog"
 )
@@ -152,7 +153,8 @@ func GenerateAccessibilityRequirements(
 	allowedTopologies []v1.TopologySelectorTerm,
 	selectedNode *v1.Node,
 	strictTopology bool,
-	csiNodeLister storagelisters.CSINodeLister) (*csi.TopologyRequirement, error) {
+	csiNodeLister storagelisters.CSINodeLister,
+	nodeLister corelisters.NodeLister) (*csi.TopologyRequirement, error) {
 	requirement := &csi.TopologyRequirement{}
 
 	var (
@@ -219,7 +221,7 @@ func GenerateAccessibilityRequirements(
 			requisiteTerms = flatten(allowedTopologies)
 		} else {
 			// Aggregate existing topologies in nodes across the entire cluster.
-			requisiteTerms, err = aggregateTopologies(kubeClient, driverName, selectedCSINode, csiNodeLister)
+			requisiteTerms, err = aggregateTopologies(kubeClient, driverName, selectedCSINode, csiNodeLister, nodeLister)
 			if err != nil {
 				return nil, err
 			}
@@ -309,7 +311,8 @@ func aggregateTopologies(
 	kubeClient kubernetes.Interface,
 	driverName string,
 	selectedCSINode *storage.CSINode,
-	csiNodeLister storagelisters.CSINodeLister) ([]topologyTerm, error) {
+	csiNodeLister storagelisters.CSINodeLister,
+	nodeLister corelisters.NodeLister) ([]topologyTerm, error) {
 
 	// 1. Determine topologyKeys to use for aggregation
 	var topologyKeys []string
@@ -371,15 +374,14 @@ func aggregateTopologies(
 	if err != nil {
 		return nil, err
 	}
-	// TODO (#144): use informers
-	nodes, err := kubeClient.CoreV1().Nodes().List(metav1.ListOptions{LabelSelector: selector})
+	nodes, err := nodeLister.List(selector)
 	if err != nil {
 		return nil, fmt.Errorf("error listing nodes: %v", err)
 	}
 
 	var terms []topologyTerm
-	for _, node := range nodes.Items {
-		term, _ := getTopologyFromNode(&node, topologyKeys)
+	for _, node := range nodes {
+		term, _ := getTopologyFromNode(node, topologyKeys)
 		terms = append(terms, term)
 	}
 	if len(terms) == 0 {
@@ -508,7 +510,7 @@ func getTopologyFromNode(node *v1.Node, topologyKeys []string) (term topologyTer
 	return term, false
 }
 
-func buildTopologyKeySelector(topologyKeys []string) (string, error) {
+func buildTopologyKeySelector(topologyKeys []string) (labels.Selector, error) {
 	var expr []metav1.LabelSelectorRequirement
 	for _, key := range topologyKeys {
 		expr = append(expr, metav1.LabelSelectorRequirement{
@@ -523,10 +525,10 @@ func buildTopologyKeySelector(topologyKeys []string) (string, error) {
 
 	selector, err := metav1.LabelSelectorAsSelector(&labelSelector)
 	if err != nil {
-		return "", fmt.Errorf("error parsing topology keys selector: %v", err)
+		return nil, fmt.Errorf("error parsing topology keys selector: %v", err)
 	}
 
-	return selector.String(), nil
+	return selector, nil
 }
 
 func (t topologyTerm) clone() topologyTerm {

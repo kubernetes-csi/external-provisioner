@@ -47,6 +47,7 @@ import (
 	"k8s.io/klog"
 
 	"google.golang.org/grpc"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 )
 
@@ -197,6 +198,7 @@ type csiProvisioner struct {
 	strictTopology                        bool
 	translator                            ProvisionerCSITranslator
 	csiNodeLister                         storagelisters.CSINodeLister
+	nodeLister                            corelisters.NodeLister
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -257,7 +259,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	supportsMigrationFromInTreePluginName string,
 	strictTopology bool,
 	translator ProvisionerCSITranslator,
-	csiNodeLister storagelisters.CSINodeLister) controller.Provisioner {
+	csiNodeLister storagelisters.CSINodeLister,
+	nodeLister corelisters.NodeLister) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
@@ -276,6 +279,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		strictTopology:                        strictTopology,
 		translator:                            translator,
 		csiNodeLister:                         csiNodeLister,
+		nodeLister:                            nodeLister,
 	}
 	return provisioner
 }
@@ -504,7 +508,8 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 			options.StorageClass.AllowedTopologies,
 			options.SelectedNode,
 			p.strictTopology,
-			p.csiNodeLister)
+			p.csiNodeLister,
+			p.nodeLister)
 		if err != nil {
 			return nil, controller.ProvisioningNoChange, fmt.Errorf("error generating accessibility requirements: %v", err)
 		}

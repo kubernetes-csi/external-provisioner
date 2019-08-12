@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/kubernetes/pkg/apis/core/helper"
 )
@@ -392,7 +393,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 
 	kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
-	csiNodeLister, stopChan := csiNodeLister(kubeClient, t)
+	csiNodeLister, nodeLister, stopChan := listers(kubeClient)
 	defer close(stopChan)
 
 	for name, tc := range testcases {
@@ -410,6 +411,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 				nil,
 				strictTopology,
 				csiNodeLister,
+				nodeLister,
 			)
 
 			if err != nil {
@@ -804,6 +806,7 @@ func TestAllowedTopologies(t *testing.T) {
 				nil, /* selectedNode */
 				strictTopology,
 				nil,
+				nil,
 			)
 
 			if err != nil {
@@ -1080,7 +1083,7 @@ func TestTopologyAggregation(t *testing.T) {
 
 			kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
-			csiNodeLister, stopChan := csiNodeLister(kubeClient, t)
+			csiNodeLister, nodeLister, stopChan := listers(kubeClient)
 			defer close(stopChan)
 
 			var selectedNode *v1.Node
@@ -1095,6 +1098,7 @@ func TestTopologyAggregation(t *testing.T) {
 				selectedNode,
 				strictTopology,
 				csiNodeLister,
+				nodeLister,
 			)
 
 			if tc.expectError {
@@ -1332,7 +1336,7 @@ func TestPreferredTopologies(t *testing.T) {
 			kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 			selectedNode := &nodes.Items[0]
 
-			csiNodeLister, stopChan := csiNodeLister(kubeClient, t)
+			csiNodeLister, nodeLister, stopChan := listers(kubeClient)
 			defer close(stopChan)
 
 			requirements, err := GenerateAccessibilityRequirements(
@@ -1343,6 +1347,7 @@ func TestPreferredTopologies(t *testing.T) {
 				selectedNode,
 				strictTopology,
 				csiNodeLister,
+				nodeLister,
 			)
 
 			if tc.expectError {
@@ -1545,11 +1550,12 @@ func requisiteEqual(t1, t2 []*csi.Topology) bool {
 	return unchecked.Len() == 0
 }
 
-func csiNodeLister(kubeClient *fakeclientset.Clientset, t *testing.T) (v1beta1.CSINodeLister, chan struct{}) {
+func listers(kubeClient *fakeclientset.Clientset) (v1beta1.CSINodeLister, corelisters.NodeLister, chan struct{}) {
 	factory := informers.NewSharedInformerFactory(kubeClient, ResyncPeriodOfCsiNodeInformer)
 	stopChan := make(chan struct{})
 	csiNodeLister := factory.Storage().V1beta1().CSINodes().Lister()
+	nodeLister := factory.Core().V1().Nodes().Lister()
 	factory.Start(stopChan)
 	factory.WaitForCacheSync(stopChan)
-	return csiNodeLister, stopChan
+	return csiNodeLister, nodeLister, stopChan
 }

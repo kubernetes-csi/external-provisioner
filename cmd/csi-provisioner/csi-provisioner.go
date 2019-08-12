@@ -43,6 +43,7 @@ import (
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
+	"k8s.io/client-go/listers/core/v1"
 	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 	utilflag "k8s.io/component-base/cli/flag"
 	csitrans "k8s.io/csi-translation-lib"
@@ -184,11 +185,13 @@ func main() {
 	}
 
 	var csiNodeLister storagelisters.CSINodeLister
+	var nodeLister v1.NodeLister
 	var factory informers.SharedInformerFactory
 	if ctrl.SupportsTopology(pluginCapabilities) {
 		// Create informer to prevent hit the API server for all resource request
 		factory = informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
 		csiNodeLister = factory.Storage().V1beta1().CSINodes().Lister()
+		nodeLister = factory.Core().V1().Nodes().Lister()
 	}
 
 	// Create the provisioner: it implements the Provisioner interface expected by
@@ -207,7 +210,8 @@ func main() {
 		supportsMigrationFromInTreePluginName,
 		*strictTopology,
 		translator,
-		csiNodeLister)
+		csiNodeLister,
+		nodeLister)
 
 	provisionController = controller.NewProvisionController(
 		clientset,
@@ -224,7 +228,7 @@ func main() {
 			cacheSyncResult := factory.WaitForCacheSync(stopCh)
 			for _, v := range cacheSyncResult {
 				if !v {
-					klog.Fatalf("Failed to sync CsiNodeInformer!")
+					klog.Fatalf("Failed to sync Informers!")
 				}
 			}
 		}
