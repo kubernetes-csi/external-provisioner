@@ -78,6 +78,20 @@
   version = "v1.3.1"
 
 [[projects]]
+  digest = "1:1d1cbf539d9ac35eb3148129f96be5537f1a1330cadcc7e3a83b4e72a59672a3"
+  name = "github.com/google/go-cmp"
+  packages = [
+    "cmp",
+    "cmp/internal/diff",
+    "cmp/internal/flags",
+    "cmp/internal/function",
+    "cmp/internal/value",
+  ]
+  pruneopts = "NUT"
+  revision = "2d0692c2e9617365a95b295612ac0d4415ba4627"
+  version = "v0.3.1"
+
+[[projects]]
   branch = "master"
   digest = "1:52c5834e2bebac9030c97cc0798ac11c3aa8a39f098aeb419f142533da6cd3cc"
   name = "github.com/google/gofuzz"
@@ -202,14 +216,6 @@
   pruneopts = "NUT"
   revision = "4b7aa43c6742a2c18fdef89dd197aaae7dac7ccd"
   version = "1.0.1"
-
-[[projects]]
-  digest = "1:93b1d84c5fa6d1ea52f4114c37714cddd84d5b78f151b62bb101128dd51399bf"
-  name = "github.com/pborman/uuid"
-  packages = ["."]
-  pruneopts = "NUT"
-  revision = "adf5a7427709b9deb95d29d3fa8a2bf9cfd388f1"
-  version = "v1.2"
 
 [[projects]]
   digest = "1:7c7cfeecd2b7147bcfec48a4bf622b4879e26aec145a9e373ce51d0c23b16f6b"
@@ -429,10 +435,11 @@
   version = "v2.2.2"
 
 [[projects]]
-  branch = "release-1.15"
-  digest = "1:759855d98a898d7d6a091b89b9c85c03d6efd673c44e15561d716543f4e88f31"
+  branch = "master"
+  digest = "1:7af089f31c2187b97b4772f63a51c7ba94cdeb22ab336d8954f21f1ad1158c6a"
   name = "k8s.io/api"
   packages = [
+    "admissionregistration/v1",
     "admissionregistration/v1beta1",
     "apps/v1",
     "apps/v1beta1",
@@ -471,10 +478,11 @@
     "storage/v1beta1",
   ]
   pruneopts = "NUT"
-  revision = "7525909cc6da36518f164d3169c22e49814ba5b2"
+  revision = "077ce48e77da8a331703a93d8cc84580480ff196"
 
 [[projects]]
-  digest = "1:4bb2f8aa2f8dddb381c97029805248b663b1fdef245cd6d1748fdabfbe1641ff"
+  branch = "master"
+  digest = "1:00e22d0799171fa63a3afc0b0486e9ea2e7957505b0ac7ba00d4357f1f00e32d"
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/api/errors",
@@ -523,28 +531,25 @@
     "third_party/forked/golang/reflect",
   ]
   pruneopts = "NUT"
-  revision = "d7deff9243b165ee192f5551710ea4285dcfd615"
-  version = "kubernetes-1.14.0"
+  revision = "423f5d7840102e5ffd2067db94a91de4472f2935"
 
 [[projects]]
-  digest = "1:f7ae0f734e1726267c0476f55c62ed1f8473943b177f108b90e1b9324d7f733b"
+  branch = "master"
+  digest = "1:02dfdbf0c96143597afca68e7e13de4e82212f9b0a9a023c303cc5ef8aa595e0"
   name = "k8s.io/apiserver"
-  packages = [
-    "pkg/util/feature",
-    "pkg/util/feature/testing",
-  ]
+  packages = ["pkg/util/feature"]
   pruneopts = "NUT"
-  revision = "1ec86e4da56ce0573788fc12bb3a5530600c0e5d"
-  version = "kubernetes-1.14.1"
+  revision = "dd1076c6639a68efedf403f0fb366a29284d2678"
 
 [[projects]]
-  digest = "1:85f25c196bc700354adc889a397f6550105865ad2588704094276f78f6e9d9ba"
+  digest = "1:4d72069766984f6f284cbde24b8028a1d28c4dd8d71e65ef8a41b6091e8a7ee7"
   name = "k8s.io/client-go"
   packages = [
     "discovery",
     "discovery/fake",
     "informers",
     "informers/admissionregistration",
+    "informers/admissionregistration/v1",
     "informers/admissionregistration/v1beta1",
     "informers/apps",
     "informers/apps/v1",
@@ -597,6 +602,8 @@
     "kubernetes",
     "kubernetes/fake",
     "kubernetes/scheme",
+    "kubernetes/typed/admissionregistration/v1",
+    "kubernetes/typed/admissionregistration/v1/fake",
     "kubernetes/typed/admissionregistration/v1beta1",
     "kubernetes/typed/admissionregistration/v1beta1/fake",
     "kubernetes/typed/apps/v1",
@@ -669,6 +676,7 @@
     "kubernetes/typed/storage/v1alpha1/fake",
     "kubernetes/typed/storage/v1beta1",
     "kubernetes/typed/storage/v1beta1/fake",
+    "listers/admissionregistration/v1",
     "listers/admissionregistration/v1beta1",
     "listers/apps/v1",
     "listers/apps/v1beta1",
@@ -732,8 +740,7 @@
     "util/workqueue",
   ]
   pruneopts = "NUT"
-  revision = "6ee68ca5fd8355d024d02f9db0b3b667e8357a0f"
-  version = "kubernetes-1.14.0"
+  revision = "dafe3c5e185134720effaffbf3ff320a8afa228e"
 
 [[projects]]
   branch = "master"
@@ -744,12 +751,16 @@
   revision = "9c9d72d1bf90eb62005f5112f3eea019b272c44b"
 
 [[projects]]
-  digest = "1:dc54d24e166e75a89145883b6080306f5684db2e8ab7a068625f010dee604c6e"
+  branch = "master"
+  digest = "1:d84ba7b211c2d381c415178dbd1702e32579571bfa8bf5796fe9345dd99e65f1"
   name = "k8s.io/component-base"
-  packages = ["cli/flag"]
+  packages = [
+    "cli/flag",
+    "featuregate",
+    "featuregate/testing",
+  ]
   pruneopts = "NUT"
-  revision = "4a91899592f42b2f5859587cc5a676a5b94d2ee3"
-  version = "kubernetes-1.14.0"
+  revision = "fceb63aacf5080aae29d3e58169356024985c009"
 
 [[projects]]
   branch = "master"
@@ -791,7 +802,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:14e8a3b53e6d8cb5f44783056b71bb2ca1ac7e333939cc97f3e50b579c920845"
+  digest = "1:2d3f59daa4b479ff4e100a2e1d8fea6780040fdadc177869531fe4cc29407f55"
   name = "k8s.io/utils"
   packages = [
     "buffer",
@@ -799,7 +810,7 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "21c4ce38f2a793ec01e925ddc31216500183b773"
+  revision = "6c36bc71fc4aeb1f49801054e71aebdaef1fbeb4"
 
 [[projects]]
   digest = "1:1628303a766eb8b6a1185756a064843933f453851720ad75e219489356dc26fa"
@@ -836,6 +847,8 @@
     "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake",
     "github.com/spf13/pflag",
     "google.golang.org/grpc",
+    "google.golang.org/grpc/codes",
+    "google.golang.org/grpc/status",
     "k8s.io/api/core/v1",
     "k8s.io/api/storage/v1",
     "k8s.io/api/storage/v1beta1",
@@ -849,7 +862,6 @@
     "k8s.io/apimachinery/pkg/util/version",
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/apiserver/pkg/util/feature",
-    "k8s.io/apiserver/pkg/util/feature/testing",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/kubernetes/fake",
     "k8s.io/client-go/rest",
@@ -857,6 +869,8 @@
     "k8s.io/client-go/tools/clientcmd",
     "k8s.io/client-go/util/workqueue",
     "k8s.io/component-base/cli/flag",
+    "k8s.io/component-base/featuregate",
+    "k8s.io/component-base/featuregate/testing",
     "k8s.io/csi-translation-lib",
     "k8s.io/klog",
     "k8s.io/kubernetes/pkg/apis/core/helper",

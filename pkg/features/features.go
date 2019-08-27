@@ -16,21 +16,24 @@ limitations under the License.
 
 package features
 
-import utilfeature "k8s.io/apiserver/pkg/util/feature"
+import (
+	"k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/component-base/featuregate"
+)
 
 const (
 	// owner: @verult
 	// alpha: v0.4
-	// beta: v2.0
-	Topology utilfeature.Feature = "Topology"
+	// beta: v1.2
+	Topology featuregate.Feature = "Topology"
 )
 
 func init() {
-	utilfeature.DefaultMutableFeatureGate.Add(defaultKubernetesFeatureGates)
+	feature.DefaultMutableFeatureGate.Add(defaultKubernetesFeatureGates)
 }
 
 // defaultKubernetesFeatureGates consists of all known feature keys specific to external-provisioner.
 // To add a new feature, define a key for it above and add it here.
-var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureSpec{
-	Topology: {Default: false, PreRelease: utilfeature.Beta},
+var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
+	Topology: {Default: false, PreRelease: featuregate.Beta},
 }
