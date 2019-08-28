@@ -293,7 +293,7 @@ func (p *csiProvisioner) checkDriverCapabilities(rc *requiredCapabilities) error
 func (p *csiProvisioner) makeVolumeName(pvcNamespace, pvcName, pvcUID string) (string, error) {
 	// create persistent name based on a volumeNamePrefix and volumeNameUUIDLength
 	// of PVC's UID; if enabled, utilize PVC namespace and name as well
-	if(len(p.volumeNamePrefix) == 0) {
+	if len(p.volumeNamePrefix) == 0 {
 		return "", fmt.Errorf("Volume name prefix cannot be of length 0")
 	}
 	if len(pvcUID) == 0 {
@@ -302,11 +302,11 @@ func (p *csiProvisioner) makeVolumeName(pvcNamespace, pvcName, pvcUID string) (s
 	pvcUID = strings.Replace(pvcUID, "-", "", -1)
 
 	var fullName string
-	if(p.volumeNamesReadable) {
-		if(len(pvcNamespace) == 0) {
+	if p.volumeNamesReadable {
+		if len(pvcNamespace) == 0 {
 			return "", fmt.Errorf("corrupted PVC object, it is missing namespace")
 		}
-		if(len(pvcName) == 0) {
+		if len(pvcName) == 0 {
 			return "", fmt.Errorf("corrupted PVC object, it is missing name")
 		}
 		pvcHash := md5.Sum([]byte(pvcNamespace + "/" + pvcName))
@@ -316,7 +316,7 @@ func (p *csiProvisioner) makeVolumeName(pvcNamespace, pvcName, pvcUID string) (s
 	} else {
 		fullName = pvcUID
 	}
-	if(p.volumeNameUUIDLength == -1) {
+	if p.volumeNameUUIDLength == -1 {
 		return fmt.Sprintf("%s-%s", p.volumeNamePrefix, fullName), nil
 	}
 	return fmt.Sprintf("%s-%s", p.volumeNamePrefix, fullName[0:p.volumeNameUUIDLength]), nil
