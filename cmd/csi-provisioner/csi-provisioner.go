@@ -121,7 +121,7 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Failed to create client: %v", err)
 	}
-	// snapclientset.NewForConfig creates a new Clientset for VolumesnapshotV1alpha1Client
+	// snapclientset.NewForConfig creates a new Clientset for VolumesnapshotV1beta1Client
 	snapClient, err := snapclientset.NewForConfig(config)
 	if err != nil {
 		klog.Fatalf("Failed to create snapshot client: %v", err)
