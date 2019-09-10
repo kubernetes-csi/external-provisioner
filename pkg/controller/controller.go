@@ -114,6 +114,8 @@ const (
 	tokenPVNameKey       = "pv.name"
 	tokenPVCNameKey      = "pvc.name"
 	tokenPVCNameSpaceKey = "pvc.namespace"
+
+	deleteVolumeRetryCount = 5
 )
 
 var (
@@ -550,15 +552,27 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		delReq := &csi.DeleteVolumeRequest{
 			VolumeId: rep.GetVolume().GetVolumeId(),
 		}
-		delReq.Secrets = provisionerCredentials
-		ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
-		defer cancel()
-		_, err := p.csiClient.DeleteVolume(ctx, delReq)
+		err = cleanupVolume(p, delReq, provisionerCredentials)
 		if err != nil {
 			capErr = fmt.Errorf("%v. Cleanup of volume %s failed, volume is orphaned: %v", capErr, pvName, err)
 		}
 		// use InBackground to retry the call, hoping the volume is deleted correctly next time.
 		return nil, controller.ProvisioningInBackground, capErr
+	}
+
+	if options.PVC.Spec.DataSource != nil {
+		contentSource := rep.GetVolume().ContentSource
+		if contentSource == nil {
+			sourceErr := fmt.Errorf("volume content source missing")
+			delReq := &csi.DeleteVolumeRequest{
+				VolumeId: rep.GetVolume().GetVolumeId(),
+			}
+			err = cleanupVolume(p, delReq, provisionerCredentials)
+			if err != nil {
+				sourceErr = fmt.Errorf("%v. cleanup of volume %s failed, volume is orphaned: %v", sourceErr, pvName, err)
+			}
+			return nil, controller.ProvisioningInBackground, sourceErr
+		}
 	}
 
 	pv := &v1.PersistentVolume{
@@ -1073,4 +1087,18 @@ func isFinalError(err error) bool {
 	// All other errors mean that provisioning either did not
 	// even start or failed. It is for sure not in progress.
 	return true
+}
+
+func cleanupVolume(p *csiProvisioner, delReq *csi.DeleteVolumeRequest, provisionerCredentials map[string]string) error {
+	var err error = nil
+	delReq.Secrets = provisionerCredentials
+	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
+	defer cancel()
+	for i := 0; i < deleteVolumeRetryCount; i++ {
+		_, err = p.csiClient.DeleteVolume(ctx, delReq)
+		if err == nil {
+			break
+		}
+	}
+	return err
 }
