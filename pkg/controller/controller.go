@@ -617,6 +617,8 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		pv.Spec.PersistentVolumeSource.CSI.FSType = fsType
 	}
 
+	klog.V(2).Infof("successfully created PV %v for PVC %v and csi volume name %v", pv.Name, options.PVC.Name, pv.Spec.CSI.VolumeHandle)
+
 	if migratedVolume {
 		pv, err = csitranslationlib.TranslateCSIPVToInTree(pv)
 		if err != nil {
@@ -631,7 +633,6 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		}
 	}
 
-	klog.V(2).Infof("successfully created PV %v for PVC %v and csi volume name %v", pv.Name, options.PVC.Name, pv.Spec.CSI.VolumeHandle)
 	klog.V(5).Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
 	return pv, controller.ProvisioningFinished, nil
 }
