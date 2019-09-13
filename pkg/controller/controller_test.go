@@ -62,6 +62,8 @@ const (
 var (
 	volumeModeFileSystem = v1.PersistentVolumeFilesystem
 	volumeModeBlock      = v1.PersistentVolumeBlock
+
+	driverNameAnnotation = map[string]string{annStorageProvisioner: driverName}
 )
 
 type csiConnection struct {
@@ -472,8 +474,9 @@ func provisionFromPVCCapabilities() (connection.PluginCapabilitySet, connection.
 func createFakePVC(requestBytes int64) *v1.PersistentVolumeClaim {
 	return &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			UID:  "testid",
-			Name: "fake-pvc",
+			UID:         "testid",
+			Name:        "fake-pvc",
+			Annotations: map[string]string{annStorageProvisioner: driverName},
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
 			Selector: nil, // Provisioner doesn't support selector
@@ -876,7 +879,8 @@ func TestProvision(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -927,7 +931,8 @@ func TestProvision(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -978,7 +983,8 @@ func TestProvision(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -1029,7 +1035,8 @@ func TestProvision(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -1237,7 +1244,8 @@ func TestProvision(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -1296,7 +1304,8 @@ func TestProvision(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -1325,7 +1334,8 @@ func TestProvision(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -1376,7 +1386,49 @@ func TestProvision(t *testing.T) {
 	}
 
 	for k, tc := range testcases {
-		runProvisionTest(t, k, tc, requestedBytes)
+		runProvisionTest(t, k, tc, requestedBytes, driverName, "" /* no migration */)
+	}
+}
+
+func TestProvisionWithMigration(t *testing.T) {
+	inTreePluginName := "kubernetes.io/gce-pd"
+	migrationDriverName := "pd.csi.storage.gke.io"
+	var requestBytes int64 = 100000
+
+	deletePolicy := v1.PersistentVolumeReclaimDelete
+	testcases := map[string]provisioningTestcase{
+		"should ignore in-tree with migration": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					Provisioner: inTreePluginName,
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+					ReclaimPolicy: &deletePolicy,
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Name:        "fake-pvc",
+						Annotations: map[string]string{annStorageProvisioner: inTreePluginName},
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil, // Provisioner doesn't support selector
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestBytes, 10)),
+							},
+						},
+					},
+				},
+			},
+			expectErr: true,
+		},
+	}
+
+	for k, tc := range testcases {
+		runProvisionTest(t, k, tc, requestBytes, migrationDriverName, inTreePluginName)
 	}
 }
 
@@ -1409,7 +1461,7 @@ func newSnapshot(name, className, boundToContent, snapshotUID, claimName string,
 	return &snapshot
 }
 
-func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requestedBytes int64) {
+func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requestedBytes int64, provisionDriverName, supportsMigrationFromInTreePluginName string) {
 	t.Logf("Running test: %v", k)
 
 	tmpdir := tempDir(t)
@@ -1450,7 +1502,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 	}
 
 	pluginCaps, controllerCaps := provisionCapabilities()
-	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false)
+	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1500,7 +1552,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		t.Errorf("test %q: Expected error, got none", k)
 	}
 	if !tc.expectErr && err != nil {
-		t.Errorf("test %q: got error: %v", k, err)
+		t.Fatalf("test %q: got error: %v", k, err)
 	}
 
 	if tc.expectState == "" {
@@ -1621,7 +1673,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -1665,7 +1718,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -1695,7 +1749,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -1724,7 +1779,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -1753,7 +1809,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -1782,7 +1839,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -1811,7 +1869,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -2310,7 +2369,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &fakeSc1,
@@ -2356,7 +2416,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: map[string]string{annStorageProvisioner: driverName},
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &fakeSc1,
@@ -2388,7 +2449,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: map[string]string{annStorageProvisioner: driverName},
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &fakeSc2,
@@ -2420,7 +2482,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: map[string]string{annStorageProvisioner: driverName},
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &fakeSc1,
@@ -2453,7 +2516,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &fakeSc1,
@@ -2486,7 +2550,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &fakeSc1,
@@ -2518,7 +2583,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector:         nil,
@@ -2550,7 +2616,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: pvName,
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
@@ -2581,7 +2648,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "invalid-pv",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
-						UID: "testid",
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &fakeSc1,
