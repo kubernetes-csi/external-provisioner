@@ -739,7 +739,19 @@ func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi
 	}
 
 	if sourcePV.Spec.CSI == nil {
-		return nil, fmt.Errorf("error getting volume source from persistantVolumeClaim:persistanceVolume %s:%s", sourcePVC.Name, sourcePVC.Spec.VolumeName)
+		return nil, fmt.Errorf("error getting volume source from persistentVolumeClaim:persistentVolume %s:%s", sourcePVC.Name, sourcePVC.Spec.VolumeName)
+	}
+
+	if sourcePV.Spec.CSI.Driver != options.StorageClass.Provisioner {
+		return nil, fmt.Errorf("the source volume %s is handled by a different CSI driver than requested by StorageClass %s", sourcePVC.Name, *options.PVC.Spec.StorageClassName)
+	}
+
+	if sourcePV.Spec.ClaimRef == nil {
+		return nil, fmt.Errorf("the source volume %s is not bound", sourcePVC.Spec.VolumeName)
+	}
+
+	if sourcePV.Spec.ClaimRef.UID != sourcePVC.UID || sourcePV.Spec.ClaimRef.Namespace != sourcePVC.Namespace || sourcePV.Spec.ClaimRef.Name != sourcePVC.Name {
+		return nil, fmt.Errorf("the source volume %s is bound to a different PVC than requested", sourcePVC.Spec.VolumeName)
 	}
 
 	volumeSource := csi.VolumeContentSource_Volume{
