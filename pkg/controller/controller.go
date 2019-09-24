@@ -855,7 +855,7 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 				},
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to get secretreference for volume %s: %v", volume.Name, err)
 			}
 
 			credentials, err := getCredentials(p.client, provisionerSecretRef)
@@ -864,6 +864,8 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 				klog.Errorf("Failed to get credentials for volume %s: %s", volume.Name, err.Error())
 			}
 			req.Secrets = credentials
+		} else {
+			klog.Warningf("failed to get storageclass: %s, proceeding to delete without secrets", storageClassName)
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
