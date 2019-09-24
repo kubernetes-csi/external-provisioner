@@ -1656,19 +1656,24 @@ func TestProvisionFromSnapshot(t *testing.T) {
 	}
 
 	testcases := map[string]struct {
-		volOpts              controller.ProvisionOptions
-		restoredVolSizeSmall bool
-		wrongDataSource      bool
-		snapshotStatusReady  bool
-		expectedPVSpec       *pvSpec
-		expectErr            bool
-		notPopulated         bool
+		volOpts                          controller.ProvisionOptions
+		restoredVolSizeSmall             bool
+		wrongDataSource                  bool
+		snapshotStatusReady              bool
+		expectedPVSpec                   *pvSpec
+		expectErr                        bool
+		expectCSICall                    bool
+		notPopulated                     bool
+		misBoundSnapshotContentUID       bool
+		misBoundSnapshotContentNamespace bool
+		misBoundSnapshotContentName      bool
 	}{
 		"provision with volume snapshot data source": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
 				},
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
@@ -1677,7 +1682,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
@@ -1709,11 +1714,13 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 				},
 			},
+			expectCSICall: true,
 		},
 		"fail vol size less than snapshot size": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
-					Parameters: map[string]string{},
+					Parameters:  map[string]string{},
+					Provisioner: "test-driver",
 				},
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
@@ -1722,7 +1729,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(100, 10)),
@@ -1744,7 +1751,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		"fail empty snapshot name": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
-					Parameters: map[string]string{},
+					Parameters:  map[string]string{},
+					Provisioner: "test-driver",
 				},
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
@@ -1753,7 +1761,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
@@ -1774,7 +1782,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		"fail unsupported datasource kind": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
-					Parameters: map[string]string{},
+					Parameters:  map[string]string{},
+					Provisioner: "test-driver",
 				},
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
@@ -1783,7 +1792,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
@@ -1804,7 +1813,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		"fail unsupported apigroup": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
-					Parameters: map[string]string{},
+					Parameters:  map[string]string{},
+					Provisioner: "test-driver",
 				},
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
@@ -1813,7 +1823,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
@@ -1834,7 +1844,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		"fail invalid snapshot status": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
-					Parameters: map[string]string{},
+					Parameters:  map[string]string{},
+					Provisioner: "test-driver",
 				},
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
@@ -1843,7 +1854,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(100, 10)),
@@ -1864,7 +1875,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		"fail not populated volume content source": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
-					Parameters: map[string]string{},
+					Parameters:  map[string]string{},
+					Provisioner: "test-driver",
 				},
 				PVName: "test-name",
 				PVC: &v1.PersistentVolumeClaim{
@@ -1873,7 +1885,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
@@ -1890,7 +1902,135 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			},
 			snapshotStatusReady: true,
 			expectErr:           true,
+			expectCSICall:       true,
 			notPopulated:        true,
+		},
+		"fail snapshotContent bound to a different snapshot (by UID)": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					Parameters:  map[string]string{},
+					Provisioner: "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:        true,
+			expectErr:                  true,
+			misBoundSnapshotContentUID: true,
+		},
+		"fail snapshotContent bound to a different snapshot (by namespace)": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					Parameters:  map[string]string{},
+					Provisioner: "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:              true,
+			expectErr:                        true,
+			misBoundSnapshotContentNamespace: true,
+		},
+		"fail snapshotContent bound to a different snapshot (by name)": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					Parameters:  map[string]string{},
+					Provisioner: "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:         true,
+			expectErr:                   true,
+			misBoundSnapshotContentName: true,
+		},
+		"fail snapshotContent uses different driver than StorageClass": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					Parameters:  map[string]string{},
+					Provisioner: "another-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady: true,
+			expectErr:           true,
 		},
 	}
 
@@ -1915,6 +2055,15 @@ func TestProvisionFromSnapshot(t *testing.T) {
 
 		client.AddReactor("get", "volumesnapshotcontents", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
 			content := newContent("snapcontent-snapuid", snapClassName, "sid", "pv-uid", "volume", "snapuid", snapName, &requestedBytes, &timeNow)
+			if tc.misBoundSnapshotContentUID {
+				content.Spec.VolumeSnapshotRef.UID = "another-snapshot-uid"
+			}
+			if tc.misBoundSnapshotContentName {
+				content.Spec.VolumeSnapshotRef.Name = "another-snapshot-name"
+			}
+			if tc.misBoundSnapshotContentNamespace {
+				content.Spec.VolumeSnapshotRef.Namespace = "another-snapshot-namespace"
+			}
 			return true, content, nil
 		})
 
@@ -1934,7 +2083,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		// early and therefore CreateVolume is not expected to be called.
 		// When the following if condition is met, it is a valid create volume from snapshot
 		// operation and CreateVolume is expected to be called.
-		if tc.restoredVolSizeSmall == false && tc.wrongDataSource == false && tc.snapshotStatusReady {
+		if tc.expectCSICall {
 			if tc.notPopulated {
 				out.Volume.ContentSource = nil
 				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)

@@ -785,14 +785,27 @@ func (p *csiProvisioner) getSnapshotSource(options controller.ProvisionOptions) 
 
 	snapContentObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshotContents().Get(snapshotObj.Spec.SnapshotContentName, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting snapshot:snapshotcontent %s:%s from api server: %v", snapshotObj.Name, snapshotObj.Spec.SnapshotContentName, err)
+		klog.Warningf("error getting snapshotcontent %s for snapshot %s/$s from api server: %s", snapshotObj.Spec.SnapshotContentName, snapshotObj.Namespace, snapshotObj.Name,  err)")
+		return nil, fmt.Errorf("error getting snapshotcontent from API server")
 	}
-	klog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
+
+	if snapContentObj.Spec.VolumeSnapshotRef == nil {
+		return nil, fmt.Errorf("the source snapshotContent is not bound")
+	}
+
+	if snapContentObj.Spec.VolumeSnapshotRef.UID != snapshotObj.UID || snapContentObj.Spec.VolumeSnapshotRef.Namespace != snapshotObj.Namespace || snapContentObj.Spec.VolumeSnapshotRef.Name != snapshotObj.Name {
+		return nil, fmt.Errorf("the source snapshotContent is bound to a different snapshot than requested")
+	}
 
 	if snapContentObj.Spec.VolumeSnapshotSource.CSI == nil {
-		return nil, fmt.Errorf("error getting snapshot source from snapshot:snapshotcontent %s:%s", snapshotObj.Name, snapshotObj.Spec.SnapshotContentName)
+		return nil, fmt.Errorf("error getting snapshot source from snapshotcontent")
 	}
 
+	if snapContentObj.Spec.VolumeSnapshotSource.CSI.Driver != options.StorageClass.Provisioner {
+		return nil, fmt.Errorf("the snapshot content is handled by a different CSI driver than requested by StorageClass %s", options.StorageClass.Name)
+	}
+
+	klog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
 	snapshotSource := csi.VolumeContentSource_Snapshot{
 		Snapshot: &csi.VolumeContentSource_SnapshotSource{
 			SnapshotId: snapContentObj.Spec.VolumeSnapshotSource.CSI.SnapshotHandle,
