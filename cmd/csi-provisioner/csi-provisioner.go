@@ -208,7 +208,7 @@ func main() {
 		} else if *leaderElectionType == "leases" {
 			le = leaderelection.NewLeaderElection(clientset, lockName, run)
 		} else {
-			klog.Error("--leader-election-type must be either 'endpoints' or 'lease'")
+			klog.Error("--leader-election-type must be either 'endpoints' or 'leases'")
 			os.Exit(1)
 		}
 
