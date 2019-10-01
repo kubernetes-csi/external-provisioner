@@ -114,6 +114,8 @@ const (
 	tokenPVNameKey       = "pv.name"
 	tokenPVCNameKey      = "pvc.name"
 	tokenPVCNameSpaceKey = "pvc.namespace"
+
+	annStorageProvisioner = "volume.beta.kubernetes.io/storage-provisioner"
 )
 
 var (
@@ -365,6 +367,14 @@ func (p *csiProvisioner) Provision(options controller.ProvisionOptions) (*v1.Per
 func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.PersistentVolume, controller.ProvisioningState, error) {
 	if options.StorageClass == nil {
 		return nil, controller.ProvisioningFinished, errors.New("storage class was nil")
+	}
+
+	if options.PVC.Annotations[annStorageProvisioner] != p.driverName {
+		return nil, controller.ProvisioningFinished, &controller.IgnoredError{
+			Reason: fmt.Sprintf("PVC annotated with external-provisioner name %s does not match provisioner driver name %s. This could mean the PVC is not migrated",
+				options.PVC.Annotations[annStorageProvisioner],
+				p.driverName),
+		}
 	}
 
 	migratedVolume := false
