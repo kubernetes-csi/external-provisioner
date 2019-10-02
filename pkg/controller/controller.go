@@ -187,6 +187,7 @@ type csiProvisioner struct {
 var _ controller.Provisioner = &csiProvisioner{}
 var _ controller.BlockProvisioner = &csiProvisioner{}
 var _ controller.ProvisionerExt = &csiProvisioner{}
+var _ controller.Qualifier = &csiProvisioner{}
 
 var (
 	// Each provisioner have a identify string to distinguish with others. This
@@ -880,6 +881,17 @@ func (p *csiProvisioner) SupportsBlock() bool {
 	// Drivers that don't support block volume should return error for CreateVolume called
 	// by Provision if block AccessType is specified.
 	return true
+}
+
+func (p *csiProvisioner) ShouldProvision(claim *v1.PersistentVolumeClaim) bool {
+	provisioner := claim.Annotations[annStorageProvisioner]
+	if provisioner == p.driverName {
+		// Either CSI volume is requested or in-tree volume is migrated to CSI in PV controller
+		// and therefore PVC has CSI annotation.
+		return true
+	}
+	// Non-migrated in-tree volume is requested.
+	return false
 }
 
 //TODO use a unique volume handle from and to Id
