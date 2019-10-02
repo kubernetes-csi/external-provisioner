@@ -813,7 +813,7 @@
   revision = "6c36bc71fc4aeb1f49801054e71aebdaef1fbeb4"
 
 [[projects]]
-  digest = "1:1628303a766eb8b6a1185756a064843933f453851720ad75e219489356dc26fa"
+  digest = "1:4e2ac2a0870f97ddaf096354f4417c39344a607df9f86efc474d38990d4c5274"
   name = "sigs.k8s.io/sig-storage-lib-external-provisioner"
   packages = [
     "controller",
@@ -821,8 +821,8 @@
     "util",
   ]
   pruneopts = "NUT"
-  revision = "d22b74e900af4bf90174d259c3e52c3680b41ab4"
-  version = "v4.0.0"
+  revision = "c525773885fccef89a1edd22bb3f813d50548ed1"
+  version = "v4.0.1"
 
 [[projects]]
   digest = "1:8730e0150dfb2b7e173890c8b9868e7a273082ef8e39f4940e3506a481cf895c"
