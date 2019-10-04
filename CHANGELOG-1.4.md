@@ -22,3 +22,5 @@ In this case, Provisioner will use PVC requested size as PV size rather than 0 b
 - Send the CSI volume_id instead of  PVC Name to the csi-driver in volumeCreate when datasource  is PVC ([#310](https://github.com/kubernetes-csi/external-provisioner/pull/310), [@Madhu-1](https://github.com/Madhu-1))
 - Fixes nil pointer derefence in log when migration turned on ([#342](https://github.com/kubernetes-csi/external-provisioner/pull/342), [@davidz627](https://github.com/davidz627))
 - Handle deletion of CSI migrated volumes ([#273](https://github.com/kubernetes-csi/external-provisioner/pull/273), [@ddebroy](https://github.com/ddebroy))
+- Reduced logging noise of unrelated PVCs. Emit event on successful provisioning. ([#351](https://github.com/kubernetes-csi/external-provisioner/pull/351), [@jsafrane](https://github.com/jsafrane))
+- Added extra verification of source Snapshot and PersistentVolumeClaim before provisioning. ([#352](https://github.com/kubernetes-csi/external-provisioner/pull/352), [@jsafrane](https://github.com/jsafrane))
