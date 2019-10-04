@@ -89,6 +89,7 @@ var (
 	capacityImmediateBinding = flag.Bool("capacity-for-immediate-binding", false, "Enables producing capacity information for storage classes with immediate binding. Not needed for the Kubernetes scheduler, maybe useful for other consumers or for debugging.")
 	capacityPollInterval     = flag.Duration("capacity-poll-interval", time.Minute, "How long the external-provisioner waits before checking for storage capacity changes.")
 	capacityOwnerrefLevel    = flag.Int("capacity-ownerref-level", 1, "The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc.")
+	enableNodeCheck          = flag.Bool("enable-node-check", false, "Enables a check to see that the node selected by the scheduler for provisioning is this node.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -292,6 +293,7 @@ func main() {
 		vaLister,
 		*extraCreateMetadata,
 		*defaultFSType,
+		*enableNodeCheck,
 	)
 
 	provisionController = controller.NewProvisionController(
