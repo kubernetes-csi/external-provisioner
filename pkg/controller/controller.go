@@ -395,6 +395,12 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		}
 	}
 
+	if options.SelectedNode.Name != os.Getenv("NODE_NAME") {
+		return nil, controller.ProvisioningNoChange, &controller.IgnoredError{
+			Reason: fmt.Sprintf("Selected node (%s) is not current node (%s)", options.SelectedNode.Name, os.Getenv("NODE_NAME")),
+		}
+	}
+
 	migratedVolume := false
 	if p.supportsMigrationFromInTreePluginName != "" {
 		// NOTE: we cannot depend on PVC.Annotations[volume.beta.kubernetes.io/storage-provisioner] to get
