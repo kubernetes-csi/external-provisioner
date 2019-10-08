@@ -24,3 +24,4 @@ In this case, Provisioner will use PVC requested size as PV size rather than 0 b
 - Handle deletion of CSI migrated volumes ([#273](https://github.com/kubernetes-csi/external-provisioner/pull/273), [@ddebroy](https://github.com/ddebroy))
 - Reduced logging noise of unrelated PVCs. Emit event on successful provisioning. ([#351](https://github.com/kubernetes-csi/external-provisioner/pull/351), [@jsafrane](https://github.com/jsafrane))
 - Added extra verification of source Snapshot and PersistentVolumeClaim before provisioning. ([#352](https://github.com/kubernetes-csi/external-provisioner/pull/352), [@jsafrane](https://github.com/jsafrane))
+- Fixes storageclass comparison during volume cloning.  ([#309](https://github.com/kubernetes-csi/external-provisioner/pull/309), [@madhu-1](https://github.com/madhu-1))
