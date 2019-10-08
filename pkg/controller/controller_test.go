@@ -33,7 +33,7 @@ import (
 	"github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake"
 	"github.com/kubernetes-incubator/external-storage/lib/controller"
 	"google.golang.org/grpc"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1220,7 +1220,6 @@ func newContent(name, className, snapshotHandle, volumeUID, volumeName, boundToS
 	return &content
 }
 
-// TestProvisionFromSnapshot tests create volume from snapshot
 func TestProvisionFromSnapshot(t *testing.T) {
 	var apiGrp string = "snapshot.storage.k8s.io"
 	var unsupportedAPIGrp string = "unsupported.group.io"
@@ -1241,12 +1240,16 @@ func TestProvisionFromSnapshot(t *testing.T) {
 	}
 
 	testcases := map[string]struct {
-		volOpts              controller.VolumeOptions
-		restoredVolSizeSmall bool
-		wrongDataSource      bool
-		snapshotStatusReady  bool
-		expectedPVSpec       *pvSpec
-		expectErr            bool
+		volOpts                          controller.VolumeOptions
+		restoredVolSizeSmall             bool
+		wrongDataSource                  bool
+		snapshotStatusReady              bool
+		expectedPVSpec                   *pvSpec
+		expectErr                        bool
+		expectCSICall                    bool
+		misBoundSnapshotContentUID       bool
+		misBoundSnapshotContentNamespace bool
+		misBoundSnapshotContentName      bool
 	}{
 		"provision with volume snapshot data source": {
 			volOpts: controller.VolumeOptions{
@@ -1257,7 +1260,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						UID: "testid",
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
@@ -1274,6 +1277,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				Parameters: map[string]string{},
 			},
 			snapshotStatusReady: true,
+			expectCSICall:       true,
 			expectedPVSpec: &pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
@@ -1299,7 +1303,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						UID: "testid",
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(100, 10)),
@@ -1327,7 +1331,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						UID: "testid",
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
@@ -1354,7 +1358,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						UID: "testid",
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
@@ -1381,7 +1385,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						UID: "testid",
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
@@ -1408,7 +1412,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						UID: "testid",
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil,
+						StorageClassName: &snapClassName,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(100, 10)),
@@ -1426,6 +1430,87 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			},
 			snapshotStatusReady: false,
 			expectErr:           true,
+		},
+		"fail snapshotContent bound to a different snapshot (by UID)": {
+			volOpts: controller.VolumeOptions{
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:        true,
+			expectErr:                  true,
+			misBoundSnapshotContentUID: true,
+		},
+		"fail snapshotContent bound to a different snapshot (by namespace)": {
+			volOpts: controller.VolumeOptions{
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:              true,
+			expectErr:                        true,
+			misBoundSnapshotContentNamespace: true,
+		},
+		"fail snapshotContent bound to a different snapshot (by name)": {
+			volOpts: controller.VolumeOptions{
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID: "testid",
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:         true,
+			expectErr:                   true,
+			misBoundSnapshotContentName: true,
 		},
 	}
 
@@ -1448,6 +1533,15 @@ func TestProvisionFromSnapshot(t *testing.T) {
 
 		client.AddReactor("get", "volumesnapshotcontents", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
 			content := newContent("snapcontent-snapuid", snapClassName, "sid", "pv-uid", "volume", "snapuid", snapName, &requestedBytes, &timeNow)
+			if tc.misBoundSnapshotContentUID {
+				content.Spec.VolumeSnapshotRef.UID = "another-snapshot-uid"
+			}
+			if tc.misBoundSnapshotContentName {
+				content.Spec.VolumeSnapshotRef.Name = "another-snapshot-name"
+			}
+			if tc.misBoundSnapshotContentNamespace {
+				content.Spec.VolumeSnapshotRef.Namespace = "another-snapshot-namespace"
+			}
 			return true, content, nil
 		})
 
@@ -1472,7 +1566,15 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		// early and therefore CreateVolume is not expected to be called.
 		// When the following if condition is met, it is a valid create volume from snapshot
 		// operation and CreateVolume is expected to be called.
-		if tc.restoredVolSizeSmall == false && tc.wrongDataSource == false && tc.snapshotStatusReady {
+		if tc.expectCSICall {
+			snapshotSource := csi.VolumeContentSource_Snapshot{
+				Snapshot: &csi.VolumeContentSource_SnapshotSource{
+					Id: "sid",
+				},
+			}
+			out.Volume.ContentSource = &csi.VolumeContentSource{
+				Type: &snapshotSource,
+			}
 			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 		}
 
@@ -1486,17 +1588,19 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		}
 
 		if tc.expectedPVSpec != nil {
-			if pv.Name != tc.expectedPVSpec.Name {
-				t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
-			}
+			if pv != nil {
+				if pv.Name != tc.expectedPVSpec.Name {
+					t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
+				}
 
-			if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
-				t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
-			}
+				if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
+					t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
+				}
 
-			if tc.expectedPVSpec.CSIPVS != nil {
-				if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
-					t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+				if tc.expectedPVSpec.CSIPVS != nil {
+					if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
+						t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+					}
 				}
 			}
 		}
