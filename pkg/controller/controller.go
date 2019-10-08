@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/util"
 
 	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	_ "k8s.io/apimachinery/pkg/util/json"
@@ -45,7 +46,6 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	csitranslationlib "k8s.io/csi-translation-lib"
 	"k8s.io/klog"
 
 	"google.golang.org/grpc"
@@ -160,6 +160,18 @@ var (
 	}
 )
 
+// ProvisionerCSITranslator contains the set of CSI Translation functionality
+// required by the provisioner
+type ProvisionerCSITranslator interface {
+	TranslateInTreeStorageClassToCSI(inTreePluginName string, sc *storagev1.StorageClass) (*storagev1.StorageClass, error)
+	TranslateCSIPVToInTree(pv *v1.PersistentVolume) (*v1.PersistentVolume, error)
+	IsPVMigratable(pv *v1.PersistentVolume) bool
+	TranslateInTreePVToCSI(pv *v1.PersistentVolume) (*v1.PersistentVolume, error)
+
+	IsMigratedCSIDriverByName(csiPluginName string) bool
+	GetInTreeNameFromCSIName(pluginName string) (string, error)
+}
+
 // requiredCapabilities provides a set of extra capabilities required for special/optional features provided by a plugin
 type requiredCapabilities struct {
 	snapshot bool
@@ -182,6 +194,7 @@ type csiProvisioner struct {
 	controllerCapabilities                connection.ControllerCapabilitySet
 	supportsMigrationFromInTreePluginName string
 	strictTopology                        bool
+	translator                            ProvisionerCSITranslator
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -240,7 +253,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	pluginCapabilities connection.PluginCapabilitySet,
 	controllerCapabilities connection.ControllerCapabilitySet,
 	supportsMigrationFromInTreePluginName string,
-	strictTopology bool) controller.Provisioner {
+	strictTopology bool,
+	translator ProvisionerCSITranslator) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
@@ -257,6 +271,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		controllerCapabilities:                controllerCapabilities,
 		supportsMigrationFromInTreePluginName: supportsMigrationFromInTreePluginName,
 		strictTopology:                        strictTopology,
+		translator:                            translator,
 	}
 	return provisioner
 }
@@ -388,7 +403,7 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		// so that external provisioner can correctly pick up the PVC pointing to an in-tree plugin
 		if options.StorageClass.Provisioner == p.supportsMigrationFromInTreePluginName {
 			klog.V(2).Infof("translating storage class for in-tree plugin %s to CSI", options.StorageClass.Provisioner)
-			storageClass, err := csitranslationlib.TranslateInTreeStorageClassToCSI(p.supportsMigrationFromInTreePluginName, options.StorageClass)
+			storageClass, err := p.translator.TranslateInTreeStorageClassToCSI(p.supportsMigrationFromInTreePluginName, options.StorageClass)
 			if err != nil {
 				return nil, controller.ProvisioningFinished, fmt.Errorf("failed to translate storage class: %v", err)
 			}
@@ -631,7 +646,7 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 	klog.V(2).Infof("successfully created PV %v for PVC %v and csi volume name %v", pv.Name, options.PVC.Name, pv.Spec.CSI.VolumeHandle)
 
 	if migratedVolume {
-		pv, err = csitranslationlib.TranslateCSIPVToInTree(pv)
+		pv, err = p.translator.TranslateCSIPVToInTree(pv)
 		if err != nil {
 			klog.Warningf("failed to translate CSI PV to in-tree due to: %v. Deleting provisioned PV", err)
 			deleteErr := p.Delete(pv)
@@ -853,12 +868,12 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	}
 
 	var err error
-	if csitranslationlib.IsPVMigratable(volume) {
+	if p.translator.IsPVMigratable(volume) {
 		// we end up here only if CSI migration is enabled in-tree (both overall
 		// and for the specific plugin that is migratable) causing in-tree PV
 		// controller to yield deletion of PVs with in-tree source to external provisioner
 		// based on AnnDynamicallyProvisioned annotation.
-		volume, err = csitranslationlib.TranslateInTreePVToCSI(volume)
+		volume, err = p.translator.TranslateInTreePVToCSI(volume)
 		if err != nil {
 			return err
 		}
