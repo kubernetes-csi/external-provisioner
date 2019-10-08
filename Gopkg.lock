@@ -764,14 +764,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:026d302ec8c8f568cb6805891133e749e2f8b6b94068cd7375a3bbba232c9f38"
+  digest = "1:43e7fcc63bba450c9dd05e6418ad85af74e60a19e9219095e9313625933b0ce6"
   name = "k8s.io/csi-translation-lib"
   packages = [
     ".",
     "plugins",
   ]
   pruneopts = "NUT"
-  revision = "9ff632302e7ee3b0b6118cd21569ce8b51f7f0f2"
+  revision = "636def22add93345a10eeb756b82e225dba2a6b8"
 
 [[projects]]
   digest = "1:c263611800c3a97991dbcf9d3bc4de390f6224aaa8ca0a7226a9d734f65a416a"

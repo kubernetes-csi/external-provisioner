@@ -43,7 +43,7 @@ import (
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilflag "k8s.io/component-base/cli/flag"
-	csitranslationlib "k8s.io/csi-translation-lib"
+	csitrans "k8s.io/csi-translation-lib"
 )
 
 var (
@@ -169,9 +169,11 @@ func main() {
 		controller.CreateProvisionedPVLimiter(workqueue.DefaultControllerRateLimiter()),
 	}
 
+	translator := csitrans.New()
+
 	supportsMigrationFromInTreePluginName := ""
-	if csitranslationlib.IsMigratedCSIDriverByName(provisionerName) {
-		supportsMigrationFromInTreePluginName, err = csitranslationlib.GetInTreeNameFromCSIName(provisionerName)
+	if translator.IsMigratedCSIDriverByName(provisionerName) {
+		supportsMigrationFromInTreePluginName, err = translator.GetInTreeNameFromCSIName(provisionerName)
 		if err != nil {
 			klog.Fatalf("Failed to get InTree plugin name for migrated CSI plugin %s: %v", provisionerName, err)
 		}
@@ -181,7 +183,9 @@ func main() {
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, grpcClient, snapClient, provisionerName, pluginCapabilities, controllerCapabilities, supportsMigrationFromInTreePluginName, *strictTopology)
+	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *operationTimeout, identity, *volumeNamePrefix,
+		*volumeNameUUIDLength, grpcClient, snapClient, provisionerName, pluginCapabilities,
+		controllerCapabilities, supportsMigrationFromInTreePluginName, *strictTopology, translator)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		provisionerName,
