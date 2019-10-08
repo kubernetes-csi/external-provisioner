@@ -647,14 +647,31 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.ProvisionOpti
 
 	snapContentObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshotContents().Get(snapshotObj.Spec.SnapshotContentName, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting snapshot:snapshotcontent %s:%s from api server: %v", snapshotObj.Name, snapshotObj.Spec.SnapshotContentName, err)
+		klog.Warningf("error getting snapshotcontent %s for snapshot %s/%s from api server: %s", snapshotObj.Spec.SnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, err)
+		return nil, fmt.Errorf("snapshot in dataSource not bound or invalid")
 	}
-	klog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
+
+	if snapContentObj.Spec.VolumeSnapshotRef == nil {
+		klog.Warningf("snapshotcontent %s for snapshot %s/%s is not bound", snapshotObj.Spec.SnapshotContentName, snapshotObj.Namespace, snapshotObj.Name)
+		return nil, fmt.Errorf("snapshot in dataSource not bound or invalid")
+	}
+
+	if snapContentObj.Spec.VolumeSnapshotRef.UID != snapshotObj.UID || snapContentObj.Spec.VolumeSnapshotRef.Namespace != snapshotObj.Namespace || snapContentObj.Spec.VolumeSnapshotRef.Name != snapshotObj.Name {
+		klog.Warningf("snapshotcontent %s for snapshot %s/%s is bound to a different snapshot", snapshotObj.Spec.SnapshotContentName, snapshotObj.Namespace, snapshotObj.Name)
+		return nil, fmt.Errorf("snapshot in dataSource not bound or invalid")
+	}
 
 	if snapContentObj.Spec.VolumeSnapshotSource.CSI == nil {
-		return nil, fmt.Errorf("error getting snapshot source from snapshot:snapshotcontent %s:%s", snapshotObj.Name, snapshotObj.Spec.SnapshotContentName)
+		klog.Warningf("error getting snapshot source from snapshotcontent %s for snapshot %s/%s", snapshotObj.Spec.SnapshotContentName, snapshotObj.Namespace, snapshotObj.Name)
+		return nil, fmt.Errorf("snapshot in dataSource not bound or invalid")
 	}
 
+	if snapContentObj.Spec.VolumeSnapshotSource.CSI.Driver != options.StorageClass.Provisioner {
+		klog.Warningf("snapshotcontent %s for snapshot %s/%s is handled by a different CSI driver than requested by StorageClass %s", snapshotObj.Spec.SnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, options.StorageClass.Name)
+		return nil, fmt.Errorf("snapshot in dataSource not bound or invalid")
+	}
+
+	klog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
 	snapshotSource := csi.VolumeContentSource_Snapshot{
 		Snapshot: &csi.VolumeContentSource_SnapshotSource{
 			SnapshotId: snapContentObj.Spec.VolumeSnapshotSource.CSI.SnapshotHandle,
