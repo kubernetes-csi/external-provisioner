@@ -186,7 +186,7 @@ func main() {
 	// the controller
 	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *operationTimeout, identity, *volumeNamePrefix,
 		*volumeNameUUIDLength, grpcClient, snapClient, provisionerName, pluginCapabilities,
-		controllerCapabilities, supportsMigrationFromInTreePluginName, *strictTopology, translator)
+		controllerCapabilities, supportsMigrationFromInTreePluginName, *strictTopology, translator, *enableNodeCheck)
 	provisionController = controller.NewProvisionController(
 		clientset,
 		provisionerName,

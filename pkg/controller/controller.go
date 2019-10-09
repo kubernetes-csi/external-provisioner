@@ -195,6 +195,7 @@ type csiProvisioner struct {
 	supportsMigrationFromInTreePluginName string
 	strictTopology                        bool
 	translator                            ProvisionerCSITranslator
+	enableNodeCheck                       bool
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -254,7 +255,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	controllerCapabilities connection.ControllerCapabilitySet,
 	supportsMigrationFromInTreePluginName string,
 	strictTopology bool,
-	translator ProvisionerCSITranslator) controller.Provisioner {
+	translator ProvisionerCSITranslator,
+	enableNodeCheck bool) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
@@ -272,6 +274,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		supportsMigrationFromInTreePluginName: supportsMigrationFromInTreePluginName,
 		strictTopology:                        strictTopology,
 		translator:                            translator,
+		enableNodeCheck:                       enableNodeCheck,
 	}
 	return provisioner
 }
