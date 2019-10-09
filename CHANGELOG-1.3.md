@@ -1,3 +1,13 @@
+# Changelog since v1.3.0
+
+## Bug Fixes
+
+- Fixes issue where provisioner provisions volumes for in-tree PVC's which have not been migrated ([#344](https://github.com/kubernetes-csi/external-provisioner/pull/344), [@davidz627](https://github.com/davidz627))
+- Added extra verification of source Snapshot and PersistentVolumeClaim before provisioning. ([#354](https://github.com/kubernetes-csi/external-provisioner/pull/354), [@jsafrane](https://github.com/jsafrane))
+- Fixes storageclass comparison during volume cloning.  ([#325)(https://github.com/kubernetes-csi/external-provisioner/pull/325), [@j-griffith](https://github.com/j-griffith))
+- Fixed potential leak of volumes after CSI driver timeouts. ([#318](https://github.com/kubernetes-csi/external-provisioner/pull/318), [@jsafrane](https://github.com/jsafrane))
+
+
 # Changelog since v1.2.0
 
 ## Breaking Changes
