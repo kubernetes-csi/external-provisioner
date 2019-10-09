@@ -65,6 +65,7 @@ var (
 	volumeModeBlock      = v1.PersistentVolumeBlock
 
 	driverNameAnnotation = map[string]string{annStorageProvisioner: driverName}
+	translatedKey        = "translated"
 )
 
 type csiConnection struct {
@@ -399,7 +400,8 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	defer driver.Stop()
 
 	pluginCaps, controllerCaps := provisionCapabilities()
-	csiProvisioner := NewCSIProvisioner(nil, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+	csiProvisioner := NewCSIProvisioner(nil, 5*time.Second, "test-provisioner", "test",
+		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
 
 	// Requested PVC with requestedBytes storage
 	deletePolicy := v1.PersistentVolumeReclaimDelete
@@ -1391,48 +1393,6 @@ func TestProvision(t *testing.T) {
 	}
 }
 
-func TestProvisionWithMigration(t *testing.T) {
-	inTreePluginName := "kubernetes.io/gce-pd"
-	migrationDriverName := "pd.csi.storage.gke.io"
-	var requestBytes int64 = 100000
-
-	deletePolicy := v1.PersistentVolumeReclaimDelete
-	testcases := map[string]provisioningTestcase{
-		"should ignore in-tree with migration": {
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					Provisioner: inTreePluginName,
-					Parameters: map[string]string{
-						"fstype": "ext3",
-					},
-					ReclaimPolicy: &deletePolicy,
-				},
-				PVName: "test-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						UID:         "testid",
-						Name:        "fake-pvc",
-						Annotations: map[string]string{annStorageProvisioner: inTreePluginName},
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						Selector: nil, // Provisioner doesn't support selector
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestBytes, 10)),
-							},
-						},
-					},
-				},
-			},
-			expectErr: true,
-		},
-	}
-
-	for k, tc := range testcases {
-		runProvisionTest(t, k, tc, requestBytes, migrationDriverName, inTreePluginName)
-	}
-}
-
 // newSnapshot returns a new snapshot object
 func newSnapshot(name, className, boundToContent, snapshotUID, claimName string, ready bool, err *storagev1beta1.VolumeError, creationTime *metav1.Time, size *resource.Quantity) *crdv1.VolumeSnapshot {
 	snapshot := crdv1.VolumeSnapshot{
@@ -1503,7 +1463,8 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 	}
 
 	pluginCaps, controllerCaps := provisionCapabilities()
-	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, csitrans.New())
+	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, csitrans.New())
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -2069,7 +2030,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		})
 
 		pluginCaps, controllerCaps := provisionFromSnapshotCapabilities()
-		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, client, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
+			client, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -2238,7 +2200,8 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 			}
 
 			clientSet := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
-			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
+				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
 
 			pv, err := csiProvisioner.Provision(controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{},
@@ -2292,7 +2255,8 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 
 	clientSet := fakeclientset.NewSimpleClientset()
 	pluginCaps, controllerCaps := provisionWithTopologyCapabilities()
-	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -2471,7 +2435,8 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 	}
 
 	pluginCaps, controllerCaps := provisionCapabilities()
-	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
 
 	err = csiProvisioner.Delete(tc.persistentVolume)
 	if tc.expectErr && err == nil {
@@ -3126,7 +3091,8 @@ func TestProvisionFromPVC(t *testing.T) {
 			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(nil, errors.New("source volume size is bigger than requested volume size")).Times(1)
 		}
 
-		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
+			nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
 
 		pv, err := csiProvisioner.Provision(tc.volOpts)
 		if tc.expectErr && err == nil {
@@ -3154,5 +3120,260 @@ func TestProvisionFromPVC(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestProvisionWithMigration(t *testing.T) {
+	var requestBytes int64 = 100000
+	var inTreePluginName = "in-tree-plugin"
+
+	deletePolicy := v1.PersistentVolumeReclaimDelete
+	testcases := []struct {
+		name              string
+		provisioner       string
+		annotation        map[string]string
+		expectTranslation bool
+		expectErr         bool
+	}{
+		{
+			name:              "provision with migration on",
+			provisioner:       inTreePluginName,
+			annotation:        map[string]string{annStorageProvisioner: driverName},
+			expectTranslation: true,
+		},
+		{
+			name:              "provision without migration for native CSI",
+			provisioner:       driverName,
+			annotation:        map[string]string{annStorageProvisioner: driverName},
+			expectTranslation: false,
+		},
+		{
+			name:        "ignore in-tree PVC when provisioned by in-tree",
+			provisioner: inTreePluginName,
+			annotation:  map[string]string{annStorageProvisioner: inTreePluginName},
+			expectErr:   true,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Set up test
+			tmpdir := tempDir(t)
+			defer os.RemoveAll(tmpdir)
+			mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mockTranslator := NewMockProvisionerCSITranslator(mockController)
+			defer mockController.Finish()
+			defer driver.Stop()
+			clientSet := fakeclientset.NewSimpleClientset()
+			pluginCaps, controllerCaps := provisionCapabilities()
+			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
+				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps,
+				inTreePluginName, false, mockTranslator)
+
+			// Set up return values (AnyTimes to avoid overfitting on implementation)
+
+			// Have fake translation provide same as input SC but with
+			// Parameter indicating it has been translated
+			mockTranslator.EXPECT().TranslateInTreeStorageClassToCSI(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ string, sc *storagev1.StorageClass) (*storagev1.StorageClass, error) {
+					newSC := sc.DeepCopy()
+					newSC.Parameters[translatedKey] = "foo"
+					return newSC, nil
+				},
+			).AnyTimes()
+
+			// Have fake translation provide same as input PV but with
+			// Annotation indicating it has been translated
+			mockTranslator.EXPECT().TranslateCSIPVToInTree(gomock.Any()).DoAndReturn(
+				func(pv *v1.PersistentVolume) (*v1.PersistentVolume, error) {
+					newPV := pv.DeepCopy()
+					if newPV.Annotations == nil {
+						newPV.Annotations = map[string]string{}
+					}
+					newPV.Annotations[translatedKey] = "foo"
+					return newPV, nil
+				},
+			).AnyTimes()
+
+			if !tc.expectErr {
+				// Set an expectation that the Create should be called
+				expectParams := map[string]string{"fstype": "ext3"} // Default
+				if tc.expectTranslation {
+					// If translation is expected we check that the CreateVolume
+					// is called on the expected volume with a translated param
+					expectParams[translatedKey] = "foo"
+				}
+				controllerServer.EXPECT().CreateVolume(gomock.Any(),
+					&csi.CreateVolumeRequest{
+						Name:               "test-testi",
+						Parameters:         expectParams,
+						VolumeCapabilities: nil,
+						CapacityRange: &csi.CapacityRange{
+							RequiredBytes: int64(requestBytes),
+						},
+					}).Return(
+					&csi.CreateVolumeResponse{
+						Volume: &csi.Volume{
+							CapacityBytes: requestBytes,
+							VolumeId:      "test-volume-id",
+						},
+					}, nil).Times(1)
+			}
+
+			// Make a Provision call
+			volOpts := controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					Provisioner:   tc.provisioner,
+					Parameters:    map[string]string{"fstype": "ext3"},
+					ReclaimPolicy: &deletePolicy,
+				},
+				PVName: "test-name",
+				PVC:    createPVCWithAnnotation(tc.annotation, requestBytes),
+			}
+
+			pv, state, err := csiProvisioner.(controller.ProvisionerExt).ProvisionExt(volOpts)
+			if tc.expectErr && err == nil {
+				t.Errorf("Expected error, got none")
+			}
+			if err != nil {
+				if !tc.expectErr {
+					t.Errorf("got error: %v", err)
+				}
+				return
+			}
+
+			if controller.ProvisioningFinished != state {
+				t.Errorf("expected ProvisioningState %s, got %s", controller.ProvisioningFinished, state)
+			}
+
+			if tc.expectTranslation {
+				if _, ok := pv.Annotations[translatedKey]; !ok {
+					t.Errorf("got no translated annotation %s on the pv, expected PV to be translated to in-tree", translatedKey)
+				}
+			} else {
+				if _, ok := pv.Annotations[translatedKey]; ok {
+					t.Errorf("got translated annotation %s on the pv, expected PV not to be translated to in-tree", translatedKey)
+				}
+			}
+		})
+
+	}
+}
+
+func createPVCWithAnnotation(ann map[string]string, requestBytes int64) *v1.PersistentVolumeClaim {
+	return &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			UID:         "testid",
+			Name:        "fake-pvc",
+			Annotations: ann,
+		},
+		Spec: v1.PersistentVolumeClaimSpec{
+			Selector: nil, // Provisioner doesn't support selector
+			Resources: v1.ResourceRequirements{
+				Requests: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestBytes, 10)),
+				},
+			},
+		},
+	}
+}
+
+func TestDeleteMigration(t *testing.T) {
+	const (
+		translatedHandle = "translated-handle"
+		normalHandle     = "no-translation-handle"
+	)
+
+	testCases := []struct {
+		name              string
+		pv                *v1.PersistentVolume
+		expectTranslation bool
+		expectErr         bool
+	}{
+		{
+			name: "normal migration",
+			// The PV could be any random in-tree plugin - it doesn't really
+			// matter here. We only care that the translation is called and the
+			// function will work after some CSI volume is created
+			pv:                &v1.PersistentVolume{},
+			expectTranslation: true,
+		},
+		{
+			name: "no migration",
+			pv: &v1.PersistentVolume{
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							VolumeHandle: normalHandle,
+						},
+					},
+				},
+			},
+			expectTranslation: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Set up test
+			tmpdir := tempDir(t)
+			defer os.RemoveAll(tmpdir)
+			mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mockTranslator := NewMockProvisionerCSITranslator(mockController)
+			defer mockController.Finish()
+			defer driver.Stop()
+			clientSet := fakeclientset.NewSimpleClientset()
+			pluginCaps, controllerCaps := provisionCapabilities()
+			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
+				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "",
+				false, mockTranslator)
+
+			// Set mock return values (AnyTimes to avoid overfitting on implementation details)
+			mockTranslator.EXPECT().IsPVMigratable(gomock.Any()).Return(tc.expectTranslation).AnyTimes()
+			if tc.expectTranslation {
+				// In the translation case we translate to CSI we return a fake
+				// PV with a different handle
+				mockTranslator.EXPECT().TranslateInTreePVToCSI(gomock.Any()).Return(createFakeCSIPV(translatedHandle), nil).AnyTimes()
+			}
+
+			volID := normalHandle
+			if tc.expectTranslation {
+				volID = translatedHandle
+			}
+
+			// We assert that the Delete is called on the driver with either the
+			// normal or the translated handle
+			controllerServer.EXPECT().DeleteVolume(gomock.Any(),
+				&csi.DeleteVolumeRequest{
+					VolumeId: volID,
+				}).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
+
+			// Run Delete
+			err = csiProvisioner.Delete(tc.pv)
+			if tc.expectErr && err == nil {
+				t.Error("Got no error, expected one")
+			}
+			if !tc.expectErr && err != nil {
+				t.Errorf("Got error: %v, expected none", err)
+			}
+		})
+
+	}
+}
+
+func createFakeCSIPV(volumeHandle string) *v1.PersistentVolume {
+	return &v1.PersistentVolume{
+		Spec: v1.PersistentVolumeSpec{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					VolumeHandle: volumeHandle,
+				},
+			},
+		},
 	}
 }
