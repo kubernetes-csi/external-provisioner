@@ -424,7 +424,8 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 
 		switch options.PVC.Spec.DataSource.Kind {
 		case snapshotKind:
-			if *(options.PVC.Spec.DataSource.APIGroup) != snapshotAPIGroup {
+			if options.PVC.Spec.DataSource.APIGroup == nil ||
+				*(options.PVC.Spec.DataSource.APIGroup) != snapshotAPIGroup {
 				return nil, controller.ProvisioningFinished, fmt.Errorf("the PVC source does not belong to the right APIGroup. Expected %s, Got %s", snapshotAPIGroup, *(options.PVC.Spec.DataSource.APIGroup))
 			}
 			rc.snapshot = true
