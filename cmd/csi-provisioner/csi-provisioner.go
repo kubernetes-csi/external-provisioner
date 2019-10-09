@@ -64,6 +64,7 @@ var (
 	leaderElectionType      = flag.String("leader-election-type", "endpoints", "the type of leader election, options are 'endpoints' (default) or 'leases' (strongly recommended). The 'endpoints' option is deprecated in favor of 'leases'.")
 	leaderElectionNamespace = flag.String("leader-election-namespace", "", "Namespace where the leader election resource lives. Defaults to the pod namespace if not set.")
 	strictTopology          = flag.Bool("strict-topology", false, "Passes only selected node topology to CreateVolume Request, unlike default behavior of passing aggregated cluster topologies that match with topology keys of the selected node.")
+	enableNodeCheck         = flag.Bool("enable-node-check", false, "Enables a check to see that the node selected by the scheduler for provisioning is this node.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
