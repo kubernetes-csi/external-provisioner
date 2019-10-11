@@ -401,7 +401,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(nil, 5*time.Second, "test-provisioner", "test",
-		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), false)
 
 	// Requested PVC with requestedBytes storage
 	deletePolicy := v1.PersistentVolumeReclaimDelete
@@ -3092,7 +3092,7 @@ func TestProvisionFromPVC(t *testing.T) {
 		}
 
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-			nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+			nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), false)
 
 		pv, err := csiProvisioner.Provision(tc.volOpts)
 		if tc.expectErr && err == nil {
@@ -3331,7 +3331,7 @@ func TestDeleteMigration(t *testing.T) {
 			pluginCaps, controllerCaps := provisionCapabilities()
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "",
-				false, mockTranslator)
+				false, mockTranslator, false)
 
 			// Set mock return values (AnyTimes to avoid overfitting on implementation details)
 			mockTranslator.EXPECT().IsPVMigratable(gomock.Any()).Return(tc.expectTranslation).AnyTimes()
