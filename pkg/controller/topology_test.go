@@ -1485,7 +1485,7 @@ func volumeNodeAffinitiesEqual(n1, n2 *v1.VolumeNodeAffinity) bool {
 	if (ns1 == nil) && (ns2 == nil) {
 		return true
 	}
-	if len(ns1.NodeSelectorTerms) != len(ns1.NodeSelectorTerms) {
+	if len(ns1.NodeSelectorTerms) != len(ns2.NodeSelectorTerms) {
 		return false
 	}
 	match := func(terms1, terms2 []v1.NodeSelectorTerm) bool {
