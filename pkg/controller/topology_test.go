@@ -21,11 +21,13 @@ import (
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/informers"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/kubernetes/pkg/apis/core/helper"
 )
 
@@ -386,9 +388,12 @@ func TestStatefulSetSpreading(t *testing.T) {
 	}
 
 	nodes := buildNodes(nodeLabels, k8sTopologyBetaVersion.String())
-	nodeInfos := buildNodeInfos(topologyKeys)
+	csiNodes := buildCSINodes(topologyKeys)
 
-	kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
+	kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+
+	csiNodeLister, stopChan := csiNodeLister(kubeClient, t)
+	defer close(stopChan)
 
 	for name, tc := range testcases {
 		for _, strictTopology := range []bool{false, true} {
@@ -404,6 +409,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 				tc.allowedTopologies,
 				nil,
 				strictTopology,
+				csiNodeLister,
 			)
 
 			if err != nil {
@@ -797,6 +803,7 @@ func TestAllowedTopologies(t *testing.T) {
 				tc.allowedTopologies,
 				nil, /* selectedNode */
 				strictTopology,
+				nil,
 			)
 
 			if err != nil {
@@ -1069,9 +1076,13 @@ func TestTopologyAggregation(t *testing.T) {
 				nodeVersion = preBetaNodeVersion
 			}
 			nodes := buildNodes(tc.nodeLabels, nodeVersion)
-			nodeInfos := buildNodeInfos(tc.topologyKeys)
+			csiNodes := buildCSINodes(tc.topologyKeys)
 
-			kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
+			kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+
+			csiNodeLister, stopChan := csiNodeLister(kubeClient, t)
+			defer close(stopChan)
+
 			var selectedNode *v1.Node
 			if tc.hasSelectedNode {
 				selectedNode = &nodes.Items[0]
@@ -1083,6 +1094,7 @@ func TestTopologyAggregation(t *testing.T) {
 				nil, /* allowedTopologies */
 				selectedNode,
 				strictTopology,
+				csiNodeLister,
 			)
 
 			if tc.expectError {
@@ -1315,10 +1327,13 @@ func TestPreferredTopologies(t *testing.T) {
 			t.Logf("test: %s", name)
 
 			nodes := buildNodes(tc.nodeLabels, k8sTopologyBetaVersion.String())
-			nodeInfos := buildNodeInfos(tc.topologyKeys)
+			csiNodes := buildCSINodes(tc.topologyKeys)
 
-			kubeClient := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
+			kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 			selectedNode := &nodes.Items[0]
+
+			csiNodeLister, stopChan := csiNodeLister(kubeClient, t)
+			defer close(stopChan)
 
 			requirements, err := GenerateAccessibilityRequirements(
 				kubeClient,
@@ -1327,6 +1342,7 @@ func TestPreferredTopologies(t *testing.T) {
 				tc.allowedTopologies,
 				selectedNode,
 				strictTopology,
+				csiNodeLister,
 			)
 
 			if tc.expectError {
@@ -1383,10 +1399,10 @@ func buildNodes(nodeLabels []map[string]string, nodeVersion string) *v1.NodeList
 	return list
 }
 
-func buildNodeInfos(nodeInfos []map[string][]string) *storage.CSINodeList {
+func buildCSINodes(csiNodes []map[string][]string) *storage.CSINodeList {
 	list := &storage.CSINodeList{}
 	i := 0
-	for _, nodeInfo := range nodeInfos {
+	for _, csiNode := range csiNodes {
 		nodeName := fmt.Sprintf("node-%d", i)
 		n := storage.CSINode{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1394,7 +1410,7 @@ func buildNodeInfos(nodeInfos []map[string][]string) *storage.CSINodeList {
 			},
 		}
 		var csiDrivers []storage.CSINodeDriver
-		for driver, topologyKeys := range nodeInfo {
+		for driver, topologyKeys := range csiNode {
 			driverInfos := []storage.CSINodeDriver{
 				{
 					Name:         driver,
@@ -1527,4 +1543,13 @@ func requisiteEqual(t1, t2 []*csi.Topology) bool {
 	}
 
 	return unchecked.Len() == 0
+}
+
+func csiNodeLister(kubeClient *fakeclientset.Clientset, t *testing.T) (v1beta1.CSINodeLister, chan struct{}) {
+	factory := informers.NewSharedInformerFactory(kubeClient, ResyncPeriodOfCsiNodeInformer)
+	stopChan := make(chan struct{})
+	csiNodeLister := factory.Storage().V1beta1().CSINodes().Lister()
+	factory.Start(stopChan)
+	factory.WaitForCacheSync(stopChan)
+	return csiNodeLister, stopChan
 }

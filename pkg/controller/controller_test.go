@@ -39,7 +39,7 @@ import (
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
 	"github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake"
 	"google.golang.org/grpc"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -401,7 +401,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(nil, 5*time.Second, "test-provisioner", "test",
-		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil)
 
 	// Requested PVC with requestedBytes storage
 	deletePolicy := v1.PersistentVolumeReclaimDelete
@@ -1464,7 +1464,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, csitrans.New())
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, csitrans.New(), nil)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -2031,7 +2031,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 
 		pluginCaps, controllerCaps := provisionFromSnapshotCapabilities()
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-			client, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+			client, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -2186,7 +2186,7 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 			}
 
 			nodes := buildNodes(tc.nodeLabels, k8sTopologyBetaVersion.String())
-			nodeInfos := buildNodeInfos(tc.topologyKeys)
+			csiNodes := buildCSINodes(tc.topologyKeys)
 
 			var (
 				pluginCaps     connection.PluginCapabilitySet
@@ -2199,9 +2199,13 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 				pluginCaps, controllerCaps = provisionCapabilities()
 			}
 
-			clientSet := fakeclientset.NewSimpleClientset(nodes, nodeInfos)
+			clientSet := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+
+			csiNodeLister, stopChan := csiNodeLister(clientSet, t)
+			defer close(stopChan)
+
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), csiNodeLister)
 
 			pv, err := csiProvisioner.Provision(controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{},
@@ -2256,7 +2260,7 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 	clientSet := fakeclientset.NewSimpleClientset()
 	pluginCaps, controllerCaps := provisionWithTopologyCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -2436,7 +2440,7 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil)
 
 	err = csiProvisioner.Delete(tc.persistentVolume)
 	if tc.expectErr && err == nil {
@@ -3092,7 +3096,7 @@ func TestProvisionFromPVC(t *testing.T) {
 		}
 
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-			nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New())
+			nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil)
 
 		pv, err := csiProvisioner.Provision(tc.volOpts)
 		if tc.expectErr && err == nil {
@@ -3171,7 +3175,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			pluginCaps, controllerCaps := provisionCapabilities()
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps,
-				inTreePluginName, false, mockTranslator)
+				inTreePluginName, false, mockTranslator, nil)
 
 			// Set up return values (AnyTimes to avoid overfitting on implementation)
 
@@ -3331,7 +3335,7 @@ func TestDeleteMigration(t *testing.T) {
 			pluginCaps, controllerCaps := provisionCapabilities()
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "",
-				false, mockTranslator)
+				false, mockTranslator, nil)
 
 			// Set mock return values (AnyTimes to avoid overfitting on implementation details)
 			mockTranslator.EXPECT().IsPVMigratable(gomock.Any()).Return(tc.expectTranslation).AnyTimes()

@@ -30,25 +30,24 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
-	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/util"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	_ "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 
 	"google.golang.org/grpc"
+	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 )
 
 //secretParamsMap provides a mapping of current as well as deprecated secret keys
@@ -114,6 +113,8 @@ const (
 	tokenPVNameKey       = "pv.name"
 	tokenPVCNameKey      = "pvc.name"
 	tokenPVCNameSpaceKey = "pvc.namespace"
+
+	ResyncPeriodOfCsiNodeInformer = 1 * time.Hour
 
 	deleteVolumeRetryCount = 5
 
@@ -195,6 +196,7 @@ type csiProvisioner struct {
 	supportsMigrationFromInTreePluginName string
 	strictTopology                        bool
 	translator                            ProvisionerCSITranslator
+	csiNodeLister                         storagelisters.CSINodeLister
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -254,7 +256,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	controllerCapabilities connection.ControllerCapabilitySet,
 	supportsMigrationFromInTreePluginName string,
 	strictTopology bool,
-	translator ProvisionerCSITranslator) controller.Provisioner {
+	translator ProvisionerCSITranslator,
+	csiNodeLister storagelisters.CSINodeLister) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
@@ -272,6 +275,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		supportsMigrationFromInTreePluginName: supportsMigrationFromInTreePluginName,
 		strictTopology:                        strictTopology,
 		translator:                            translator,
+		csiNodeLister:                         csiNodeLister,
 	}
 	return provisioner
 }
@@ -499,7 +503,8 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 			options.PVC.Name,
 			options.StorageClass.AllowedTopologies,
 			options.SelectedNode,
-			p.strictTopology)
+			p.strictTopology,
+			p.csiNodeLister)
 		if err != nil {
 			return nil, controller.ProvisioningNoChange, fmt.Errorf("error generating accessibility requirements: %v", err)
 		}
@@ -664,8 +669,7 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 }
 
 func (p *csiProvisioner) supportsTopology() bool {
-	return p.pluginCapabilities[csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS] &&
-		utilfeature.DefaultFeatureGate.Enabled(features.Topology)
+	return SupportsTopology(p.pluginCapabilities)
 }
 
 func removePrefixedParameters(param map[string]string) (map[string]string, error) {
