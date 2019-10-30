@@ -30,7 +30,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
-	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1alpha1"
+	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/util"
@@ -120,6 +120,8 @@ const (
 	deleteVolumeRetryCount = 5
 
 	annStorageProvisioner = "volume.beta.kubernetes.io/storage-provisioner"
+
+	snapshotNotBound = "snapshot %s not bound"
 )
 
 var (
@@ -800,12 +802,9 @@ func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi
 // getSnapshotSource verifies DataSource.Kind of type VolumeSnapshot, making sure that the requested Snapshot is available/ready
 // returns the VolumeContentSource for the requested snapshot
 func (p *csiProvisioner) getSnapshotSource(options controller.ProvisionOptions) (*csi.VolumeContentSource, error) {
-	snapshotObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshots(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
+	snapshotObj, err := p.snapshotClient.SnapshotV1beta1().VolumeSnapshots(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting snapshot %s from api server: %v", options.PVC.Spec.DataSource.Name, err)
-	}
-	if snapshotObj.Status.ReadyToUse == false {
-		return nil, fmt.Errorf("snapshot %s is not Ready", options.PVC.Spec.DataSource.Name)
 	}
 
 	if snapshotObj.ObjectMeta.DeletionTimestamp != nil {
@@ -813,36 +812,40 @@ func (p *csiProvisioner) getSnapshotSource(options controller.ProvisionOptions) 
 	}
 	klog.V(5).Infof("VolumeSnapshot %+v", snapshotObj)
 
-	snapContentObj, err := p.snapshotClient.VolumesnapshotV1alpha1().VolumeSnapshotContents().Get(snapshotObj.Spec.SnapshotContentName, metav1.GetOptions{})
-	if err != nil {
-		klog.Warningf("error getting snapshotcontent %s for snapshot %s/%s from api server: %s", snapshotObj.Spec.SnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, err)
-		return nil, fmt.Errorf("snapshot in dataSource not bound or invalid")
+	if snapshotObj.Status == nil || snapshotObj.Status.BoundVolumeSnapshotContentName == nil {
+		return nil, fmt.Errorf(snapshotNotBound, options.PVC.Spec.DataSource.Name)
 	}
 
-	if snapContentObj.Spec.VolumeSnapshotRef == nil {
-		klog.Warningf("snapshotcontent %s for snapshot %s/%s is not bound", snapshotObj.Spec.SnapshotContentName, snapshotObj.Namespace, snapshotObj.Name)
-		return nil, fmt.Errorf("snapshot in dataSource not bound or invalid")
+	snapContentObj, err := p.snapshotClient.SnapshotV1beta1().VolumeSnapshotContents().Get(*snapshotObj.Status.BoundVolumeSnapshotContentName, metav1.GetOptions{})
+
+	if err != nil {
+		klog.Warningf("error getting snapshotcontent %s for snapshot %s/%s from api server: %s", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, err)
+		return nil, fmt.Errorf(snapshotNotBound, options.PVC.Spec.DataSource.Name)
 	}
 
 	if snapContentObj.Spec.VolumeSnapshotRef.UID != snapshotObj.UID || snapContentObj.Spec.VolumeSnapshotRef.Namespace != snapshotObj.Namespace || snapContentObj.Spec.VolumeSnapshotRef.Name != snapshotObj.Name {
-		klog.Warningf("snapshotcontent %s for snapshot %s/%s is bound to a different snapshot", snapshotObj.Spec.SnapshotContentName, snapshotObj.Namespace, snapshotObj.Name)
-		return nil, fmt.Errorf("snapshot in dataSource not bound or invalid")
+		klog.Warningf("snapshotcontent %s for snapshot %s/%s is bound to a different snapshot", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name)
+		return nil, fmt.Errorf(snapshotNotBound, options.PVC.Spec.DataSource.Name)
 	}
 
-	if snapContentObj.Spec.VolumeSnapshotSource.CSI == nil {
-		klog.Warningf("error getting snapshot source from snapshotcontent %s for snapshot %s/%s", snapshotObj.Spec.SnapshotContentName, snapshotObj.Namespace, snapshotObj.Name)
-		return nil, fmt.Errorf("snapshot in dataSource not bound or invalid")
+	if snapContentObj.Spec.Driver != options.StorageClass.Provisioner {
+		klog.Warningf("snapshotcontent %s for snapshot %s/%s is handled by a different CSI driver than requested by StorageClass %s", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, options.StorageClass.Name)
+		return nil, fmt.Errorf(snapshotNotBound, options.PVC.Spec.DataSource.Name)
 	}
 
-	if snapContentObj.Spec.VolumeSnapshotSource.CSI.Driver != options.StorageClass.Provisioner {
-		klog.Warningf("snapshotcontent %s for snapshot %s/%s is handled by a different CSI driver than requested by StorageClass %s", snapshotObj.Spec.SnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, options.StorageClass.Name)
-		return nil, fmt.Errorf("snapshot in dataSource not bound or invalid")
+	if snapshotObj.Status.ReadyToUse == nil || *snapshotObj.Status.ReadyToUse == false {
+		return nil, fmt.Errorf("snapshot %s is not Ready", options.PVC.Spec.DataSource.Name)
 	}
 
 	klog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
+
+	if snapContentObj.Status == nil || snapContentObj.Status.SnapshotHandle == nil {
+		return nil, fmt.Errorf("snapshot handle %s is not available", options.PVC.Spec.DataSource.Name)
+	}
+
 	snapshotSource := csi.VolumeContentSource_Snapshot{
 		Snapshot: &csi.VolumeContentSource_SnapshotSource{
-			SnapshotId: snapContentObj.Spec.VolumeSnapshotSource.CSI.SnapshotHandle,
+			SnapshotId: *snapContentObj.Status.SnapshotHandle,
 		},
 	}
 	klog.V(5).Infof("VolumeContentSource_Snapshot %+v", snapshotSource)

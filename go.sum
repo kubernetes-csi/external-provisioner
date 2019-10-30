@@ -91,8 +91,8 @@ github.com/kubernetes-csi/csi-lib-utils v0.6.1 h1:+AZ58SRSRWh2vmMoWAAGcv7x6fIyBM
 github.com/kubernetes-csi/csi-lib-utils v0.6.1/go.mod h1:GVmlUmxZ+SUjVLXicRFjqWUUvWez0g0Y78zNV9t7KfQ=
 github.com/kubernetes-csi/csi-test v2.0.0+incompatible h1:ia04uVFUM/J9n/v3LEMn3rEG6FmKV5BH9QLw7H68h44=
 github.com/kubernetes-csi/csi-test v2.0.0+incompatible/go.mod h1:YxJ4UiuPWIhMBkxUKY5c267DyA0uDZ/MtAimhx/2TA0=
-github.com/kubernetes-csi/external-snapshotter v0.0.0-20190401205233-54a21f108e31 h1:k5JUmEU48jVYjA2G6G0Vm09vK7QGm24KQm9XTWAF+KE=
-github.com/kubernetes-csi/external-snapshotter v0.0.0-20190401205233-54a21f108e31/go.mod h1:oYfxnsuh48V1UDYORl77YQxQbbdokNy7D73phuFpksY=
+github.com/kubernetes-csi/external-snapshotter v2.0.0-rc1.0.20191024235139-bc6e42db5bc6+incompatible h1:luZoAqNkFePdBVZlKNL3+GPRN9djXt8sxhDJjumGlD8=
+github.com/kubernetes-csi/external-snapshotter v2.0.0-rc1.0.20191024235139-bc6e42db5bc6+incompatible/go.mod h1:oYfxnsuh48V1UDYORl77YQxQbbdokNy7D73phuFpksY=
 github.com/mailru/easyjson v0.0.0-20180823135443-60711f1a8329/go.mod h1:C1wdFJiN94OJF2b5HbByQZoLdCWB1Yqtg26g4irojpc=
 github.com/matttproud/golang_protobuf_extensions v1.0.1 h1:4hp9jkHxhMHkqkrB3Ix0jegS5sx/RkqARlsWZ6pIwiU=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=

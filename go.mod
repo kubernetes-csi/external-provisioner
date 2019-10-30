@@ -11,7 +11,7 @@ require (
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/kubernetes-csi/csi-test v2.0.0+incompatible
-	github.com/kubernetes-csi/external-snapshotter v0.0.0-20190401205233-54a21f108e31
+	github.com/kubernetes-csi/external-snapshotter v2.0.0-rc1.0.20191024235139-bc6e42db5bc6+incompatible
 	github.com/miekg/dns v1.1.8 // indirect
 	github.com/prometheus/client_model v0.0.0-20190129233127-fd36f4220a90 // indirect
 	github.com/prometheus/common v0.2.0 // indirect
