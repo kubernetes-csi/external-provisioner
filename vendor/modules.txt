@@ -1,5 +1,7 @@
-# github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973
+# github.com/beorn7/perks v1.0.0
 github.com/beorn7/perks/quantile
+# github.com/blang/semver v3.5.0+incompatible
+github.com/blang/semver
 # github.com/container-storage-interface/spec v1.1.0
 github.com/container-storage-interface/spec/lib/go/csi
 # github.com/davecgh/go-spew v1.1.1
@@ -13,7 +15,7 @@ github.com/gogo/protobuf/sortkeys
 github.com/golang/groupcache/lru
 # github.com/golang/mock v1.2.0
 github.com/golang/mock/gomock
-# github.com/golang/protobuf v1.2.0
+# github.com/golang/protobuf v1.3.1
 github.com/golang/protobuf/descriptor
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/protoc-gen-go/descriptor
@@ -41,7 +43,7 @@ github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
 # github.com/imdario/mergo v0.3.7
 github.com/imdario/mergo
-# github.com/json-iterator/go v0.0.0-20180701071628-ab8a2e0c74be
+# github.com/json-iterator/go v1.1.6
 github.com/json-iterator/go
 # github.com/kubernetes-csi/csi-lib-utils v0.6.1
 github.com/kubernetes-csi/csi-lib-utils/connection
@@ -66,19 +68,21 @@ github.com/miekg/dns
 github.com/modern-go/concurrent
 # github.com/modern-go/reflect2 v1.0.1
 github.com/modern-go/reflect2
-# github.com/prometheus/client_golang v0.9.2
+# github.com/prometheus/client_golang v1.0.0
 github.com/prometheus/client_golang/prometheus
 github.com/prometheus/client_golang/prometheus/internal
 github.com/prometheus/client_golang/prometheus/promhttp
+github.com/prometheus/client_golang/prometheus/testutil
 # github.com/prometheus/client_model v0.0.0-20190129233127-fd36f4220a90
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.2.0
+# github.com/prometheus/common v0.4.1
 github.com/prometheus/common/expfmt
 github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg
 github.com/prometheus/common/model
-# github.com/prometheus/procfs v0.0.0-20190403104016-ea9eea638872
+# github.com/prometheus/procfs v0.0.2
 github.com/prometheus/procfs
-# github.com/spf13/pflag v1.0.3
+github.com/prometheus/procfs/internal/fs
+# github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
 # golang.org/x/crypto v0.0.0-20181025213731-e84da0312774
 golang.org/x/crypto/ed25519
@@ -157,7 +161,7 @@ google.golang.org/grpc/status
 google.golang.org/grpc/tap
 # gopkg.in/inf.v0 v0.9.1
 gopkg.in/inf.v0
-# gopkg.in/yaml.v2 v2.2.1
+# gopkg.in/yaml.v2 v2.2.2
 gopkg.in/yaml.v2
 # k8s.io/api v0.0.0-20191005115622-2e41325d9e4b => k8s.io/api v0.0.0-20190918195907-bd6ac527cfd2
 k8s.io/api/admissionregistration/v1beta1
@@ -196,7 +200,7 @@ k8s.io/api/settings/v1alpha1
 k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
-# k8s.io/apimachinery v0.0.0-20191006235458-f9f2f3f8ab02 => k8s.io/apimachinery v0.0.0-20190817020851-f2f3a405f61d
+# k8s.io/apimachinery v0.17.0 => k8s.io/apimachinery v0.0.0-20190817020851-f2f3a405f61d
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
 k8s.io/apimachinery/pkg/api/resource
@@ -243,7 +247,7 @@ k8s.io/apimachinery/third_party/forked/golang/json
 k8s.io/apimachinery/third_party/forked/golang/reflect
 # k8s.io/apiserver v0.0.0-20190918200908-1e17798da8c1 => k8s.io/apiserver v0.0.0-20190918200908-1e17798da8c1
 k8s.io/apiserver/pkg/util/feature
-# k8s.io/client-go v0.0.0-20190918200256-06eb1244587a => k8s.io/client-go v0.0.0-20190918200256-06eb1244587a
+# k8s.io/client-go v0.17.0 => k8s.io/client-go v0.0.0-20190918200256-06eb1244587a
 k8s.io/client-go/discovery
 k8s.io/client-go/discovery/fake
 k8s.io/client-go/informers
@@ -435,10 +439,13 @@ k8s.io/client-go/util/retry
 k8s.io/client-go/util/workqueue
 # k8s.io/cloud-provider v0.0.0-20191005121959-0a96ff5a97f9 => k8s.io/cloud-provider v0.0.0-20190918203125-ae665f80358a
 k8s.io/cloud-provider/volume
-# k8s.io/component-base v0.0.0-20190918200425-ed2f0867c778 => k8s.io/component-base v0.0.0-20190918200425-ed2f0867c778
+# k8s.io/component-base v0.17.0 => k8s.io/component-base v0.17.0
 k8s.io/component-base/cli/flag
 k8s.io/component-base/featuregate
 k8s.io/component-base/featuregate/testing
+k8s.io/component-base/metrics
+k8s.io/component-base/metrics/testutil
+k8s.io/component-base/version
 # k8s.io/csi-translation-lib v0.0.0-20191009030015-17db17aaadeb
 k8s.io/csi-translation-lib
 k8s.io/csi-translation-lib/plugins
@@ -449,7 +456,7 @@ k8s.io/kube-openapi/pkg/util/proto
 # k8s.io/kubernetes v1.14.0
 k8s.io/kubernetes/pkg/apis/core
 k8s.io/kubernetes/pkg/apis/core/helper
-# k8s.io/utils v0.0.0-20190221042446-c2654d5206da
+# k8s.io/utils v0.0.0-20191114184206-e782cd3c129f
 k8s.io/utils/buffer
 k8s.io/utils/integer
 k8s.io/utils/trace

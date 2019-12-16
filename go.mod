@@ -13,18 +13,15 @@ require (
 	github.com/kubernetes-csi/csi-test v2.0.0+incompatible
 	github.com/kubernetes-csi/external-snapshotter v2.0.0-rc1.0.20191024235139-bc6e42db5bc6+incompatible
 	github.com/miekg/dns v1.1.8 // indirect
-	github.com/prometheus/client_model v0.0.0-20190129233127-fd36f4220a90 // indirect
-	github.com/prometheus/common v0.2.0 // indirect
-	github.com/prometheus/procfs v0.0.0-20190403104016-ea9eea638872 // indirect
-	github.com/spf13/pflag v1.0.3
+	github.com/spf13/pflag v1.0.5
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
 	google.golang.org/grpc v1.19.1
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/api v0.0.0-20191005115622-2e41325d9e4b
-	k8s.io/apimachinery v0.0.0-20191006235458-f9f2f3f8ab02
+	k8s.io/apimachinery v0.17.0
 	k8s.io/apiserver v0.0.0-20190918200908-1e17798da8c1
-	k8s.io/client-go v0.0.0-20190918200256-06eb1244587a
-	k8s.io/component-base v0.0.0-20190918200425-ed2f0867c778
+	k8s.io/client-go v0.17.0
+	k8s.io/component-base v0.17.0
 	k8s.io/csi-translation-lib v0.0.0-20191009030015-17db17aaadeb
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.14.0
@@ -49,7 +46,7 @@ replace k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.0.0-201909182029
 
 replace k8s.io/code-generator => k8s.io/code-generator v0.0.0-20190612205613-18da4a14b22b
 
-replace k8s.io/component-base => k8s.io/component-base v0.0.0-20190918200425-ed2f0867c778
+replace k8s.io/component-base => k8s.io/component-base v0.17.0
 
 replace k8s.io/cri-api => k8s.io/cri-api v0.0.0-20190817025403-3ae76f584e79
 
