@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,11 +36,12 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-test/driver"
+	"github.com/kubernetes-csi/external-provisioner/pkg/controller/metrics"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1"
 	"github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake"
 	"google.golang.org/grpc"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,6 +52,7 @@ import (
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 	utilfeaturetesting "k8s.io/component-base/featuregate/testing"
+	"k8s.io/component-base/metrics/testutil"
 	csitrans "k8s.io/csi-translation-lib"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 )
@@ -400,7 +403,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(nil, 5*time.Second, "test-provisioner", "test",
-		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil)
+		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, metrics.NewProvisionerMetricsManager())
 
 	// Requested PVC with requestedBytes storage
 	deletePolicy := v1.PersistentVolumeReclaimDelete
@@ -780,6 +783,7 @@ type provisioningTestcase struct {
 	expectErr         bool
 	expectState       controller.ProvisioningState
 	expectCreateVolDo interface{}
+	expectedMetrics   string
 }
 
 type pvSpec struct {
@@ -823,6 +827,10 @@ func TestProvision(t *testing.T) {
 				},
 			},
 			expectState: controller.ProvisioningFinished,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+	  `,
 		},
 		"multiple fsType provision": {
 			volOpts: controller.ProvisionOptions{
@@ -871,6 +879,10 @@ func TestProvision(t *testing.T) {
 				}
 			},
 			expectState: controller.ProvisioningFinished,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+	 `,
 		},
 		"provision with access mode multi node multi writer": {
 			volOpts: controller.ProvisionOptions{
@@ -923,6 +935,10 @@ func TestProvision(t *testing.T) {
 				}
 			},
 			expectState: controller.ProvisioningFinished,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+	`,
 		},
 		"provision with access mode multi node multi readonly": {
 			volOpts: controller.ProvisionOptions{
@@ -975,6 +991,10 @@ func TestProvision(t *testing.T) {
 				}
 			},
 			expectState: controller.ProvisioningFinished,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+	   `,
 		},
 		"provision with access mode single writer": {
 			volOpts: controller.ProvisionOptions{
@@ -1027,6 +1047,10 @@ func TestProvision(t *testing.T) {
 				}
 			},
 			expectState: controller.ProvisioningFinished,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+	 `,
 		},
 		"provision with multiple access modes": {
 			volOpts: controller.ProvisionOptions{
@@ -1085,6 +1109,10 @@ func TestProvision(t *testing.T) {
 				}
 			},
 			expectState: controller.ProvisioningFinished,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+	   `,
 		},
 		"provision with secrets": {
 			volOpts: controller.ProvisionOptions{
@@ -1128,6 +1156,10 @@ func TestProvision(t *testing.T) {
 				},
 			},
 			expectState: controller.ProvisioningFinished,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+	  `,
 		},
 		"provision with volume mode(Filesystem)": {
 			volOpts: controller.ProvisionOptions{
@@ -1155,6 +1187,10 @@ func TestProvision(t *testing.T) {
 				},
 			},
 			expectState: controller.ProvisioningFinished,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+	  `,
 		},
 		"provision with volume mode(Block)": {
 			volOpts: controller.ProvisionOptions{
@@ -1181,6 +1217,10 @@ func TestProvision(t *testing.T) {
 				},
 			},
 			expectState: controller.ProvisioningFinished,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+			`,
 		},
 		"fail to get secret reference": {
 			volOpts: controller.ProvisionOptions{
@@ -1235,6 +1275,10 @@ func TestProvision(t *testing.T) {
 			volWithLessCap: true,
 			expectErr:      true,
 			expectState:    controller.ProvisioningInBackground,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+	  `,
 		},
 		"provision with mount options": {
 			volOpts: controller.ProvisionOptions{
@@ -1296,6 +1340,10 @@ func TestProvision(t *testing.T) {
 				}
 			},
 			expectState: controller.ProvisioningFinished,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+	  `,
 		},
 		"provision with final error": {
 			volOpts: controller.ProvisionOptions{
@@ -1326,6 +1374,10 @@ func TestProvision(t *testing.T) {
 			},
 			expectErr:   true,
 			expectState: controller.ProvisioningFinished,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="Unauthenticated",operation_name="CreateVolume"} 1
+	 `,
 		},
 		"provision with transient error": {
 			volOpts: controller.ProvisionOptions{
@@ -1356,6 +1408,10 @@ func TestProvision(t *testing.T) {
 			},
 			expectErr:   true,
 			expectState: controller.ProvisioningInBackground,
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="DeadlineExceeded",operation_name="CreateVolume"} 1
+	  `,
 		},
 		"provision with size 0": {
 			volOpts: controller.ProvisionOptions{
@@ -1384,6 +1440,10 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
+			expectedMetrics: `# HELP csi_sidecar_operations_total [ALPHA] Container Storage Interface - Total count of operations with gRPC error code status
+			# TYPE csi_sidecar_operations_total counter
+			csi_sidecar_operations_total{driver_name="test-driver",grpc_status_code="OK",operation_name="CreateVolume"} 1
+	 `,
 		},
 	}
 
@@ -1461,8 +1521,9 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 	}
 
 	pluginCaps, controllerCaps := provisionCapabilities()
+	metricsManager := metrics.NewProvisionerMetricsManager()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, csitrans.New(), nil, nil)
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, csitrans.New(), nil, nil, metricsManager)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -1553,6 +1614,12 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 			}
 		}
 
+	}
+
+	// Verify metrics
+	if err := testutil.GatherAndCompare(
+		metricsManager.GetRegistry(), strings.NewReader(tc.expectedMetrics), "csi_external_provisioner_operations_total", "csi_sidecar_operations_total"); err != nil {
+		t.Errorf("TEST %v -- %v", k, err)
 	}
 }
 
@@ -2209,7 +2276,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 
 		pluginCaps, controllerCaps := provisionFromSnapshotCapabilities()
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-			client, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil)
+			client, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, metrics.NewProvisionerMetricsManager())
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -2383,7 +2450,7 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 			defer close(stopChan)
 
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), csiNodeLister, nodeLister)
+				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), csiNodeLister, nodeLister, metrics.NewProvisionerMetricsManager())
 
 			pv, err := csiProvisioner.Provision(controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{},
@@ -2438,7 +2505,7 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 	clientSet := fakeclientset.NewSimpleClientset()
 	pluginCaps, controllerCaps := provisionWithTopologyCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil)
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, metrics.NewProvisionerMetricsManager())
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -2618,7 +2685,7 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil)
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, metrics.NewProvisionerMetricsManager())
 
 	err = csiProvisioner.Delete(tc.persistentVolume)
 	if tc.expectErr && err == nil {
@@ -3274,7 +3341,7 @@ func TestProvisionFromPVC(t *testing.T) {
 		}
 
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-			nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil)
+			nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, metrics.NewProvisionerMetricsManager())
 
 		pv, err := csiProvisioner.Provision(tc.volOpts)
 		if tc.expectErr && err == nil {
@@ -3353,7 +3420,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			pluginCaps, controllerCaps := provisionCapabilities()
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps,
-				inTreePluginName, false, mockTranslator, nil, nil)
+				inTreePluginName, false, mockTranslator, nil, nil, metrics.NewProvisionerMetricsManager())
 
 			// Set up return values (AnyTimes to avoid overfitting on implementation)
 
@@ -3513,7 +3580,7 @@ func TestDeleteMigration(t *testing.T) {
 			pluginCaps, controllerCaps := provisionCapabilities()
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "",
-				false, mockTranslator, nil, nil)
+				false, mockTranslator, nil, nil, metrics.NewProvisionerMetricsManager())
 
 			// Set mock return values (AnyTimes to avoid overfitting on implementation details)
 			mockTranslator.EXPECT().IsPVMigratable(gomock.Any()).Return(tc.expectTranslation).AnyTimes()

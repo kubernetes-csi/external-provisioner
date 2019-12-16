@@ -21,6 +21,7 @@ import (
 	goflag "flag"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/deprecatedflags"
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
+	"github.com/kubernetes-csi/external-provisioner/pkg/controller/metrics"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 
@@ -43,9 +45,10 @@ import (
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
-	"k8s.io/client-go/listers/core/v1"
+	v1 "k8s.io/client-go/listers/core/v1"
 	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 	utilflag "k8s.io/component-base/cli/flag"
+	compbasemetrics "k8s.io/component-base/metrics"
 	csitrans "k8s.io/csi-translation-lib"
 )
 
@@ -67,6 +70,9 @@ var (
 	leaderElectionType      = flag.String("leader-election-type", "endpoints", "the type of leader election, options are 'endpoints' (default) or 'leases' (strongly recommended). The 'endpoints' option is deprecated in favor of 'leases'.")
 	leaderElectionNamespace = flag.String("leader-election-namespace", "", "Namespace where the leader election resource lives. Defaults to the pod namespace if not set.")
 	strictTopology          = flag.Bool("strict-topology", false, "Passes only selected node topology to CreateVolume Request, unlike default behavior of passing aggregated cluster topologies that match with topology keys of the selected node.")
+
+	metricsAddress = flag.String("metrics-address", "", "The TCP network address address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled.")
+	metricsPath    = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -194,6 +200,8 @@ func main() {
 		nodeLister = factory.Core().V1().Nodes().Lister()
 	}
 
+	metricsManager := metrics.NewProvisionerMetricsManager()
+
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
 	csiProvisioner := ctrl.NewCSIProvisioner(
@@ -211,7 +219,21 @@ func main() {
 		*strictTopology,
 		translator,
 		csiNodeLister,
-		nodeLister)
+		nodeLister,
+		metricsManager)
+
+	if *metricsAddress != "" {
+		http.Handle(*metricsPath, compbasemetrics.HandlerFor(
+			metricsManager.GetRegistry(),
+			compbasemetrics.HandlerOpts{
+				ErrorHandling: compbasemetrics.ContinueOnError}))
+		err = http.ListenAndServe(*metricsAddress, nil)
+		if err != nil {
+			klog.Fatalf("Failed to start prometheus metrics endpoint on specified address (%q) and path (%q): %s", *metricsAddress, *metricsPath, err)
+		}
+	} else {
+		klog.Warningf("metrics endpoint will not be started because `metrics-address` was not specified.")
+	}
 
 	provisionController = controller.NewProvisionController(
 		clientset,

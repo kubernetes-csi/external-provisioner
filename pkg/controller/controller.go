@@ -30,12 +30,13 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
+	"github.com/kubernetes-csi/external-provisioner/pkg/controller/metrics"
 	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/util"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -201,6 +202,7 @@ type csiProvisioner struct {
 	translator                            ProvisionerCSITranslator
 	csiNodeLister                         storagelisters.CSINodeLister
 	nodeLister                            corelisters.NodeLister
+	metricsManager                        metrics.ProvisionerMetricsManager
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -262,7 +264,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	strictTopology bool,
 	translator ProvisionerCSITranslator,
 	csiNodeLister storagelisters.CSINodeLister,
-	nodeLister corelisters.NodeLister) controller.Provisioner {
+	nodeLister corelisters.NodeLister,
+	metricsManager metrics.ProvisionerMetricsManager) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
@@ -282,6 +285,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		translator:                            translator,
 		csiNodeLister:                         csiNodeLister,
 		nodeLister:                            nodeLister,
+		metricsManager:                        metricsManager,
 	}
 	return provisioner
 }
@@ -563,7 +567,15 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
+	startTime := time.Now()
 	rep, err = p.csiClient.CreateVolume(ctx, &req)
+
+	p.metricsManager.RecordMetrics(
+		metrics.CSICreateVolumeOperationName, /* operationName */
+		p.driverName,                         /* driverName */
+		err,                                  /* operationErr */
+		time.Since(startTime),                /* operationDuration */
+	)
 
 	if err != nil {
 		if isFinalError(err) {
@@ -933,7 +945,16 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
 
+	startTime := time.Now()
+
 	_, err = p.csiClient.DeleteVolume(ctx, &req)
+
+	p.metricsManager.RecordMetrics(
+		metrics.CSIDeleteVolumeOperationName, /* operationName */
+		p.driverName,                         /* driverName */
+		err,                                  /* operationErr */
+		time.Since(startTime),                /* operationDuration */
+	)
 
 	return err
 }
