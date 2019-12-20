@@ -50,7 +50,8 @@ import (
 
 	"google.golang.org/grpc"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
+	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
+	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
 )
 
 //secretParamsMap provides a mapping of current as well as deprecated secret keys
@@ -201,7 +202,8 @@ type csiProvisioner struct {
 	supportsMigrationFromInTreePluginName string
 	strictTopology                        bool
 	translator                            ProvisionerCSITranslator
-	csiNodeLister                         storagelisters.CSINodeLister
+	scLister                              storagelistersv1.StorageClassLister
+	csiNodeLister                         storagelistersv1beta1.CSINodeLister
 	nodeLister                            corelisters.NodeLister
 }
 
@@ -263,7 +265,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	supportsMigrationFromInTreePluginName string,
 	strictTopology bool,
 	translator ProvisionerCSITranslator,
-	csiNodeLister storagelisters.CSINodeLister,
+	scLister storagelistersv1.StorageClassLister,
+	csiNodeLister storagelistersv1beta1.CSINodeLister,
 	nodeLister corelisters.NodeLister) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
@@ -282,6 +285,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		supportsMigrationFromInTreePluginName: supportsMigrationFromInTreePluginName,
 		strictTopology:                        strictTopology,
 		translator:                            translator,
+		scLister:                              scLister,
 		csiNodeLister:                         csiNodeLister,
 		nodeLister:                            nodeLister,
 	}
@@ -907,10 +911,11 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	req := csi.DeleteVolumeRequest{
 		VolumeId: volumeId,
 	}
+
 	// get secrets if StorageClass specifies it
-	storageClassName := volume.Spec.StorageClassName
+	storageClassName := util.GetPersistentVolumeClass(volume)
 	if len(storageClassName) != 0 {
-		if storageClass, err := p.client.StorageV1().StorageClasses().Get(storageClassName, metav1.GetOptions{}); err == nil {
+		if storageClass, err := p.scLister.Get(storageClassName); err == nil {
 			// Resolve provision secret credentials.
 			provisionerSecretRef, err := getSecretReference(provisionerSecretParams, storageClass.Parameters, volume.Name, &v1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
