@@ -31,6 +31,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
+	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
@@ -195,8 +196,8 @@ type csiProvisioner struct {
 	volumeNameUUIDLength                  int
 	config                                *rest.Config
 	driverName                            string
-	pluginCapabilities                    connection.PluginCapabilitySet
-	controllerCapabilities                connection.ControllerCapabilitySet
+	pluginCapabilities                    rpc.PluginCapabilitySet
+	controllerCapabilities                rpc.ControllerCapabilitySet
 	supportsMigrationFromInTreePluginName string
 	strictTopology                        bool
 	translator                            ProvisionerCSITranslator
@@ -220,19 +221,19 @@ func Connect(address string, metricsManager metrics.CSIMetricsManager) (*grpc.Cl
 }
 
 func Probe(conn *grpc.ClientConn, singleCallTimeout time.Duration) error {
-	return connection.ProbeForever(conn, singleCallTimeout)
+	return rpc.ProbeForever(conn, singleCallTimeout)
 }
 
 func GetDriverName(conn *grpc.ClientConn, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return connection.GetDriverName(ctx, conn)
+	return rpc.GetDriverName(ctx, conn)
 }
 
-func GetDriverCapabilities(conn *grpc.ClientConn, timeout time.Duration) (connection.PluginCapabilitySet, connection.ControllerCapabilitySet, error) {
+func GetDriverCapabilities(conn *grpc.ClientConn, timeout time.Duration) (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	pluginCapabilities, err := connection.GetPluginCapabilities(ctx, conn)
+	pluginCapabilities, err := rpc.GetPluginCapabilities(ctx, conn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -240,7 +241,7 @@ func GetDriverCapabilities(conn *grpc.ClientConn, timeout time.Duration) (connec
 	/* Each CSI operation gets its own timeout / context */
 	ctx, cancel = context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	controllerCapabilities, err := connection.GetControllerCapabilities(ctx, conn)
+	controllerCapabilities, err := rpc.GetControllerCapabilities(ctx, conn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -257,8 +258,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	grpcClient *grpc.ClientConn,
 	snapshotClient snapclientset.Interface,
 	driverName string,
-	pluginCapabilities connection.PluginCapabilitySet,
-	controllerCapabilities connection.ControllerCapabilitySet,
+	pluginCapabilities rpc.PluginCapabilitySet,
+	controllerCapabilities rpc.ControllerCapabilitySet,
 	supportsMigrationFromInTreePluginName string,
 	strictTopology bool,
 	translator ProvisionerCSITranslator,
@@ -730,7 +731,7 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.ProvisionOpti
 func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi.VolumeContentSource, error) {
 	sourcePVC, err := p.client.CoreV1().PersistentVolumeClaims(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting PVC %s from api server: %v", options.PVC.Spec.DataSource.Name, err)
+		return nil, fmt.Errorf("error getting PVC %s (namespace %q) from api server: %v", options.PVC.Spec.DataSource.Name, options.PVC.Namespace, err)
 	}
 	if string(sourcePVC.Status.Phase) != "Bound" {
 		return nil, fmt.Errorf("the PVC DataSource %s must have a status of Bound.  Got %v", options.PVC.Spec.DataSource.Name, sourcePVC.Status)
@@ -928,7 +929,7 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 			}
 			req.Secrets = credentials
 		} else {
-			klog.Warningf("failed to get storageclass: %s, proceeding to delete without secrets", storageClassName)
+			klog.Warningf("failed to get storageclass: %s, proceeding to delete without secrets. %v", storageClassName, err)
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
