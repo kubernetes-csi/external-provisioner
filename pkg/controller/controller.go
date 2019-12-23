@@ -30,12 +30,13 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
+	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/util"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -214,8 +215,8 @@ var (
 	provisionerIDKey = "storage.kubernetes.io/csiProvisionerIdentity"
 )
 
-func Connect(address string) (*grpc.ClientConn, error) {
-	return connection.Connect(address, connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
+func Connect(address string, metricsManager metrics.CSIMetricsManager) (*grpc.ClientConn, error) {
+	return connection.Connect(address, metricsManager, connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
 }
 
 func Probe(conn *grpc.ClientConn, singleCallTimeout time.Duration) error {
