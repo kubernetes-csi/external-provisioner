@@ -30,6 +30,7 @@ import (
 
 	"github.com/kubernetes-csi/csi-lib-utils/deprecatedflags"
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
+	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
@@ -43,7 +44,7 @@ import (
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
-	"k8s.io/client-go/listers/core/v1"
+	v1 "k8s.io/client-go/listers/core/v1"
 	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
 	utilflag "k8s.io/component-base/cli/flag"
 	csitrans "k8s.io/csi-translation-lib"
@@ -67,6 +68,9 @@ var (
 	leaderElectionType      = flag.String("leader-election-type", "endpoints", "the type of leader election, options are 'endpoints' (default) or 'leases' (strongly recommended). The 'endpoints' option is deprecated in favor of 'leases'.")
 	leaderElectionNamespace = flag.String("leader-election-namespace", "", "Namespace where the leader election resource lives. Defaults to the pod namespace if not set.")
 	strictTopology          = flag.Bool("strict-topology", false, "Passes only selected node topology to CreateVolume Request, unlike default behavior of passing aggregated cluster topologies that match with topology keys of the selected node.")
+
+	metricsAddress = flag.String("metrics-address", "", "The TCP network address address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled.")
+	metricsPath    = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -135,7 +139,9 @@ func main() {
 		klog.Fatalf("Error getting server version: %v", err)
 	}
 
-	grpcClient, err := ctrl.Connect(*csiEndpoint)
+	metricsManager := metrics.NewCSIMetricsManager("" /* driverName */)
+
+	grpcClient, err := ctrl.Connect(*csiEndpoint, metricsManager)
 	if err != nil {
 		klog.Error(err.Error())
 		os.Exit(1)
@@ -153,6 +159,8 @@ func main() {
 		klog.Fatalf("Error getting CSI driver name: %s", err)
 	}
 	klog.V(2).Infof("Detected CSI driver %s", provisionerName)
+	metricsManager.SetDriverName(provisionerName)
+	metricsManager.StartMetricsEndpoint(*metricsAddress, *metricsPath)
 
 	pluginCapabilities, controllerCapabilities, err := ctrl.GetDriverCapabilities(grpcClient, *operationTimeout)
 	if err != nil {

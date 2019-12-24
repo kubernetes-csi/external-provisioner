@@ -34,12 +34,14 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
+	"github.com/kubernetes-csi/csi-lib-utils/metrics"
+	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	"github.com/kubernetes-csi/csi-test/driver"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1"
 	"github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake"
 	"google.golang.org/grpc"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,7 +74,8 @@ type csiConnection struct {
 }
 
 func New(address string) (csiConnection, error) {
-	conn, err := connection.Connect(address)
+	metricsManager := metrics.NewCSIMetricsManager("fake.csi.driver.io" /* driverName */)
+	conn, err := connection.Connect(address, metricsManager)
 	if err != nil {
 		return csiConnection{}, err
 	}
@@ -437,36 +440,36 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	t.Logf("Provision encountered an error: %v, expected: create volume capacity less than requested capacity", err)
 }
 
-func provisionCapabilities() (connection.PluginCapabilitySet, connection.ControllerCapabilitySet) {
-	return connection.PluginCapabilitySet{
+func provisionCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
+	return rpc.PluginCapabilitySet{
 			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
-		}, connection.ControllerCapabilitySet{
+		}, rpc.ControllerCapabilitySet{
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
 		}
 }
 
-func provisionFromSnapshotCapabilities() (connection.PluginCapabilitySet, connection.ControllerCapabilitySet) {
-	return connection.PluginCapabilitySet{
+func provisionFromSnapshotCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
+	return rpc.PluginCapabilitySet{
 			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
-		}, connection.ControllerCapabilitySet{
+		}, rpc.ControllerCapabilitySet{
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:   true,
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: true,
 		}
 }
 
-func provisionWithTopologyCapabilities() (connection.PluginCapabilitySet, connection.ControllerCapabilitySet) {
-	return connection.PluginCapabilitySet{
+func provisionWithTopologyCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
+	return rpc.PluginCapabilitySet{
 			csi.PluginCapability_Service_CONTROLLER_SERVICE:               true,
 			csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS: true,
-		}, connection.ControllerCapabilitySet{
+		}, rpc.ControllerCapabilitySet{
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
 		}
 }
 
-func provisionFromPVCCapabilities() (connection.PluginCapabilitySet, connection.ControllerCapabilitySet) {
-	return connection.PluginCapabilitySet{
+func provisionFromPVCCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
+	return rpc.PluginCapabilitySet{
 			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
-		}, connection.ControllerCapabilitySet{
+		}, rpc.ControllerCapabilitySet{
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
 			csi.ControllerServiceCapability_RPC_CLONE_VOLUME:         true,
 		}
@@ -499,11 +502,11 @@ func createFakePVCWithVolumeMode(requestBytes int64, volumeMode v1.PersistentVol
 }
 
 // fakeClaim returns a valid PVC with the requested settings
-func fakeClaim(name, claimUID, capacity, boundToVolume string, phase v1.PersistentVolumeClaimPhase, class *string) *v1.PersistentVolumeClaim {
+func fakeClaim(name, namespace, claimUID, capacity, boundToVolume string, phase v1.PersistentVolumeClaimPhase, class *string) *v1.PersistentVolumeClaim {
 	claim := v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
-			Namespace:       "testns",
+			Namespace:       namespace,
 			UID:             types.UID(claimUID),
 			ResourceVersion: "1",
 			SelfLink:        "/api/v1/namespaces/testns/persistentvolumeclaims/" + name,
@@ -2367,8 +2370,8 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 			csiNodes := buildCSINodes(tc.topologyKeys)
 
 			var (
-				pluginCaps     connection.PluginCapabilitySet
-				controllerCaps connection.ControllerCapabilitySet
+				pluginCaps     rpc.PluginCapabilitySet
+				controllerCaps rpc.ControllerCapabilitySet
 			)
 
 			if tc.driverSupportsTopology {
@@ -2486,8 +2489,7 @@ func TestDelete(t *testing.T) {
 		"fail - nil volume.Spec.CSI": deleteTestcase{
 			persistentVolume: &v1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pv",
-					Namespace: "ns",
+					Name: "pv",
 					Annotations: map[string]string{
 						prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
 					},
@@ -2501,8 +2503,7 @@ func TestDelete(t *testing.T) {
 		"fail - pvc.annotations not supported": deleteTestcase{
 			persistentVolume: &v1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pv",
-					Namespace: "ns",
+					Name: "pv",
 				},
 				Spec: v1.PersistentVolumeSpec{
 					PersistentVolumeSource: v1.PersistentVolumeSource{
@@ -2511,16 +2512,14 @@ func TestDelete(t *testing.T) {
 						},
 					},
 					ClaimRef: &v1.ObjectReference{
-						Name:      "sc-name",
-						Namespace: "ns",
+						Name: "sc-name",
 					},
 					StorageClassName: "sc-name",
 				},
 			},
 			storageClass: &storagev1.StorageClass{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "sc-name",
-					Namespace: "ns",
+					Name: "sc-name",
 				},
 				Parameters: map[string]string{
 					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
@@ -2531,8 +2530,7 @@ func TestDelete(t *testing.T) {
 		"simple - valid case": deleteTestcase{
 			persistentVolume: &v1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pv",
-					Namespace: "ns",
+					Name: "pv",
 				},
 				Spec: v1.PersistentVolumeSpec{
 					PersistentVolumeSource: v1.PersistentVolumeSource{
@@ -2544,8 +2542,7 @@ func TestDelete(t *testing.T) {
 			},
 			storageClass: &storagev1.StorageClass{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "sc-name",
-					Namespace: "ns",
+					Name: "sc-name",
 				},
 				Parameters: map[string]string{
 					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
@@ -2557,8 +2554,7 @@ func TestDelete(t *testing.T) {
 		"simple - valid case with ClaimRef set": deleteTestcase{
 			persistentVolume: &v1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pv",
-					Namespace: "ns",
+					Name: "pv",
 				},
 				Spec: v1.PersistentVolumeSpec{
 					PersistentVolumeSource: v1.PersistentVolumeSource{
@@ -2567,15 +2563,13 @@ func TestDelete(t *testing.T) {
 						},
 					},
 					ClaimRef: &v1.ObjectReference{
-						Name:      "pvc-name",
-						Namespace: "ns",
+						Name: "pvc-name",
 					},
 				},
 			},
 			storageClass: &storagev1.StorageClass{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "sc-name",
-					Namespace: "ns",
+					Name: "sc-name",
 				},
 				Parameters: map[string]string{
 					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
@@ -2635,6 +2629,7 @@ func TestProvisionFromPVC(t *testing.T) {
 	fakeSc1 := "fake-sc-1"
 	fakeSc2 := "fake-sc-2"
 	srcName := "fake-pvc"
+	srcNamespace := "fake-pvc-namespace"
 	invalidPVC := "invalid-pv"
 	pvName := "test-testi"
 	unboundPVName := "unbound-pv"
@@ -2674,6 +2669,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: driverNameAnnotation,
 					},
@@ -2723,6 +2720,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: map[string]string{annStorageProvisioner: driverName},
 					},
@@ -2758,6 +2757,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: map[string]string{annStorageProvisioner: driverName},
 					},
@@ -2793,6 +2794,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: map[string]string{annStorageProvisioner: driverName},
 					},
@@ -2829,6 +2832,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: driverNameAnnotation,
 					},
@@ -2865,6 +2870,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: driverNameAnnotation,
 					},
@@ -2900,6 +2907,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: driverNameAnnotation,
 					},
@@ -2935,6 +2944,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: driverNameAnnotation,
 					},
@@ -2969,6 +2980,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: driverNameAnnotation,
 					},
@@ -3004,6 +3017,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: driverNameAnnotation,
 					},
@@ -3039,6 +3054,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: driverNameAnnotation,
 					},
@@ -3074,6 +3091,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: driverNameAnnotation,
 					},
@@ -3109,6 +3128,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: driverNameAnnotation,
 					},
@@ -3144,6 +3165,8 @@ func TestProvisionFromPVC(t *testing.T) {
 				PVName: "new-pv-name",
 				PVC: &v1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
+						Name:        "my-pvc",
+						Namespace:   srcNamespace,
 						UID:         "testid",
 						Annotations: driverNameAnnotation,
 					},
@@ -3189,6 +3212,23 @@ func TestProvisionFromPVC(t *testing.T) {
 				VolumeId:      "test-volume-id",
 			},
 		}
+		if tc.volOpts.PVC.Spec.DataSource != nil {
+
+			switch tc.volOpts.PVC.Spec.DataSource.Kind {
+			case snapshotKind:
+				out.Volume.ContentSource = &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{
+							SnapshotId: "fake-snapshot-id",
+						}}}
+			case pvcKind:
+				out.Volume.ContentSource = &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Volume{
+						Volume: &csi.VolumeContentSource_VolumeSource{
+							VolumeId: "fake-volume-id",
+						}}}
+			}
+		}
 
 		clientSet = fakeclientset.NewSimpleClientset()
 
@@ -3209,7 +3249,7 @@ func TestProvisionFromPVC(t *testing.T) {
 				},
 				ClaimRef: &v1.ObjectReference{
 					Kind:      "PersistentVolumeClaim",
-					Namespace: "testns",
+					Namespace: srcNamespace,
 					Name:      srcName,
 					UID:       types.UID("fake-claim-uid"),
 				},
@@ -3238,11 +3278,11 @@ func TestProvisionFromPVC(t *testing.T) {
 		pvBoundToAnotherPVCName.Spec.ClaimRef.Name = "another-claim-name"
 
 		// Create a fake claim as our PVC DataSource
-		claim := fakeClaim(srcName, "fake-claim-uid", "1Gi", tc.clonePVName, v1.ClaimBound, &fakeSc1)
+		claim := fakeClaim(srcName, srcNamespace, "fake-claim-uid", "1Gi", tc.clonePVName, v1.ClaimBound, &fakeSc1)
 		// Create a fake claim with invalid PV
-		invalidClaim := fakeClaim(invalidPVC, "fake-claim-uid", "1Gi", "pv-not-present", v1.ClaimBound, &fakeSc1)
+		invalidClaim := fakeClaim(invalidPVC, srcNamespace, "fake-claim-uid", "1Gi", "pv-not-present", v1.ClaimBound, &fakeSc1)
 		/// Create a fake claim as source PVC storageclass nil
-		scNilClaim := fakeClaim("pvc-sc-nil", "fake-claim-uid", "1Gi", pvName, v1.ClaimBound, nil)
+		scNilClaim := fakeClaim("pvc-sc-nil", srcNamespace, "fake-claim-uid", "1Gi", pvName, v1.ClaimBound, nil)
 		clientSet = fakeclientset.NewSimpleClientset(claim, scNilClaim, pv, invalidClaim, unboundPV, anotherDriverPV, pvBoundToAnotherPVCUID, pvBoundToAnotherPVCNamespace, pvBoundToAnotherPVCName)
 
 		pluginCaps, controllerCaps := provisionFromPVCCapabilities()

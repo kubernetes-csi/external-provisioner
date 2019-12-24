@@ -55,11 +55,15 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 * `--timeout <duration>`: Timeout of all calls to CSI driver. It should be set to value that accommodates majority of `ControllerCreateVolume` and `ControllerDeleteVolume` calls. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details. 15 seconds is used by default.
 
-* `--retry-interval-start <duration>` - Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to `--retry-interval-max` and then it stops increasing. Default value is 1 second. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details.
+* `--retry-interval-start <duration>`: Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to `--retry-interval-max` and then it stops increasing. Default value is 1 second. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details.
 
-* `--retry-interval-max <duration>` - Maximum retry interval of failed provisioning or deletion. Default value is 5 minutes. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details.
+* `--retry-interval-max <duration>`: Maximum retry interval of failed provisioning or deletion. Default value is 5 minutes. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details.
 
 * `--worker-threads <num>`: Number of simultaneously running `ControllerCreateVolume` and `ControllerDeleteVolume` operations. Default value is `100`.
+
+* `--metrics-address`: The TCP network address address where the prometheus metrics endpoint will run (example: `:8080` which corresponds to port 8080 on local host). The default is empty string, which means metrics endpoint is disabled.
+
+* `--metrics-path`: The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.
 
 #### Other recognized arguments
 * `--feature-gates <gates>`: A set of comma separated `<feature-name>=<true|false>` pairs that describe feature gates for alpha/experimental features. See [list of features](#feature-status) or `--help` output for list of recognized features. Example: `--feature-gates Topology=true` to enable Topology feature that's disabled by default.

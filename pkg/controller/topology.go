@@ -25,9 +25,9 @@ import (
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-csi/csi-lib-utils/connection"
+	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	storage "k8s.io/api/storage/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -76,7 +76,7 @@ func GenerateVolumeNodeAffinity(accessibleTopology []*csi.Topology) *v1.VolumeNo
 }
 
 // SupportsTopology returns whether topology is supported both for plugin and external provisioner
-func SupportsTopology(pluginCapabilities connection.PluginCapabilitySet) bool {
+func SupportsTopology(pluginCapabilities rpc.PluginCapabilitySet) bool {
 	return pluginCapabilities[csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS] &&
 		utilfeature.DefaultFeatureGate.Enabled(features.Topology)
 }
