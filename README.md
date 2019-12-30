@@ -13,7 +13,7 @@ This information reflects the head of this branch.
 
 | Compatible with CSI Version                                                                | Container Image                | Recommended K8s Version |
 | ------------------------------------------------------------------------------------------ | -------------------------------| --------------- |
-| [CSI Spec v1.0.0](https://github.com/container-storage-interface/spec/releases/tag/v1.0.0) | quay.io/k8scsi/csi-provisioner | 1.16            |
+| [CSI Spec v1.0.0](https://github.com/container-storage-interface/spec/releases/tag/v1.0.0) | quay.io/k8scsi/csi-provisioner | 1.17            |
 
 ## Feature status
 
@@ -25,8 +25,8 @@ Following table reflects the head of this branch.
 | -------------- | ------- | ------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
 | Topology       | Beta    | Off     | [Topology aware dynamic provisioning](https://kubernetes-csi.github.io/docs/topology.html)  (requires kubelet 1.14 on nodes). | Yes |
 | Cloning        | Beta    | On      | [Cloning](https://kubernetes-csi.github.io/docs/volume-cloning.html). | No |
-| Snapshots      | Alpha   | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html). | No |
-| CSIMigration   | Alpha   | On      | [Migrating in-tree volume plugins to CSI](https://kubernetes.io/docs/concepts/storage/volumes/#csi-migration). | No |
+| Snapshots      | Beta    | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html). | No |
+| CSIMigration   | Beta    | On      | [Migrating in-tree volume plugins to CSI](https://kubernetes.io/docs/concepts/storage/volumes/#csi-migration). | No |
 
 All other external-provisioner features and the external-provisioner itself is considered GA and fully supported.
 
