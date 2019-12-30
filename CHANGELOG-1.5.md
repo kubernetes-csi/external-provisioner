@@ -2,12 +2,12 @@
 
 ## Breaking Changes
 
-- Updates VolumeSnapshot CRD to v1beta1. v1alpha1 is no longer upported. ([#335](https://github.com/kubernetes-csi/external-provisioner/pull/335), [@xing-yang](https://github.com/xing-yang))
+- Updates VolumeSnapshot CRD to v1beta1. v1alpha1 is no longer supported. ([#335](https://github.com/kubernetes-csi/external-provisioner/pull/335), [@xing-yang](https://github.com/xing-yang))
 
 ## New Features
 
 - Add prometheus metrics to CSI external-provisioner under the /metrics endpoint. This can be enabled via the "--metrics-address" and "--metrics-path" options. ([#388](https://github.com/kubernetes-csi/external-provisioner/pull/388), [@saad-ali](https://github.com/saad-ali))
-- Updates VolumeSnapshot CRD to v1beta1. v1alpha1 is no longer upported. ([#335](https://github.com/kubernetes-csi/external-provisioner/pull/335), [@xing-yang](https://github.com/xing-yang))
+- Updates VolumeSnapshot CRD to v1beta1. v1alpha1 is no longer supported. ([#335](https://github.com/kubernetes-csi/external-provisioner/pull/335), [@xing-yang](https://github.com/xing-yang))
 
 ## Other Notable Changes
 
