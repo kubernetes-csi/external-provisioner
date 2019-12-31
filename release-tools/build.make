@@ -63,6 +63,7 @@ endif
 ARCH := $(if $(GOARCH),$(GOARCH),$(shell go env GOARCH))
 
 # Specific BASE_IMAGE for different arch, default BASE_IMAGE gcr.io/distroless is for x86, discolix/static is for arm.
+BASE_IMAGE=gcr.io/distroless/static:latest
 ifeq (${ARCH}, arm64)
   BASE_IMAGE=discolix/static:latest
 endif
