@@ -61,7 +61,7 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 * `--worker-threads <num>`: Number of simultaneously running `ControllerCreateVolume` and `ControllerDeleteVolume` operations. Default value is `100`.
 
-* `--metrics-address`: The TCP network address address where the prometheus metrics endpoint will run (example: `:8080` which corresponds to port 8080 on local host). The default is empty string, which means metrics endpoint is disabled.
+* `--metrics-address`: The TCP network address where the prometheus metrics endpoint will run (example: `:8080` which corresponds to port 8080 on local host). The default is empty string, which means metrics endpoint is disabled.
 
 * `--metrics-path`: The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.
 
