@@ -45,7 +45,8 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	v1 "k8s.io/client-go/listers/core/v1"
-	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
+	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
+	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
 	utilflag "k8s.io/component-base/cli/flag"
 	csitrans "k8s.io/csi-translation-lib"
 )
@@ -192,12 +193,14 @@ func main() {
 		provisionerOptions = append(provisionerOptions, controller.AdditionalProvisionerNames([]string{supportsMigrationFromInTreePluginName}))
 	}
 
-	var csiNodeLister storagelisters.CSINodeLister
+	var scLister storagelistersv1.StorageClassLister
+	var csiNodeLister storagelistersv1beta1.CSINodeLister
 	var nodeLister v1.NodeLister
 	var factory informers.SharedInformerFactory
 	if ctrl.SupportsTopology(pluginCapabilities) {
 		// Create informer to prevent hit the API server for all resource request
 		factory = informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
+		scLister = factory.Storage().V1().StorageClasses().Lister()
 		csiNodeLister = factory.Storage().V1beta1().CSINodes().Lister()
 		nodeLister = factory.Core().V1().Nodes().Lister()
 	}
@@ -218,6 +221,7 @@ func main() {
 		supportsMigrationFromInTreePluginName,
 		*strictTopology,
 		translator,
+		scLister,
 		csiNodeLister,
 		nodeLister)
 
