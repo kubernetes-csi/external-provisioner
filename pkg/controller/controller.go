@@ -72,6 +72,9 @@ const (
 
 	prefixedFsTypeKey = csiParameterPrefix + "fstype"
 
+	prefixedDefaultSecretNameKey      = csiParameterPrefix + "secret-name"
+	prefixedDefaultSecretNamespaceKey = csiParameterPrefix + "secret-namespace"
+
 	prefixedProvisionerSecretNameKey      = csiParameterPrefix + "provisioner-secret-name"
 	prefixedProvisionerSecretNamespaceKey = csiParameterPrefix + "provisioner-secret-namespace"
 
@@ -128,6 +131,12 @@ const (
 )
 
 var (
+	defaultSecretParams = secretParamsMap{
+		name:               "Default",
+		secretNameKey:      prefixedDefaultSecretNameKey,
+		secretNamespaceKey: prefixedDefaultSecretNamespaceKey,
+	}
+
 	provisionerSecretParams = secretParamsMap{
 		name:                         "Provisioner",
 		deprecatedSecretNameKey:      provisionerSecretNameKey,
@@ -702,6 +711,8 @@ func removePrefixedParameters(param map[string]string) (map[string]string, error
 			case prefixedNodePublishSecretNamespaceKey:
 			case prefixedControllerExpandSecretNameKey:
 			case prefixedControllerExpandSecretNamespaceKey:
+			case prefixedDefaultSecretNameKey:
+			case prefixedDefaultSecretNamespaceKey:
 			default:
 				return map[string]string{}, fmt.Errorf("found unknown parameter key \"%s\" with reserved namespace %s", k, csiParameterPrefix)
 			}
@@ -1042,6 +1053,15 @@ func getSecretReference(secretParams secretParamsMap, storageClassParams map[str
 	if err != nil {
 		return nil, fmt.Errorf("failed to get name and namespace template from params: %v", err)
 	}
+
+	// if didn't find secrets for specific call, try to check default values
+	if nameTemplate == "" && namespaceTemplate == "" {
+		nameTemplate, namespaceTemplate, err = verifyAndGetSecretNameAndNamespaceTemplate(defaultSecretParams, storageClassParams)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get default name and namespace template from params: %v", err)
+		}
+	}
+
 	if nameTemplate == "" && namespaceTemplate == "" {
 		return nil, nil
 	}

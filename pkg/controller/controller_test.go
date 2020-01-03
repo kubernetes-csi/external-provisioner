@@ -213,6 +213,8 @@ func TestStripPrefixedCSIParams(t *testing.T) {
 				prefixedNodePublishSecretNamespaceKey:       "csiBar",
 				prefixedControllerExpandSecretNameKey:       "csiBar",
 				prefixedControllerExpandSecretNamespaceKey:  "csiBar",
+				prefixedDefaultSecretNameKey:                "csiBar",
+				prefixedDefaultSecretNamespaceKey:           "csiBar",
 			},
 			expectedParams: map[string]string{},
 		},
@@ -475,13 +477,17 @@ func provisionFromPVCCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapa
 		}
 }
 
-// Minimal PVC required for tests to function
-func createFakePVC(requestBytes int64) *v1.PersistentVolumeClaim {
+func createFakeNamedPVC(requestBytes int64, name string, userAnnotations map[string]string) *v1.PersistentVolumeClaim {
+	annotations := map[string]string{annStorageProvisioner: driverName}
+	for k, v := range userAnnotations {
+		annotations[k] = v
+	}
+
 	return &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:         "testid",
-			Name:        "fake-pvc",
-			Annotations: map[string]string{annStorageProvisioner: driverName},
+			Name:        name,
+			Annotations: annotations,
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
 			Selector: nil, // Provisioner doesn't support selector
@@ -492,6 +498,11 @@ func createFakePVC(requestBytes int64) *v1.PersistentVolumeClaim {
 			},
 		},
 	}
+}
+
+// Minimal PVC required for tests to function
+func createFakePVC(requestBytes int64) *v1.PersistentVolumeClaim {
+	return createFakeNamedPVC(requestBytes, "fake-pvc", nil)
 }
 
 // createFakePVCWithVolumeMode returns PVC with VolumeMode
@@ -778,7 +789,7 @@ type provisioningTestcase struct {
 	volWithLessCap    bool
 	volWithZeroCap    bool
 	expectedPVSpec    *pvSpec
-	withSecretRefs    bool
+	clientSetObjects  []runtime.Object
 	createVolumeError error
 	expectErr         bool
 	expectState       controller.ProvisioningState
@@ -793,6 +804,47 @@ type pvSpec struct {
 	VolumeMode    *v1.PersistentVolumeMode
 	Capacity      v1.ResourceList
 	CSIPVS        *v1.CSIPersistentVolumeSource
+}
+
+const defaultSecretNsName = "default"
+
+func getDefaultStorageClassSecretParameters() map[string]string {
+	return map[string]string{
+		controllerPublishSecretNameKey:             "ctrlpublishsecret",
+		controllerPublishSecretNamespaceKey:        defaultSecretNsName,
+		nodeStageSecretNameKey:                     "nodestagesecret",
+		nodeStageSecretNamespaceKey:                defaultSecretNsName,
+		nodePublishSecretNameKey:                   "nodepublishsecret",
+		nodePublishSecretNamespaceKey:              defaultSecretNsName,
+		prefixedControllerExpandSecretNameKey:      "controllerexpandsecret",
+		prefixedControllerExpandSecretNamespaceKey: defaultSecretNsName,
+	}
+}
+
+func getDefaultSecretObjects() []runtime.Object {
+	return []runtime.Object{
+		&v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ctrlpublishsecret",
+				Namespace: defaultSecretNsName,
+			},
+		}, &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nodestagesecret",
+				Namespace: defaultSecretNsName,
+			},
+		}, &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nodepublishsecret",
+				Namespace: defaultSecretNsName,
+			},
+		}, &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "controllerexpandsecret",
+				Namespace: defaultSecretNsName,
+			},
+		},
+	}
 }
 
 func TestProvision(t *testing.T) {
@@ -1093,12 +1145,12 @@ func TestProvision(t *testing.T) {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
+					Parameters:    getDefaultStorageClassSecretParameters(),
 				},
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			withSecretRefs: true,
+			clientSetObjects: getDefaultSecretObjects(),
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
@@ -1127,6 +1179,108 @@ func TestProvision(t *testing.T) {
 					ControllerExpandSecretRef: &v1.SecretReference{
 						Name:      "controllerexpandsecret",
 						Namespace: "default",
+					},
+				},
+			},
+			expectState: controller.ProvisioningFinished,
+		},
+		"provision with default secrets": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						prefixedDefaultSecretNameKey:      "default-secret",
+						prefixedDefaultSecretNamespaceKey: "default-ns",
+					},
+				},
+				PVName: "test-name",
+				PVC:    createFakePVC(requestedBytes),
+			},
+			clientSetObjects: []runtime.Object{&v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "default-secret",
+					Namespace: "default-ns",
+				},
+			}},
+			expectedPVSpec: &pvSpec{
+				Name: "test-testi",
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+					ControllerPublishSecretRef: &v1.SecretReference{
+						Name:      "default-secret",
+						Namespace: "default-ns",
+					},
+					NodeStageSecretRef: &v1.SecretReference{
+						Name:      "default-secret",
+						Namespace: "default-ns",
+					},
+					NodePublishSecretRef: &v1.SecretReference{
+						Name:      "default-secret",
+						Namespace: "default-ns",
+					},
+					ControllerExpandSecretRef: &v1.SecretReference{
+						Name:      "default-secret",
+						Namespace: "default-ns",
+					},
+				},
+			},
+			expectState: controller.ProvisioningFinished,
+		},
+		"provision with default secrets with template": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						prefixedDefaultSecretNameKey:      "${pvc.name}",
+						prefixedDefaultSecretNamespaceKey: "default-ns",
+					},
+				},
+				PVName: "test-name",
+				PVC:    createFakeNamedPVC(requestedBytes, "my-pvc", nil),
+			},
+			clientSetObjects: []runtime.Object{&v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "my-pvc",
+					Namespace: "default-ns",
+				},
+			}},
+			expectedPVSpec: &pvSpec{
+				Name: "test-testi",
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+				},
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+					ControllerPublishSecretRef: &v1.SecretReference{
+						Name:      "my-pvc",
+						Namespace: "default-ns",
+					},
+					NodeStageSecretRef: &v1.SecretReference{
+						Name:      "my-pvc",
+						Namespace: "default-ns",
+					},
+					NodePublishSecretRef: &v1.SecretReference{
+						Name:      "my-pvc",
+						Namespace: "default-ns",
+					},
+					ControllerExpandSecretRef: &v1.SecretReference{
+						Name:      "my-pvc",
+						Namespace: "default-ns",
 					},
 				},
 			},
@@ -1226,6 +1380,32 @@ func TestProvision(t *testing.T) {
 			getCredentialsErr: true,
 			expectErr:         true,
 			expectState:       controller.ProvisioningNoChange,
+		},
+		"fail to get secret reference for invalid default secret parameter template": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						prefixedDefaultSecretNameKey:      "default-${pvc.annotations['team.example.com/key']}",
+						prefixedDefaultSecretNamespaceKey: "default-ns",
+					},
+				},
+				PVName: "test-name",
+				PVC: createFakeNamedPVC(
+					requestedBytes,
+					"fake-pvc",
+					map[string]string{"team.example.com/key": "secret-from-annotation"},
+				),
+			},
+			clientSetObjects: []runtime.Object{&v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "default-secret-from-annotation",
+					Namespace: "default-ns",
+				},
+			}},
+			getSecretRefErr: true,
+			expectErr:       true,
+			expectState:     controller.ProvisioningNoChange,
 		},
 		"fail vol with less capacity": {
 			volOpts: controller.ProvisionOptions{
@@ -1435,33 +1615,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 	defer mockController.Finish()
 	defer driver.Stop()
 
-	var clientSet kubernetes.Interface
-
-	if tc.withSecretRefs {
-		clientSet = fakeclientset.NewSimpleClientset(&v1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "ctrlpublishsecret",
-				Namespace: "default",
-			},
-		}, &v1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "nodestagesecret",
-				Namespace: "default",
-			},
-		}, &v1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "nodepublishsecret",
-				Namespace: "default",
-			},
-		}, &v1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "controllerexpandsecret",
-				Namespace: "default",
-			},
-		})
-	} else {
-		clientSet = fakeclientset.NewSimpleClientset()
-	}
+	clientSet := fakeclientset.NewSimpleClientset(tc.clientSetObjects...)
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
@@ -1472,17 +1626,6 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 			CapacityBytes: requestedBytes,
 			VolumeId:      "test-volume-id",
 		},
-	}
-
-	if tc.withSecretRefs {
-		tc.volOpts.StorageClass.Parameters[controllerPublishSecretNameKey] = "ctrlpublishsecret"
-		tc.volOpts.StorageClass.Parameters[controllerPublishSecretNamespaceKey] = "default"
-		tc.volOpts.StorageClass.Parameters[nodeStageSecretNameKey] = "nodestagesecret"
-		tc.volOpts.StorageClass.Parameters[nodeStageSecretNamespaceKey] = "default"
-		tc.volOpts.StorageClass.Parameters[nodePublishSecretNameKey] = "nodepublishsecret"
-		tc.volOpts.StorageClass.Parameters[nodePublishSecretNamespaceKey] = "default"
-		tc.volOpts.StorageClass.Parameters[prefixedControllerExpandSecretNameKey] = "controllerexpandsecret"
-		tc.volOpts.StorageClass.Parameters[prefixedControllerExpandSecretNamespaceKey] = "default"
 	}
 
 	if tc.notNilSelector {
@@ -2482,11 +2625,11 @@ type deleteTestcase struct {
 // TestDelete is a test of the delete operation
 func TestDelete(t *testing.T) {
 	tt := map[string]deleteTestcase{
-		"fail - nil PV": deleteTestcase{
+		"fail - nil PV": {
 			persistentVolume: nil,
 			expectErr:        true,
 		},
-		"fail - nil volume.Spec.CSI": deleteTestcase{
+		"fail - nil volume.Spec.CSI": {
 			persistentVolume: &v1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv",
@@ -2500,7 +2643,7 @@ func TestDelete(t *testing.T) {
 			},
 			expectErr: true,
 		},
-		"fail - pvc.annotations not supported": deleteTestcase{
+		"fail - pvc.annotations not supported for Create/Delete Volume Secret": {
 			persistentVolume: &v1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv",
@@ -2527,7 +2670,7 @@ func TestDelete(t *testing.T) {
 			},
 			expectErr: true,
 		},
-		"simple - valid case": deleteTestcase{
+		"simple - valid case": {
 			persistentVolume: &v1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv",
@@ -2551,7 +2694,7 @@ func TestDelete(t *testing.T) {
 			expectErr:  false,
 			mockDelete: true,
 		},
-		"simple - valid case with ClaimRef set": deleteTestcase{
+		"simple - valid case with ClaimRef set": {
 			persistentVolume: &v1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv",
