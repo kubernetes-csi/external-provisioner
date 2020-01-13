@@ -65,9 +65,11 @@ ARCH := $(if $(GOARCH),$(GOARCH),$(shell go env GOARCH))
 # Specific packages can be excluded from each of the tests below by setting the *_FILTER_CMD variables
 # to something like "| grep -v 'github.com/kubernetes-csi/project/pkg/foobar'". See usage below.
 
+SHELL=/bin/bash
+
 build-%: check-go-version-go
 	mkdir -p bin
-	CGO_ENABLED=0 GOOS=linux go build $(GOFLAGS_VENDOR) -a -ldflags '-X main.version=$(REV) -extldflags "-static"' -o ./bin/$* ./cmd/$*
+	time env CGO_ENABLED=0 GOOS=linux go build $(GOFLAGS_VENDOR) -a -ldflags '-X main.version=$(REV) -extldflags "-static"' -o ./bin/$* ./cmd/$*
 	if [ "$$ARCH" = "amd64" ]; then \
 		CGO_ENABLED=0 GOOS=windows go build $(GOFLAGS_VENDOR) -a -ldflags '-X main.version=$(REV) -extldflags "-static"' -o ./bin/$*.exe ./cmd/$* ; \
 	fi
@@ -100,7 +102,7 @@ push: $(CMDS:%=push-%)
 clean:
 	-rm -rf bin
 
-test: check-go-version-go
+test: check-go-version-go build
 
 .PHONY: test-go
 test: test-go
