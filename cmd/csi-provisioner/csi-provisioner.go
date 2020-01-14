@@ -45,7 +45,6 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	v1 "k8s.io/client-go/listers/core/v1"
-	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
 	utilflag "k8s.io/component-base/cli/flag"
 	csitrans "k8s.io/csi-translation-lib"
@@ -193,14 +192,13 @@ func main() {
 		provisionerOptions = append(provisionerOptions, controller.AdditionalProvisionerNames([]string{supportsMigrationFromInTreePluginName}))
 	}
 
-	var scLister storagelistersv1.StorageClassLister
+	// Create informer to prevent hit the API server for all resource request
+	factory := informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
+	scLister := factory.Storage().V1().StorageClasses().Lister()
+
 	var csiNodeLister storagelistersv1beta1.CSINodeLister
 	var nodeLister v1.NodeLister
-	var factory informers.SharedInformerFactory
 	if ctrl.SupportsTopology(pluginCapabilities) {
-		// Create informer to prevent hit the API server for all resource request
-		factory = informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
-		scLister = factory.Storage().V1().StorageClasses().Lister()
 		csiNodeLister = factory.Storage().V1beta1().CSINodes().Lister()
 		nodeLister = factory.Core().V1().Nodes().Lister()
 	}
@@ -234,14 +232,12 @@ func main() {
 	)
 
 	run := func(context.Context) {
-		if factory != nil {
-			stopCh := context.Background().Done()
-			factory.Start(stopCh)
-			cacheSyncResult := factory.WaitForCacheSync(stopCh)
-			for _, v := range cacheSyncResult {
-				if !v {
-					klog.Fatalf("Failed to sync Informers!")
-				}
+		stopCh := context.Background().Done()
+		factory.Start(stopCh)
+		cacheSyncResult := factory.WaitForCacheSync(stopCh)
+		for _, v := range cacheSyncResult {
+			if !v {
+				klog.Fatalf("Failed to sync Informers!")
 			}
 		}
 
