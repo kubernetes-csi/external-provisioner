@@ -104,6 +104,11 @@ const (
 	nodePublishSecretNameKey      = "csiNodePublishSecretName"
 	nodePublishSecretNamespaceKey = "csiNodePublishSecretNamespace"
 
+	// PV and PVC metadata, used for sending to drivers in the  create requests, added as parameters, optional.
+	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
+	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
+	pvNameKey       = "csi.storage.k8s.io/pv/name"
+
 	// Defines parameters for ExponentialBackoff used for executing
 	// CSI CreateVolume API call, it gives approx 4 minutes for the CSI
 	// driver to complete a volume creation.
@@ -214,6 +219,7 @@ type csiProvisioner struct {
 	scLister                              storagelistersv1.StorageClassLister
 	csiNodeLister                         storagelistersv1beta1.CSINodeLister
 	nodeLister                            corelisters.NodeLister
+	extraCreateMetadata                   bool
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -276,7 +282,9 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	translator ProvisionerCSITranslator,
 	scLister storagelistersv1.StorageClassLister,
 	csiNodeLister storagelistersv1beta1.CSINodeLister,
-	nodeLister corelisters.NodeLister) controller.Provisioner {
+	nodeLister corelisters.NodeLister,
+	extraCreateMetadata bool,
+) controller.Provisioner {
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
@@ -297,6 +305,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		scLister:                              scLister,
 		csiNodeLister:                         csiNodeLister,
 		nodeLister:                            nodeLister,
+		extraCreateMetadata:                   extraCreateMetadata,
 	}
 	return provisioner
 }
@@ -574,6 +583,13 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 	req.Parameters, err = removePrefixedParameters(options.StorageClass.Parameters)
 	if err != nil {
 		return nil, controller.ProvisioningFinished, fmt.Errorf("failed to strip CSI Parameters of prefixed keys: %v", err)
+	}
+
+	if p.extraCreateMetadata {
+		// add pvc and pv metadata to request for use by the plugin
+		req.Parameters[pvcNameKey] = options.PVC.GetName()
+		req.Parameters[pvcNamespaceKey] = options.PVC.GetNamespace()
+		req.Parameters[pvNameKey] = pvName
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
