@@ -64,8 +64,8 @@ var (
 	operationTimeout     = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for creation or deletion of a volume")
 	_                    = deprecatedflags.Add("provisioner")
 
-	enableLeaderElection    = flag.Bool("enable-leader-election", false, "Enables leader election. If leader election is enabled, additional RBAC rules are required. Please refer to the Kubernetes CSI documentation for instructions on setting up these RBAC rules.")
-	leaderElectionType      = flag.String("leader-election-type", "endpoints", "the type of leader election, options are 'endpoints' (default) or 'leases' (strongly recommended). The 'endpoints' option is deprecated in favor of 'leases'.")
+	enableLeaderElection = flag.Bool("leader-election", false, "Enables leader election. If leader election is enabled, additional RBAC rules are required. Please refer to the Kubernetes CSI documentation for instructions on setting up these RBAC rules.")
+
 	leaderElectionNamespace = flag.String("leader-election-namespace", "", "Namespace where the leader election resource lives. Defaults to the pod namespace if not set.")
 	strictTopology          = flag.Bool("strict-topology", false, "Passes only selected node topology to CreateVolume Request, unlike default behavior of passing aggregated cluster topologies that match with topology keys of the selected node.")
 
@@ -251,16 +251,7 @@ func main() {
 		// to preserve backwards compatibility
 		lockName := strings.Replace(provisionerName, "/", "-", -1)
 
-		var le leaderElection
-		if *leaderElectionType == "endpoints" {
-			klog.Warning("The 'endpoints' leader election type is deprecated and will be removed in a future release. Use '--leader-election-type=leases' instead.")
-			le = leaderelection.NewLeaderElectionWithEndpoints(clientset, lockName, run)
-		} else if *leaderElectionType == "leases" {
-			le = leaderelection.NewLeaderElection(clientset, lockName, run)
-		} else {
-			klog.Error("--leader-election-type must be either 'endpoints' or 'leases'")
-			os.Exit(1)
-		}
+		le := leaderelection.NewLeaderElection(clientset, lockName, run)
 
 		if *leaderElectionNamespace != "" {
 			le.WithNamespace(*leaderElectionNamespace)
