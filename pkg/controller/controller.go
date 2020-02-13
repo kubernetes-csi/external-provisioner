@@ -614,10 +614,31 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 	rep, err = p.csiClient.CreateVolume(ctx, &req)
 
 	if err != nil {
-		if isFinalError(err) {
-			return nil, controller.ProvisioningFinished, err
-		}
-		return nil, controller.ProvisioningInBackground, err
+		// Giving up after an error and telling the pod scheduler to retry with a different node
+		// only makes sense if:
+		// - The CSI driver supports topology: without that, the next CreateVolume call after
+		//   rescheduling will be exactly the same.
+		// - We are using strict topology: otherwise the CSI driver is already allowed
+		//   to pick some other topology and rescheduling would only change the preferred
+		//   topology, which then isn't going to be substantially different.
+		// - We are working on a volume with late binding: only in that case will
+		//   provisioning be retried if we give up for now.
+		// - The error is one where rescheduling is
+		//   a) allowed (i.e. we don't have to keep calling CreateVolume because the operation might be running) and
+		//   b) it makes sense (typically local resource exhausted).
+		//   isFinalError is going to check this.
+		mayReschedule := p.supportsTopology() &&
+			p.strictTopology &&
+			options.SelectedNode != nil
+		state := checkError(err, mayReschedule)
+		klog.V(5).Infof("CreateVolume failed, supports topology = %v, strict topology %v, node selected %v => may reschedule = %v => state = %v: %v",
+			p.supportsTopology(),
+			p.strictTopology,
+			options.SelectedNode != nil,
+			mayReschedule,
+			state,
+			err)
+		return nil, state, err
 	}
 
 	if rep.Volume != nil {
@@ -1247,7 +1268,7 @@ func deprecationWarning(deprecatedParam, newParam, removalVersion string) string
 	return fmt.Sprintf("\"%s\" is deprecated and will be removed in %s%s", deprecatedParam, removalVersion, newParamPhrase)
 }
 
-func isFinalError(err error) bool {
+func checkError(err error, mayReschedule bool) controller.ProvisioningState {
 	// Sources:
 	// https://github.com/grpc/grpc/blob/master/doc/statuscodes.md
 	// https://github.com/container-storage-interface/spec/blob/master/spec.md
@@ -1256,19 +1277,31 @@ func isFinalError(err error) bool {
 		// This is not gRPC error. The operation must have failed before gRPC
 		// method was called, otherwise we would get gRPC error.
 		// We don't know if any previous CreateVolume is in progress, be on the safe side.
-		return false
+		return controller.ProvisioningInBackground
 	}
 	switch st.Code() {
+	case codes.ResourceExhausted:
+		// CSI: operation not pending, "Unable to provision in `accessible_topology`"
+		// However, it also could be from the transport layer for "message size exceeded".
+		// Cannot be decided properly here and needs to be resolved in the spec
+		// https://github.com/container-storage-interface/spec/issues/419.
+		// What we assume here for now is that message size limits are large enough that
+		// the error really comes from the CSI driver.
+		if mayReschedule {
+			// may succeed elsewhere -> give up for now
+			return controller.ProvisioningReschedule
+		}
+		// may still succeed at a later time -> continue
+		return controller.ProvisioningInBackground
 	case codes.Canceled, // gRPC: Client Application cancelled the request
-		codes.DeadlineExceeded,  // gRPC: Timeout
-		codes.Unavailable,       // gRPC: Server shutting down, TCP connection broken - previous CreateVolume() may be still in progress.
-		codes.ResourceExhausted, // gRPC: Server temporarily out of resources - previous CreateVolume() may be still in progress.
-		codes.Aborted:           // CSI: Operation pending for volume
-		return false
+		codes.DeadlineExceeded, // gRPC: Timeout
+		codes.Unavailable,      // gRPC: Server shutting down, TCP connection broken - previous CreateVolume() may be still in progress.
+		codes.Aborted:          // CSI: Operation pending for volume
+		return controller.ProvisioningInBackground
 	}
 	// All other errors mean that provisioning either did not
 	// even start or failed. It is for sure not in progress.
-	return true
+	return controller.ProvisioningFinished
 }
 
 func cleanupVolume(p *csiProvisioner, delReq *csi.DeleteVolumeRequest, provisionerCredentials map[string]string) error {
