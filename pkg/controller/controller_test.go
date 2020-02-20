@@ -2857,7 +2857,9 @@ func TestProvisionFromPVC(t *testing.T) {
 	fakeSc2 := "fake-sc-2"
 	srcName := "fake-pvc"
 	srcNamespace := "fake-pvc-namespace"
-	invalidPVC := "invalid-pvc"
+	invalidPVC := "invalid-pv"
+	lostPVC := "lost-pvc"
+	pendingPVC := "pending-pvc"
 	pvName := "test-testi"
 	unboundPVName := "unbound-pv"
 	anotherDriverPVName := "another-class"
@@ -2875,12 +2877,13 @@ func TestProvisionFromPVC(t *testing.T) {
 
 	testcases := map[string]struct {
 		volOpts              controller.ProvisionOptions
-		clonePVName          string  // name of the PV that srcName PVC has a claim on
-		restoredVolSizeSmall bool    // set to request a larger volSize than source PVC, default false
-		restoredVolSizeBig   bool    // set to request a smaller volSize than source PVC, default false
-		expectedPVSpec       *pvSpec // set to expected PVSpec on success, for deep comparison, default nil
-		cloneUnsupported     bool    // set to state clone feature not supported in capabilities, default false
-		expectErr            bool    // set to state, test is expected to return errors, default false
+		clonePVName          string                   // name of the PV that srcName PVC has a claim on
+		restoredVolSizeSmall bool                     // set to request a larger volSize than source PVC, default false
+		restoredVolSizeBig   bool                     // set to request a smaller volSize than source PVC, default false
+		expectedPVSpec       *pvSpec                  // set to expected PVSpec on success, for deep comparison, default nil
+		cloneUnsupported     bool                     // set to state clone feature not supported in capabilities, default false
+		sourcePVStatusPhase  v1.PersistentVolumePhase // set to change source PV Status.Phase, default "Bound"
+		expectErr            bool                     // set to state, test is expected to return errors, default false
 	}{
 		"provision with pvc data source": {
 			clonePVName: pvName,
@@ -2945,6 +2948,40 @@ func TestProvisionFromPVC(t *testing.T) {
 			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, invalidPVC, fakeSc1, requestedBytes),
 			expectErr:   true,
 		},
+		"provision with pvc data source when pvc status is claim pending": {
+			clonePVName: pvName,
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, pendingPVC, fakeSc1, requestedBytes),
+			expectErr:   true,
+		},
+		"provision with pvc data source when pvc status is claim lost": {
+			clonePVName: pvName,
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, lostPVC, fakeSc1, requestedBytes),
+			expectErr:   true,
+		},
+		"provision with pvc data source when clone pv has released status": {
+			clonePVName:         pvName,
+			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			sourcePVStatusPhase: v1.VolumeReleased,
+			expectErr:           true,
+		},
+		"provision with pvc data source when clone pv has failed status": {
+			clonePVName:         pvName,
+			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			sourcePVStatusPhase: v1.VolumeFailed,
+			expectErr:           true,
+		},
+		"provision with pvc data source when clone pv has pending status": {
+			clonePVName:         pvName,
+			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			sourcePVStatusPhase: v1.VolumePending,
+			expectErr:           true,
+		},
+		"provision with pvc data source when clone pv has available status": {
+			clonePVName:         pvName,
+			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			sourcePVStatusPhase: v1.VolumeAvailable,
+			expectErr:           true,
+		},
 		"provision with PVC using unbound PV": {
 			clonePVName: unboundPVName,
 			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
@@ -2989,6 +3026,10 @@ func TestProvisionFromPVC(t *testing.T) {
 			defer driver.Stop()
 
 			// Phase: setup fake objects for test
+			pvPhase := v1.VolumeBound
+			if tc.sourcePVStatusPhase != "" {
+				pvPhase = tc.sourcePVStatusPhase
+			}
 			pv := &v1.PersistentVolume{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: pvName,
@@ -3011,6 +3052,9 @@ func TestProvisionFromPVC(t *testing.T) {
 						UID:       types.UID("fake-claim-uid"),
 					},
 					StorageClassName: fakeSc1,
+				},
+				Status: v1.PersistentVolumeStatus{
+					Phase: pvPhase,
 				},
 			}
 
@@ -3038,9 +3082,13 @@ func TestProvisionFromPVC(t *testing.T) {
 			claim := fakeClaim(srcName, srcNamespace, "fake-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimBound, &fakeSc1)
 			// Create a fake claim with invalid PV
 			invalidClaim := fakeClaim(invalidPVC, srcNamespace, "fake-claim-uid", requestedBytes, "pv-not-present", v1.ClaimBound, &fakeSc1)
-			/// Create a fake claim as source PVC storageclass nil
+			// Create a fake claim as source PVC storageclass nil
 			scNilClaim := fakeClaim("pvc-sc-nil", srcNamespace, "fake-claim-uid", requestedBytes, pvName, v1.ClaimBound, nil)
-			clientSet = fakeclientset.NewSimpleClientset(claim, scNilClaim, pv, invalidClaim, unboundPV, anotherDriverPV, pvBoundToAnotherPVCUID, pvBoundToAnotherPVCNamespace, pvBoundToAnotherPVCName)
+			// Create a fake claim, with source PVC having a lost claim status
+			lostClaim := fakeClaim(lostPVC, srcNamespace, "fake-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimLost, &fakeSc1)
+			// Create a fake claim, with source PVC having a pending claim status
+			pendingClaim := fakeClaim(pendingPVC, srcNamespace, "fake-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimPending, &fakeSc1)
+			clientSet = fakeclientset.NewSimpleClientset(claim, scNilClaim, pv, invalidClaim, unboundPV, anotherDriverPV, pvBoundToAnotherPVCUID, pvBoundToAnotherPVCNamespace, pvBoundToAnotherPVCName, lostClaim, pendingClaim)
 
 			// Phase: setup responses based on test case parameters
 			out := &csi.CreateVolumeResponse{
