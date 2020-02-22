@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -514,7 +513,7 @@ func createFakePVCWithVolumeMode(requestBytes int64, volumeMode v1.PersistentVol
 }
 
 // fakeClaim returns a valid PVC with the requested settings
-func fakeClaim(name, namespace, claimUID, capacity, boundToVolume string, phase v1.PersistentVolumeClaimPhase, class *string) *v1.PersistentVolumeClaim {
+func fakeClaim(name, namespace, claimUID string, capacity int64, boundToVolume string, phase v1.PersistentVolumeClaimPhase, class *string) *v1.PersistentVolumeClaim {
 	claim := v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
@@ -527,7 +526,7 @@ func fakeClaim(name, namespace, claimUID, capacity, boundToVolume string, phase 
 			AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce, v1.ReadOnlyMany},
 			Resources: v1.ResourceRequirements{
 				Requests: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): resource.MustParse(capacity),
+					v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(capacity, 10)),
 				},
 			},
 			VolumeName:       boundToVolume,
@@ -2817,7 +2816,7 @@ func TestProvisionFromPVC(t *testing.T) {
 	fakeSc2 := "fake-sc-2"
 	srcName := "fake-pvc"
 	srcNamespace := "fake-pvc-namespace"
-	invalidPVC := "invalid-pv"
+	invalidPVC := "invalid-pvc"
 	pvName := "test-testi"
 	unboundPVName := "unbound-pv"
 	anotherDriverPVName := "another-class"
@@ -2825,6 +2824,36 @@ func TestProvisionFromPVC(t *testing.T) {
 	wrongPVCNamespace := "pv-bound-to-another-pvc-by-namespace"
 	wrongPVCUID := "pv-bound-to-another-pvc-by-UID"
 	deletePolicy := v1.PersistentVolumeReclaimDelete
+	defaultPVCRequest := controller.ProvisionOptions{
+		StorageClass: &storagev1.StorageClass{
+			ReclaimPolicy: &deletePolicy,
+			Parameters:    map[string]string{},
+			Provisioner:   driverName,
+		},
+		PVName: "new-pv-name",
+		PVC: &v1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "my-pvc",
+				Namespace:   srcNamespace,
+				UID:         "testid",
+				Annotations: driverNameAnnotation,
+			},
+			Spec: v1.PersistentVolumeClaimSpec{
+				StorageClassName: &fakeSc1,
+				Selector:         nil,
+				Resources: v1.ResourceRequirements{
+					Requests: v1.ResourceList{
+						v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+					},
+				},
+				AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				DataSource: &v1.TypedLocalObjectReference{
+					Name: srcName,
+					Kind: "PersistentVolumeClaim",
+				},
+			},
+		},
+	}
 
 	type pvSpec struct {
 		Name          string
@@ -2836,48 +2865,17 @@ func TestProvisionFromPVC(t *testing.T) {
 
 	testcases := map[string]struct {
 		volOpts              controller.ProvisionOptions
-		clonePVName          string
-		restoredVolSizeSmall bool
-		restoredVolSizeBig   bool
-		wrongDataSource      bool
-		pvcStatusReady       bool
-		expectedPVSpec       *pvSpec
-		cloneSupport         bool
-		expectErr            bool
+		sourcePVCName        string  // name of the source PVC to clone from, default DataSource Name in volOpts
+		clonePVName          string  // name of the PV that srcName PVC has a claim on
+		restoredVolSizeSmall bool    // set to request a larger volSize than source PVC, default false
+		restoredVolSizeBig   bool    // set to request a smaller volSize than source PVC, default false
+		expectedPVSpec       *pvSpec // set to expected PVSpec on success, for deep comparison, default nil
+		cloneUnsupported     bool    // set to state clone feature not supported in capabilities, default false
+		expectErr            bool    // set to state, test is expected to return errors, default false
 	}{
 		"provision with pvc data source": {
 			clonePVName: pvName,
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: driverNameAnnotation,
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						StorageClassName: &fakeSc1,
-						Selector:         nil,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: srcName,
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady: true,
+			volOpts:     defaultPVCRequest,
 			expectedPVSpec: &pvSpec{
 				Name:          pvName,
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
@@ -2894,44 +2892,12 @@ func TestProvisionFromPVC(t *testing.T) {
 					},
 				},
 			},
-			cloneSupport: true,
 		},
 		"provision with pvc data source no clone capability": {
-			clonePVName: pvName,
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: map[string]string{annStorageProvisioner: driverName},
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						StorageClassName: &fakeSc1,
-						Selector:         nil,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: srcName,
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady: true,
-			expectedPVSpec: nil,
-			cloneSupport:   false,
-			expectErr:      true,
+			clonePVName:      pvName,
+			volOpts:          defaultPVCRequest,
+			cloneUnsupported: true,
+			expectErr:        true,
 		},
 		"provision with pvc data source different storage classes": {
 			clonePVName: pvName,
@@ -2965,160 +2931,31 @@ func TestProvisionFromPVC(t *testing.T) {
 					},
 				},
 			},
-			pvcStatusReady: true,
-			expectedPVSpec: nil,
-			cloneSupport:   true,
-			expectErr:      true,
+			expectErr: true,
 		},
 		"provision with pvc data source destination too small": {
-			clonePVName: pvName,
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: map[string]string{annStorageProvisioner: driverName},
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						StorageClassName: &fakeSc1,
-						Selector:         nil,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes+1, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: srcName,
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady:       true,
+			clonePVName:          pvName,
+			volOpts:              defaultPVCRequest,
 			restoredVolSizeSmall: true,
-			expectedPVSpec:       nil,
-			cloneSupport:         true,
 			expectErr:            true,
 		},
 		"provision with pvc data source destination too large": {
-			clonePVName: pvName,
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: driverNameAnnotation,
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						StorageClassName: &fakeSc1,
-						Selector:         nil,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes+1, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: srcName,
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady:     true,
+			clonePVName:        pvName,
+			volOpts:            defaultPVCRequest,
 			restoredVolSizeBig: true,
-			expectedPVSpec:     nil,
-			cloneSupport:       true,
 			expectErr:          true,
 		},
 		"provision with pvc data source not found": {
-			clonePVName: pvName,
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: driverNameAnnotation,
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						StorageClassName: &fakeSc1,
-						Selector:         nil,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes-1, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: "source-not-found",
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady: true,
-			expectedPVSpec: nil,
-			cloneSupport:   true,
-			expectErr:      true,
+			clonePVName:   pvName,
+			sourcePVCName: "source-not-found",
+			volOpts:       defaultPVCRequest,
+			expectErr:     true,
 		},
 		"provision with source pvc storageclass nil": {
-			clonePVName: pvName,
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: driverNameAnnotation,
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						Selector:         nil,
-						StorageClassName: &fakeSc1,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes-1, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: "pvc-sc-nil",
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady: true,
-			expectedPVSpec: nil,
-			cloneSupport:   true,
-			expectErr:      true,
+			clonePVName:   pvName,
+			sourcePVCName: "pvc-sc-nil",
+			volOpts:       defaultPVCRequest,
+			expectErr:     true,
 		},
 		"provision with requested pvc storageclass nil": {
 			clonePVName: pvName,
@@ -3140,7 +2977,7 @@ func TestProvisionFromPVC(t *testing.T) {
 						Selector: nil,
 						Resources: v1.ResourceRequirements{
 							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes-1, 10)),
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
 						},
 						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -3151,232 +2988,38 @@ func TestProvisionFromPVC(t *testing.T) {
 					},
 				},
 			},
-			pvcStatusReady: true,
-			expectedPVSpec: nil,
-			cloneSupport:   true,
-			expectErr:      true,
+			expectErr: true,
 		},
 		"provision with pvc data source when source pv not found": {
-			clonePVName: "invalid-pv",
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: driverNameAnnotation,
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						StorageClassName: &fakeSc1,
-						Selector:         nil,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes+1, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: invalidPVC,
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady: true,
-			expectedPVSpec: nil,
-			cloneSupport:   true,
-			expectErr:      true,
+			clonePVName:   "invalid-pv",
+			sourcePVCName: invalidPVC,
+			volOpts:       defaultPVCRequest,
+			expectErr:     true,
 		},
 		"provision with PVC using unbound PV": {
 			clonePVName: unboundPVName,
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: driverNameAnnotation,
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						StorageClassName: &fakeSc1,
-						Selector:         nil,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes+1, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: srcName,
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady: true,
-			expectedPVSpec: nil,
-			cloneSupport:   true,
-			expectErr:      true,
+			volOpts:     defaultPVCRequest,
+			expectErr:   true,
 		},
 		"provision with PVC using PV bound to another PVC (with wrong UID)": {
 			clonePVName: wrongPVCUID,
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: driverNameAnnotation,
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						StorageClassName: &fakeSc1,
-						Selector:         nil,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes+1, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: srcName,
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady: true,
-			expectedPVSpec: nil,
-			cloneSupport:   true,
-			expectErr:      true,
+			volOpts:     defaultPVCRequest,
+			expectErr:   true,
 		},
 		"provision with PVC using PV bound to another PVC (with wrong namespace)": {
 			clonePVName: wrongPVCNamespace,
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: driverNameAnnotation,
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						StorageClassName: &fakeSc1,
-						Selector:         nil,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes+1, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: srcName,
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady: true,
-			expectedPVSpec: nil,
-			cloneSupport:   true,
-			expectErr:      true,
+			volOpts:     defaultPVCRequest,
+			expectErr:   true,
 		},
 		"provision with PVC using PV bound to another PVC (with wrong name)": {
 			clonePVName: wrongPVCName,
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: driverNameAnnotation,
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						StorageClassName: &fakeSc1,
-						Selector:         nil,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes+1, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: srcName,
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady: true,
-			expectedPVSpec: nil,
-			cloneSupport:   true,
-			expectErr:      true,
+			volOpts:     defaultPVCRequest,
+			expectErr:   true,
 		},
 		"provision with PVC bound to PV with wrong provisioner": {
 			clonePVName: anotherDriverPVName,
-			volOpts: controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{},
-					Provisioner:   driverName,
-				},
-				PVName: "new-pv-name",
-				PVC: &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "my-pvc",
-						Namespace:   srcNamespace,
-						UID:         "testid",
-						Annotations: driverNameAnnotation,
-					},
-					Spec: v1.PersistentVolumeClaimSpec{
-						StorageClassName: &fakeSc1,
-						Selector:         nil,
-						Resources: v1.ResourceRequirements{
-							Requests: v1.ResourceList{
-								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes+1, 10)),
-							},
-						},
-						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
-						DataSource: &v1.TypedLocalObjectReference{
-							Name: srcName,
-							Kind: "PersistentVolumeClaim",
-						},
-					},
-				},
-			},
-			pvcStatusReady: true,
-			expectedPVSpec: nil,
-			cloneSupport:   true,
-			expectErr:      true,
+			volOpts:     defaultPVCRequest,
+			expectErr:   true,
 		},
 	}
 
@@ -3390,35 +3033,11 @@ func TestProvisionFromPVC(t *testing.T) {
 	defer driver.Stop()
 
 	for k, tc := range testcases {
-		var requestedBytes int64 = 1000
 		var clientSet *fakeclientset.Clientset
+		var resetSize v1.ResourceList
+		var resetName string
 
-		out := &csi.CreateVolumeResponse{
-			Volume: &csi.Volume{
-				CapacityBytes: requestedBytes,
-				VolumeId:      "test-volume-id",
-			},
-		}
-		if tc.volOpts.PVC.Spec.DataSource != nil {
-
-			switch tc.volOpts.PVC.Spec.DataSource.Kind {
-			case snapshotKind:
-				out.Volume.ContentSource = &csi.VolumeContentSource{
-					Type: &csi.VolumeContentSource_Snapshot{
-						Snapshot: &csi.VolumeContentSource_SnapshotSource{
-							SnapshotId: "fake-snapshot-id",
-						}}}
-			case pvcKind:
-				out.Volume.ContentSource = &csi.VolumeContentSource{
-					Type: &csi.VolumeContentSource_Volume{
-						Volume: &csi.VolumeContentSource_VolumeSource{
-							VolumeId: "fake-volume-id",
-						}}}
-			}
-		}
-
-		clientSet = fakeclientset.NewSimpleClientset()
-
+		// Phase: setup fake objects for test
 		pv := &v1.PersistentVolume{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: pvName,
@@ -3465,16 +3084,28 @@ func TestProvisionFromPVC(t *testing.T) {
 		pvBoundToAnotherPVCName.Spec.ClaimRef.Name = "another-claim-name"
 
 		// Create a fake claim as our PVC DataSource
-		claim := fakeClaim(srcName, srcNamespace, "fake-claim-uid", "1Gi", tc.clonePVName, v1.ClaimBound, &fakeSc1)
+		claim := fakeClaim(srcName, srcNamespace, "fake-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimBound, &fakeSc1)
 		// Create a fake claim with invalid PV
-		invalidClaim := fakeClaim(invalidPVC, srcNamespace, "fake-claim-uid", "1Gi", "pv-not-present", v1.ClaimBound, &fakeSc1)
+		invalidClaim := fakeClaim(invalidPVC, srcNamespace, "fake-claim-uid", requestedBytes, "pv-not-present", v1.ClaimBound, &fakeSc1)
 		/// Create a fake claim as source PVC storageclass nil
-		scNilClaim := fakeClaim("pvc-sc-nil", srcNamespace, "fake-claim-uid", "1Gi", pvName, v1.ClaimBound, nil)
+		scNilClaim := fakeClaim("pvc-sc-nil", srcNamespace, "fake-claim-uid", requestedBytes, pvName, v1.ClaimBound, nil)
 		clientSet = fakeclientset.NewSimpleClientset(claim, scNilClaim, pv, invalidClaim, unboundPV, anotherDriverPV, pvBoundToAnotherPVCUID, pvBoundToAnotherPVCNamespace, pvBoundToAnotherPVCName)
 
+		// Phase: modify request based on test case parameters and setup responses
+		out := &csi.CreateVolumeResponse{
+			Volume: &csi.Volume{
+				CapacityBytes: requestedBytes,
+				VolumeId:      "test-volume-id",
+			},
+		}
+
 		pluginCaps, controllerCaps := provisionFromPVCCapabilities()
-		if !tc.cloneSupport {
+		if tc.cloneUnsupported {
 			pluginCaps, controllerCaps = provisionCapabilities()
+		}
+		if tc.sourcePVCName != "" {
+			resetName = tc.volOpts.PVC.Spec.DataSource.Name
+			tc.volOpts.PVC.Spec.DataSource.Name = tc.sourcePVCName
 		}
 		if !tc.expectErr {
 			volumeSource := csi.VolumeContentSource_Volume{
@@ -3487,7 +3118,16 @@ func TestProvisionFromPVC(t *testing.T) {
 			}
 			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 		}
+
+		if tc.restoredVolSizeSmall && tc.restoredVolSizeBig {
+			t.Errorf("test %q: cannot contain requestVolSize to be both small and big", k)
+		}
 		if tc.restoredVolSizeSmall {
+			resetSize = tc.volOpts.PVC.Spec.Resources.Requests
+			// modify request to a larger size
+			tc.volOpts.PVC.Spec.Resources.Requests = v1.ResourceList{
+				v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes+1, 10)),
+			}
 			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 			// if the volume created is less than the requested size,
 			// deletevolume will be called
@@ -3495,11 +3135,15 @@ func TestProvisionFromPVC(t *testing.T) {
 				VolumeId: "test-volume-id",
 			}).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
 		}
-
 		if tc.restoredVolSizeBig {
-			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(nil, errors.New("source volume size is bigger than requested volume size")).Times(1)
+			resetSize = tc.volOpts.PVC.Spec.Resources.Requests
+			// modify request to smaller size
+			tc.volOpts.PVC.Spec.Resources.Requests = v1.ResourceList{
+				v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes-1, 10)),
+			}
 		}
 
+		// Phase: execute the test
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
 			nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, nil, false)
 
@@ -3508,6 +3152,16 @@ func TestProvisionFromPVC(t *testing.T) {
 			t.Errorf("test %q: Expected error, got none", k)
 		}
 
+		// Phase: process test responses
+		// reset tc.VolOpts back to defaults
+		if resetSize != nil {
+			tc.volOpts.PVC.Spec.Resources.Requests = resetSize
+		}
+		if resetName != "" {
+			tc.volOpts.PVC.Spec.DataSource.Name = srcName
+		}
+
+		// process responses
 		if !tc.expectErr && err != nil {
 			t.Errorf("test %q: got error: %v", k, err)
 		}
