@@ -783,10 +783,13 @@ func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi
 		return nil, fmt.Errorf("the source PVC and destination PVCs must be in the same storage class for cloning.  Source is in %v, but new PVC is in %v",
 			*sourcePVC.Spec.StorageClassName, *options.PVC.Spec.StorageClassName)
 	}
+
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	requestedSize := capacity.Value()
-	if requestedSize < int64(sourcePVC.Spec.Size()) {
-		return nil, fmt.Errorf("error, new PVC request must be greater than or equal in size to the specified PVC data source, requested %v but source is %v", requestedSize, sourcePVC.Spec.Size())
+	srcCapacity := sourcePVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+	srcPVCSize := srcCapacity.Value()
+	if requestedSize < srcPVCSize {
+		return nil, fmt.Errorf("error, new PVC request must be greater than or equal in size to the specified PVC data source, requested %v but source is %v", requestedSize, srcPVCSize)
 	}
 
 	if sourcePVC.Spec.VolumeName == "" {
