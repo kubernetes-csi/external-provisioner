@@ -3353,28 +3353,52 @@ func TestProvisionWithMigration(t *testing.T) {
 	deletePolicy := v1.PersistentVolumeReclaimDelete
 	testcases := []struct {
 		name              string
-		provisioner       string
+		scProvisioner     string
 		annotation        map[string]string
 		expectTranslation bool
 		expectErr         bool
 	}{
 		{
 			name:              "provision with migration on",
-			provisioner:       inTreePluginName,
+			scProvisioner:     inTreePluginName,
 			annotation:        map[string]string{annStorageProvisioner: driverName},
 			expectTranslation: true,
 		},
 		{
 			name:              "provision without migration for native CSI",
-			provisioner:       driverName,
+			scProvisioner:     driverName,
 			annotation:        map[string]string{annStorageProvisioner: driverName},
 			expectTranslation: false,
 		},
 		{
-			name:        "ignore in-tree PVC when provisioned by in-tree",
-			provisioner: inTreePluginName,
-			annotation:  map[string]string{annStorageProvisioner: inTreePluginName},
-			expectErr:   true,
+			name:              "provision with migration for migrated-to CSI",
+			scProvisioner:     inTreePluginName,
+			annotation:        map[string]string{annStorageProvisioner: inTreePluginName, annMigratedTo: driverName},
+			expectTranslation: true,
+		},
+		{
+			name:          "provision with migration-to some random driver",
+			scProvisioner: inTreePluginName,
+			annotation:    map[string]string{annStorageProvisioner: inTreePluginName, annMigratedTo: "foo"},
+			expectErr:     true,
+		},
+		{
+			name:          "provision with migration-to some random driver with random storageProvisioner",
+			scProvisioner: inTreePluginName,
+			annotation:    map[string]string{annStorageProvisioner: "foo", annMigratedTo: "foo"},
+			expectErr:     true,
+		},
+		{
+			name:              "provision with migration for migrated-to CSI with CSI Provisioner",
+			scProvisioner:     inTreePluginName,
+			annotation:        map[string]string{annStorageProvisioner: driverName, annMigratedTo: driverName},
+			expectTranslation: true,
+		},
+		{
+			name:          "ignore in-tree PVC when provisioned by in-tree",
+			scProvisioner: inTreePluginName,
+			annotation:    map[string]string{annStorageProvisioner: inTreePluginName},
+			expectErr:     true,
 		},
 	}
 
@@ -3449,7 +3473,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			// Make a Provision call
 			volOpts := controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
-					Provisioner:   tc.provisioner,
+					Provisioner:   tc.scProvisioner,
 					Parameters:    map[string]string{"fstype": "ext3"},
 					ReclaimPolicy: &deletePolicy,
 				},
