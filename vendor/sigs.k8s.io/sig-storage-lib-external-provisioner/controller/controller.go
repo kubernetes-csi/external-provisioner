@@ -71,11 +71,21 @@ const annClass = "volume.beta.kubernetes.io/storage-class"
 // recognize dynamically provisioned PVs in its decisions).
 const annDynamicallyProvisioned = "pv.kubernetes.io/provisioned-by"
 
+// AnnMigratedTo annotation is added to a PVC that is supposed to be
+// dynamically provisioned/deleted by by its corresponding CSI driver
+// through the CSIMigration feature flags. It allows external provisioners
+// to determine which PVs are considered migrated and safe to operate on for
+// Deletion.
+const annMigratedTo = "pv.kubernetes.io/migrated-to"
+
 const annStorageProvisioner = "volume.beta.kubernetes.io/storage-provisioner"
 
 // This annotation is added to a PVC that has been triggered by scheduler to
 // be dynamically provisioned. Its value is the name of the selected node.
 const annSelectedNode = "volume.kubernetes.io/selected-node"
+
+// This annotation is present on K8s 1.11 release.
+const annAlphaSelectedNode = "volume.alpha.kubernetes.io/selected-node"
 
 // Finalizer for PVs so we know to clean them up
 const finalizerPV = "external-provisioner.volume.kubernetes.io/finalizer"
@@ -1140,7 +1150,9 @@ func (ctrl *ProvisionController) shouldDelete(volume *v1.PersistentVolume) bool 
 		return false
 	}
 
-	if ann := volume.Annotations[annDynamicallyProvisioned]; ann != ctrl.provisionerName {
+	ann := volume.Annotations[annDynamicallyProvisioned]
+	migratedTo := volume.Annotations[annMigratedTo]
+	if ann != ctrl.provisionerName && migratedTo != ctrl.provisionerName {
 		return false
 	}
 
@@ -1242,7 +1254,7 @@ func (ctrl *ProvisionController) provisionClaimOperation(claim *v1.PersistentVol
 	var selectedNode *v1.Node
 	if ctrl.kubeVersion.AtLeast(utilversion.MustParseSemantic("v1.11.0")) {
 		// Get SelectedNode
-		if nodeName, ok := claim.Annotations[annSelectedNode]; ok {
+		if nodeName, ok := getString(claim.Annotations, annSelectedNode, annAlphaSelectedNode); ok {
 			selectedNode, err = ctrl.client.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{}) // TODO (verult) cache Nodes
 			if err != nil {
 				err = fmt.Errorf("failed to get target node: %v", err)
@@ -1454,4 +1466,17 @@ func (ctrl *ProvisionController) supportsBlock() bool {
 		return blockProvisioner.SupportsBlock()
 	}
 	return false
+}
+
+func getString(m map[string]string, key string, alts ...string) (string, bool) {
+	if m == nil {
+		return "", false
+	}
+	keys := append([]string{key}, alts...)
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			return v, true
+		}
+	}
+	return "", false
 }

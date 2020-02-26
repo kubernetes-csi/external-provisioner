@@ -130,6 +130,7 @@ const (
 
 	deleteVolumeRetryCount = 5
 
+	annMigratedTo         = "pv.kubernetes.io/migrated-to"
 	annStorageProvisioner = "volume.beta.kubernetes.io/storage-provisioner"
 
 	snapshotNotBound = "snapshot %s not bound"
@@ -421,12 +422,16 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		return nil, controller.ProvisioningFinished, errors.New("storage class was nil")
 	}
 
-	if options.PVC.Annotations[annStorageProvisioner] != p.driverName {
+	if options.PVC.Annotations[annStorageProvisioner] != p.driverName && options.PVC.Annotations[annMigratedTo] != p.driverName {
+		// The storage provisioner annotation may not equal driver name but the
+		// PVC could have annotation "migrated-to" which is the new way to
+		// signal a PVC is migrated (k8s v1.17+)
 		return nil, controller.ProvisioningFinished, &controller.IgnoredError{
 			Reason: fmt.Sprintf("PVC annotated with external-provisioner name %s does not match provisioner driver name %s. This could mean the PVC is not migrated",
 				options.PVC.Annotations[annStorageProvisioner],
 				p.driverName),
 		}
+
 	}
 
 	migratedVolume := false
@@ -985,7 +990,8 @@ func (p *csiProvisioner) SupportsBlock() bool {
 
 func (p *csiProvisioner) ShouldProvision(claim *v1.PersistentVolumeClaim) bool {
 	provisioner := claim.Annotations[annStorageProvisioner]
-	if provisioner == p.driverName {
+	migratedTo := claim.Annotations[annMigratedTo]
+	if provisioner == p.driverName || migratedTo == p.driverName {
 		// Either CSI volume is requested or in-tree volume is migrated to CSI in PV controller
 		// and therefore PVC has CSI annotation.
 		return true

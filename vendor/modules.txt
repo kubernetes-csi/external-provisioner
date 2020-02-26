@@ -489,7 +489,7 @@ k8s.io/kubernetes/pkg/apis/core/helper
 k8s.io/utils/buffer
 k8s.io/utils/integer
 k8s.io/utils/trace
-# sigs.k8s.io/sig-storage-lib-external-provisioner v4.0.1+incompatible
+# sigs.k8s.io/sig-storage-lib-external-provisioner v4.1.0+incompatible
 sigs.k8s.io/sig-storage-lib-external-provisioner/controller
 sigs.k8s.io/sig-storage-lib-external-provisioner/controller/metrics
 sigs.k8s.io/sig-storage-lib-external-provisioner/util
