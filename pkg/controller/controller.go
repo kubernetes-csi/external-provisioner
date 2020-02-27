@@ -827,6 +827,11 @@ func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi
 		return nil, fmt.Errorf("claim in dataSource not bound or invalid")
 	}
 
+	if sourcePV.Status.Phase != v1.VolumeBound {
+		klog.Warningf("the source volume %s for PVC %s/%s status is \"%s\", should instead be \"%s\"", sourcePVC.Spec.VolumeName, sourcePVC.Namespace, sourcePVC.Name, sourcePV.Status.Phase, v1.VolumeBound)
+		return nil, fmt.Errorf("claim in dataSource not bound or invalid")
+	}
+
 	volumeSource := csi.VolumeContentSource_Volume{
 		Volume: &csi.VolumeContentSource_VolumeSource{
 			VolumeId: sourcePV.Spec.CSI.VolumeHandle,
