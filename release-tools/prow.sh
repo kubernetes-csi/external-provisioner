@@ -525,6 +525,9 @@ start_cluster () {
         run kind delete cluster --name=csi-prow || die "kind delete failed"
     fi
 
+    # With kind >= 0.6.0 we can choose where to put the resulting configuration.
+    export KUBECONFIG="${CSI_PROW_WORK}/kube.config"
+
     # Build from source?
     if [[ "${CSI_PROW_KUBERNETES_VERSION}" =~ ^release-|^latest$ ]]; then
         if ! ${csi_prow_kind_have_kubernetes}; then
@@ -608,7 +611,6 @@ EOF
             die "Cluster creation failed again, giving up. See the 'kind-cluster' artifact directory for additional logs."
         fi
     fi
-    export KUBECONFIG="${HOME}/.kube/config"
 }
 
 # Deletes kind cluster inside a prow job
