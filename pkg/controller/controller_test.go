@@ -513,7 +513,7 @@ func createFakePVCWithVolumeMode(requestBytes int64, volumeMode v1.PersistentVol
 }
 
 // fakeClaim returns a valid PVC with the requested settings
-func fakeClaim(name, namespace, claimUID string, capacity int64, boundToVolume string, phase v1.PersistentVolumeClaimPhase, class *string) *v1.PersistentVolumeClaim {
+func fakeClaim(name, namespace, claimUID string, capacity int64, boundToVolume string, phase v1.PersistentVolumeClaimPhase, class *string, mode string) *v1.PersistentVolumeClaim {
 	claim := v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
@@ -542,6 +542,14 @@ func fakeClaim(name, namespace, claimUID string, capacity int64, boundToVolume s
 		claim.Status.Capacity = claim.Spec.Resources.Requests
 	}
 
+	switch mode {
+	case "block":
+		claim.Spec.VolumeMode = &volumeModeBlock
+	case "filesystem":
+		claim.Spec.VolumeMode = &volumeModeFileSystem
+	default:
+		// leave it undefined/nil to maintaint the current defaults for test cases
+	}
 	return &claim
 
 }
@@ -2810,7 +2818,7 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 }
 
 // generatePVCForProvisionFromPVC returns a ProvisionOptions with the requested settings
-func generatePVCForProvisionFromPVC(srcNamespace, srcName, scName string, requestedBytes int64) controller.ProvisionOptions {
+func generatePVCForProvisionFromPVC(srcNamespace, srcName, scName string, requestedBytes int64, volumeMode string) controller.ProvisionOptions {
 	deletePolicy := v1.PersistentVolumeReclaimDelete
 
 	provisionRequest := controller.ProvisionOptions{
@@ -2847,6 +2855,15 @@ func generatePVCForProvisionFromPVC(srcNamespace, srcName, scName string, reques
 		provisionRequest.PVC.Spec.StorageClassName = &scName
 	}
 
+	switch volumeMode {
+	case "block":
+		provisionRequest.PVC.Spec.VolumeMode = &volumeModeBlock
+	case "filesystem":
+		provisionRequest.PVC.Spec.VolumeMode = &volumeModeFileSystem
+	default:
+		// leave it undefined/nil to maintaint the current defaults for test cases
+	}
+
 	return provisionRequest
 }
 
@@ -2863,6 +2880,8 @@ func TestProvisionFromPVC(t *testing.T) {
 	pvName := "test-testi"
 	unboundPVName := "unbound-pv"
 	anotherDriverPVName := "another-class"
+	filesystemPVName := "filesystem-pv"
+	blockModePVName := "block-pv"
 	wrongPVCName := "pv-bound-to-another-pvc-by-name"
 	wrongPVCNamespace := "pv-bound-to-another-pvc-by-namespace"
 	wrongPVCUID := "pv-bound-to-another-pvc-by-UID"
@@ -2887,7 +2906,7 @@ func TestProvisionFromPVC(t *testing.T) {
 	}{
 		"provision with pvc data source": {
 			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			expectedPVSpec: &pvSpec{
 				Name:          pvName,
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
@@ -2907,105 +2926,140 @@ func TestProvisionFromPVC(t *testing.T) {
 		},
 		"provision with pvc data source no clone capability": {
 			clonePVName:      pvName,
-			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			cloneUnsupported: true,
 			expectErr:        true,
 		},
 		"provision with pvc data source different storage classes": {
 			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc2, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc2, requestedBytes, ""),
 			expectErr:   true,
 		},
 		"provision with pvc data source destination too small": {
 			clonePVName:          pvName,
-			volOpts:              generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes+1),
+			volOpts:              generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes+1, ""),
 			restoredVolSizeSmall: true,
 			expectErr:            true,
 		},
 		"provision with pvc data source destination too large": {
 			clonePVName:        pvName,
-			volOpts:            generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes-1),
+			volOpts:            generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes-1, ""),
 			restoredVolSizeBig: true,
 			expectErr:          true,
 		},
 		"provision with pvc data source not found": {
 			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, "source-not-found", fakeSc1, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, "source-not-found", fakeSc1, requestedBytes, ""),
 			expectErr:   true,
 		},
 		"provision with source pvc storageclass nil": {
 			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, "pvc-sc-nil", fakeSc1, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, "pvc-sc-nil", fakeSc1, requestedBytes, ""),
 			expectErr:   true,
 		},
 		"provision with requested pvc storageclass nil": {
 			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, "", requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, "", requestedBytes, ""),
 			expectErr:   true,
 		},
 		"provision with pvc data source when source pv not found": {
 			clonePVName: "invalid-pv",
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, invalidPVC, fakeSc1, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, invalidPVC, fakeSc1, requestedBytes, ""),
 			expectErr:   true,
 		},
 		"provision with pvc data source when pvc status is claim pending": {
 			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, pendingPVC, fakeSc1, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, pendingPVC, fakeSc1, requestedBytes, ""),
 			expectErr:   true,
 		},
 		"provision with pvc data source when pvc status is claim lost": {
 			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, lostPVC, fakeSc1, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, lostPVC, fakeSc1, requestedBytes, ""),
 			expectErr:   true,
 		},
 		"provision with pvc data source when clone pv has released status": {
 			clonePVName:         pvName,
-			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			sourcePVStatusPhase: v1.VolumeReleased,
 			expectErr:           true,
 		},
 		"provision with pvc data source when clone pv has failed status": {
 			clonePVName:         pvName,
-			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			sourcePVStatusPhase: v1.VolumeFailed,
 			expectErr:           true,
 		},
 		"provision with pvc data source when clone pv has pending status": {
 			clonePVName:         pvName,
-			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			sourcePVStatusPhase: v1.VolumePending,
 			expectErr:           true,
 		},
 		"provision with pvc data source when clone pv has available status": {
 			clonePVName:         pvName,
-			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			volOpts:             generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			sourcePVStatusPhase: v1.VolumeAvailable,
 			expectErr:           true,
 		},
 		"provision with PVC using unbound PV": {
 			clonePVName: unboundPVName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			expectErr:   true,
 		},
 		"provision with PVC using PV bound to another PVC (with wrong UID)": {
 			clonePVName: wrongPVCUID,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			expectErr:   true,
 		},
 		"provision with PVC using PV bound to another PVC (with wrong namespace)": {
 			clonePVName: wrongPVCNamespace,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			expectErr:   true,
 		},
 		"provision with PVC using PV bound to another PVC (with wrong name)": {
 			clonePVName: wrongPVCName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			expectErr:   true,
 		},
 		"provision with PVC bound to PV with wrong provisioner": {
 			clonePVName: anotherDriverPVName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes),
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
 			expectErr:   true,
+		},
+		"provision block data source is block": {
+			clonePVName: blockModePVName,
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, blockModePVName, fakeSc1, requestedBytes, "block"),
+			expectErr:   false,
+		},
+		"provision block but data source is filesystem": {
+			clonePVName: filesystemPVName,
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, filesystemPVName, fakeSc1, requestedBytes, "block"),
+			expectErr:   true,
+		},
+		"provision block but data source is nil": {
+			clonePVName: pvName,
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, "block"),
+			expectErr:   true,
+		},
+		"provision nil mode data source is nil": {
+			clonePVName: pvName,
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
+			expectErr:   false,
+		},
+		"provision filesystem data source is filesystem": {
+			clonePVName: filesystemPVName,
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, filesystemPVName, fakeSc1, requestedBytes, "filesystem"),
+			expectErr:   false,
+		},
+		"provision filesystem but data source is block": {
+			clonePVName: blockModePVName,
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, blockModePVName, fakeSc1, requestedBytes, "filesystem"),
+			expectErr:   true,
+		},
+		"provision filesystem data source is nil": {
+			clonePVName: pvName,
+			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, "filesystem"),
+			expectErr:   false,
 		},
 	}
 
@@ -3058,6 +3112,33 @@ func TestProvisionFromPVC(t *testing.T) {
 				},
 			}
 
+			blkModePV := &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: blockModePVName,
+				},
+				Spec: v1.PersistentVolumeSpec{
+					VolumeMode: &volumeModeBlock,
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							Driver: driverName,
+							VolumeAttributes: map[string]string{
+								"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+							},
+						},
+					},
+					ClaimRef: &v1.ObjectReference{
+						Kind:      "PersistentVolumeClaim",
+						Namespace: srcNamespace,
+						Name:      blockModePVName,
+						UID:       types.UID("fake-block-claim-uid"),
+					},
+					StorageClassName: fakeSc1,
+				},
+				Status: v1.PersistentVolumeStatus{
+					Phase: pvPhase,
+				},
+			}
+
 			unboundPV := pv.DeepCopy()
 			unboundPV.Name = unboundPVName
 			unboundPV.Spec.ClaimRef = nil
@@ -3078,17 +3159,27 @@ func TestProvisionFromPVC(t *testing.T) {
 			pvBoundToAnotherPVCName.Name = wrongPVCName
 			pvBoundToAnotherPVCName.Spec.ClaimRef.Name = "another-claim-name"
 
+			pvUsingFilesystemMode := pv.DeepCopy()
+			pvUsingFilesystemMode.Name = filesystemPVName
+			pvUsingFilesystemMode.Spec.VolumeMode = &volumeModeFileSystem
+			pvUsingFilesystemMode.Spec.ClaimRef.Name = filesystemPVName
+
 			// Create a fake claim as our PVC DataSource
-			claim := fakeClaim(srcName, srcNamespace, "fake-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimBound, &fakeSc1)
+			claim := fakeClaim(srcName, srcNamespace, "fake-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimBound, &fakeSc1, "")
 			// Create a fake claim with invalid PV
-			invalidClaim := fakeClaim(invalidPVC, srcNamespace, "fake-claim-uid", requestedBytes, "pv-not-present", v1.ClaimBound, &fakeSc1)
+			invalidClaim := fakeClaim(invalidPVC, srcNamespace, "fake-claim-uid", requestedBytes, "pv-not-present", v1.ClaimBound, &fakeSc1, "")
 			// Create a fake claim as source PVC storageclass nil
-			scNilClaim := fakeClaim("pvc-sc-nil", srcNamespace, "fake-claim-uid", requestedBytes, pvName, v1.ClaimBound, nil)
+			scNilClaim := fakeClaim("pvc-sc-nil", srcNamespace, "fake-claim-uid", requestedBytes, pvName, v1.ClaimBound, nil, "")
 			// Create a fake claim, with source PVC having a lost claim status
-			lostClaim := fakeClaim(lostPVC, srcNamespace, "fake-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimLost, &fakeSc1)
+			lostClaim := fakeClaim(lostPVC, srcNamespace, "fake-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimLost, &fakeSc1, "")
 			// Create a fake claim, with source PVC having a pending claim status
-			pendingClaim := fakeClaim(pendingPVC, srcNamespace, "fake-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimPending, &fakeSc1)
-			clientSet = fakeclientset.NewSimpleClientset(claim, scNilClaim, pv, invalidClaim, unboundPV, anotherDriverPV, pvBoundToAnotherPVCUID, pvBoundToAnotherPVCNamespace, pvBoundToAnotherPVCName, lostClaim, pendingClaim)
+			pendingClaim := fakeClaim(pendingPVC, srcNamespace, "fake-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimPending, &fakeSc1, "")
+			// Create a fake claim with filesystem mode on our PVC DataSource
+			filesystemClaim := fakeClaim(filesystemPVName, srcNamespace, "fake-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimBound, &fakeSc1, "filesystem")
+			// Create a fake claim with block mode on our PVC DataSource
+			blockClaim := fakeClaim(blockModePVName, srcNamespace, "fake-block-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimBound, &fakeSc1, "block")
+
+			clientSet = fakeclientset.NewSimpleClientset(claim, scNilClaim, pv, invalidClaim, filesystemClaim, blockClaim, unboundPV, anotherDriverPV, pvBoundToAnotherPVCUID, pvBoundToAnotherPVCNamespace, pvBoundToAnotherPVCName, lostClaim, pendingClaim, pvUsingFilesystemMode, blkModePV)
 
 			// Phase: setup responses based on test case parameters
 			out := &csi.CreateVolumeResponse{

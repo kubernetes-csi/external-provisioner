@@ -832,6 +832,18 @@ func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi
 		return nil, fmt.Errorf("claim in dataSource not bound or invalid")
 	}
 
+	if options.PVC.Spec.VolumeMode == nil || *options.PVC.Spec.VolumeMode == v1.PersistentVolumeFilesystem {
+		if sourcePV.Spec.VolumeMode != nil && *sourcePV.Spec.VolumeMode != v1.PersistentVolumeFilesystem {
+			return nil, fmt.Errorf("the source PVC and destination PVCs must have the same volume mode for cloning.  Source is Block, but new PVC requested Filesystem")
+		}
+	}
+
+	if options.PVC.Spec.VolumeMode != nil && *options.PVC.Spec.VolumeMode == v1.PersistentVolumeBlock {
+		if sourcePV.Spec.VolumeMode == nil || *sourcePV.Spec.VolumeMode != v1.PersistentVolumeBlock {
+			return nil, fmt.Errorf("the source PVC and destination PVCs must have the same volume mode for cloning.  Source is Filesystem, but new PVC requested Block")
+		}
+	}
+
 	volumeSource := csi.VolumeContentSource_Volume{
 		Volume: &csi.VolumeContentSource_VolumeSource{
 			VolumeId: sourcePV.Spec.CSI.VolumeHandle,
