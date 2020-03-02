@@ -107,7 +107,24 @@ configvar CSI_PROW_GO_VERSION_GINKGO "${CSI_PROW_GO_VERSION_BUILD}" "Go version 
 # kind version to use. If the pre-installed version is different,
 # the desired version is downloaded from https://github.com/kubernetes-sigs/kind/releases/download/
 # (if available), otherwise it is built from source.
-configvar CSI_PROW_KIND_VERSION "v0.6.0" "kind"
+#
+# Each version comes with a matching set of images, one per supported
+# Kubernetes release. Those image tags may get replaced in the future
+# with something that is incompatible with kind release that we are
+# using, therefore we try to reference images with the digest. It is
+# possible to use a CSI_PROW_KUBERNETES_VERSION for which no digest
+# is known: start_cluster will warn about it before using the
+# image without digest.
+#
+# Digests are part of the release notes at: https://github.com/kubernetes-sigs/kind/releases
+configvar CSI_PROW_KIND_VERSION "v0.7.0" "kind"
+configvar CSI_PROW_KIND_IMAGE_DIGEST_1_17_0 "sha256:9512edae126da271b66b990b6fff768fbb7cd786c7d39e86bdf55906352fdf62" "kind image digest for Kubernetes 1.17.0"
+configvar CSI_PROW_KIND_IMAGE_DIGEST_1_16_4 "sha256:b91a2c2317a000f3a783489dfb755064177dbc3a0b2f4147d50f04825d016f55" "kind image digest for Kubernetes 1.16.4"
+configvar CSI_PROW_KIND_IMAGE_DIGEST_1_15_7 "sha256:e2df133f80ef633c53c0200114fce2ed5e1f6947477dbc83261a6a921169488d" "kind image digest for Kubernetes 1.15.7"
+configvar CSI_PROW_KIND_IMAGE_DIGEST_1_14_10 "sha256:81ae5a3237c779efc4dda43cc81c696f88a194abcc4f8fa34f86cf674aa14977" "kind image digest for Kubernetes 1.14.10"
+configvar CSI_PROW_KIND_IMAGE_DIGEST_1_13_12 "sha256:5e8ae1a4e39f3d151d420ef912e18368745a2ede6d20ea87506920cd947a7e3a" "kind image digest for Kubernetes 1.13.12"
+configvar CSI_PROW_KIND_IMAGE_DIGEST_1_12_10 "sha256:68a6581f64b54994b824708286fafc37f1227b7b54cbb8865182ce1e036ed1cc" "kind image digest for Kubernetes 1.12.10"
+configvar CSI_PROW_KIND_IMAGE_DIGEST_1_11_10 "sha256:e6f3dade95b7cb74081c5b9f3291aaaa6026a90a977e0b990778b6adc9ea6248" "kind image digest for Kubernetes 1.11.10"
 
 # ginkgo test runner version to use. If the pre-installed version is
 # different, the desired version is built from source.
@@ -543,7 +560,14 @@ start_cluster () {
         fi
         image="csiprow/node:latest"
     else
-        image="kindest/node:v${CSI_PROW_KUBERNETES_VERSION}"
+        local varname="CSI_PROW_KIND_IMAGE_DIGEST_$(echo ${CSI_PROW_KUBERNETES_VERSION} | tr . _)"
+        local digest=$(eval echo \$$varname)
+        if [ "$digest" ]; then
+            image="kindest/node:v${CSI_PROW_KUBERNETES_VERSION}@$digest"
+        else
+            warn "$varname is not set, proceeding with kind image v${CSI_PROW_KUBERNETES_VERSION} instead of v${CSI_PROW_KUBERNETES_VERSION}@<some digest>."
+            image="kindest/node:v${CSI_PROW_KUBERNETES_VERSION}"
+        fi
     fi
     cat >"${CSI_PROW_WORK}/kind-config.yaml" <<EOF
 kind: Cluster
