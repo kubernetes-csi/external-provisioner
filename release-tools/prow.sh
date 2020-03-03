@@ -42,6 +42,19 @@
 RELEASE_TOOLS_ROOT="$(realpath "$(dirname "${BASH_SOURCE[0]}")")"
 REPO_DIR="$(pwd)"
 
+info () {
+    echo >&2 INFO: "$@"
+}
+
+warn () {
+    echo >&2 WARNING: "$@"
+}
+
+die () {
+    echo >&2 ERROR: "$@"
+    exit 1
+}
+
 # Sets the default value for a variable if not set already and logs the value.
 # Any variable set this way is usually something that a repo's .prow.sh
 # or the job can set.
@@ -52,23 +65,38 @@ configvar () {
     eval echo "\$3:" "$1=\${$1}"
 }
 
-# Takes the minor version of $CSI_PROW_KUBERNETES_VERSION and overrides it to
-# $1 if they are equal minor versions. Ignores versions that begin with
-# "release-".
+# Updates the patch version of CSI_PROW_KUBERNETES_VERSION such that we
+# have a kind image for it. Does nothing if the current value isn't a
+# version number.
 override_k8s_version () {
-    local current_minor_version
-    local override_minor_version
+    # Not a version number?
+    if ! echo "$CSI_PROW_KUBERNETES_VERSION" | grep -q '^[0-9][0-9]*\.[0-9][0-9]*'; then
+        return
+    fi
 
-    # Ignore: See if you can use ${variable//search/replace} instead.
+    # Extract major and minor version numbers.
+    local major, minor
     # shellcheck disable=SC2001
-    current_minor_version="$(echo "${CSI_PROW_KUBERNETES_VERSION}" | sed -e 's/\([0-9]*\)\.\([0-9]*\).*/\1\.\2/')"
+    major=$(echo "${CSI_PROW_KUBERNETES_VERSION}" | sed -e 's/\([0-9]*\)\.\([0-9]*\).*/\1/')
+    # shellcheck disable=SC2001
+    minor=$(echo "${CSI_PROW_KUBERNETES_VERSION}" | sed -e 's/\([0-9]*\)\.\([0-9]*\).*/\2/')
 
-    # Ignore: See if you can use ${variable//search/replace} instead.
+    # Look for matching image information.
+    local digest
+    digest=$(set | grep "^CSI_PROW_KIND_IMAGE_DIGEST_${major}_${minor}_" | sort | tail -n 1)
+    if [ ! "$digest" ]; then
+        die "CSI_PROW_KUBERNETES_VERSION=$CSI_PROW_KUBERNETES_VERSION is not supported because kind $CSI_PROW_KIND_VERSION has no image for it (= no CSI_PROW_KIND_IMAGE_DIGEST_${major}_${minor}_<patch> set)."
+    fi
+
+    # Extract patch number from the digest variable name.
+    local patch
     # shellcheck disable=SC2001
-    override_minor_version="$(echo "${1}" | sed -e 's/\([0-9]*\)\.\([0-9]*\).*/\1\.\2/')"
-    if [ "${current_minor_version}" == "${override_minor_version}" ]; then
-      CSI_PROW_KUBERNETES_VERSION="$1"
-      echo "Overriding CSI_PROW_KUBERNETES_VERSION with $1: $CSI_PROW_KUBERNETES_VERSION"
+    patch=$(echo "$digest" | sed -e 's/CSI_PROW_KIND_IMAGE_DIGEST_[0-9]*_[0-9]*_\([0-9]*\)=.*/\1/')
+    local new_version
+    new_version="$major.$minor.$patch"
+    if [ "${new_version}" != "${CSI_PROW_KUBERNETES_VERSION}" ]; then
+        CSI_PROW_KUBERNETES_VERSION="${new_version}"
+        info "Actual CSI_PROW_KUBERNETES_VERSION: $CSI_PROW_KUBERNETES_VERSION"
     fi
 }
 
@@ -111,10 +139,10 @@ configvar CSI_PROW_GO_VERSION_GINKGO "${CSI_PROW_GO_VERSION_BUILD}" "Go version 
 # Each version comes with a matching set of images, one per supported
 # Kubernetes release. Those image tags may get replaced in the future
 # with something that is incompatible with kind release that we are
-# using, therefore we try to reference images with the digest. It is
-# possible to use a CSI_PROW_KUBERNETES_VERSION for which no digest
-# is known: start_cluster will warn about it before using the
-# image without digest.
+# using, therefore reference images with the digest. We need at least
+# one image digest for each major.minor Kubernetes version
+# number. Listing more than one patch version is okay but not
+# necessary, because always the most recent one will be used.
 #
 # Digests are part of the release notes at: https://github.com/kubernetes-sigs/kind/releases
 configvar CSI_PROW_KIND_VERSION "v0.7.0" "kind"
@@ -139,27 +167,20 @@ configvar CSI_PROW_GINKO_PARALLEL "-p" "Ginko parallelism parameter(s)"
 configvar CSI_PROW_BUILD_JOB true "building code in repo enabled"
 
 # Kubernetes version to test against. This must be a version number
-# (like 1.13.3) for which there is a pre-built kind image (see
-# https://hub.docker.com/r/kindest/node/tags), "latest" (builds
-# Kubernetes from the master branch) or "release-x.yy" (builds
+# (like 1.13.3 or 1.13; only the major.minor version numbers matter),
+# "latest" (builds Kubernetes from the master branch) or "release-x.yy" (builds
 # Kubernetes from a release branch).
+#
+# The patch version of Kubernetes is determined by this script,
+# based on which images the current kind release supports.
 #
 # This can also be a version that was not released yet at the time
 # that the settings below were chose. The script will then
 # use the same settings as for "latest" Kubernetes. This works
 # as long as there are no breaking changes in Kubernetes, like
 # deprecating or changing the implementation of an alpha feature.
-configvar CSI_PROW_KUBERNETES_VERSION 1.17.0 "Kubernetes"
-
-# This is a hack to workaround the issue that each version
-# of kind currently only supports specific patch versions of
-# Kubernetes. We need to override CSI_PROW_KUBERNETES_VERSION
-# passed in by our CI/pull jobs to the versions that
-# kind v0.5.0 supports.
-#
-# If the version is prefixed with "release-", then nothing
-# is overridden.
-override_k8s_version "1.15.3"
+configvar CSI_PROW_KUBERNETES_VERSION 1.17 "Kubernetes"
+override_k8s_version
 
 # CSI_PROW_KUBERNETES_VERSION reduced to first two version numbers and
 # with underscore (1_13 instead of 1.13.3) and in uppercase (LATEST
@@ -381,19 +402,6 @@ run () {
     "$@"
 }
 
-info () {
-    echo >&2 INFO: "$@"
-}
-
-warn () {
-    echo >&2 WARNING: "$@"
-}
-
-die () {
-    echo >&2 ERROR: "$@"
-    exit 1
-}
-
 # For additional tools.
 CSI_PROW_BIN="${CSI_PROW_WORK}/bin"
 mkdir -p "${CSI_PROW_BIN}"
@@ -560,11 +568,15 @@ start_cluster () {
         fi
         image="csiprow/node:latest"
     else
-        local varname="CSI_PROW_KIND_IMAGE_DIGEST_$(echo ${CSI_PROW_KUBERNETES_VERSION} | tr . _)"
-        local digest=$(eval echo \$$varname)
+        local varname
+        varname="CSI_PROW_KIND_IMAGE_DIGEST_$(echo "${CSI_PROW_KUBERNETES_VERSION}" | tr . _)"
+        local digest
+        digest=$(eval echo "\$$varname")
         if [ "$digest" ]; then
             image="kindest/node:v${CSI_PROW_KUBERNETES_VERSION}@$digest"
         else
+            # We shouldn't get here because of override_k8s_version, but let's keep the
+            # fallback anyway in case that the logic above changes.
             warn "$varname is not set, proceeding with kind image v${CSI_PROW_KUBERNETES_VERSION} instead of v${CSI_PROW_KUBERNETES_VERSION}@<some digest>."
             image="kindest/node:v${CSI_PROW_KUBERNETES_VERSION}"
         fi
