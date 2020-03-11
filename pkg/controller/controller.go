@@ -52,7 +52,7 @@ import (
 	"k8s.io/klog"
 
 	"google.golang.org/grpc"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
@@ -580,6 +580,10 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 			return nil, controller.ProvisioningNoChange, fmt.Errorf("error getting handle for DataSource Type %s by Name %s: %v", options.PVC.Spec.DataSource.Kind, options.PVC.Spec.DataSource.Name, err)
 		}
 		req.VolumeContentSource = volumeContentSource
+		err = p.setCloneFinalizer(options.PVC.Spec.DataSource.Name, options.PVC.Namespace)
+		if err != nil {
+			return nil, controller.ProvisioningFinished, err
+		}
 	}
 
 	if p.supportsTopology() {
@@ -760,6 +764,21 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 
 	klog.V(5).Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
 	return pv, controller.ProvisioningFinished, nil
+}
+
+func (p *csiProvisioner) setCloneFinalizer(name string, namespace string) error {
+	claim, err := p.client.CoreV1().PersistentVolumeClaims(namespace).Get(name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	if !checkFinalizer(claim, pvcCloneFinalizer) {
+		claim.Finalizers = append(claim.Finalizers, pvcCloneFinalizer)
+		_, err := p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(claim)
+		return err
+	}
+
+	return nil
 }
 
 func (p *csiProvisioner) supportsTopology() bool {
@@ -1118,7 +1137,7 @@ func (p *csiClaimController) syncClaimHandler(key string) error {
 
 	claimObj, err := p.claimLister.PersistentVolumeClaims(namespace).Get(name)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
+		if apierrs.IsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("Item '%s' in work queue no longer exists", key))
 			return nil
 		}
@@ -1135,7 +1154,59 @@ func (p *csiClaimController) syncClaim(obj interface{}) error {
 		return fmt.Errorf("expected claim but got %+v", obj)
 	}
 
-	klog.Infof("Working on PVC %#v with finalizers", claim, claim.GetFinalizers())
+	if !checkFinalizer(claim, pvcCloneFinalizer) {
+		return nil
+	}
+
+	pvcList, err := p.client.CoreV1().PersistentVolumeClaims("").List(metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	// Check for pvc state with DataSource pointing to claim
+	for _, pvc := range pvcList.Items {
+		if pvc.Spec.DataSource == nil {
+			continue
+		}
+
+		if pvc.Spec.DataSource.Kind == pvcKind &&
+			pvc.Spec.DataSource.Name == claim.Name &&
+			pvc.Status.Phase == v1.ClaimPending {
+			return apierrs.NewBadRequest(fmt.Sprintf("PVC '%s' is in pending state, cloning in progress", pvc.Name))
+		}
+	}
+
+	// Remove clone finalizer
+	// need to get the pvc again because the delete has updated the object with a deletion timestamp
+	claim, err = p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Get(claim.Name, metav1.GetOptions{})
+	if err != nil {
+		// If the volume is not found return, otherwise error
+		if !apierrs.IsNotFound(err) {
+			klog.Info("failed to remove clone finalizer from PVC: %v", claim.Name)
+			return err
+		}
+		return nil
+	}
+
+	finalizers := make([]string, 0)
+	for _, finalizer := range claim.ObjectMeta.Finalizers {
+		if finalizer != pvcCloneFinalizer {
+			finalizers = append(finalizers, finalizer)
+		}
+	}
+
+	// Only update the finalizers if we actually removed something
+	if checkFinalizer(claim, pvcCloneFinalizer) {
+		claim.ObjectMeta.Finalizers = finalizers
+		if _, err = p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(claim); err != nil {
+			if !apierrs.IsNotFound(err) {
+				// Couldn't remove finalizer and the object still exists, the controller may
+				// try to remove the finalizer again on the next update
+				klog.Info("failed to remove clone finalizer from PVC %v", claim.Name)
+				return err
+			}
+		}
+	}
 
 	return nil
 }
