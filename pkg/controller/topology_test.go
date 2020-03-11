@@ -1323,6 +1323,73 @@ func TestPreferredTopologies(t *testing.T) {
 			},
 			expectError: true,
 		},
+		"allowedTopologies is subset of selected node's topology": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/disk",
+							Values: []string{"ssd"},
+						},
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+					},
+				},
+			},
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rack1", "com.example.csi/disk": "ssd"},
+				{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rack2", "com.example.csi/disk": "ssd"},
+				{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rack1", "com.example.csi/disk": "nvme"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack", "com.example.csi/disk"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack", "com.example.csi/disk"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack", "com.example.csi/disk"}},
+			},
+			expectError: false,
+			expectedPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/disk": "ssd",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+			},
+			expectedStrictPreferred: []*csi.Topology{
+				{
+					Segments: map[string]string{
+						"com.example.csi/disk": "ssd",
+						"com.example.csi/rack": "rack1",
+						"com.example.csi/zone": "zone1",
+					},
+				},
+			},
+		},
+		"allowedTopologies is not the subset of selected node's topology": {
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{
+							Key:    "com.example.csi/zone",
+							Values: []string{"zone1"},
+						},
+					},
+				},
+			},
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone10", "com.example.csi/rack": "rack1"},
+				{"com.example.csi/zone": "zone11", "com.example.csi/rack": "rack2"},
+				{"com.example.csi/zone": "zone12", "com.example.csi/rack": "rack1"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+			},
+			expectError: true,
+		},
 	}
 
 	for name, tc := range testcases {
