@@ -580,6 +580,9 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 			return nil, controller.ProvisioningNoChange, fmt.Errorf("error getting handle for DataSource Type %s by Name %s: %v", options.PVC.Spec.DataSource.Kind, options.PVC.Spec.DataSource.Name, err)
 		}
 		req.VolumeContentSource = volumeContentSource
+	}
+
+	if options.PVC.Spec.DataSource != nil && rc.clone {
 		err = p.setCloneFinalizer(options.PVC.Spec.DataSource.Name, options.PVC.Namespace)
 		if err != nil {
 			return nil, controller.ProvisioningFinished, err
@@ -1182,7 +1185,7 @@ func (p *csiClaimController) syncClaim(obj interface{}) error {
 	if err != nil {
 		// If the volume is not found return, otherwise error
 		if !apierrs.IsNotFound(err) {
-			klog.Info("failed to remove clone finalizer from PVC: %v", claim.Name)
+			klog.Infof("failed to remove clone finalizer from PVC: %v", claim.Name)
 			return err
 		}
 		return nil
@@ -1202,7 +1205,7 @@ func (p *csiClaimController) syncClaim(obj interface{}) error {
 			if !apierrs.IsNotFound(err) {
 				// Couldn't remove finalizer and the object still exists, the controller may
 				// try to remove the finalizer again on the next update
-				klog.Info("failed to remove clone finalizer from PVC %v", claim.Name)
+				klog.Infof("failed to remove clone finalizer from PVC %v", claim.Name)
 				return err
 			}
 		}
