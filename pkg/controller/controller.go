@@ -139,6 +139,8 @@ const (
 	annStorageProvisioner = "volume.beta.kubernetes.io/storage-provisioner"
 
 	snapshotNotBound = "snapshot %s not bound"
+
+	pvcCloneFinalizer = "external-provisioner.clone.kubernetes.io/finalizer"
 )
 
 var (
@@ -323,8 +325,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	return provisioner
 }
 
-// NewCSIClaimController creates new controller for additional CSI capabilities
-func NewCSIClaimController(
+// NewCSIController creates new controller for additional CSI capabilities
+func NewCSIController(
 	client kubernetes.Interface,
 	claimLister corelisters.PersistentVolumeClaimLister,
 	claimInformer cache.SharedInformer,
@@ -345,7 +347,7 @@ func (p *csiClaimController) Run(threadiness int, stopCh <-chan struct{}) {
 	defer p.claimQueue.ShutDown()
 
 	claimHandler := cache.ResourceEventHandlerFuncs{
-		DeleteFunc: p.enqueueClaim,
+		UpdateFunc: func(_ interface{}, newObj interface{}) { p.enqueueClaimUpadate(newObj) },
 	}
 	p.claimInformer.AddEventHandler(claimHandler)
 
@@ -1084,8 +1086,19 @@ func (p *csiClaimController) processNextClaimWorkItem() bool {
 	return true
 }
 
-// enqueueClaim takes an obj and converts it into UID that is then put onto claim work queue.
-func (p *csiClaimController) enqueueClaim(obj interface{}) {
+// enqueueClaimUpadate takes an obj and converts it into UID that is then put onto claim work queue.
+func (p *csiClaimController) enqueueClaimUpadate(obj interface{}) {
+	new, ok := obj.(*v1.PersistentVolumeClaim)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("expected claim but got %+v", new))
+		return
+	}
+
+	// Timestamp didn't appear
+	if new.DeletionTimestamp == nil {
+		return
+	}
+
 	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
 		utilruntime.HandleError(err)
@@ -1122,7 +1135,7 @@ func (p *csiClaimController) syncClaim(obj interface{}) error {
 		return fmt.Errorf("expected claim but got %+v", obj)
 	}
 
-	klog.Infof("Working on PVC %#v", claim)
+	klog.Infof("Working on PVC %#v with finalizers", claim, claim.GetFinalizers())
 
 	return nil
 }
@@ -1386,4 +1399,13 @@ func cleanupVolume(p *csiProvisioner, delReq *csi.DeleteVolumeRequest, provision
 		}
 	}
 	return err
+}
+
+func checkFinalizer(obj metav1.Object, finalizer string) bool {
+	for _, f := range obj.GetFinalizers() {
+		if f == finalizer {
+			return true
+		}
+	}
+	return false
 }

@@ -4,15 +4,12 @@ go 1.12
 
 require (
 	github.com/container-storage-interface/spec v1.1.0
-	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/mock v1.2.0
 	github.com/kubernetes-csi/csi-lib-utils v0.7.0
 	github.com/kubernetes-csi/csi-test v2.0.0+incompatible
 	github.com/kubernetes-csi/external-snapshotter v1.2.1-0.20191220180133-bba358438aee
 	github.com/miekg/dns v1.1.8 // indirect
-	github.com/prometheus/client_golang v1.0.0
 	github.com/spf13/pflag v1.0.5
-	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
 	google.golang.org/grpc v1.26.0
 	k8s.io/api v0.17.0
 	k8s.io/apimachinery v0.17.1-beta.0

@@ -247,7 +247,7 @@ func main() {
 		provisionerOptions...,
 	)
 
-	csiClaimController := ctrl.NewCSIClaimController(
+	csiClaimController := ctrl.NewCSIController(
 		clientset,
 		claimLister,
 		claimInformer,
@@ -263,12 +263,10 @@ func main() {
 				klog.Fatalf("Failed to sync Informers!")
 			}
 		}
-		klog.Info("Starting 2PVC controller")
 
 		go csiClaimController.Run(int(*workerThreads), stopCh)
 		provisionController.Run(wait.NeverStop)
 	}
-	klog.Info("Starting 1PVC controller")
 
 	if !*enableLeaderElection {
 		run(context.TODO())
