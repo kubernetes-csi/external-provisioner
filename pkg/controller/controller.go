@@ -44,11 +44,16 @@ import (
 	_ "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
 	"google.golang.org/grpc"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
@@ -223,6 +228,13 @@ type csiProvisioner struct {
 	extraCreateMetadata                   bool
 }
 
+type csiClaimController struct {
+	client        kubernetes.Interface
+	claimLister   corelisters.PersistentVolumeClaimLister
+	claimInformer cache.SharedInformer
+	claimQueue    workqueue.RateLimitingInterface
+}
+
 var _ controller.Provisioner = &csiProvisioner{}
 var _ controller.BlockProvisioner = &csiProvisioner{}
 var _ controller.ProvisionerExt = &csiProvisioner{}
@@ -309,6 +321,43 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		extraCreateMetadata:                   extraCreateMetadata,
 	}
 	return provisioner
+}
+
+// NewCSIClaimController creates new controller for additional CSI capabilities
+func NewCSIClaimController(
+	client kubernetes.Interface,
+	claimLister corelisters.PersistentVolumeClaimLister,
+	claimInformer cache.SharedInformer,
+	claimQueue workqueue.RateLimitingInterface,
+) *csiClaimController {
+	csiClaimController := &csiClaimController{
+		client:        client,
+		claimLister:   claimLister,
+		claimInformer: claimInformer,
+		claimQueue:    claimQueue,
+	}
+	return csiClaimController
+}
+
+func (p *csiClaimController) Run(threadiness int, stopCh <-chan struct{}) {
+	klog.Info("Starting PVC controller")
+	defer utilruntime.HandleCrash()
+	defer p.claimQueue.ShutDown()
+
+	claimHandler := cache.ResourceEventHandlerFuncs{
+		DeleteFunc: p.enqueueClaim,
+	}
+	p.claimInformer.AddEventHandler(claimHandler)
+
+	for i := 0; i < threadiness; i++ {
+		go wait.Until(p.runClaimWorker, time.Second, stopCh)
+	}
+
+	go p.claimInformer.Run(stopCh)
+
+	klog.Infof("Started PVC controller")
+	<-stopCh
+	klog.Info("Shutting down PVC controller")
 }
 
 // This function get called before any attempt to communicate with the driver.
@@ -995,6 +1044,87 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	_, err = p.csiClient.DeleteVolume(ctx, &req)
 
 	return err
+}
+
+func (p *csiClaimController) runClaimWorker() {
+	for p.processNextClaimWorkItem() {
+	}
+}
+
+// processNextClaimWorkItem processes items from claimQueue
+func (p *csiClaimController) processNextClaimWorkItem() bool {
+	obj, shutdown := p.claimQueue.Get()
+	if shutdown {
+		return false
+	}
+
+	err := func(obj interface{}) error {
+		defer p.claimQueue.Done(obj)
+		var key string
+		var ok bool
+		if key, ok = obj.(string); !ok {
+			p.claimQueue.Forget(obj)
+			return fmt.Errorf("expected string in workqueue but got %#v", obj)
+		}
+
+		if err := p.syncClaimHandler(key); err != nil {
+			klog.Warningf("Retrying syncing claim %q after %v failures", key, p.claimQueue.NumRequeues(obj))
+			p.claimQueue.AddRateLimited(obj)
+		}
+
+		p.claimQueue.Forget(obj)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+
+	return true
+}
+
+// enqueueClaim takes an obj and converts it into UID that is then put onto claim work queue.
+func (p *csiClaimController) enqueueClaim(obj interface{}) {
+	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	p.claimQueue.Add(key)
+}
+
+// syncClaimHandler gets the claim from informer's cache then calls syncClaim
+func (p *csiClaimController) syncClaimHandler(key string) error {
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
+
+	claimObj, err := p.claimLister.PersistentVolumeClaims(namespace).Get(name)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			utilruntime.HandleError(fmt.Errorf("Item '%s' in work queue no longer exists", key))
+			return nil
+		}
+
+		return err
+	}
+
+	return p.syncClaim(claimObj)
+}
+
+func (p *csiClaimController) syncClaim(obj interface{}) error {
+	claim, ok := obj.(*v1.PersistentVolumeClaim)
+	if !ok {
+		return fmt.Errorf("expected claim but got %+v", obj)
+	}
+
+	klog.Infof("Working on PVC %#v", claim)
+
+	return nil
 }
 
 func (p *csiProvisioner) SupportsBlock() bool {
