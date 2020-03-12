@@ -157,7 +157,8 @@ func (p *CloningProtectionController) syncClaim(obj interface{}) error {
 		return nil
 	}
 
-	pvcList, err := p.claimLister.PersistentVolumeClaims("").List(labels.Everything())
+	// Checking for PVCs in the same namespace to have other states aside from Pending, which means that cloning is still in progress
+	pvcList, err := p.claimLister.PersistentVolumeClaims(claim.Namespace).List(labels.Everything())
 	if err != nil {
 		return err
 	}

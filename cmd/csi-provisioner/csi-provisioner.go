@@ -175,9 +175,10 @@ func main() {
 	factory := informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
 
 	// -------------------------------
-	// StorageClass lister
+	// Listers
 	// Create informer to prevent hit the API server for all resource request
 	scLister := factory.Storage().V1().StorageClasses().Lister()
+	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
 
 	var csiNodeLister storagelistersv1beta1.CSINodeLister
 	var nodeLister v1.NodeLister
@@ -190,9 +191,7 @@ func main() {
 	// PersistentVolumeClaims informer
 	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)
 	claimQueue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "claims")
-
 	claimInformer := factory.Core().V1().PersistentVolumeClaims().Informer()
-	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
 
 	// Setup options
 	provisionerOptions := []func(*controller.ProvisionController) error{
@@ -256,16 +255,15 @@ func main() {
 	)
 
 	run := func(context.Context) {
-		stopCh := context.Background().Done()
-		factory.Start(stopCh)
-		cacheSyncResult := factory.WaitForCacheSync(stopCh)
+		factory.Start(context.Background().Done())
+		cacheSyncResult := factory.WaitForCacheSync(context.Background().Done())
 		for _, v := range cacheSyncResult {
 			if !v {
 				klog.Fatalf("Failed to sync Informers!")
 			}
 		}
 
-		go csiClaimController.Run(int(*workerThreads), stopCh)
+		go csiClaimController.Run(int(*workerThreads), context.Background().Done())
 		provisionController.Run(wait.NeverStop)
 	}
 
