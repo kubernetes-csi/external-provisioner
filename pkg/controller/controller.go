@@ -44,16 +44,11 @@ import (
 	_ "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
 	"google.golang.org/grpc"
-	apierrs "k8s.io/apimachinery/pkg/api/errors"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
@@ -227,14 +222,8 @@ type csiProvisioner struct {
 	scLister                              storagelistersv1.StorageClassLister
 	csiNodeLister                         storagelistersv1beta1.CSINodeLister
 	nodeLister                            corelisters.NodeLister
+	claimLister                           corelisters.PersistentVolumeClaimLister
 	extraCreateMetadata                   bool
-}
-
-type csiClaimController struct {
-	client        kubernetes.Interface
-	claimLister   corelisters.PersistentVolumeClaimLister
-	claimInformer cache.SharedInformer
-	claimQueue    workqueue.RateLimitingInterface
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -298,6 +287,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	scLister storagelistersv1.StorageClassLister,
 	csiNodeLister storagelistersv1beta1.CSINodeLister,
 	nodeLister corelisters.NodeLister,
+	claimLister corelisters.PersistentVolumeClaimLister,
 	extraCreateMetadata bool,
 ) controller.Provisioner {
 
@@ -320,46 +310,10 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		scLister:                              scLister,
 		csiNodeLister:                         csiNodeLister,
 		nodeLister:                            nodeLister,
+		claimLister:                           claimLister,
 		extraCreateMetadata:                   extraCreateMetadata,
 	}
 	return provisioner
-}
-
-// NewCSIController creates new controller for additional CSI capabilities
-func NewCSIController(
-	client kubernetes.Interface,
-	claimLister corelisters.PersistentVolumeClaimLister,
-	claimInformer cache.SharedInformer,
-	claimQueue workqueue.RateLimitingInterface,
-) *csiClaimController {
-	csiClaimController := &csiClaimController{
-		client:        client,
-		claimLister:   claimLister,
-		claimInformer: claimInformer,
-		claimQueue:    claimQueue,
-	}
-	return csiClaimController
-}
-
-func (p *csiClaimController) Run(threadiness int, stopCh <-chan struct{}) {
-	klog.Info("Starting PVC controller")
-	defer utilruntime.HandleCrash()
-	defer p.claimQueue.ShutDown()
-
-	claimHandler := cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(_ interface{}, newObj interface{}) { p.enqueueClaimUpadate(newObj) },
-	}
-	p.claimInformer.AddEventHandler(claimHandler)
-
-	for i := 0; i < threadiness; i++ {
-		go wait.Until(p.runClaimWorker, time.Second, stopCh)
-	}
-
-	go p.claimInformer.Run(stopCh)
-
-	klog.Infof("Started PVC controller")
-	<-stopCh
-	klog.Info("Shutting down PVC controller")
 }
 
 // This function get called before any attempt to communicate with the driver.
@@ -583,7 +537,7 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 	}
 
 	if options.PVC.Spec.DataSource != nil && rc.clone {
-		err = p.setCloneFinalizer(options.PVC.Spec.DataSource.Name, options.PVC.Namespace)
+		err = p.setCloneFinalizer(options.PVC)
 		if err != nil {
 			return nil, controller.ProvisioningFinished, err
 		}
@@ -769,8 +723,8 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 	return pv, controller.ProvisioningFinished, nil
 }
 
-func (p *csiProvisioner) setCloneFinalizer(name string, namespace string) error {
-	claim, err := p.client.CoreV1().PersistentVolumeClaims(namespace).Get(name, metav1.GetOptions{})
+func (p *csiProvisioner) setCloneFinalizer(pvc *v1.PersistentVolumeClaim) error {
+	claim, err := p.claimLister.PersistentVolumeClaims(pvc.Namespace).Get(pvc.Spec.DataSource.Name)
 	if err != nil {
 		return err
 	}
@@ -838,7 +792,7 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.ProvisionOpti
 // getPVCSource verifies DataSource.Kind of type PersistentVolumeClaim, making sure that the requested PVC is available/ready
 // returns the VolumeContentSource for the requested PVC
 func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi.VolumeContentSource, error) {
-	sourcePVC, err := p.client.CoreV1().PersistentVolumeClaims(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
+	sourcePVC, err := p.claimLister.PersistentVolumeClaims(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name)
 	if err != nil {
 		return nil, fmt.Errorf("error getting PVC %s (namespace %q) from api server: %v", options.PVC.Spec.DataSource.Name, options.PVC.Namespace, err)
 	}
@@ -1068,150 +1022,6 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	_, err = p.csiClient.DeleteVolume(ctx, &req)
 
 	return err
-}
-
-func (p *csiClaimController) runClaimWorker() {
-	for p.processNextClaimWorkItem() {
-	}
-}
-
-// processNextClaimWorkItem processes items from claimQueue
-func (p *csiClaimController) processNextClaimWorkItem() bool {
-	obj, shutdown := p.claimQueue.Get()
-	if shutdown {
-		return false
-	}
-
-	err := func(obj interface{}) error {
-		defer p.claimQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			p.claimQueue.Forget(obj)
-			return fmt.Errorf("expected string in workqueue but got %#v", obj)
-		}
-
-		if err := p.syncClaimHandler(key); err != nil {
-			klog.Warningf("Retrying syncing claim %q after %v failures", key, p.claimQueue.NumRequeues(obj))
-			p.claimQueue.AddRateLimited(obj)
-		}
-
-		p.claimQueue.Forget(obj)
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
-	return true
-}
-
-// enqueueClaimUpadate takes an obj and converts it into UID that is then put onto claim work queue.
-func (p *csiClaimController) enqueueClaimUpadate(obj interface{}) {
-	new, ok := obj.(*v1.PersistentVolumeClaim)
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("expected claim but got %+v", new))
-		return
-	}
-
-	// Timestamp didn't appear
-	if new.DeletionTimestamp == nil {
-		return
-	}
-
-	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-
-	p.claimQueue.Add(key)
-}
-
-// syncClaimHandler gets the claim from informer's cache then calls syncClaim
-func (p *csiClaimController) syncClaimHandler(key string) error {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
-		return nil
-	}
-
-	claimObj, err := p.claimLister.PersistentVolumeClaims(namespace).Get(name)
-	if err != nil {
-		if apierrs.IsNotFound(err) {
-			utilruntime.HandleError(fmt.Errorf("Item '%s' in work queue no longer exists", key))
-			return nil
-		}
-
-		return err
-	}
-
-	return p.syncClaim(claimObj)
-}
-
-func (p *csiClaimController) syncClaim(obj interface{}) error {
-	claim, ok := obj.(*v1.PersistentVolumeClaim)
-	if !ok {
-		return fmt.Errorf("expected claim but got %+v", obj)
-	}
-
-	if !checkFinalizer(claim, pvcCloneFinalizer) {
-		return nil
-	}
-
-	pvcList, err := p.client.CoreV1().PersistentVolumeClaims("").List(metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-
-	// Check for pvc state with DataSource pointing to claim
-	for _, pvc := range pvcList.Items {
-		if pvc.Spec.DataSource == nil {
-			continue
-		}
-
-		if pvc.Spec.DataSource.Kind == pvcKind &&
-			pvc.Spec.DataSource.Name == claim.Name &&
-			pvc.Status.Phase == v1.ClaimPending {
-			return apierrs.NewBadRequest(fmt.Sprintf("PVC '%s' is in pending state, cloning in progress", pvc.Name))
-		}
-	}
-
-	// Remove clone finalizer
-	// need to get the pvc again because the delete has updated the object with a deletion timestamp
-	claim, err = p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Get(claim.Name, metav1.GetOptions{})
-	if err != nil {
-		// If the volume is not found return, otherwise error
-		if !apierrs.IsNotFound(err) {
-			klog.Infof("failed to remove clone finalizer from PVC: %v", claim.Name)
-			return err
-		}
-		return nil
-	}
-
-	finalizers := make([]string, 0)
-	for _, finalizer := range claim.ObjectMeta.Finalizers {
-		if finalizer != pvcCloneFinalizer {
-			finalizers = append(finalizers, finalizer)
-		}
-	}
-
-	// Only update the finalizers if we actually removed something
-	if checkFinalizer(claim, pvcCloneFinalizer) {
-		claim.ObjectMeta.Finalizers = finalizers
-		if _, err = p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(claim); err != nil {
-			if !apierrs.IsNotFound(err) {
-				// Couldn't remove finalizer and the object still exists, the controller may
-				// try to remove the finalizer again on the next update
-				klog.Infof("failed to remove clone finalizer from PVC %v", claim.Name)
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 func (p *csiProvisioner) SupportsBlock() bool {

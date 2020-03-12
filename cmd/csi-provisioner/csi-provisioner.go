@@ -236,6 +236,7 @@ func main() {
 		scLister,
 		csiNodeLister,
 		nodeLister,
+		claimLister,
 		*extraCreateMetadata,
 	)
 
@@ -247,7 +248,7 @@ func main() {
 		provisionerOptions...,
 	)
 
-	csiClaimController := ctrl.NewCSIController(
+	csiClaimController := ctrl.NewCloningProtectionController(
 		clientset,
 		claimLister,
 		claimInformer,
