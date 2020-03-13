@@ -1245,7 +1245,7 @@ func isFinalError(err error) bool {
 }
 
 func cleanupVolume(p *csiProvisioner, delReq *csi.DeleteVolumeRequest, provisionerCredentials map[string]string) error {
-	var err error = nil
+	var err error
 	delReq.Secrets = provisionerCredentials
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
