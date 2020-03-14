@@ -2901,12 +2901,14 @@ func TestProvisionFromPVC(t *testing.T) {
 		restoredVolSizeBig   bool                     // set to request a smaller volSize than source PVC, default false
 		expectedPVSpec       *pvSpec                  // set to expected PVSpec on success, for deep comparison, default nil
 		cloneUnsupported     bool                     // set to state clone feature not supported in capabilities, default false
+		expectFinalizers     bool                     // while set, expects clone protection finalizers to be set on a PVC
 		sourcePVStatusPhase  v1.PersistentVolumePhase // set to change source PV Status.Phase, default "Bound"
 		expectErr            bool                     // set to state, test is expected to return errors, default false
 	}{
 		"provision with pvc data source": {
-			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
+			clonePVName:      pvName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
+			expectFinalizers: true,
 			expectedPVSpec: &pvSpec{
 				Name:          pvName,
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
@@ -2938,6 +2940,7 @@ func TestProvisionFromPVC(t *testing.T) {
 		"provision with pvc data source destination too small": {
 			clonePVName:          pvName,
 			volOpts:              generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes+1, ""),
+			expectFinalizers:     true,
 			restoredVolSizeSmall: true,
 			expectErr:            true,
 		},
@@ -3027,9 +3030,9 @@ func TestProvisionFromPVC(t *testing.T) {
 			expectErr:   true,
 		},
 		"provision block data source is block": {
-			clonePVName: blockModePVName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, blockModePVName, fakeSc1, requestedBytes, "block"),
-			expectErr:   false,
+			clonePVName:      blockModePVName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, blockModePVName, fakeSc1, requestedBytes, "block"),
+			expectFinalizers: true,
 		},
 		"provision block but data source is filesystem": {
 			clonePVName: filesystemPVName,
@@ -3042,14 +3045,16 @@ func TestProvisionFromPVC(t *testing.T) {
 			expectErr:   true,
 		},
 		"provision nil mode data source is nil": {
-			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
-			expectErr:   false,
+			clonePVName:      pvName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
+			expectFinalizers: true,
+			expectErr:        false,
 		},
 		"provision filesystem data source is filesystem": {
-			clonePVName: filesystemPVName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, filesystemPVName, fakeSc1, requestedBytes, "filesystem"),
-			expectErr:   false,
+			clonePVName:      filesystemPVName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, filesystemPVName, fakeSc1, requestedBytes, "filesystem"),
+			expectFinalizers: true,
+			expectErr:        false,
 		},
 		"provision filesystem but data source is block": {
 			clonePVName: blockModePVName,
@@ -3057,9 +3062,10 @@ func TestProvisionFromPVC(t *testing.T) {
 			expectErr:   true,
 		},
 		"provision filesystem data source is nil": {
-			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, "filesystem"),
-			expectErr:   false,
+			clonePVName:      pvName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, "filesystem"),
+			expectFinalizers: true,
+			expectErr:        false,
 		},
 	}
 
@@ -3226,6 +3232,18 @@ func TestProvisionFromPVC(t *testing.T) {
 			pv, err = csiProvisioner.Provision(tc.volOpts)
 			if tc.expectErr && err == nil {
 				t.Errorf("test %q: Expected error, got none", k)
+			}
+
+			if tc.volOpts.PVC.Spec.DataSource != nil {
+				claim, _ := claimLister.PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(tc.volOpts.PVC.Spec.DataSource.Name)
+				if claim != nil {
+					set := checkFinalizer(claim, pvcCloneFinalizer)
+					if tc.expectFinalizers && !set {
+						t.Errorf("Claim %s does not have clone protection finalizer set", claim.Name)
+					} else if !tc.expectFinalizers && set {
+						t.Errorf("Claim %s should not have clone protection finalizer set", claim.Name)
+					}
+				}
 			}
 
 			// Phase: process test responses

@@ -539,7 +539,7 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 	if options.PVC.Spec.DataSource != nil && rc.clone {
 		err = p.setCloneFinalizer(options.PVC)
 		if err != nil {
-			return nil, controller.ProvisioningFinished, err
+			return nil, controller.ProvisioningNoChange, err
 		}
 	}
 
