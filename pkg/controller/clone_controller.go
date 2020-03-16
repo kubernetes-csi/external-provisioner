@@ -133,7 +133,7 @@ func (p *CloningProtectionController) syncClaimHandler(key string) error {
 		return nil
 	}
 
-	claimObj, err := p.claimLister.PersistentVolumeClaims(namespace).Get(name)
+	claim, err := p.claimLister.PersistentVolumeClaims(namespace).Get(name)
 	if err != nil {
 		if apierrs.IsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("Item '%s' in work queue no longer exists", key))
@@ -143,16 +143,11 @@ func (p *CloningProtectionController) syncClaimHandler(key string) error {
 		return err
 	}
 
-	return p.syncClaim(claimObj)
+	return p.syncClaim(claim)
 }
 
 // syncClaim removes finalizers from a PVC, when cloning is finished
-func (p *CloningProtectionController) syncClaim(obj interface{}) error {
-	claim, ok := obj.(*v1.PersistentVolumeClaim)
-	if !ok {
-		return fmt.Errorf("expected claim but got %+v", obj)
-	}
-
+func (p *CloningProtectionController) syncClaim(claim *v1.PersistentVolumeClaim) error {
 	if !checkFinalizer(claim, pvcCloneFinalizer) {
 		return nil
 	}
