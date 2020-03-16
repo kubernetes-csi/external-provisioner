@@ -172,13 +172,36 @@ func main() {
 	timeStamp := time.Now().UnixNano() / int64(time.Millisecond)
 	identity := strconv.FormatInt(timeStamp, 10) + "-" + strconv.Itoa(rand.Intn(10000)) + "-" + provisionerName
 
+	factory := informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
+
+	// -------------------------------
+	// Listers
+	// Create informer to prevent hit the API server for all resource request
+	scLister := factory.Storage().V1().StorageClasses().Lister()
+	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
+
+	var csiNodeLister storagelistersv1beta1.CSINodeLister
+	var nodeLister v1.NodeLister
+	if ctrl.SupportsTopology(pluginCapabilities) {
+		csiNodeLister = factory.Storage().V1beta1().CSINodes().Lister()
+		nodeLister = factory.Core().V1().Nodes().Lister()
+	}
+
+	// -------------------------------
+	// PersistentVolumeClaims informer
+	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)
+	claimQueue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "claims")
+	claimInformer := factory.Core().V1().PersistentVolumeClaims().Informer()
+
+	// Setup options
 	provisionerOptions := []func(*controller.ProvisionController) error{
 		controller.LeaderElection(false), // Always disable leader election in provisioner lib. Leader election should be done here in the CSI provisioner level instead.
 		controller.FailedProvisionThreshold(0),
 		controller.FailedDeleteThreshold(0),
-		controller.RateLimiter(workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)),
+		controller.RateLimiter(rateLimiter),
 		controller.Threadiness(int(*workerThreads)),
 		controller.CreateProvisionedPVLimiter(workqueue.DefaultControllerRateLimiter()),
+		controller.ClaimsInformer(claimInformer),
 	}
 
 	translator := csitrans.New()
@@ -191,17 +214,6 @@ func main() {
 		}
 		klog.V(2).Infof("Supports migration from in-tree plugin: %s", supportsMigrationFromInTreePluginName)
 		provisionerOptions = append(provisionerOptions, controller.AdditionalProvisionerNames([]string{supportsMigrationFromInTreePluginName}))
-	}
-
-	// Create informer to prevent hit the API server for all resource request
-	factory := informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
-	scLister := factory.Storage().V1().StorageClasses().Lister()
-
-	var csiNodeLister storagelistersv1beta1.CSINodeLister
-	var nodeLister v1.NodeLister
-	if ctrl.SupportsTopology(pluginCapabilities) {
-		csiNodeLister = factory.Storage().V1beta1().CSINodes().Lister()
-		nodeLister = factory.Core().V1().Nodes().Lister()
 	}
 
 	// Create the provisioner: it implements the Provisioner interface expected by
@@ -223,6 +235,7 @@ func main() {
 		scLister,
 		csiNodeLister,
 		nodeLister,
+		claimLister,
 		*extraCreateMetadata,
 	)
 
@@ -232,6 +245,13 @@ func main() {
 		csiProvisioner,
 		serverVersion.GitVersion,
 		provisionerOptions...,
+	)
+
+	csiClaimController := ctrl.NewCloningProtectionController(
+		clientset,
+		claimLister,
+		claimInformer,
+		claimQueue,
 	)
 
 	run := func(context.Context) {
@@ -244,6 +264,7 @@ func main() {
 			}
 		}
 
+		go csiClaimController.Run(int(*workerThreads), stopCh)
 		provisionController.Run(wait.NeverStop)
 	}
 

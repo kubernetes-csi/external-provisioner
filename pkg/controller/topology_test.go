@@ -395,7 +395,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 
 	kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
-	_, csiNodeLister, nodeLister, stopChan := listers(kubeClient)
+	_, csiNodeLister, nodeLister, _, stopChan := listers(kubeClient)
 	defer close(stopChan)
 
 	for name, tc := range testcases {
@@ -1085,7 +1085,7 @@ func TestTopologyAggregation(t *testing.T) {
 
 			kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
-			_, csiNodeLister, nodeLister, stopChan := listers(kubeClient)
+			_, csiNodeLister, nodeLister, _, stopChan := listers(kubeClient)
 			defer close(stopChan)
 
 			var selectedNode *v1.Node
@@ -1338,7 +1338,7 @@ func TestPreferredTopologies(t *testing.T) {
 			kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 			selectedNode := &nodes.Items[0]
 
-			_, csiNodeLister, nodeLister, stopChan := listers(kubeClient)
+			_, csiNodeLister, nodeLister, _, stopChan := listers(kubeClient)
 			defer close(stopChan)
 
 			requirements, err := GenerateAccessibilityRequirements(
@@ -1552,13 +1552,19 @@ func requisiteEqual(t1, t2 []*csi.Topology) bool {
 	return unchecked.Len() == 0
 }
 
-func listers(kubeClient *fakeclientset.Clientset) (storagelistersv1.StorageClassLister, storagelistersv1beta1.CSINodeLister, corelisters.NodeLister, chan struct{}) {
+func listers(kubeClient *fakeclientset.Clientset) (
+	storagelistersv1.StorageClassLister,
+	storagelistersv1beta1.CSINodeLister,
+	corelisters.NodeLister,
+	corelisters.PersistentVolumeClaimLister,
+	chan struct{}) {
 	factory := informers.NewSharedInformerFactory(kubeClient, ResyncPeriodOfCsiNodeInformer)
 	stopChan := make(chan struct{})
 	scLister := factory.Storage().V1().StorageClasses().Lister()
 	csiNodeLister := factory.Storage().V1beta1().CSINodes().Lister()
 	nodeLister := factory.Core().V1().Nodes().Lister()
+	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
 	factory.Start(stopChan)
 	factory.WaitForCacheSync(stopChan)
-	return scLister, csiNodeLister, nodeLister, stopChan
+	return scLister, csiNodeLister, nodeLister, claimLister, stopChan
 }

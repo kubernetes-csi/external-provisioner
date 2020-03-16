@@ -134,6 +134,8 @@ const (
 	annStorageProvisioner = "volume.beta.kubernetes.io/storage-provisioner"
 
 	snapshotNotBound = "snapshot %s not bound"
+
+	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
 )
 
 var (
@@ -220,6 +222,7 @@ type csiProvisioner struct {
 	scLister                              storagelistersv1.StorageClassLister
 	csiNodeLister                         storagelistersv1beta1.CSINodeLister
 	nodeLister                            corelisters.NodeLister
+	claimLister                           corelisters.PersistentVolumeClaimLister
 	extraCreateMetadata                   bool
 }
 
@@ -284,6 +287,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	scLister storagelistersv1.StorageClassLister,
 	csiNodeLister storagelistersv1beta1.CSINodeLister,
 	nodeLister corelisters.NodeLister,
+	claimLister corelisters.PersistentVolumeClaimLister,
 	extraCreateMetadata bool,
 ) controller.Provisioner {
 
@@ -306,6 +310,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		scLister:                              scLister,
 		csiNodeLister:                         csiNodeLister,
 		nodeLister:                            nodeLister,
+		claimLister:                           claimLister,
 		extraCreateMetadata:                   extraCreateMetadata,
 	}
 	return provisioner
@@ -531,6 +536,13 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		req.VolumeContentSource = volumeContentSource
 	}
 
+	if options.PVC.Spec.DataSource != nil && rc.clone {
+		err = p.setCloneFinalizer(options.PVC)
+		if err != nil {
+			return nil, controller.ProvisioningNoChange, err
+		}
+	}
+
 	if p.supportsTopology() {
 		requirements, err := GenerateAccessibilityRequirements(
 			p.client,
@@ -711,6 +723,21 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 	return pv, controller.ProvisioningFinished, nil
 }
 
+func (p *csiProvisioner) setCloneFinalizer(pvc *v1.PersistentVolumeClaim) error {
+	claim, err := p.claimLister.PersistentVolumeClaims(pvc.Namespace).Get(pvc.Spec.DataSource.Name)
+	if err != nil {
+		return err
+	}
+
+	if !checkFinalizer(claim, pvcCloneFinalizer) {
+		claim.Finalizers = append(claim.Finalizers, pvcCloneFinalizer)
+		_, err := p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(claim)
+		return err
+	}
+
+	return nil
+}
+
 func (p *csiProvisioner) supportsTopology() bool {
 	return SupportsTopology(p.pluginCapabilities)
 }
@@ -765,7 +792,7 @@ func (p *csiProvisioner) getVolumeContentSource(options controller.ProvisionOpti
 // getPVCSource verifies DataSource.Kind of type PersistentVolumeClaim, making sure that the requested PVC is available/ready
 // returns the VolumeContentSource for the requested PVC
 func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi.VolumeContentSource, error) {
-	sourcePVC, err := p.client.CoreV1().PersistentVolumeClaims(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
+	sourcePVC, err := p.claimLister.PersistentVolumeClaims(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name)
 	if err != nil {
 		return nil, fmt.Errorf("error getting PVC %s (namespace %q) from api server: %v", options.PVC.Spec.DataSource.Name, options.PVC.Namespace, err)
 	}
@@ -1256,4 +1283,13 @@ func cleanupVolume(p *csiProvisioner, delReq *csi.DeleteVolumeRequest, provision
 		}
 	}
 	return err
+}
+
+func checkFinalizer(obj metav1.Object, finalizer string) bool {
+	for _, f := range obj.GetFinalizers() {
+		if f == finalizer {
+			return true
+		}
+	}
+	return false
 }

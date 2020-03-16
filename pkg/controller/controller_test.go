@@ -404,7 +404,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(nil, 5*time.Second, "test-provisioner", "test",
-		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, nil, false)
+		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, nil, nil, false)
 
 	// Requested PVC with requestedBytes storage
 	deletePolicy := v1.PersistentVolumeReclaimDelete
@@ -1669,7 +1669,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, csitrans.New(), nil, nil, nil, tc.withExtraMetadata)
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, csitrans.New(), nil, nil, nil, nil, tc.withExtraMetadata)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -2405,7 +2405,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 
 		pluginCaps, controllerCaps := provisionFromSnapshotCapabilities()
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-			client, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, nil, false)
+			client, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, nil, nil, false)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -2575,11 +2575,11 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 
 			clientSet := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
-			scLister, csiNodeLister, nodeLister, stopChan := listers(clientSet)
+			scLister, csiNodeLister, nodeLister, claimLister, stopChan := listers(clientSet)
 			defer close(stopChan)
 
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), scLister, csiNodeLister, nodeLister, false)
+				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, false)
 
 			pv, err := csiProvisioner.Provision(controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{},
@@ -2634,7 +2634,7 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 	clientSet := fakeclientset.NewSimpleClientset()
 	pluginCaps, controllerCaps := provisionWithTopologyCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, nil, false)
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, nil, nil, false)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -2804,9 +2804,9 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 	}
 
 	pluginCaps, controllerCaps := provisionCapabilities()
-	scLister, _, _, _ := listers(clientSet)
+	scLister, _, _, _, _ := listers(clientSet)
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), scLister, nil, nil, false)
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), scLister, nil, nil, nil, false)
 
 	err = csiProvisioner.Delete(tc.persistentVolume)
 	if tc.expectErr && err == nil {
@@ -2901,12 +2901,14 @@ func TestProvisionFromPVC(t *testing.T) {
 		restoredVolSizeBig   bool                     // set to request a smaller volSize than source PVC, default false
 		expectedPVSpec       *pvSpec                  // set to expected PVSpec on success, for deep comparison, default nil
 		cloneUnsupported     bool                     // set to state clone feature not supported in capabilities, default false
+		expectFinalizers     bool                     // while set, expects clone protection finalizers to be set on a PVC
 		sourcePVStatusPhase  v1.PersistentVolumePhase // set to change source PV Status.Phase, default "Bound"
 		expectErr            bool                     // set to state, test is expected to return errors, default false
 	}{
 		"provision with pvc data source": {
-			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
+			clonePVName:      pvName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
+			expectFinalizers: true,
 			expectedPVSpec: &pvSpec{
 				Name:          pvName,
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
@@ -2938,6 +2940,7 @@ func TestProvisionFromPVC(t *testing.T) {
 		"provision with pvc data source destination too small": {
 			clonePVName:          pvName,
 			volOpts:              generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes+1, ""),
+			expectFinalizers:     true,
 			restoredVolSizeSmall: true,
 			expectErr:            true,
 		},
@@ -3027,9 +3030,9 @@ func TestProvisionFromPVC(t *testing.T) {
 			expectErr:   true,
 		},
 		"provision block data source is block": {
-			clonePVName: blockModePVName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, blockModePVName, fakeSc1, requestedBytes, "block"),
-			expectErr:   false,
+			clonePVName:      blockModePVName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, blockModePVName, fakeSc1, requestedBytes, "block"),
+			expectFinalizers: true,
 		},
 		"provision block but data source is filesystem": {
 			clonePVName: filesystemPVName,
@@ -3042,14 +3045,16 @@ func TestProvisionFromPVC(t *testing.T) {
 			expectErr:   true,
 		},
 		"provision nil mode data source is nil": {
-			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
-			expectErr:   false,
+			clonePVName:      pvName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
+			expectFinalizers: true,
+			expectErr:        false,
 		},
 		"provision filesystem data source is filesystem": {
-			clonePVName: filesystemPVName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, filesystemPVName, fakeSc1, requestedBytes, "filesystem"),
-			expectErr:   false,
+			clonePVName:      filesystemPVName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, filesystemPVName, fakeSc1, requestedBytes, "filesystem"),
+			expectFinalizers: true,
+			expectErr:        false,
 		},
 		"provision filesystem but data source is block": {
 			clonePVName: blockModePVName,
@@ -3057,9 +3062,10 @@ func TestProvisionFromPVC(t *testing.T) {
 			expectErr:   true,
 		},
 		"provision filesystem data source is nil": {
-			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, "filesystem"),
-			expectErr:   false,
+			clonePVName:      pvName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, "filesystem"),
+			expectFinalizers: true,
+			expectErr:        false,
 		},
 	}
 
@@ -3217,13 +3223,27 @@ func TestProvisionFromPVC(t *testing.T) {
 				}).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
 			}
 
+			_, _, _, claimLister, _ := listers(clientSet)
+
 			// Phase: execute the test
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-				nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, nil, false)
+				nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, nil, claimLister, false)
 
 			pv, err = csiProvisioner.Provision(tc.volOpts)
 			if tc.expectErr && err == nil {
 				t.Errorf("test %q: Expected error, got none", k)
+			}
+
+			if tc.volOpts.PVC.Spec.DataSource != nil {
+				claim, _ := claimLister.PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(tc.volOpts.PVC.Spec.DataSource.Name)
+				if claim != nil {
+					set := checkFinalizer(claim, pvcCloneFinalizer)
+					if tc.expectFinalizers && !set {
+						t.Errorf("Claim %s does not have clone protection finalizer set", claim.Name)
+					} else if !tc.expectFinalizers && set {
+						t.Errorf("Claim %s should not have clone protection finalizer set", claim.Name)
+					}
+				}
 			}
 
 			// Phase: process test responses
@@ -3325,7 +3345,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			pluginCaps, controllerCaps := provisionCapabilities()
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps,
-				inTreePluginName, false, mockTranslator, nil, nil, nil, false)
+				inTreePluginName, false, mockTranslator, nil, nil, nil, nil, false)
 
 			// Set up return values (AnyTimes to avoid overfitting on implementation)
 
@@ -3485,7 +3505,7 @@ func TestDeleteMigration(t *testing.T) {
 			pluginCaps, controllerCaps := provisionCapabilities()
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "",
-				false, mockTranslator, nil, nil, nil, false)
+				false, mockTranslator, nil, nil, nil, nil, false)
 
 			// Set mock return values (AnyTimes to avoid overfitting on implementation details)
 			mockTranslator.EXPECT().IsPVMigratable(gomock.Any()).Return(tc.expectTranslation).AnyTimes()
