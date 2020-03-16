@@ -17,7 +17,17 @@ import (
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 )
 
-// CloningProtectionController struct
+// This package introduce a way to handle finalizers, related to in-progress PVC cloning.
+//
+// PVC referenced as a data source is now updated with a finalizer `provisioner.storage.kubernetes.io/cloning-protection` during a ProvisionExt method call.
+// The process of cloning is based on the assumption that a PVC with `spec.DataSource` pointing on a another PVC will go into `Pending` state, while the cloning process is in progress.
+// When cloning is finished - all PVC referencing the one as a data source
+// will go from `Pending` to `Bound` state, which allows the finalizer to be removed before deletion.
+//
+// The downside of this, is that fact that any other reason for PVC, staing in `Pending` state also blocks it from deletion
+
+// CloningProtectionController is storing all related interfaces
+// to handle cloning protection finalizer removal after CSI cloning is finished
 type CloningProtectionController struct {
 	client        kubernetes.Interface
 	claimLister   corelisters.PersistentVolumeClaimLister

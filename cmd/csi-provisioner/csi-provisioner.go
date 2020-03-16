@@ -255,15 +255,16 @@ func main() {
 	)
 
 	run := func(context.Context) {
-		factory.Start(context.Background().Done())
-		cacheSyncResult := factory.WaitForCacheSync(context.Background().Done())
+		stopCh := context.Background().Done()
+		factory.Start(stopCh)
+		cacheSyncResult := factory.WaitForCacheSync(stopCh)
 		for _, v := range cacheSyncResult {
 			if !v {
 				klog.Fatalf("Failed to sync Informers!")
 			}
 		}
 
-		go csiClaimController.Run(int(*workerThreads), context.Background().Done())
+		go csiClaimController.Run(int(*workerThreads), stopCh)
 		provisionController.Run(wait.NeverStop)
 	}
 

@@ -135,7 +135,7 @@ const (
 
 	snapshotNotBound = "snapshot %s not bound"
 
-	pvcCloneFinalizer = "external-provisioner.clone.kubernetes.io/finalizer"
+	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
 )
 
 var (

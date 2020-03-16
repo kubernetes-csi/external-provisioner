@@ -30,7 +30,7 @@ func pvcFinalizers(pvc *v1.PersistentVolumeClaim, finalizers ...string) *v1.Pers
 	return pvc
 }
 
-func pvcDataSourceClone(pvc *v1.PersistentVolumeClaim, srcName string) *v1.PersistentVolumeClaim {
+func pvcDataSourceClone(srcName string, pvc *v1.PersistentVolumeClaim) *v1.PersistentVolumeClaim {
 	apiGr := ""
 	pvc.Spec.DataSource = &v1.TypedLocalObjectReference{
 		APIGroup: &apiGr,
@@ -40,17 +40,17 @@ func pvcDataSourceClone(pvc *v1.PersistentVolumeClaim, srcName string) *v1.Persi
 	return pvc
 }
 
-func pvcNamed(pvc *v1.PersistentVolumeClaim, name string) *v1.PersistentVolumeClaim {
+func pvcNamed(name string, pvc *v1.PersistentVolumeClaim) *v1.PersistentVolumeClaim {
 	pvc.Name = name
 	return pvc
 }
 
-func pvcNamespaced(pvc *v1.PersistentVolumeClaim, namespace string) *v1.PersistentVolumeClaim {
+func pvcNamespaced(namespace string, pvc *v1.PersistentVolumeClaim) *v1.PersistentVolumeClaim {
 	pvc.Namespace = namespace
 	return pvc
 }
 
-func pvcPhase(pvc *v1.PersistentVolumeClaim, phase v1.PersistentVolumeClaimPhase) *v1.PersistentVolumeClaim {
+func pvcPhase(phase v1.PersistentVolumeClaimPhase, pvc *v1.PersistentVolumeClaim) *v1.PersistentVolumeClaim {
 	pvc.Status.Phase = phase
 	return pvc
 }
@@ -74,55 +74,27 @@ func TestCloneFinalizerRemoval(t *testing.T) {
 		expectError     error
 	}{
 		"delete source pvc with no cloning in progress": {
-			cloneSource: pvcFinalizers(baseClaim(), pvcCloneFinalizer),
-			initialClaims: []runtime.Object{
-				pvcDataSourceClone(
-					pvcNamed(baseClaim(), dstName),
-					srcName,
-				),
-			},
+			cloneSource:   pvcFinalizers(baseClaim(), pvcCloneFinalizer),
+			initialClaims: []runtime.Object{pvcDataSourceClone(srcName, pvcNamed(dstName, baseClaim()))},
 		},
 		"delete source pvc when destination pvc status is claim pending": {
-			cloneSource: pvcFinalizers(baseClaim(), pvcCloneFinalizer),
-			initialClaims: []runtime.Object{
-				pvcPhase(
-					pvcDataSourceClone(
-						pvcNamed(baseClaim(), dstName),
-						srcName,
-					),
-					v1.ClaimPending)},
+			cloneSource:     pvcFinalizers(baseClaim(), pvcCloneFinalizer),
+			initialClaims:   []runtime.Object{pvcPhase(v1.ClaimPending, pvcDataSourceClone(srcName, pvcNamed(dstName, baseClaim())))},
 			expectFinalizer: true,
 			expectError:     fmt.Errorf("PVC '%s' is in 'Pending' state, cloning in progress", dstName),
 		},
 		"delete source pvc when at least one destination pvc status is claim pending": {
 			cloneSource: pvcFinalizers(baseClaim(), pvcCloneFinalizer),
 			initialClaims: []runtime.Object{
-				pvcDataSourceClone(
-					pvcNamed(baseClaim(), dstName),
-					srcName,
-				),
-				pvcPhase(
-					pvcDataSourceClone(
-						pvcNamed(baseClaim(), dstName+"1"),
-						srcName,
-					),
-					v1.ClaimPending)},
+				pvcDataSourceClone(srcName, pvcNamed(dstName, baseClaim())),
+				pvcPhase(v1.ClaimPending, pvcDataSourceClone(srcName, pvcNamed(dstName+"1", baseClaim()))),
+			},
 			expectFinalizer: true,
 			expectError:     fmt.Errorf("PVC '%s' is in 'Pending' state, cloning in progress", dstName+"1"),
 		},
 		"delete source pvc located in another namespace should not block": {
-			cloneSource: pvcNamespaced(
-				pvcFinalizers(
-					baseClaim(), pvcCloneFinalizer,
-				),
-				srcNamespace+"1"),
-			initialClaims: []runtime.Object{
-				pvcPhase(
-					pvcDataSourceClone(
-						pvcNamed(baseClaim(), dstName+"1"),
-						srcName,
-					),
-					v1.ClaimPending)},
+			cloneSource:   pvcNamespaced(srcNamespace+"1", pvcFinalizers(baseClaim(), pvcCloneFinalizer)),
+			initialClaims: []runtime.Object{pvcPhase(v1.ClaimPending, pvcDataSourceClone(srcName, pvcNamed(dstName+"1", baseClaim())))},
 		},
 		"delete source pvc which is not cloned by any other pvc": {
 			cloneSource: pvcFinalizers(baseClaim(), pvcCloneFinalizer),
@@ -139,7 +111,7 @@ func TestCloneFinalizerRemoval(t *testing.T) {
 
 			objects := append(tc.initialClaims, tc.cloneSource)
 			clientSet := fakeclientset.NewSimpleClientset(objects...)
-			cloningProtector := startCloningProtector(clientSet, objects...)
+			cloningProtector := fakeCloningProtector(clientSet, objects...)
 
 			// Simulate Delete behavior
 			claim := pvcDeletionMarked(tc.cloneSource.(*v1.PersistentVolumeClaim))
@@ -167,6 +139,7 @@ func TestCloneFinalizerRemoval(t *testing.T) {
 
 }
 
+// TestEnqueueClaimUpadate ensure that PVCs will be processed for finalizer removal only on deletionTimestamp being set on the resource
 func TestEnqueueClaimUpadate(t *testing.T) {
 	testcases := map[string]struct {
 		claim    *v1.PersistentVolumeClaim
@@ -189,7 +162,7 @@ func TestEnqueueClaimUpadate(t *testing.T) {
 
 			objects := []runtime.Object{}
 			clientSet := fakeclientset.NewSimpleClientset(objects...)
-			cloningProtector := startCloningProtector(clientSet, objects...)
+			cloningProtector := fakeCloningProtector(clientSet, objects...)
 
 			// Simulate queue behavior
 			cloningProtector.enqueueClaimUpadate(tc.claim)
@@ -201,7 +174,7 @@ func TestEnqueueClaimUpadate(t *testing.T) {
 	}
 }
 
-func startCloningProtector(client *fakeclientset.Clientset, objects ...runtime.Object) *CloningProtectionController {
+func fakeCloningProtector(client *fakeclientset.Clientset, objects ...runtime.Object) *CloningProtectionController {
 	utilruntime.ReallyCrash = false
 
 	informerFactory := informers.NewSharedInformerFactory(client, 1*time.Second)
