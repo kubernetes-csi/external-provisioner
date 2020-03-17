@@ -607,6 +607,13 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		req.Parameters[pvcNameKey] = options.PVC.GetName()
 		req.Parameters[pvcNamespaceKey] = options.PVC.GetNamespace()
 		req.Parameters[pvNameKey] = pvName
+		// add pvc labels/annotations to request for use by the plugin
+		for key, value := range options.PVC.Annotations {
+			req.Parameters[key] = value
+		}
+		for key, value := range options.PVC.Labels {
+			req.Parameters[key] = value
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
