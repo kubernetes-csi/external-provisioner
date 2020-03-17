@@ -61,6 +61,7 @@ var (
 	retryIntervalStart   = flag.Duration("retry-interval-start", time.Second, "Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to retry-interval-max.")
 	retryIntervalMax     = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
 	workerThreads        = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
+	finalizerThreads     = flag.Uint("cloning-protection-threads", 1, "Number of simultaniously running threads, handling cloning finalizer removal")
 	operationTimeout     = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for creation or deletion of a volume")
 	_                    = deprecatedflags.Add("provisioner")
 
@@ -264,7 +265,7 @@ func main() {
 			}
 		}
 
-		go csiClaimController.Run(int(*workerThreads), stopCh)
+		go csiClaimController.Run(int(*finalizerThreads), stopCh)
 		provisionController.Run(wait.NeverStop)
 	}
 
