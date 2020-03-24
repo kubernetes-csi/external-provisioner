@@ -52,7 +52,7 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 	utilfeaturetesting "k8s.io/component-base/featuregate/testing"
 	csitrans "k8s.io/csi-translation-lib"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
 )
 
 const (
