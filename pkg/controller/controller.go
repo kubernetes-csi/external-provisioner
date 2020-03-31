@@ -618,22 +618,21 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		// only makes sense if:
 		// - The CSI driver supports topology: without that, the next CreateVolume call after
 		//   rescheduling will be exactly the same.
-		// - We are using strict topology: otherwise the CSI driver is already allowed
-		//   to pick some other topology and rescheduling would only change the preferred
-		//   topology, which then isn't going to be substantially different.
 		// - We are working on a volume with late binding: only in that case will
 		//   provisioning be retried if we give up for now.
 		// - The error is one where rescheduling is
 		//   a) allowed (i.e. we don't have to keep calling CreateVolume because the operation might be running) and
 		//   b) it makes sense (typically local resource exhausted).
 		//   isFinalError is going to check this.
+		//
+		// We do this regardless whether the driver has asked for strict topology because
+		// even drivers which did not ask for it explicitly might still only look at the first
+		// topology entry and thus succeed after rescheduling.
 		mayReschedule := p.supportsTopology() &&
-			p.strictTopology &&
 			options.SelectedNode != nil
 		state := checkError(err, mayReschedule)
-		klog.V(5).Infof("CreateVolume failed, supports topology = %v, strict topology %v, node selected %v => may reschedule = %v => state = %v: %v",
+		klog.V(5).Infof("CreateVolume failed, supports topology = %v, node selected %v => may reschedule = %v => state = %v: %v",
 			p.supportsTopology(),
-			p.strictTopology,
 			options.SelectedNode != nil,
 			mayReschedule,
 			state,
