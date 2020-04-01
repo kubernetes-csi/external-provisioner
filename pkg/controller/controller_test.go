@@ -52,8 +52,13 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 	utilfeaturetesting "k8s.io/component-base/featuregate/testing"
 	csitrans "k8s.io/csi-translation-lib"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
+	"k8s.io/klog"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
 )
+
+func init() {
+	klog.InitFlags(nil)
+}
 
 const (
 	timeout    = 10 * time.Second
@@ -109,7 +114,7 @@ func createMockServer(t *testing.T, tmpdir string) (*gomock.Controller,
 }
 
 func tempDir(t *testing.T) string {
-	dir, err := ioutil.TempDir("", "external-attacher-test-")
+	dir, err := ioutil.TempDir("", "external-provisioner-test-")
 	if err != nil {
 		t.Fatalf("Cannot create temporary directory: %s", err)
 	}
@@ -2604,6 +2609,119 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestProvisionErrorHandling checks how different errors are handled by the provisioner.
+func TestProvisionErrorHandling(t *testing.T) {
+	const requestBytes = 100
+
+	testcases := map[codes.Code]controller.ProvisioningState{
+		codes.ResourceExhausted: controller.ProvisioningInBackground,
+		codes.Canceled:          controller.ProvisioningInBackground,
+		codes.DeadlineExceeded:  controller.ProvisioningInBackground,
+		codes.Unavailable:       controller.ProvisioningInBackground,
+		codes.Aborted:           controller.ProvisioningInBackground,
+
+		codes.Unknown:            controller.ProvisioningFinished,
+		codes.InvalidArgument:    controller.ProvisioningFinished,
+		codes.NotFound:           controller.ProvisioningFinished,
+		codes.AlreadyExists:      controller.ProvisioningFinished,
+		codes.PermissionDenied:   controller.ProvisioningFinished,
+		codes.FailedPrecondition: controller.ProvisioningFinished,
+		codes.OutOfRange:         controller.ProvisioningFinished,
+		codes.Unimplemented:      controller.ProvisioningFinished,
+		codes.Internal:           controller.ProvisioningFinished,
+		codes.DataLoss:           controller.ProvisioningFinished,
+		codes.Unauthenticated:    controller.ProvisioningFinished,
+	}
+	nodeLabels := []map[string]string{
+		{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rack1"},
+		{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rack2"},
+	}
+	topologyKeys := []map[string][]string{
+		{driverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+		{driverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+	}
+
+	test := func(driverSupportsTopology, nodeSelected bool) {
+		t.Run(fmt.Sprintf("topology=%v node=%v", driverSupportsTopology, nodeSelected), func(t *testing.T) {
+			for code, expectedState := range testcases {
+				t.Run(code.String(), func(t *testing.T) {
+					var (
+						pluginCaps     rpc.PluginCapabilitySet
+						controllerCaps rpc.ControllerCapabilitySet
+					)
+					if driverSupportsTopology {
+						defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, true)()
+						pluginCaps, controllerCaps = provisionWithTopologyCapabilities()
+					} else {
+						pluginCaps, controllerCaps = provisionCapabilities()
+					}
+
+					tmpdir := tempDir(t)
+					defer os.RemoveAll(tmpdir)
+					mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer mockController.Finish()
+					defer driver.Stop()
+
+					// Always return some error.
+					errOut := status.Error(code, "fake error")
+					controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(nil, errOut).Times(1)
+
+					nodes := buildNodes(nodeLabels, k8sTopologyBetaVersion.String())
+					csiNodes := buildCSINodes(topologyKeys)
+					clientSet := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+					scLister, csiNodeLister, nodeLister, claimLister, stopChan := listers(clientSet)
+					defer close(stopChan)
+
+					csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
+						csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, false)
+					csiProvisionerExt := csiProvisioner.(controller.ProvisionerExt)
+
+					options := controller.ProvisionOptions{
+						StorageClass: &storagev1.StorageClass{},
+						PVC:          createFakePVC(requestBytes),
+					}
+					if nodeSelected {
+						options.SelectedNode = &nodes.Items[0]
+					}
+					pv, state, err := csiProvisionerExt.ProvisionExt(options)
+
+					if pv != nil {
+						t.Errorf("expected no PV, got %v", pv)
+					}
+					if err == nil {
+						t.Fatal("expected error, got nil")
+					}
+					st, ok := status.FromError(err)
+					if !ok {
+						t.Errorf("expected status %s, got error without status: %v", code, err)
+					} else if st.Code() != code {
+						t.Errorf("expected status %s, got %s", code, st.Code())
+					}
+
+					// This is the only situation where we request rescheduling.
+					if driverSupportsTopology && nodeSelected && code == codes.ResourceExhausted {
+						expectedState = controller.ProvisioningReschedule
+					}
+
+					if expectedState != state {
+						t.Errorf("expected provisioning state %s, got %s", expectedState, state)
+					}
+				})
+			}
+		})
+	}
+
+	// Try all four combinations. For most of them there's no
+	// difference, but better check...
+	test(false, false)
+	test(false, true)
+	test(true, false)
+	test(true, true)
 }
 
 // TestProvisionWithTopologyDisabled checks that missing Node and CSINode objects, selectedNode

@@ -33,7 +33,7 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -272,7 +272,7 @@ func main() {
 	if !*enableLeaderElection {
 		run(context.TODO())
 	} else {
-		// this lock name pattern is also copied from sigs.k8s.io/sig-storage-lib-external-provisioner/controller
+		// this lock name pattern is also copied from sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller
 		// to preserve backwards compatibility
 		lockName := strings.Replace(provisionerName, "/", "-", -1)
 
