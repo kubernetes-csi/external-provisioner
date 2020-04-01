@@ -15,7 +15,7 @@
 * [In-tree storage plugin to CSI Driver Migration](https://github.com/kubernetes/enhancements/blob/master/keps/sig-storage/20190129-csi-migration.md) is now alpha ([#253](https://github.com/kubernetes-csi/external-provisioner/pull/253))
 * The external provisioner now tries to connect to the CSI driver indefinitely ([#234](https://github.com/kubernetes-csi/external-provisioner/pull/234))
 * A new --timeout parameter has been added for CSI operations ([#230](https://github.com/kubernetes-csi/external-provisioner/pull/230))
-* README.md has been signficantly enhanced ([#249](https://github.com/kubernetes-csi/external-provisioner/pull/249))
+* README.md has been significantly enhanced ([#249](https://github.com/kubernetes-csi/external-provisioner/pull/249))
 * Add support for  Lease based leader election. Enable this by setting
   `--leader-election-type=leases` ([#261](https://github.com/kubernetes-csi/external-provisioner/pull/261))
 
