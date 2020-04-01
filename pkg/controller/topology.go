@@ -200,7 +200,7 @@ func GenerateAccessibilityRequirements(
 				allowedTopologiesFlatten := flatten(allowedTopologies)
 				found := false
 				for _, t := range allowedTopologiesFlatten {
-					if t.equal(selectedTopology) {
+					if t.subset(selectedTopology) {
 						found = true
 						break
 					}
@@ -480,7 +480,7 @@ func sortAndShift(terms []topologyTerm, primary topologyTerm, shiftIndex uint32)
 		preferredTerms = append(terms[shiftIndex:], terms[:shiftIndex]...)
 	} else {
 		for i, t := range terms {
-			if t.equal(primary) {
+			if t.subset(primary) {
 				preferredTerms = append(terms[i:], terms[:i]...)
 				break
 			}
@@ -560,6 +560,17 @@ func (t topologyTerm) hash() string {
 
 func (t topologyTerm) less(other topologyTerm) bool {
 	return t.hash() < other.hash()
+}
+
+func (t topologyTerm) subset(other topologyTerm) bool {
+	for key, tv := range t {
+		v, ok := other[key]
+		if !ok || v != tv {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (t topologyTerm) equal(other topologyTerm) bool {
