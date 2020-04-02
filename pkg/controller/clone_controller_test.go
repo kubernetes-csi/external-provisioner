@@ -16,7 +16,7 @@ import (
 )
 
 var requestedBytes int64 = 1000
-var fakeSc1 string = "fake-sc-1"
+var fakeSc1 = "fake-sc-1"
 
 const (
 	srcName      = "clone-source-pvc"
