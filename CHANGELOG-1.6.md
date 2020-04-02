@@ -35,7 +35,7 @@
   supported by the driver.
   ([#421](https://github.com/kubernetes-csi/external-provisioner/pull/421),
   [@pawanpraka1](https://github.com/pawanpraka1))
-- Added a new flag, `cloning-protection-threads` which defaults to 1,
+- Added a new flag, `--cloning-protection-threads` which defaults to 1,
   managing how many threads will simultaneously serve the
   `provisioner.storage.kubernetes.io/cloning-protection` finalizer removal
   ([#424](https://github.com/kubernetes-csi/external-provisioner/pull/424),
@@ -52,6 +52,7 @@
 - Default StorageClass secrets are added:
   - csi.storage.k8s.io/secret-name: ${pvc.name}
   - csi.storage.k8s.io/secret-namespace: ${pvc.namespace}
+
   Note: Default secrets for storage class feature does work only when both parameters are added. ([#393](https://github.com/kubernetes-csi/external-provisioner/pull/393), [@taaraora](https://github.com/taaraora))
 
 ## Bug Fixes
