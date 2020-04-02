@@ -15,5 +15,3 @@
 - Fixes Azure translation lib nil dereferences. ([#359](https://github.com/kubernetes-csi/external-provisioner/pull/359), [@davidz627](https://github.com/davidz627))
 - Use informers for Node objects. ([#337](https://github.com/kubernetes-csi/external-provisioner/pull/337), [@muchahitkurt](https://github.com/muchahitkurt))
 - Use informers for CSINode objects. ([#327](https://github.com/kubernetes-csi/external-provisioner/pull/327), [@muchahitkurt](https://github.com/muchahitkurt))
-
-

@@ -1,9 +1,11 @@
 # Changelog since v1.0.1
 
 ## Breaking Changes
+
 * Support for the alpha Topology feature and CSINodeInfo CRD has been removed.
 
 ## Deprecations
+
 * Command line flag `--connection-timeout` is deprecated and has no effect.
 * Command line flag `--provisioner` is deprecated and has no effect.
 * Command line flag `--leader-election-type` is deprecated. Support for Endpoints-based
@@ -11,6 +13,7 @@
   The default currently remains as `endpoints` for backwards compatibility.
 
 ## Notable Features
+
 * The Topology feature has been promoted to beta and uses the `storage.k8s.io/v1beta1` CSINode object ([#238](https://github.com/kubernetes-csi/external-provisioner/pull/238))
 * [In-tree storage plugin to CSI Driver Migration](https://github.com/kubernetes/enhancements/blob/master/keps/sig-storage/20190129-csi-migration.md) is now alpha ([#253](https://github.com/kubernetes-csi/external-provisioner/pull/253))
 * The external provisioner now tries to connect to the CSI driver indefinitely ([#234](https://github.com/kubernetes-csi/external-provisioner/pull/234))
@@ -20,6 +23,7 @@
   `--leader-election-type=leases` ([#261](https://github.com/kubernetes-csi/external-provisioner/pull/261))
 
 ## Other Notable Changes
+
 * vendor: update to k8s.io 1.14, avoid glog ([#262](https://github.com/kubernetes-csi/external-provisioner/pull/262))
 * Deprecate provisioner arguments ([#255](https://github.com/kubernetes-csi/external-provisioner/pull/255))
 * Do not stop saving PVs to API server ([#251](https://github.com/kubernetes-csi/external-provisioner/pull/251))
