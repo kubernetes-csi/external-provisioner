@@ -8,8 +8,8 @@
 - Add volume provisioning secret templating for storage class parameters: "provisioner-secret-name" and "provisioner-secret-namespace" ([#287](https://github.com/kubernetes-csi/external-provisioner/pull/287), [@oleksiys](https://github.com/oleksiys))
 
 ## Other Notable Changes
-- Fixes issue where leader election in the CSI provisioner and lib-external-provisioner conflicts.  ([#297](https://github.com/kubernetes-csi/external-provisioner/pull/297), [@verult](https://github.com/verult))
 
+- Fixes issue where leader election in the CSI provisioner and lib-external-provisioner conflicts.  ([#297](https://github.com/kubernetes-csi/external-provisioner/pull/297), [@verult](https://github.com/verult))
 
 # Changelog since v1.1.0
 
