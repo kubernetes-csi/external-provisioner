@@ -30,9 +30,10 @@ import (
 
 	"github.com/kubernetes-csi/csi-lib-utils/deprecatedflags"
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
+	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -42,8 +43,11 @@ import (
 	"k8s.io/klog"
 
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/informers"
+	v1 "k8s.io/client-go/listers/core/v1"
+	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
 	utilflag "k8s.io/component-base/cli/flag"
-	csitranslationlib "k8s.io/csi-translation-lib"
+	csitrans "k8s.io/csi-translation-lib"
 )
 
 var (
@@ -58,6 +62,7 @@ var (
 	retryIntervalStart   = flag.Duration("retry-interval-start", time.Second, "Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to retry-interval-max.")
 	retryIntervalMax     = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
 	workerThreads        = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
+	finalizerThreads     = flag.Uint("cloning-protection-threads", 1, "Number of simultaniously running threads, handling cloning finalizer removal")
 	operationTimeout     = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for creation or deletion of a volume")
 	_                    = deprecatedflags.Add("provisioner")
 
@@ -65,6 +70,10 @@ var (
 	leaderElectionType      = flag.String("leader-election-type", "endpoints", "the type of leader election, options are 'endpoints' (default) or 'leases' (strongly recommended). The 'endpoints' option is deprecated in favor of 'leases'.")
 	leaderElectionNamespace = flag.String("leader-election-namespace", "", "Namespace where the leader election resource lives. Defaults to the pod namespace if not set.")
 	strictTopology          = flag.Bool("strict-topology", false, "Passes only selected node topology to CreateVolume Request, unlike default behavior of passing aggregated cluster topologies that match with topology keys of the selected node.")
+	extraCreateMetadata     = flag.Bool("extra-create-metadata", false, "If set, add pv/pvc metadata to plugin create requests as parameters.")
+
+	metricsAddress = flag.String("metrics-address", "", "The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled.")
+	metricsPath    = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -120,7 +129,7 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Failed to create client: %v", err)
 	}
-	// snapclientset.NewForConfig creates a new Clientset for VolumesnapshotV1alpha1Client
+	// snapclientset.NewForConfig creates a new Clientset for VolumesnapshotV1beta1Client
 	snapClient, err := snapclientset.NewForConfig(config)
 	if err != nil {
 		klog.Fatalf("Failed to create snapshot client: %v", err)
@@ -133,7 +142,9 @@ func main() {
 		klog.Fatalf("Error getting server version: %v", err)
 	}
 
-	grpcClient, err := ctrl.Connect(*csiEndpoint)
+	metricsManager := metrics.NewCSIMetricsManager("" /* driverName */)
+
+	grpcClient, err := ctrl.Connect(*csiEndpoint, metricsManager)
 	if err != nil {
 		klog.Error(err.Error())
 		os.Exit(1)
@@ -151,6 +162,8 @@ func main() {
 		klog.Fatalf("Error getting CSI driver name: %s", err)
 	}
 	klog.V(2).Infof("Detected CSI driver %s", provisionerName)
+	metricsManager.SetDriverName(provisionerName)
+	metricsManager.StartMetricsEndpoint(*metricsAddress, *metricsPath)
 
 	pluginCapabilities, controllerCapabilities, err := ctrl.GetDriverCapabilities(grpcClient, *operationTimeout)
 	if err != nil {
@@ -161,18 +174,43 @@ func main() {
 	timeStamp := time.Now().UnixNano() / int64(time.Millisecond)
 	identity := strconv.FormatInt(timeStamp, 10) + "-" + strconv.Itoa(rand.Intn(10000)) + "-" + provisionerName
 
+	factory := informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
+
+	// -------------------------------
+	// Listers
+	// Create informer to prevent hit the API server for all resource request
+	scLister := factory.Storage().V1().StorageClasses().Lister()
+	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
+
+	var csiNodeLister storagelistersv1beta1.CSINodeLister
+	var nodeLister v1.NodeLister
+	if ctrl.SupportsTopology(pluginCapabilities) {
+		csiNodeLister = factory.Storage().V1beta1().CSINodes().Lister()
+		nodeLister = factory.Core().V1().Nodes().Lister()
+	}
+
+	// -------------------------------
+	// PersistentVolumeClaims informer
+	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)
+	claimQueue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "claims")
+	claimInformer := factory.Core().V1().PersistentVolumeClaims().Informer()
+
+	// Setup options
 	provisionerOptions := []func(*controller.ProvisionController) error{
 		controller.LeaderElection(false), // Always disable leader election in provisioner lib. Leader election should be done here in the CSI provisioner level instead.
 		controller.FailedProvisionThreshold(0),
 		controller.FailedDeleteThreshold(0),
-		controller.RateLimiter(workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)),
+		controller.RateLimiter(rateLimiter),
 		controller.Threadiness(int(*workerThreads)),
 		controller.CreateProvisionedPVLimiter(workqueue.DefaultControllerRateLimiter()),
+		controller.ClaimsInformer(claimInformer),
 	}
 
+	translator := csitrans.New()
+
 	supportsMigrationFromInTreePluginName := ""
-	if csitranslationlib.IsMigratedCSIDriverByName(provisionerName) {
-		supportsMigrationFromInTreePluginName, err = csitranslationlib.GetInTreeNameFromCSIName(provisionerName)
+	if translator.IsMigratedCSIDriverByName(provisionerName) {
+		supportsMigrationFromInTreePluginName, err = translator.GetInTreeNameFromCSIName(provisionerName)
 		if err != nil {
 			klog.Fatalf("Failed to get InTree plugin name for migrated CSI plugin %s: %v", provisionerName, err)
 		}
@@ -182,7 +220,28 @@ func main() {
 
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
-	csiProvisioner := ctrl.NewCSIProvisioner(clientset, *operationTimeout, identity, *volumeNamePrefix, *volumeNameUUIDLength, *volumeNamesReadable, grpcClient, snapClient, provisionerName, pluginCapabilities, controllerCapabilities, supportsMigrationFromInTreePluginName, *strictTopology)
+	csiProvisioner := ctrl.NewCSIProvisioner(
+		clientset,
+		*operationTimeout,
+		identity,
+		*volumeNamePrefix,
+		*volumeNameUUIDLength,
+		*volumeNamesReadable,
+		grpcClient,
+		snapClient,
+		provisionerName,
+		pluginCapabilities,
+		controllerCapabilities,
+		supportsMigrationFromInTreePluginName,
+		*strictTopology,
+		translator,
+		scLister,
+		csiNodeLister,
+		nodeLister,
+		claimLister,
+		*extraCreateMetadata,
+	)
+
 	provisionController = controller.NewProvisionController(
 		clientset,
 		provisionerName,
@@ -191,14 +250,31 @@ func main() {
 		provisionerOptions...,
 	)
 
+	csiClaimController := ctrl.NewCloningProtectionController(
+		clientset,
+		claimLister,
+		claimInformer,
+		claimQueue,
+	)
+
 	run := func(context.Context) {
+		stopCh := context.Background().Done()
+		factory.Start(stopCh)
+		cacheSyncResult := factory.WaitForCacheSync(stopCh)
+		for _, v := range cacheSyncResult {
+			if !v {
+				klog.Fatalf("Failed to sync Informers!")
+			}
+		}
+
+		go csiClaimController.Run(int(*finalizerThreads), stopCh)
 		provisionController.Run(wait.NeverStop)
 	}
 
 	if !*enableLeaderElection {
 		run(context.TODO())
 	} else {
-		// this lock name pattern is also copied from sigs.k8s.io/sig-storage-lib-external-provisioner/controller
+		// this lock name pattern is also copied from sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller
 		// to preserve backwards compatibility
 		lockName := strings.Replace(provisionerName, "/", "-", -1)
 
@@ -209,7 +285,7 @@ func main() {
 		} else if *leaderElectionType == "leases" {
 			le = leaderelection.NewLeaderElection(clientset, lockName, run)
 		} else {
-			klog.Error("--leader-election-type must be either 'endpoints' or 'lease'")
+			klog.Error("--leader-election-type must be either 'endpoints' or 'leases'")
 			os.Exit(1)
 		}
 

@@ -3,12 +3,12 @@
 ## Breaking Changes
 
 - The alpha resizer secret name and namespace keys have been changed from the following values:
-    - `csi.storage.k8s.io/resizer-secret-name`
-    - `csi.storage.k8s.io/resizer-secret-namespace`
+  - `csi.storage.k8s.io/resizer-secret-name`
+  - `csi.storage.k8s.io/resizer-secret-namespace`
 
   to be the following values:
-    - `csi.storage.k8s.io/controller-expand-secret-name`
-    - `csi.storage.k8s.io/controller-expand-secret-namespace`
+  - `csi.storage.k8s.io/controller-expand-secret-name`
+  - `csi.storage.k8s.io/controller-expand-secret-namespace`
 
   This is a breaking change and is being introduced so that these keys match the naming convention for other secret name/namespace keys. ([#301](https://github.com/kubernetes-csi/external-provisioner/pull/301), [@ggriffiths](https://github.com/ggriffiths))
 
@@ -23,5 +23,3 @@
 ## Bug Fixes
 
 - Fixes issue where leader election in the CSI provisioner and lib-external-provisioner conflicts. ([#296](https://github.com/kubernetes-csi/external-provisioner/pull/296), [@verult](https://github.com/verult))
-
-

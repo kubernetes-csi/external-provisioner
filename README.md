@@ -13,7 +13,7 @@ This information reflects the head of this branch.
 
 | Compatible with CSI Version                                                                | Container Image                | Recommended K8s Version |
 | ------------------------------------------------------------------------------------------ | -------------------------------| --------------- |
-| [CSI Spec v1.0.0](https://github.com/container-storage-interface/spec/releases/tag/v1.0.0) | quay.io/k8scsi/csi-provisioner | 1.15            |
+| [CSI Spec v1.0.0](https://github.com/container-storage-interface/spec/releases/tag/v1.0.0) | quay.io/k8scsi/csi-provisioner | 1.18            |
 
 ## Feature status
 
@@ -23,10 +23,8 @@ Following table reflects the head of this branch.
 
 | Feature        | Status  | Default | Description                                                                                   | Provisioner Feature Gate Required |
 | -------------- | ------- | ------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
-| Topology       | Beta    | Off     | [Topology aware dynamic provisioning](https://kubernetes-csi.github.io/docs/topology.html)  (requires kubelet 1.14 on nodes). | Yes |
-| Snapshots      | Alpha   | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html). | No |
-| CSIMigration   | Alpha   | On      | [Migrating in-tree volume plugins to CSI](https://kubernetes.io/docs/concepts/storage/volumes/#csi-migration). | No |
-| Cloning        | Alpha   | On      | [Cloning](https://kubernetes-csi.github.io/docs/volume-cloning.html). | No |
+| Snapshots      | Beta    | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html). | No |
+| CSIMigration   | Beta    | On      | [Migrating in-tree volume plugins to CSI](https://kubernetes.io/docs/concepts/storage/volumes/#csi-migration). | No |
 
 All other external-provisioner features and the external-provisioner itself is considered GA and fully supported.
 
@@ -55,11 +53,19 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 * `--timeout <duration>`: Timeout of all calls to CSI driver. It should be set to value that accommodates majority of `ControllerCreateVolume` and `ControllerDeleteVolume` calls. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details. 15 seconds is used by default.
 
-* `--retry-interval-start <duration>` - Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to `--retry-interval-max` and then it stops increasing. Default value is 1 second. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details.
+* `--retry-interval-start <duration>`: Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to `--retry-interval-max` and then it stops increasing. Default value is 1 second. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details.
 
-* `--retry-interval-max <duration>` - Maximum retry interval of failed provisioning or deletion. Default value is 5 minutes. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details.
+* `--retry-interval-max <duration>`: Maximum retry interval of failed provisioning or deletion. Default value is 5 minutes. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details.
 
 * `--worker-threads <num>`: Number of simultaneously running `ControllerCreateVolume` and `ControllerDeleteVolume` operations. Default value is `100`.
+
+* `--cloning-protection-threads <num>`: Number of simultaniously running threads, handling cloning finalizer removal. Defaults to `1`.
+
+* `--metrics-address`: The TCP network address where the prometheus metrics endpoint will run (example: `:8080` which corresponds to port 8080 on local host). The default is empty string, which means metrics endpoint is disabled.
+
+* `--metrics-path`: The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.
+
+* `--extra-create-metadata`: Enables the injection of extra PVC and PV metadata as parameters when calling `CreateVolume` on the driver (keys: "csi.storage.k8s.io/pvc/name", "csi.storage.k8s.io/pvc/namespace", "csi.storage.k8s.io/pv/name")
 
 #### Other recognized arguments
 * `--feature-gates <gates>`: A set of comma separated `<feature-name>=<true|false>` pairs that describe feature gates for alpha/experimental features. See [list of features](#feature-status) or `--help` output for list of recognized features. Example: `--feature-gates Topology=true` to enable Topology feature that's disabled by default.

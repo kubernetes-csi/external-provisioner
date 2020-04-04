@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2019 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,9 @@ limitations under the License.
 package versioned
 
 import (
-	volumesnapshotv1alpha1 "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/typed/volumesnapshot/v1alpha1"
+	"fmt"
+
+	snapshotv1beta1 "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/typed/volumesnapshot/v1beta1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -27,27 +29,19 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	VolumesnapshotV1alpha1() volumesnapshotv1alpha1.VolumesnapshotV1alpha1Interface
-	// Deprecated: please explicitly pick a version if possible.
-	Volumesnapshot() volumesnapshotv1alpha1.VolumesnapshotV1alpha1Interface
+	SnapshotV1beta1() snapshotv1beta1.SnapshotV1beta1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	volumesnapshotV1alpha1 *volumesnapshotv1alpha1.VolumesnapshotV1alpha1Client
+	snapshotV1beta1 *snapshotv1beta1.SnapshotV1beta1Client
 }
 
-// VolumesnapshotV1alpha1 retrieves the VolumesnapshotV1alpha1Client
-func (c *Clientset) VolumesnapshotV1alpha1() volumesnapshotv1alpha1.VolumesnapshotV1alpha1Interface {
-	return c.volumesnapshotV1alpha1
-}
-
-// Deprecated: Volumesnapshot retrieves the default version of VolumesnapshotClient.
-// Please explicitly pick a version.
-func (c *Clientset) Volumesnapshot() volumesnapshotv1alpha1.VolumesnapshotV1alpha1Interface {
-	return c.volumesnapshotV1alpha1
+// SnapshotV1beta1 retrieves the SnapshotV1beta1Client
+func (c *Clientset) SnapshotV1beta1() snapshotv1beta1.SnapshotV1beta1Interface {
+	return c.snapshotV1beta1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -59,14 +53,19 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 }
 
 // NewForConfig creates a new Clientset for the given config.
+// If config's RateLimiter is not set and QPS and Burst are acceptable,
+// NewForConfig will generate a rate-limiter in configShallowCopy.
 func NewForConfig(c *rest.Config) (*Clientset, error) {
 	configShallowCopy := *c
 	if configShallowCopy.RateLimiter == nil && configShallowCopy.QPS > 0 {
+		if configShallowCopy.Burst <= 0 {
+			return nil, fmt.Errorf("Burst is required to be greater than 0 when RateLimiter is not set and QPS is set to greater than 0")
+		}
 		configShallowCopy.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(configShallowCopy.QPS, configShallowCopy.Burst)
 	}
 	var cs Clientset
 	var err error
-	cs.volumesnapshotV1alpha1, err = volumesnapshotv1alpha1.NewForConfig(&configShallowCopy)
+	cs.snapshotV1beta1, err = snapshotv1beta1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +81,7 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
-	cs.volumesnapshotV1alpha1 = volumesnapshotv1alpha1.NewForConfigOrDie(c)
+	cs.snapshotV1beta1 = snapshotv1beta1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
 	return &cs
@@ -91,7 +90,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.volumesnapshotV1alpha1 = volumesnapshotv1alpha1.New(c)
+	cs.snapshotV1beta1 = snapshotv1beta1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs
