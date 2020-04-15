@@ -1,0 +1,14 @@
+FROM --platform=$BUILDPLATFORM golang:1.13.3 AS builder
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+WORKDIR /code
+ADD . /code/
+
+RUN cd /code/ && GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d '/') make build
+
+FROM gcr.io/distroless/static:latest
+LABEL maintainers="Kubernetes Authors"
+LABEL description="CSI External Provisioner"
+
+COPY  --from=builder /code/bin/csi-provisioner csi-provisioner
+ENTRYPOINT ["/csi-provisioner"]
