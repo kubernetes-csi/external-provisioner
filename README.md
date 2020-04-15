@@ -45,9 +45,7 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 #### Recommended optional arguments
 * `--csi-address <path to CSI socket>`: This is the path to the CSI driver socket inside the pod that the external-provisioner container will use to issue CSI operations (`/run/csi/socket` is used by default).
 
-* `--enable-leader-election`: Enables leader election. This is mandatory when there are multiple replicas of the same external-provisioner running for one CSI driver. Only one of them may be active (=leader). A new leader will be re-elected when current leader dies or becomes unresponsive for ~15 seconds.
-
-* `--leader-election-type`: The resource type to use for leader election, options are 'endpoints' (default) or 'leases' (recommended)
+* `--leader-election`: Enables leader election. This is mandatory when there are multiple replicas of the same external-provisioner running for one CSI driver. Only one of them may be active (=leader). A new leader will be re-elected when current leader dies or becomes unresponsive for ~15 seconds.
 
 * `--leader-election-namespace`: Namespace where leader election object will be created. It is recommended that this parameter is populated from Kubernetes DownwardAPI with the namespace where the external-provisioner runs in.
 
@@ -88,8 +86,6 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 * `--connection-timeout <duration>`: This option was used to limit establishing connection to CSI driver. Currently, the option does not have any effect and the external-provisioner tries to connect to CSI driver socket indefinitely. It is recommended to run ReadinessProbe on the driver to ensure that the driver comes up in reasonable time.
 
 * `--provisioner`: This option was used to set a provisioner name to look for in the StorageClass. Currently, the option does not have any effect and the external-provisioner uses the CSI driver name.
-
-* `--leader-election-type`: This option was used to choose which leader election resource type to use. Currently, the option defaults to `endpoints`, but will be removed in the future to only support `Lease` based leader election.
 
 ### Topology support
 When `Topology` feature is enabled and the driver specifies `VOLUME_ACCESSIBILITY_CONSTRAINTS` in its plugin capabilities, external-provisioner prepares `CreateVolumeRequest.AccessibilityRequirements` while calling `Controller.CreateVolume`. The driver has to consider these topology constraints while creating the volume. Below table shows how these `AccessibilityRequirements` are prepared:
