@@ -11,7 +11,7 @@ The external-provisioner is an external controller that monitors `PersistentVolu
 
 This information reflects the head of this branch.
 
-| Compatible with CSI Version                                                                | Container Image                | Recommended K8s Version |
+| Compatible with CSI Version                                                                | Container Image                | [Recommended K8s Version](https://kubernetes-csi.github.io/docs/kubernetes-compatibility.html#recommended-version) |
 | ------------------------------------------------------------------------------------------ | -------------------------------| --------------- |
 | [CSI Spec v1.0.0](https://github.com/container-storage-interface/spec/releases/tag/v1.0.0) | quay.io/k8scsi/csi-provisioner | 1.18            |
 
