@@ -253,6 +253,7 @@ func main() {
 		claimLister,
 		claimInformer,
 		claimQueue,
+		controllerCapabilities,
 	)
 
 	run := func(context.Context) {
@@ -265,7 +266,9 @@ func main() {
 			}
 		}
 
-		go csiClaimController.Run(int(*finalizerThreads), stopCh)
+		if csiClaimController != nil {
+			go csiClaimController.Run(int(*finalizerThreads), stopCh)
+		}
 		provisionController.Run(wait.NeverStop)
 	}
 
