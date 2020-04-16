@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -176,6 +178,9 @@ func TestEnqueueClaimUpadate(t *testing.T) {
 
 func fakeCloningProtector(client *fakeclientset.Clientset, objects ...runtime.Object) *CloningProtectionController {
 	utilruntime.ReallyCrash = false
+	controllerCapabilities := rpc.ControllerCapabilitySet{
+		csi.ControllerServiceCapability_RPC_CLONE_VOLUME: true,
+	}
 
 	informerFactory := informers.NewSharedInformerFactory(client, 1*time.Second)
 	claimInformer := informerFactory.Core().V1().PersistentVolumeClaims().Informer()
@@ -195,5 +200,6 @@ func fakeCloningProtector(client *fakeclientset.Clientset, objects ...runtime.Ob
 		claimLister,
 		claimInformer,
 		claimQueue,
+		controllerCapabilities,
 	)
 }

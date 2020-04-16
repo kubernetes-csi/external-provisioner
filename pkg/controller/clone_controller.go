@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	v1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -43,7 +45,11 @@ func NewCloningProtectionController(
 	claimLister corelisters.PersistentVolumeClaimLister,
 	claimInformer cache.SharedInformer,
 	claimQueue workqueue.RateLimitingInterface,
+	controllerCapabilities rpc.ControllerCapabilitySet,
 ) *CloningProtectionController {
+	if !controllerCapabilities[csi.ControllerServiceCapability_RPC_CLONE_VOLUME] {
+		return nil
+	}
 	controller := &CloningProtectionController{
 		client:        client,
 		claimLister:   claimLister,
