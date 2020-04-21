@@ -22,15 +22,13 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	v1 "k8s.io/api/core/v1"
-	storagev1beta1 "k8s.io/api/storage/v1beta1"
-
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
-	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/kubernetes/pkg/apis/core/helper"
 )
 
@@ -1473,19 +1471,19 @@ func buildNodes(nodeLabels []map[string]string, nodeVersion string) *v1.NodeList
 	return list
 }
 
-func buildCSINodes(csiNodes []map[string][]string) *storagev1beta1.CSINodeList {
-	list := &storagev1beta1.CSINodeList{}
+func buildCSINodes(csiNodes []map[string][]string) *storagev1.CSINodeList {
+	list := &storagev1.CSINodeList{}
 	i := 0
 	for _, csiNode := range csiNodes {
 		nodeName := fmt.Sprintf("node-%d", i)
-		n := storagev1beta1.CSINode{
+		n := storagev1.CSINode{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: nodeName,
 			},
 		}
-		var csiDrivers []storagev1beta1.CSINodeDriver
+		var csiDrivers []storagev1.CSINodeDriver
 		for driver, topologyKeys := range csiNode {
-			driverInfos := []storagev1beta1.CSINodeDriver{
+			driverInfos := []storagev1.CSINodeDriver{
 				{
 					Name:         driver,
 					NodeID:       nodeName,
@@ -1499,7 +1497,7 @@ func buildCSINodes(csiNodes []map[string][]string) *storagev1beta1.CSINodeList {
 			}
 			csiDrivers = append(csiDrivers, driverInfos...)
 		}
-		n.Spec = storagev1beta1.CSINodeSpec{Drivers: csiDrivers}
+		n.Spec = storagev1.CSINodeSpec{Drivers: csiDrivers}
 		list.Items = append(list.Items, n)
 		i++
 	}
@@ -1621,14 +1619,14 @@ func requisiteEqual(t1, t2 []*csi.Topology) bool {
 
 func listers(kubeClient *fakeclientset.Clientset) (
 	storagelistersv1.StorageClassLister,
-	storagelistersv1beta1.CSINodeLister,
+	storagelistersv1.CSINodeLister,
 	corelisters.NodeLister,
 	corelisters.PersistentVolumeClaimLister,
 	chan struct{}) {
 	factory := informers.NewSharedInformerFactory(kubeClient, ResyncPeriodOfCsiNodeInformer)
 	stopChan := make(chan struct{})
 	scLister := factory.Storage().V1().StorageClasses().Lister()
-	csiNodeLister := factory.Storage().V1beta1().CSINodes().Lister()
+	csiNodeLister := factory.Storage().V1().CSINodes().Lister()
 	nodeLister := factory.Core().V1().Nodes().Lister()
 	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
 	factory.Start(stopChan)

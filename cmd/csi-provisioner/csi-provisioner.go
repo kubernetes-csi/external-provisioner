@@ -45,7 +45,7 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	v1 "k8s.io/client-go/listers/core/v1"
-	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
+	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	utilflag "k8s.io/component-base/cli/flag"
 	csitrans "k8s.io/csi-translation-lib"
 )
@@ -181,10 +181,10 @@ func main() {
 	scLister := factory.Storage().V1().StorageClasses().Lister()
 	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
 
-	var csiNodeLister storagelistersv1beta1.CSINodeLister
+	var csiNodeLister storagelistersv1.CSINodeLister
 	var nodeLister v1.NodeLister
 	if ctrl.SupportsTopology(pluginCapabilities) {
-		csiNodeLister = factory.Storage().V1beta1().CSINodes().Lister()
+		csiNodeLister = factory.Storage().V1().CSINodes().Lister()
 		nodeLister = factory.Core().V1().Nodes().Lister()
 	}
 

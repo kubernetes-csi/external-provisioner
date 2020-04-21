@@ -44,7 +44,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
-	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
@@ -217,7 +216,7 @@ type csiProvisioner struct {
 	strictTopology                        bool
 	translator                            ProvisionerCSITranslator
 	scLister                              storagelistersv1.StorageClassLister
-	csiNodeLister                         storagelistersv1beta1.CSINodeLister
+	csiNodeLister                         storagelistersv1.CSINodeLister
 	nodeLister                            corelisters.NodeLister
 	claimLister                           corelisters.PersistentVolumeClaimLister
 	extraCreateMetadata                   bool
@@ -282,7 +281,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	strictTopology bool,
 	translator ProvisionerCSITranslator,
 	scLister storagelistersv1.StorageClassLister,
-	csiNodeLister storagelistersv1beta1.CSINodeLister,
+	csiNodeLister storagelistersv1.CSINodeLister,
 	nodeLister corelisters.NodeLister,
 	claimLister corelisters.PersistentVolumeClaimLister,
 	extraCreateMetadata bool,
