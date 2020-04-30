@@ -28,14 +28,14 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	v1 "k8s.io/api/core/v1"
-	storage "k8s.io/api/storage/v1beta1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/version"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	storagelisters "k8s.io/client-go/listers/storage/v1beta1"
+	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/klog"
 )
 
@@ -153,12 +153,12 @@ func GenerateAccessibilityRequirements(
 	allowedTopologies []v1.TopologySelectorTerm,
 	selectedNode *v1.Node,
 	strictTopology bool,
-	csiNodeLister storagelisters.CSINodeLister,
+	csiNodeLister storagelistersv1.CSINodeLister,
 	nodeLister corelisters.NodeLister) (*csi.TopologyRequirement, error) {
 	requirement := &csi.TopologyRequirement{}
 
 	var (
-		selectedCSINode  *storage.CSINode
+		selectedCSINode  *storagev1.CSINode
 		selectedTopology topologyTerm
 		requisiteTerms   []topologyTerm
 		err              error
@@ -277,8 +277,8 @@ func GenerateAccessibilityRequirements(
 
 // getSelectedCSINode returns the CSINode object for the given selectedNode.
 func getSelectedCSINode(
-	csiNodeLister storagelisters.CSINodeLister,
-	selectedNode *v1.Node) (*storage.CSINode, error) {
+	csiNodeLister storagelistersv1.CSINodeLister,
+	selectedNode *v1.Node) (*storagev1.CSINode, error) {
 
 	selectedCSINode, err := csiNodeLister.Get(selectedNode.Name)
 	if err != nil {
@@ -310,8 +310,8 @@ func getSelectedCSINode(
 func aggregateTopologies(
 	kubeClient kubernetes.Interface,
 	driverName string,
-	selectedCSINode *storage.CSINode,
-	csiNodeLister storagelisters.CSINodeLister,
+	selectedCSINode *storagev1.CSINode,
+	csiNodeLister storagelistersv1.CSINodeLister,
 	nodeLister corelisters.NodeLister) ([]topologyTerm, error) {
 
 	// 1. Determine topologyKeys to use for aggregation
@@ -489,7 +489,7 @@ func sortAndShift(terms []topologyTerm, primary topologyTerm, shiftIndex uint32)
 	return preferredTerms
 }
 
-func getTopologyKeys(csiNode *storage.CSINode, driverName string) []string {
+func getTopologyKeys(csiNode *storagev1.CSINode, driverName string) []string {
 	for _, driver := range csiNode.Spec.Drivers {
 		if driver.Name == driverName {
 			return driver.TopologyKeys
