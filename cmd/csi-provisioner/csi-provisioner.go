@@ -182,6 +182,7 @@ func main() {
 	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
 
 	var csiNodeLister storagelistersv1.CSINodeLister
+	vaLister := factory.Storage().V1().VolumeAttachments().Lister()
 	var nodeLister v1.NodeLister
 	if ctrl.SupportsTopology(pluginCapabilities) {
 		csiNodeLister = factory.Storage().V1().CSINodes().Lister()
@@ -237,6 +238,7 @@ func main() {
 		csiNodeLister,
 		nodeLister,
 		claimLister,
+		vaLister,
 		*extraCreateMetadata,
 	)
 

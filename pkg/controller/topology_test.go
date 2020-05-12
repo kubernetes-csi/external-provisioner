@@ -393,7 +393,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 
 	kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
-	_, csiNodeLister, nodeLister, _, stopChan := listers(kubeClient)
+	_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
 	defer close(stopChan)
 
 	for name, tc := range testcases {
@@ -1083,7 +1083,7 @@ func TestTopologyAggregation(t *testing.T) {
 
 			kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
-			_, csiNodeLister, nodeLister, _, stopChan := listers(kubeClient)
+			_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
 			defer close(stopChan)
 
 			var selectedNode *v1.Node
@@ -1403,7 +1403,7 @@ func TestPreferredTopologies(t *testing.T) {
 			kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 			selectedNode := &nodes.Items[0]
 
-			_, csiNodeLister, nodeLister, _, stopChan := listers(kubeClient)
+			_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
 			defer close(stopChan)
 
 			requirements, err := GenerateAccessibilityRequirements(
@@ -1622,6 +1622,7 @@ func listers(kubeClient *fakeclientset.Clientset) (
 	storagelistersv1.CSINodeLister,
 	corelisters.NodeLister,
 	corelisters.PersistentVolumeClaimLister,
+	storagelistersv1.VolumeAttachmentLister,
 	chan struct{}) {
 	factory := informers.NewSharedInformerFactory(kubeClient, ResyncPeriodOfCsiNodeInformer)
 	stopChan := make(chan struct{})
@@ -1629,7 +1630,8 @@ func listers(kubeClient *fakeclientset.Clientset) (
 	csiNodeLister := factory.Storage().V1().CSINodes().Lister()
 	nodeLister := factory.Core().V1().Nodes().Lister()
 	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
+	vaLister := factory.Storage().V1().VolumeAttachments().Lister()
 	factory.Start(stopChan)
 	factory.WaitForCacheSync(stopChan)
-	return scLister, csiNodeLister, nodeLister, claimLister, stopChan
+	return scLister, csiNodeLister, nodeLister, claimLister, vaLister, stopChan
 }
