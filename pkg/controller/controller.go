@@ -38,6 +38,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	_ "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -219,6 +220,7 @@ type csiProvisioner struct {
 	csiNodeLister                         storagelistersv1.CSINodeLister
 	nodeLister                            corelisters.NodeLister
 	claimLister                           corelisters.PersistentVolumeClaimLister
+	vaLister                              storagelistersv1.VolumeAttachmentLister
 	extraCreateMetadata                   bool
 }
 
@@ -284,6 +286,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	csiNodeLister storagelistersv1.CSINodeLister,
 	nodeLister corelisters.NodeLister,
 	claimLister corelisters.PersistentVolumeClaimLister,
+	vaLister storagelistersv1.VolumeAttachmentLister,
 	extraCreateMetadata bool,
 ) controller.Provisioner {
 
@@ -307,6 +310,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		csiNodeLister:                         csiNodeLister,
 		nodeLister:                            nodeLister,
 		claimLister:                           claimLister,
+		vaLister:                              vaLister,
 		extraCreateMetadata:                   extraCreateMetadata,
 	}
 	return provisioner
@@ -1006,7 +1010,6 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	req := csi.DeleteVolumeRequest{
 		VolumeId: volumeId,
 	}
-
 	// get secrets if StorageClass specifies it
 	storageClassName := util.GetPersistentVolumeClass(volume)
 	if len(storageClassName) != 0 {
@@ -1034,6 +1037,18 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), p.timeout)
 	defer cancel()
+
+	// Verify if volume is attached to a node before proceeding with deletion
+	vaList, err := p.vaLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("failed to list volumeattachments: %v", err)
+	}
+
+	for _, va := range vaList {
+		if va.Spec.Source.PersistentVolumeName != nil && *va.Spec.Source.PersistentVolumeName == volume.Name {
+			return fmt.Errorf("persistentvolume %s is still attached to node %s", volume.Name, va.Spec.NodeName)
+		}
+	}
 
 	_, err = p.csiClient.DeleteVolume(ctx, &req)
 
