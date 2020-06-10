@@ -43,9 +43,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/util"
@@ -222,6 +225,7 @@ type csiProvisioner struct {
 	claimLister                           corelisters.PersistentVolumeClaimLister
 	vaLister                              storagelistersv1.VolumeAttachmentLister
 	extraCreateMetadata                   bool
+	eventRecorder                         record.EventRecorder
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -289,6 +293,10 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	vaLister storagelistersv1.VolumeAttachmentLister,
 	extraCreateMetadata bool,
 ) controller.Provisioner {
+	broadcaster := record.NewBroadcaster()
+	broadcaster.StartLogging(klog.Infof)
+	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: client.CoreV1().Events(v1.NamespaceAll)})
+	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf("external-provisioner")})
 
 	csiClient := csi.NewControllerClient(grpcClient)
 	provisioner := &csiProvisioner{
@@ -312,6 +320,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		claimLister:                           claimLister,
 		vaLister:                              vaLister,
 		extraCreateMetadata:                   extraCreateMetadata,
+		eventRecorder:                         eventRecorder,
 	}
 	return provisioner
 }
@@ -475,7 +484,11 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		case pvcKind:
 			rc.clone = true
 		default:
-			klog.Infof("Unsupported DataSource specified (%s), the provisioner won't act on this request", options.PVC.Spec.DataSource.Kind)
+			klog.Infof("DataSource specified (%s) is not supported by the provisioner, waiting for an external data populator to create the volume", options.PVC.Spec.DataSource.Kind)
+			// DataSource is not VolumeSnapshot and PVC
+			// Wait for an external data populator to create the volume
+			p.eventRecorder.Event(options.PVC, v1.EventTypeNormal, "Provisioning", fmt.Sprintf("Waiting for a volume to be created by an external data populator"))
+			return nil, controller.ProvisioningFinished, nil
 		}
 	}
 	if err := p.checkDriverCapabilities(rc); err != nil {

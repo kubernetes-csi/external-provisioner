@@ -407,8 +407,11 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	defer mockController.Finish()
 	defer driver.Stop()
 
+	var clientSetObjects []runtime.Object
+	clientSet := fakeclientset.NewSimpleClientset(clientSetObjects...)
+
 	pluginCaps, controllerCaps := provisionCapabilities()
-	csiProvisioner := NewCSIProvisioner(nil, 5*time.Second, "test-provisioner", "test",
+	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test",
 		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, nil, nil, nil, false)
 
 	// Requested PVC with requestedBytes storage
@@ -808,6 +811,7 @@ type provisioningTestcase struct {
 	expectState       controller.ProvisioningState
 	expectCreateVolDo interface{}
 	withExtraMetadata bool
+	skipCreateVolume  bool
 }
 
 type pvSpec struct {
@@ -864,6 +868,7 @@ func getDefaultSecretObjects() []runtime.Object {
 func TestProvision(t *testing.T) {
 	var requestedBytes int64 = 100
 	deletePolicy := v1.PersistentVolumeReclaimDelete
+	apiGrp := "my.example.io"
 	testcases := map[string]provisioningTestcase{
 		"normal provision": {
 			volOpts: controller.ProvisionOptions{
@@ -1623,6 +1628,37 @@ func TestProvision(t *testing.T) {
 				},
 			},
 		},
+		"provision with any volume data source": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     "testPopulator",
+							Kind:     "MyPopulator",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			expectState:      controller.ProvisioningFinished,
+			expectErr:        false,
+			skipCreateVolume: true,
+		},
 	}
 
 	for k, tc := range testcases {
@@ -1703,7 +1739,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(tc.expectCreateVolDo).Return(out, tc.createVolumeError).Times(1)
 	} else {
 		// Setup regular mock call expectations.
-		if !tc.expectErr {
+		if !tc.expectErr && !tc.skipCreateVolume {
 			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(1)
 		}
 	}
