@@ -71,7 +71,7 @@ var (
 	metricsAddress = flag.String("metrics-address", "", "The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled.")
 	metricsPath    = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
 
-	defaultFSType = flag.String("default-fstype", "ext4", "Specify the filesystem type of the volume. If not specified,  external-provisioner will set default as `ext4`.")
+	defaultFSType = flag.String("default-fstype", "", "Specify the filesystem type of the volume. If not specified,  external-provisioner will not set any default filesystem type.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController

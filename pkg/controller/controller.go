@@ -519,7 +519,7 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 	if fsTypesFound > 1 {
 		return nil, controller.ProvisioningFinished, fmt.Errorf("fstype specified in parameters with both \"fstype\" and \"%s\" keys", prefixedFsTypeKey)
 	}
-	if fsType == "" && p.defaultFSType != "none" {
+	if fsType == "" && p.defaultFSType != "" {
 		fsType = p.defaultFSType
 	}
 
