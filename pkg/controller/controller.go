@@ -116,8 +116,6 @@ const (
 	backoffFactor   = 1.2
 	backoffSteps    = 10
 
-	defaultFSType = "ext4"
-
 	snapshotKind     = "VolumeSnapshot"
 	snapshotAPIGroup = snapapi.GroupName       // "snapshot.storage.k8s.io"
 	pvcKind          = "PersistentVolumeClaim" // Native types don't require an API group
@@ -211,6 +209,7 @@ type csiProvisioner struct {
 	timeout                               time.Duration
 	identity                              string
 	volumeNamePrefix                      string
+	defaultFSType                         string
 	volumeNameUUIDLength                  int
 	config                                *rest.Config
 	driverName                            string
@@ -292,6 +291,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	claimLister corelisters.PersistentVolumeClaimLister,
 	vaLister storagelistersv1.VolumeAttachmentLister,
 	extraCreateMetadata bool,
+	defaultFSType string,
 ) controller.Provisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
@@ -307,6 +307,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		timeout:                               connectionTimeout,
 		identity:                              identity,
 		volumeNamePrefix:                      volumeNamePrefix,
+		defaultFSType:                         defaultFSType,
 		volumeNameUUIDLength:                  volumeNameUUIDLength,
 		driverName:                            driverName,
 		pluginCapabilities:                    pluginCapabilities,
@@ -518,8 +519,8 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 	if fsTypesFound > 1 {
 		return nil, controller.ProvisioningFinished, fmt.Errorf("fstype specified in parameters with both \"fstype\" and \"%s\" keys", prefixedFsTypeKey)
 	}
-	if len(fsType) == 0 {
-		fsType = defaultFSType
+	if fsType == "" && p.defaultFSType != "" {
+		fsType = p.defaultFSType
 	}
 
 	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
