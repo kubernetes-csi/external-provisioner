@@ -219,15 +219,22 @@ func logGRPC(method string, request, reply interface{}, err error) {
 		Method   string
 		Request  interface{}
 		Response interface{}
-		Error    string
+		// Error as string, for backward compatibility.
+		// "" on no error.
+		Error string
+		// Full error dump, to be able to parse out full gRPC error code and message separately in a test.
+		FullError error
 	}{
-		Method:   method,
-		Request:  request,
-		Response: reply,
+		Method:    method,
+		Request:   request,
+		Response:  reply,
+		FullError: err,
 	}
+
 	if err != nil {
 		logMessage.Error = err.Error()
 	}
+
 	msg, _ := json.Marshal(logMessage)
 	fmt.Printf("gRPCCall: %s\n", msg)
 }

@@ -28,10 +28,7 @@ import (
 )
 
 // Connect address by grpc
-func Connect(address string) (*grpc.ClientConn, error) {
-	dialOptions := []grpc.DialOption{
-		grpc.WithInsecure(),
-	}
+func Connect(address string, dialOptions ...grpc.DialOption) (*grpc.ClientConn, error) {
 	u, err := url.Parse(address)
 	if err == nil && (!u.IsAbs() || u.Scheme == "unix") {
 		dialOptions = append(dialOptions,
