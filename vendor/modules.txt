@@ -4,7 +4,7 @@ github.com/beorn7/perks/quantile
 github.com/blang/semver
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
-# github.com/container-storage-interface/spec v1.1.0
+# github.com/container-storage-interface/spec v1.2.0
 github.com/container-storage-interface/spec/lib/go/csi
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
@@ -15,9 +15,9 @@ github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
 # github.com/golang/groupcache v0.0.0-20190129154638-5b532d6fd5ef
 github.com/golang/groupcache/lru
-# github.com/golang/mock v1.2.0
+# github.com/golang/mock v1.4.3
 github.com/golang/mock/gomock
-# github.com/golang/protobuf v1.3.2
+# github.com/golang/protobuf v1.3.3
 github.com/golang/protobuf/descriptor
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/protoc-gen-go/descriptor
@@ -54,16 +54,16 @@ github.com/kubernetes-csi/csi-lib-utils/leaderelection
 github.com/kubernetes-csi/csi-lib-utils/metrics
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 github.com/kubernetes-csi/csi-lib-utils/rpc
-# github.com/kubernetes-csi/csi-test v2.0.0+incompatible
-github.com/kubernetes-csi/csi-test/driver
-github.com/kubernetes-csi/csi-test/utils
-# github.com/kubernetes-csi/external-snapshotter v1.2.1-0.20191220180133-bba358438aee
-github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1
-github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned
-github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/fake
-github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/scheme
-github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/typed/volumesnapshot/v1beta1
-github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned/typed/volumesnapshot/v1beta1/fake
+# github.com/kubernetes-csi/csi-test/v3 v3.1.1
+github.com/kubernetes-csi/csi-test/v3/driver
+github.com/kubernetes-csi/csi-test/v3/utils
+# github.com/kubernetes-csi/external-snapshotter/v2 v2.1.1
+github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1
+github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned
+github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned/fake
+github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned/scheme
+github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned/typed/volumesnapshot/v1beta1
+github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned/typed/volumesnapshot/v1beta1/fake
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/miekg/dns v1.1.27
@@ -131,7 +131,7 @@ google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/urlfetch
 # google.golang.org/genproto v0.0.0-20191220175831-5c49e3ecc1c1
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.26.0
+# google.golang.org/grpc v1.29.1
 google.golang.org/grpc
 google.golang.org/grpc/attributes
 google.golang.org/grpc/backoff
@@ -153,10 +153,13 @@ google.golang.org/grpc/internal/binarylog
 google.golang.org/grpc/internal/buffer
 google.golang.org/grpc/internal/channelz
 google.golang.org/grpc/internal/envconfig
+google.golang.org/grpc/internal/grpclog
 google.golang.org/grpc/internal/grpcrand
 google.golang.org/grpc/internal/grpcsync
+google.golang.org/grpc/internal/grpcutil
 google.golang.org/grpc/internal/resolver/dns
 google.golang.org/grpc/internal/resolver/passthrough
+google.golang.org/grpc/internal/status
 google.golang.org/grpc/internal/syscall
 google.golang.org/grpc/internal/transport
 google.golang.org/grpc/keepalive

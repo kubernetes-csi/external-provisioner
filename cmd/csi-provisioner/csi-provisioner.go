@@ -26,11 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kubernetes-csi/csi-lib-utils/deprecatedflags"
-	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
-	"github.com/kubernetes-csi/csi-lib-utils/metrics"
-	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
-	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	flag "github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -45,6 +40,12 @@ import (
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
+
+	"github.com/kubernetes-csi/csi-lib-utils/deprecatedflags"
+	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
+	"github.com/kubernetes-csi/csi-lib-utils/metrics"
+	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
+	snapclientset "github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned"
 )
 
 var (

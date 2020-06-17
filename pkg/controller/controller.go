@@ -26,11 +26,6 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-csi/csi-lib-utils/connection"
-	"github.com/kubernetes-csi/csi-lib-utils/metrics"
-	"github.com/kubernetes-csi/csi-lib-utils/rpc"
-	snapapi "github.com/kubernetes-csi/external-snapshotter/pkg/apis/volumesnapshot/v1beta1"
-	snapclientset "github.com/kubernetes-csi/external-snapshotter/pkg/client/clientset/versioned"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -52,6 +47,12 @@ import (
 	"k8s.io/klog"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/util"
+
+	"github.com/kubernetes-csi/csi-lib-utils/connection"
+	"github.com/kubernetes-csi/csi-lib-utils/metrics"
+	"github.com/kubernetes-csi/csi-lib-utils/rpc"
+	snapapi "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
+	snapclientset "github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned"
 )
 
 //secretParamsMap provides a mapping of current as well as deprecated secret keys

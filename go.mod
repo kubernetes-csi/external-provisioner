@@ -1,15 +1,15 @@
 module github.com/kubernetes-csi/external-provisioner
 
-go 1.12
+go 1.13
 
 require (
-	github.com/container-storage-interface/spec v1.1.0
-	github.com/golang/mock v1.2.0
+	github.com/container-storage-interface/spec v1.2.0
+	github.com/golang/mock v1.4.3
 	github.com/kubernetes-csi/csi-lib-utils v0.7.0
-	github.com/kubernetes-csi/csi-test v2.0.0+incompatible
-	github.com/kubernetes-csi/external-snapshotter v1.2.1-0.20191220180133-bba358438aee
+	github.com/kubernetes-csi/csi-test/v3 v3.1.1
+	github.com/kubernetes-csi/external-snapshotter/v2 v2.1.1
 	github.com/spf13/pflag v1.0.5
-	google.golang.org/grpc v1.26.0
+	google.golang.org/grpc v1.29.1
 	k8s.io/api v0.17.3
 	k8s.io/apimachinery v0.17.3
 	k8s.io/apiserver v0.17.0
