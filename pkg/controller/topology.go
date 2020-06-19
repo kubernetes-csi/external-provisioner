@@ -31,15 +31,12 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/version"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/klog"
 )
-
-var k8sTopologyBetaVersion = version.MustParseSemantic("1.14.0")
 
 // topologyTerm represents a single term where its topology key value pairs are AND'd together.
 type topologyTerm map[string]string
@@ -84,67 +81,36 @@ func SupportsTopology(pluginCapabilities rpc.PluginCapabilitySet) bool {
 // GenerateAccessibilityRequirements returns the CSI TopologyRequirement
 // to pass into the CSI CreateVolume request.
 //
-// This function is only called if the topology feature is enabled
+// This function is called if the topology feature is enabled
 // in the external-provisioner and the CSI driver implements the
 // CSI accessibility capability. It is disabled by default.
 //
 // If enabled, we require that the K8s API server is on at least
-// K8s 1.14, and that the K8s CSINode feature gate is enabled. In
-// order for the topology feature to fully function correctly, the
-// K8s Nodes also have to be upgraded to 1.14 in order for kubelet
-// to register and create the new CSINode beta objects.
+// K8s 1.17 and that the K8s Nodes are on at least K8s 1.15 in
+// accordance with the 2 version skew between control plane and
+// nodes.
 //
-// However, due to K8s master/node 2 version skew support, it's
-// possible that the Nodes have not been upgraded yet, so this
-// feature needs to handle that skew. There are two main cases
-// to consider:
+// There are two main cases to consider:
 //
 // 1) selectedNode is not set (immediate binding):
 //
 //    In this case, we list all CSINode objects to find a Node that
-//    the driver has registered topology keys with. The List() API
-//    call should succeed because we at least require the K8s API
-//    server to be on 1.14. If it doesn't succeed, then we error.
+//    the driver has registered topology keys with.
 //
 //    Once we get the list of CSINode objects, we find one that has
 //    topology keys registered. If none are found, then we assume
-//    that either no Nodes have been upgraded and/or the driver has
-//    not registered any topology keys. In that case, we fallback to
-//    "topology disabled" behavior.
+//    that the driver has not started on any node yet, and we error
+//    and retry.
 //
 //    If at least one CSINode object is found with topology keys,
 //    then we continue and use that for assembling the topology
-//    requirement. While Nodes are being upgraded, the available
-//    topologies will be limited to the upgraded Nodes.
+//    requirement. The available topologies will be limited to the
+//    Nodes that the driver has registered with.
 //
 // 2) selectedNode is set (delayed binding):
 //
-//    This case never worked well in a multi-topology environment
-//    without the topology feature, because we would not pass in
-//    any topology to the driver (including any AllowedTopologies),
-//    and the driver would choose a random topology to provision in,
-//    often resulting in Pod scheduling failures.
-//
-//    So for the multi-topology environment, topology is considered
-//    to be a new feature, and requires both K8s master and nodes to
-//    be upgraded to 1.14 to fully function.
-//
-//    However, it was still possible for a K8s user to use delayed
-//    binding if the driver was deployed in a single-topology
-//    environment (such as a single zone), where topology could be
-//    effectively ignored. That use case still needs to be supported
-//    with this topology feature enabled.
-//
-//    With the feature enabled, now we will try to get the CSINode
-//    object for the selectedNode.
-//
-//    If it doesn't exist, then we need to check the Node version.
-//    If the Node is on a pre-1.14 version, then we fallback to
-//    "topology disabled" behavior.
-//
-//    Otherwise, the node is on 1.14+ and we error because either:
-//      * the driver hasn't registered a topology key yet, or
-//      * there's some temporary API server issue.
+//    We will get the topology from the CSINode object for the selectedNode
+//    and error if we can't (and retry).
 //
 func GenerateAccessibilityRequirements(
 	kubeClient kubernetes.Interface,
@@ -169,11 +135,6 @@ func GenerateAccessibilityRequirements(
 		selectedCSINode, err = getSelectedCSINode(csiNodeLister, selectedNode)
 		if err != nil {
 			return nil, err
-		}
-		if selectedCSINode == nil {
-			// Fallback to "topology disabled" behavior
-			// This should only happen if the Node is on a pre-1.14 version
-			return nil, nil
 		}
 		topologyKeys := getTopologyKeys(selectedCSINode, driverName)
 		if len(topologyKeys) == 0 {
@@ -225,16 +186,17 @@ func GenerateAccessibilityRequirements(
 			if err != nil {
 				return nil, err
 			}
+			if len(requisiteTerms) == 0 {
+				// We may reach here if the driver has not registered on any nodes.
+				// We should wait for at least one driver to start so that we can
+				// provision in a supported topology.
+				return nil, fmt.Errorf("no available topology found")
+			}
 		}
 	}
 
-	// It might be possible to reach here if:
-	//
-	// * aggregateTopologies couldn't find any topology information on nodes for immediate binding.
-	//   This could be due to nodes not upgraded to use the beta CSINode feature.
-	// * allowedTopologies had empty entries.
-	//
-	// Either way, we fallback to the "topology disabled" behavior.
+	// It might be possible to reach here if allowedTopologies had empty entries.
+	// We fallback to the "topology disabled" behavior.
 	if len(requisiteTerms) == 0 {
 		return nil, nil
 	}
@@ -282,25 +244,12 @@ func getSelectedCSINode(
 
 	selectedCSINode, err := csiNodeLister.Get(selectedNode.Name)
 	if err != nil {
-		// If the Node is before 1.14, then we fallback to "topology disabled" behavior
-		// to retain backwards compatibility in a single-topology environment with
-		// delayed binding.
-		//
-		// TODO (#257): Once K8s 1.13 is no longer supported, then this check can be removed
-		// and we can require that CSINode exists.
-		nodeVersion, parseErr := version.ParseSemantic(selectedNode.Status.NodeInfo.KubeletVersion)
-		if parseErr != nil {
-			return nil, fmt.Errorf("Failed to parse kubelet version from node %q: %v", selectedNode.Name, parseErr)
-		}
-		if nodeVersion.LessThan(k8sTopologyBetaVersion) {
-			klog.Warningf("Selected node %q version %q is less than %q, falling back to no topology", selectedNode.Name, nodeVersion, k8sTopologyBetaVersion)
-			return nil, nil
-		}
-
-		// Otherwise, require the CSINode beta feature on the K8s node to also be enabled.
 		// We don't want to fallback and provision in the wrong topology if there's some temporary
 		// error with the API server.
 		return nil, fmt.Errorf("error getting CSINode for selected node %q: %v", selectedNode.Name, err)
+	}
+	if selectedCSINode == nil {
+		return nil, fmt.Errorf("CSINode for selected node %q not found", selectedNode.Name)
 	}
 	return selectedCSINode, nil
 }
