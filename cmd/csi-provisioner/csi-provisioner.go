@@ -74,6 +74,9 @@ var (
 
 	defaultFSType = flag.String("default-fstype", "", "The default filesystem type of the volume to provision when fstype is unspecified in the StorageClass. If the default is not set and fstype is unset in the StorageClass, then no fstype will be set")
 
+	kubeAPIQPS   = flag.Float32("kube-api-qps", 5, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
+	kubeAPIBurst = flag.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
+
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
 	version             = "unknown"
@@ -124,10 +127,15 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Failed to create config: %v", err)
 	}
+
+	config.QPS = *kubeAPIQPS
+	config.Burst = *kubeAPIBurst
+
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		klog.Fatalf("Failed to create client: %v", err)
 	}
+
 	// snapclientset.NewForConfig creates a new Clientset for VolumesnapshotV1beta1Client
 	snapClient, err := snapclientset.NewForConfig(config)
 	if err != nil {
@@ -282,7 +290,13 @@ func main() {
 		// to preserve backwards compatibility
 		lockName := strings.Replace(provisionerName, "/", "-", -1)
 
-		le := leaderelection.NewLeaderElection(clientset, lockName, run)
+		// create a new clientset for leader election
+		leClientset, err := kubernetes.NewForConfig(config)
+		if err != nil {
+			klog.Fatalf("Failed to create leaderelection client: %v", err)
+		}
+
+		le := leaderelection.NewLeaderElection(leClientset, lockName, run)
 
 		if *leaderElectionNamespace != "" {
 			le.WithNamespace(*leaderElectionNamespace)
