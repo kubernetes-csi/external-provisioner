@@ -423,7 +423,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 			Parameters:    map[string]string{},
 		},
 		PVName: "test-name",
-		PVC:    createFakePVC(requestedBytes),
+		PVC:    createFakePVC(requestedBytes, driverName),
 	}
 
 	// Drivers CreateVolume response with lower capacity bytes than request
@@ -485,7 +485,7 @@ func provisionFromPVCCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapa
 		}
 }
 
-func createFakeNamedPVC(requestBytes int64, name string, userAnnotations map[string]string) *v1.PersistentVolumeClaim {
+func createFakeNamedPVC(requestBytes int64, name string, driverName string, userAnnotations map[string]string) *v1.PersistentVolumeClaim {
 	annotations := map[string]string{annStorageProvisioner: driverName}
 	for k, v := range userAnnotations {
 		annotations[k] = v
@@ -510,13 +510,13 @@ func createFakeNamedPVC(requestBytes int64, name string, userAnnotations map[str
 }
 
 // Minimal PVC required for tests to function
-func createFakePVC(requestBytes int64) *v1.PersistentVolumeClaim {
-	return createFakeNamedPVC(requestBytes, "fake-pvc", nil)
+func createFakePVC(requestBytes int64, driverName string) *v1.PersistentVolumeClaim {
+	return createFakeNamedPVC(requestBytes, "fake-pvc", driverName, nil)
 }
 
 // createFakePVCWithVolumeMode returns PVC with VolumeMode
 func createFakePVCWithVolumeMode(requestBytes int64, volumeMode v1.PersistentVolumeMode) *v1.PersistentVolumeClaim {
-	claim := createFakePVC(requestBytes)
+	claim := createFakePVC(requestBytes, driverName)
 	claim.Spec.VolumeMode = &volumeMode
 	return claim
 }
@@ -893,7 +893,7 @@ func TestFSTypeProvision(t *testing.T) {
 					},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			expectedPVSpec: &pvSpec{
 				Name:          "test-testi",
@@ -921,7 +921,7 @@ func TestFSTypeProvision(t *testing.T) {
 					},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			expectedPVSpec: &pvSpec{
 				Name:          "test-testi",
@@ -951,7 +951,7 @@ func TestFSTypeProvision(t *testing.T) {
 					},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			skipDefaultFSType: true,
 			expectedPVSpec: &pvSpec{
@@ -981,7 +981,7 @@ func TestFSTypeProvision(t *testing.T) {
 					},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			skipDefaultFSType: true,
 			expectedPVSpec: &pvSpec{
@@ -1022,7 +1022,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			expectedPVSpec: &pvSpec{
 				Name:          "test-testi",
@@ -1050,7 +1050,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			withExtraMetadata: true,
 			expectedPVSpec: &pvSpec{
@@ -1069,7 +1069,7 @@ func TestProvision(t *testing.T) {
 				},
 			},
 			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
-				pvc := createFakePVC(requestedBytes)
+				pvc := createFakePVC(requestedBytes, driverName)
 				expectedParams := map[string]string{
 					pvcNameKey:      pvc.GetName(),
 					pvcNamespaceKey: pvc.GetNamespace(),
@@ -1092,7 +1092,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			expectErr:   true,
 			expectState: controller.ProvisioningFinished,
@@ -1106,7 +1106,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			expectedPVSpec: &pvSpec{
 				Name:          "test-testi",
@@ -1351,7 +1351,7 @@ func TestProvision(t *testing.T) {
 					Parameters:    getDefaultStorageClassSecretParameters(),
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			clientSetObjects: getDefaultSecretObjects(),
 			expectedPVSpec: &pvSpec{
@@ -1397,7 +1397,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			clientSetObjects: []runtime.Object{&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1448,7 +1448,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 				PVName: "test-name",
-				PVC:    createFakeNamedPVC(requestedBytes, "my-pvc", nil),
+				PVC:    createFakeNamedPVC(requestedBytes, "my-pvc", driverName, nil),
 			},
 			clientSetObjects: []runtime.Object{&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1548,7 +1548,7 @@ func TestProvision(t *testing.T) {
 					Parameters: map[string]string{},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			getSecretRefErr: true,
 			expectErr:       true,
@@ -1557,7 +1557,7 @@ func TestProvision(t *testing.T) {
 		"fail not nil selector": {
 			volOpts: controller.ProvisionOptions{
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			notNilSelector: true,
 			expectErr:      true,
@@ -1566,7 +1566,7 @@ func TestProvision(t *testing.T) {
 		"fail to make volume name": {
 			volOpts: controller.ProvisionOptions{
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			makeVolumeNameErr: true,
 			expectErr:         true,
@@ -1578,7 +1578,7 @@ func TestProvision(t *testing.T) {
 					Parameters: map[string]string{},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			getCredentialsErr: true,
 			expectErr:         true,
@@ -1597,6 +1597,7 @@ func TestProvision(t *testing.T) {
 				PVC: createFakeNamedPVC(
 					requestedBytes,
 					"fake-pvc",
+					driverName,
 					map[string]string{"team.example.com/key": "secret-from-annotation"},
 				),
 			},
@@ -1616,7 +1617,7 @@ func TestProvision(t *testing.T) {
 					Parameters: map[string]string{},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			volWithLessCap: true,
 			expectErr:      true,
@@ -1752,7 +1753,7 @@ func TestProvision(t *testing.T) {
 					ReclaimPolicy: &deletePolicy,
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC:    createFakePVC(requestedBytes, driverName),
 			},
 			volWithZeroCap: true,
 			expectedPVSpec: &pvSpec{
@@ -2735,7 +2736,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 func TestProvisionWithTopologyEnabled(t *testing.T) {
 	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, true)()
 
-	const requestBytes = 100
+	const requestedBytes = 100
 
 	testcases := map[string]struct {
 		driverSupportsTopology bool
@@ -2800,7 +2801,7 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 
 	createVolumeOut := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			CapacityBytes:      requestBytes,
+			CapacityBytes:      requestedBytes,
 			VolumeId:           "test-volume-id",
 			AccessibleTopology: accessibleTopology,
 		},
@@ -2845,7 +2846,7 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 
 			pv, err := csiProvisioner.Provision(controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{},
-				PVC:          createFakePVC(requestBytes),
+				PVC:          createFakePVC(requestedBytes, driverName),
 			})
 			if !tc.expectError {
 				if err != nil {
@@ -2870,7 +2871,7 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 
 // TestProvisionErrorHandling checks how different errors are handled by the provisioner.
 func TestProvisionErrorHandling(t *testing.T) {
-	const requestBytes = 100
+	const requestedBytes = 100
 
 	testcases := map[codes.Code]controller.ProvisioningState{
 		codes.ResourceExhausted: controller.ProvisioningInBackground,
@@ -2940,7 +2941,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 
 					options := controller.ProvisionOptions{
 						StorageClass: &storagev1.StorageClass{},
-						PVC:          createFakePVC(requestBytes),
+						PVC:          createFakePVC(requestedBytes, driverName),
 					}
 					if nodeSelected {
 						options.SelectedNode = &nodes.Items[0]
@@ -2995,7 +2996,7 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 		},
 	}
 
-	const requestBytes = 100
+	const requestedBytes = 100
 
 	tmpdir := tempDir(t)
 	defer os.RemoveAll(tmpdir)
@@ -3013,7 +3014,7 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			CapacityBytes:      requestBytes,
+			CapacityBytes:      requestedBytes,
 			VolumeId:           "test-volume-id",
 			AccessibleTopology: accessibleTopology,
 		},
@@ -3023,7 +3024,7 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 
 	pv, err := csiProvisioner.Provision(controller.ProvisionOptions{
 		StorageClass: &storagev1.StorageClass{},
-		PVC:          createFakePVC(requestBytes),
+		PVC:          createFakePVC(requestedBytes, driverName),
 		SelectedNode: &v1.Node{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "some-node",
@@ -3814,7 +3815,7 @@ func TestProvisionFromPVC(t *testing.T) {
 }
 
 func TestProvisionWithMigration(t *testing.T) {
-	var requestBytes int64 = 100000
+	var requestedBytes int64 = 100000
 	var inTreePluginName = "in-tree-plugin"
 
 	deletePolicy := v1.PersistentVolumeReclaimDelete
@@ -3926,12 +3927,12 @@ func TestProvisionWithMigration(t *testing.T) {
 						Parameters:         expectParams,
 						VolumeCapabilities: nil,
 						CapacityRange: &csi.CapacityRange{
-							RequiredBytes: int64(requestBytes),
+							RequiredBytes: int64(requestedBytes),
 						},
 					}).Return(
 					&csi.CreateVolumeResponse{
 						Volume: &csi.Volume{
-							CapacityBytes: requestBytes,
+							CapacityBytes: requestedBytes,
 							VolumeId:      "test-volume-id",
 						},
 					}, nil).Times(1)
@@ -3945,7 +3946,7 @@ func TestProvisionWithMigration(t *testing.T) {
 					ReclaimPolicy: &deletePolicy,
 				},
 				PVName: "test-name",
-				PVC:    createPVCWithAnnotation(tc.annotation, requestBytes),
+				PVC:    createPVCWithAnnotation(tc.annotation, requestedBytes),
 			}
 
 			pv, state, err := csiProvisioner.(controller.ProvisionerExt).ProvisionExt(volOpts)
