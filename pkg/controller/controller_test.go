@@ -2821,7 +2821,7 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(createVolumeOut, nil).Times(1)
 			}
 
-			nodes := buildNodes(tc.nodeLabels, k8sTopologyBetaVersion.String())
+			nodes := buildNodes(tc.nodeLabels)
 			csiNodes := buildCSINodes(tc.topologyKeys)
 
 			var (
@@ -2928,7 +2928,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 					errOut := status.Error(code, "fake error")
 					controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(nil, errOut).Times(1)
 
-					nodes := buildNodes(nodeLabels, k8sTopologyBetaVersion.String())
+					nodes := buildNodes(nodeLabels)
 					csiNodes := buildCSINodes(topologyKeys)
 					clientSet := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 					scLister, csiNodeLister, nodeLister, claimLister, vaLister, stopChan := listers(clientSet)
