@@ -27,7 +27,6 @@ import (
 	"time"
 
 	flag "github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -39,13 +38,14 @@ import (
 	utilflag "k8s.io/component-base/cli/flag"
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
 
 	"github.com/kubernetes-csi/csi-lib-utils/deprecatedflags"
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
-	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned"
+
+	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 )
 
 var (
@@ -280,7 +280,7 @@ func main() {
 		if csiClaimController != nil {
 			go csiClaimController.Run(int(*finalizerThreads), stopCh)
 		}
-		provisionController.Run(wait.NeverStop)
+		provisionController.Run(context.TODO())
 	}
 
 	if !*enableLeaderElection {
