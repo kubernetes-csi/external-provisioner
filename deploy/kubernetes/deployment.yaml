@@ -22,7 +22,7 @@ spec:
           image: quay.io/k8scsi/csi-provisioner:canary
           args:
             - "--csi-address=$(ADDRESS)"
-            - "--enable-leader-election"
+            - "--leader-election"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/mock.socket
