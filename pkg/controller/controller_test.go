@@ -45,7 +45,7 @@ import (
 	utilfeaturetesting "k8s.io/component-base/featuregate/testing"
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
@@ -442,7 +442,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	}).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
 
 	// Call provision
-	_, err = csiProvisioner.Provision(opts)
+	_, _, err = csiProvisioner.Provision(context.TODO(), opts)
 	if err == nil {
 		t.Errorf("Provision did not cause an error when one was expected")
 		return
@@ -1869,7 +1869,7 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(1)
 	}
 
-	pv, state, err := csiProvisioner.(controller.ProvisionerExt).ProvisionExt(tc.volOpts)
+	pv, state, err := csiProvisioner.(controller.Provisioner).Provision(context.TODO(), tc.volOpts)
 	if tc.expectErr && err == nil {
 		t.Errorf("test %q: Expected error, got none", k)
 	}
@@ -1965,7 +1965,7 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		}
 	}
 
-	pv, state, err := csiProvisioner.(controller.ProvisionerExt).ProvisionExt(tc.volOpts)
+	pv, state, err := csiProvisioner.(controller.Provisioner).Provision(context.TODO(), tc.volOpts)
 	if tc.expectErr && err == nil {
 		t.Errorf("test %q: Expected error, got none", k)
 	}
@@ -2702,7 +2702,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			}
 		}
 
-		pv, err := csiProvisioner.Provision(tc.volOpts)
+		pv, _, err := csiProvisioner.Provision(context.TODO(), tc.volOpts)
 		if tc.expectErr && err == nil {
 			t.Errorf("test %q: Expected error, got none", k)
 		}
@@ -2843,7 +2843,7 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
 				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, false, defaultfsType)
 
-			pv, err := csiProvisioner.Provision(controller.ProvisionOptions{
+			pv, _, err := csiProvisioner.Provision(context.TODO(), controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{},
 				PVC:          createFakePVC(requestBytes),
 			})
@@ -2936,7 +2936,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 
 					csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
 						csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, false, defaultfsType)
-					csiProvisionerExt := csiProvisioner.(controller.ProvisionerExt)
+					csiProvisionerExt := csiProvisioner.(controller.Provisioner)
 
 					options := controller.ProvisionOptions{
 						StorageClass: &storagev1.StorageClass{},
@@ -2945,7 +2945,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 					if nodeSelected {
 						options.SelectedNode = &nodes.Items[0]
 					}
-					pv, state, err := csiProvisionerExt.ProvisionExt(options)
+					pv, state, err := csiProvisionerExt.Provision(context.TODO(), options)
 
 					if pv != nil {
 						t.Errorf("expected no PV, got %v", pv)
@@ -3021,7 +3021,7 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 
 	controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 
-	pv, err := csiProvisioner.Provision(controller.ProvisionOptions{
+	pv, _, err := csiProvisioner.Provision(context.TODO(), controller.ProvisionOptions{
 		StorageClass: &storagev1.StorageClass{},
 		PVC:          createFakePVC(requestBytes),
 		SelectedNode: &v1.Node{
@@ -3348,7 +3348,7 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
 		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), scLister, nil, nil, nil, vaLister, false, defaultfsType)
 
-	err = csiProvisioner.Delete(tc.persistentVolume)
+	err = csiProvisioner.Delete(context.TODO(), tc.persistentVolume)
 	if tc.expectErr && err == nil {
 		t.Errorf("test %q: Expected error, got none", k)
 	}
@@ -3769,7 +3769,7 @@ func TestProvisionFromPVC(t *testing.T) {
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
 				nil, driverName, pluginCaps, controllerCaps, "", false, csitrans.New(), nil, nil, nil, claimLister, nil, false, defaultfsType)
 
-			pv, err = csiProvisioner.Provision(tc.volOpts)
+			pv, _, err = csiProvisioner.Provision(context.TODO(), tc.volOpts)
 			if tc.expectErr && err == nil {
 				t.Errorf("test %q: Expected error, got none", k)
 			}
@@ -3948,7 +3948,7 @@ func TestProvisionWithMigration(t *testing.T) {
 				PVC:    createPVCWithAnnotation(tc.annotation, requestBytes),
 			}
 
-			pv, state, err := csiProvisioner.(controller.ProvisionerExt).ProvisionExt(volOpts)
+			pv, state, err := csiProvisioner.(controller.Provisioner).Provision(context.TODO(), volOpts)
 			if tc.expectErr && err == nil {
 				t.Errorf("Expected error, got none")
 			}
@@ -4070,7 +4070,7 @@ func TestDeleteMigration(t *testing.T) {
 				}).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
 
 			// Run Delete
-			err = csiProvisioner.Delete(tc.pv)
+			err = csiProvisioner.Delete(context.TODO(), tc.pv)
 			if tc.expectErr && err == nil {
 				t.Error("Got no error, expected one")
 			}

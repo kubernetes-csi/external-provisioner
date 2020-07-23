@@ -120,7 +120,7 @@ func TestCloneFinalizerRemoval(t *testing.T) {
 			err := cloningProtector.syncClaim(claim)
 
 			// Get updated claim after reconcile finish
-			claim, _ = clientSet.CoreV1().PersistentVolumeClaims(claim.Namespace).Get(claim.Name, metav1.GetOptions{})
+			claim, _ = clientSet.CoreV1().PersistentVolumeClaims(claim.Namespace).Get(context.TODO(), claim.Name, metav1.GetOptions{})
 
 			// Check finalizers removal
 			if tc.expectFinalizer && !checkFinalizer(claim, pvcCloneFinalizer) {

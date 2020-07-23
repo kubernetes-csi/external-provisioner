@@ -27,7 +27,6 @@ import (
 	"time"
 
 	flag "github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -39,7 +38,7 @@ import (
 	utilflag "k8s.io/component-base/cli/flag"
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
 
 	"github.com/kubernetes-csi/csi-lib-utils/deprecatedflags"
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
@@ -280,13 +279,13 @@ func main() {
 		if csiClaimController != nil {
 			go csiClaimController.Run(int(*finalizerThreads), stopCh)
 		}
-		provisionController.Run(wait.NeverStop)
+		provisionController.Run(context.TODO())
 	}
 
 	if !*enableLeaderElection {
 		run(context.TODO())
 	} else {
-		// this lock name pattern is also copied from sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller
+		// this lock name pattern is also copied from sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller
 		// to preserve backwards compatibility
 		lockName := strings.Replace(provisionerName, "/", "-", -1)
 

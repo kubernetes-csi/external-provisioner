@@ -45,8 +45,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/util"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/util"
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
@@ -230,7 +230,6 @@ type csiProvisioner struct {
 
 var _ controller.Provisioner = &csiProvisioner{}
 var _ controller.BlockProvisioner = &csiProvisioner{}
-var _ controller.ProvisionerExt = &csiProvisioner{}
 var _ controller.Qualifier = &csiProvisioner{}
 
 var (
@@ -427,13 +426,7 @@ func getVolumeCapability(
 
 }
 
-func (p *csiProvisioner) Provision(options controller.ProvisionOptions) (*v1.PersistentVolume, error) {
-	// The controller should call ProvisionExt() instead, but just in case...
-	pv, _, err := p.ProvisionExt(options)
-	return pv, err
-}
-
-func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.PersistentVolume, controller.ProvisioningState, error) {
+func (p *csiProvisioner) Provision(conctx context.Context, options controller.ProvisionOptions) (*v1.PersistentVolume, controller.ProvisioningState, error) {
 	if options.StorageClass == nil {
 		return nil, controller.ProvisioningFinished, errors.New("storage class was nil")
 	}
@@ -744,7 +737,7 @@ func (p *csiProvisioner) ProvisionExt(options controller.ProvisionOptions) (*v1.
 		pv, err = p.translator.TranslateCSIPVToInTree(pv)
 		if err != nil {
 			klog.Warningf("failed to translate CSI PV to in-tree due to: %v. Deleting provisioned PV", err)
-			deleteErr := p.Delete(pv)
+			deleteErr := p.Delete(context.TODO(), pv)
 			if deleteErr != nil {
 				klog.Warningf("failed to delete partly provisioned PV: %v", deleteErr)
 				// Retry the call again to clean up the orphan
@@ -766,7 +759,7 @@ func (p *csiProvisioner) setCloneFinalizer(pvc *v1.PersistentVolumeClaim) error 
 
 	if !checkFinalizer(claim, pvcCloneFinalizer) {
 		claim.Finalizers = append(claim.Finalizers, pvcCloneFinalizer)
-		_, err := p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(claim)
+		_, err := p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(context.TODO(), claim, metav1.UpdateOptions{})
 		return err
 	}
 
@@ -863,7 +856,7 @@ func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi
 		return nil, fmt.Errorf("volume name is empty in source PVC %s", sourcePVC.Name)
 	}
 
-	sourcePV, err := p.client.CoreV1().PersistentVolumes().Get(sourcePVC.Spec.VolumeName, metav1.GetOptions{})
+	sourcePV, err := p.client.CoreV1().PersistentVolumes().Get(context.TODO(), sourcePVC.Spec.VolumeName, metav1.GetOptions{})
 	if err != nil {
 		klog.Warningf("error getting volume %s for PVC %s/%s: %s", sourcePVC.Spec.VolumeName, sourcePVC.Namespace, sourcePVC.Name, err)
 		return nil, fmt.Errorf("claim in dataSource not bound or invalid")
@@ -922,7 +915,7 @@ func (p *csiProvisioner) getPVCSource(options controller.ProvisionOptions) (*csi
 // getSnapshotSource verifies DataSource.Kind of type VolumeSnapshot, making sure that the requested Snapshot is available/ready
 // returns the VolumeContentSource for the requested snapshot
 func (p *csiProvisioner) getSnapshotSource(options controller.ProvisionOptions) (*csi.VolumeContentSource, error) {
-	snapshotObj, err := p.snapshotClient.SnapshotV1beta1().VolumeSnapshots(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
+	snapshotObj, err := p.snapshotClient.SnapshotV1beta1().VolumeSnapshots(options.PVC.Namespace).Get(context.TODO(), options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting snapshot %s from api server: %v", options.PVC.Spec.DataSource.Name, err)
 	}
@@ -936,7 +929,7 @@ func (p *csiProvisioner) getSnapshotSource(options controller.ProvisionOptions) 
 		return nil, fmt.Errorf(snapshotNotBound, options.PVC.Spec.DataSource.Name)
 	}
 
-	snapContentObj, err := p.snapshotClient.SnapshotV1beta1().VolumeSnapshotContents().Get(*snapshotObj.Status.BoundVolumeSnapshotContentName, metav1.GetOptions{})
+	snapContentObj, err := p.snapshotClient.SnapshotV1beta1().VolumeSnapshotContents().Get(context.TODO(), *snapshotObj.Status.BoundVolumeSnapshotContentName, metav1.GetOptions{})
 
 	if err != nil {
 		klog.Warningf("error getting snapshotcontent %s for snapshot %s/%s from api server: %s", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, err)
@@ -994,7 +987,7 @@ func (p *csiProvisioner) getSnapshotSource(options controller.ProvisionOptions) 
 	return volumeContentSource, nil
 }
 
-func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
+func (p *csiProvisioner) Delete(conctx context.Context, volume *v1.PersistentVolume) error {
 	if volume == nil {
 		return fmt.Errorf("invalid CSI PV")
 	}
@@ -1070,7 +1063,7 @@ func (p *csiProvisioner) Delete(volume *v1.PersistentVolume) error {
 	return err
 }
 
-func (p *csiProvisioner) SupportsBlock() bool {
+func (p *csiProvisioner) SupportsBlock(context context.Context) bool {
 	// SupportsBlock always return true, because current CSI spec doesn't allow checking
 	// drivers' capability of block volume before creating volume.
 	// Drivers that don't support block volume should return error for CreateVolume called
@@ -1078,7 +1071,7 @@ func (p *csiProvisioner) SupportsBlock() bool {
 	return true
 }
 
-func (p *csiProvisioner) ShouldProvision(claim *v1.PersistentVolumeClaim) bool {
+func (p *csiProvisioner) ShouldProvision(context context.Context, claim *v1.PersistentVolumeClaim) bool {
 	provisioner := claim.Annotations[annStorageProvisioner]
 	migratedTo := claim.Annotations[annMigratedTo]
 	if provisioner == p.driverName || migratedTo == p.driverName {
@@ -1250,7 +1243,7 @@ func getCredentials(k8s kubernetes.Interface, ref *v1.SecretReference) (map[stri
 		return nil, nil
 	}
 
-	secret, err := k8s.CoreV1().Secrets(ref.Namespace).Get(ref.Name, metav1.GetOptions{})
+	secret, err := k8s.CoreV1().Secrets(ref.Namespace).Get(context.TODO(), ref.Name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting secret %s in namespace %s: %v", ref.Name, ref.Namespace, err)
 	}
