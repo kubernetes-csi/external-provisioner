@@ -57,6 +57,10 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 * `--worker-threads <num>`: Number of simultaneously running `ControllerCreateVolume` and `ControllerDeleteVolume` operations. Default value is `100`.
 
+* `--kube-api-qps <num>`: QPS for clients that communicate with the kubernetes apiserver. Defaults to `5.0`.
+
+* `--kube-api-burst <num>`: Burst for clients that communicate with the kubernetes apiserver. Defaults to `10`.
+
 * `--cloning-protection-threads <num>`: Number of simultaniously running threads, handling cloning finalizer removal. Defaults to `1`.
 
 * `--metrics-address`: The TCP network address where the prometheus metrics endpoint will run (example: `:8080` which corresponds to port 8080 on local host). The default is empty string, which means metrics endpoint is disabled.
