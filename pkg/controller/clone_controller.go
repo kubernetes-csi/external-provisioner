@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	v1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -16,7 +18,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v5/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
 )
 
 //
@@ -60,35 +62,37 @@ func NewCloningProtectionController(
 }
 
 // Run is a main CloningProtectionController handler
-func (p *CloningProtectionController) Run(threadiness int, stopCh <-chan struct{}) {
+func (p *CloningProtectionController) Run(ctx context.Context, threadiness int) {
 	klog.Info("Starting CloningProtection controller")
 	defer utilruntime.HandleCrash()
 	defer p.claimQueue.ShutDown()
 
 	claimHandler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    p.enqueueClaimUpadate,
-		UpdateFunc: func(_ interface{}, newObj interface{}) { p.enqueueClaimUpadate(newObj) },
+		AddFunc:    func(obj interface{}) { p.enqueueClaimUpdate(ctx, obj) },
+		UpdateFunc: func(_ interface{}, newObj interface{}) { p.enqueueClaimUpdate(ctx, newObj) },
 	}
 	p.claimInformer.AddEventHandlerWithResyncPeriod(claimHandler, controller.DefaultResyncPeriod)
 
 	for i := 0; i < threadiness; i++ {
-		go wait.Until(p.runClaimWorker, time.Second, stopCh)
+		go wait.Until(func() {
+			p.runClaimWorker(ctx)
+		}, time.Second, ctx.Done())
 	}
 
-	go p.claimInformer.Run(stopCh)
+	go p.claimInformer.Run(ctx.Done())
 
 	klog.Infof("Started CloningProtection controller")
-	<-stopCh
+	<-ctx.Done()
 	klog.Info("Shutting down CloningProtection controller")
 }
 
-func (p *CloningProtectionController) runClaimWorker() {
-	for p.processNextClaimWorkItem() {
+func (p *CloningProtectionController) runClaimWorker(ctx context.Context) {
+	for p.processNextClaimWorkItem(ctx) {
 	}
 }
 
 // processNextClaimWorkItem processes items from claimQueue
-func (p *CloningProtectionController) processNextClaimWorkItem() bool {
+func (p *CloningProtectionController) processNextClaimWorkItem(ctx context.Context) bool {
 	obj, shutdown := p.claimQueue.Get()
 	if shutdown {
 		return false
@@ -103,7 +107,7 @@ func (p *CloningProtectionController) processNextClaimWorkItem() bool {
 			return fmt.Errorf("expected string in workqueue but got %#v", obj)
 		}
 
-		if err := p.syncClaimHandler(key); err != nil {
+		if err := p.syncClaimHandler(ctx, key); err != nil {
 			klog.Warningf("Retrying syncing claim %q after %v failures", key, p.claimQueue.NumRequeues(obj))
 			p.claimQueue.AddRateLimited(obj)
 		} else {
@@ -121,8 +125,8 @@ func (p *CloningProtectionController) processNextClaimWorkItem() bool {
 	return true
 }
 
-// enqueueClaimUpadate takes a PVC obj and stores it into the claim work queue.
-func (p *CloningProtectionController) enqueueClaimUpadate(obj interface{}) {
+// enqueueClaimUpdate takes a PVC obj and stores it into the claim work queue.
+func (p *CloningProtectionController) enqueueClaimUpdate(ctx context.Context, obj interface{}) {
 	new, ok := obj.(*v1.PersistentVolumeClaim)
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("expected claim but got %+v", new))
@@ -144,7 +148,7 @@ func (p *CloningProtectionController) enqueueClaimUpadate(obj interface{}) {
 }
 
 // syncClaimHandler gets the claim from informer's cache then calls syncClaim
-func (p *CloningProtectionController) syncClaimHandler(key string) error {
+func (p *CloningProtectionController) syncClaimHandler(ctx context.Context, key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -161,11 +165,11 @@ func (p *CloningProtectionController) syncClaimHandler(key string) error {
 		return err
 	}
 
-	return p.syncClaim(claim)
+	return p.syncClaim(ctx, claim)
 }
 
 // syncClaim removes finalizers from a PVC, when cloning is finished
-func (p *CloningProtectionController) syncClaim(claim *v1.PersistentVolumeClaim) error {
+func (p *CloningProtectionController) syncClaim(ctx context.Context, claim *v1.PersistentVolumeClaim) error {
 	if !checkFinalizer(claim, pvcCloneFinalizer) {
 		return nil
 	}
@@ -199,7 +203,7 @@ func (p *CloningProtectionController) syncClaim(claim *v1.PersistentVolumeClaim)
 	}
 	claim.ObjectMeta.Finalizers = finalizers
 
-	if _, err = p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(claim); err != nil {
+	if _, err = p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(ctx, claim, metav1.UpdateOptions{}); err != nil {
 		if !apierrs.IsNotFound(err) {
 			// Couldn't remove finalizer and the object still exists, the controller may
 			// try to remove the finalizer again on the next update

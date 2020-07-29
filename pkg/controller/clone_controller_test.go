@@ -110,6 +110,7 @@ func TestCloneFinalizerRemoval(t *testing.T) {
 		tc := tc
 		t.Run(k, func(t *testing.T) {
 			t.Parallel()
+			ctx := context.Background()
 
 			objects := append(tc.initialClaims, tc.cloneSource)
 			clientSet := fakeclientset.NewSimpleClientset(objects...)
@@ -117,10 +118,10 @@ func TestCloneFinalizerRemoval(t *testing.T) {
 
 			// Simulate Delete behavior
 			claim := pvcDeletionMarked(tc.cloneSource.(*v1.PersistentVolumeClaim))
-			err := cloningProtector.syncClaim(claim)
+			err := cloningProtector.syncClaim(ctx, claim)
 
 			// Get updated claim after reconcile finish
-			claim, _ = clientSet.CoreV1().PersistentVolumeClaims(claim.Namespace).Get(claim.Name, metav1.GetOptions{})
+			claim, _ = clientSet.CoreV1().PersistentVolumeClaims(claim.Namespace).Get(ctx, claim.Name, metav1.GetOptions{})
 
 			// Check finalizers removal
 			if tc.expectFinalizer && !checkFinalizer(claim, pvcCloneFinalizer) {
@@ -161,13 +162,14 @@ func TestEnqueueClaimUpadate(t *testing.T) {
 		tc := tc
 		t.Run(k, func(t *testing.T) {
 			t.Parallel()
+			ctx := context.Background()
 
 			objects := []runtime.Object{}
 			clientSet := fakeclientset.NewSimpleClientset(objects...)
 			cloningProtector := fakeCloningProtector(clientSet, objects...)
 
 			// Simulate queue behavior
-			cloningProtector.enqueueClaimUpadate(tc.claim)
+			cloningProtector.enqueueClaimUpdate(ctx, tc.claim)
 
 			if cloningProtector.claimQueue.Len() != tc.queueLen {
 				t.Errorf("claimQueue should contain %d items, got: %d", tc.queueLen, cloningProtector.claimQueue.Len())
