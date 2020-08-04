@@ -7,7 +7,7 @@ require (
 	github.com/golang/mock v1.4.3
 	github.com/kubernetes-csi/csi-lib-utils v0.7.0
 	github.com/kubernetes-csi/csi-test/v3 v3.1.1
-	github.com/kubernetes-csi/external-snapshotter/v2 v2.2.0-rc1
+	github.com/kubernetes-csi/external-snapshotter/v2 v2.2.0-rc2
 	github.com/spf13/pflag v1.0.5
 	google.golang.org/grpc v1.29.1
 	k8s.io/api v0.19.0-rc.2
@@ -18,7 +18,7 @@ require (
 	k8s.io/csi-translation-lib v0.19.0-rc.2
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.19.0-rc.2
-	sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.0.0
+	sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.1.0-rc1
 )
 
 replace k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.19.0-rc.2
