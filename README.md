@@ -80,6 +80,7 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * `--enable-capacity <enumeration>`: Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. Currently supported: `--enable-capacity=central`.
 
+* `--capacity-ownerref-level <levels>`: The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc. Defaults to `1` (= StatefulSet).
 
 #### Other recognized arguments
 * `--feature-gates <gates>`: A set of comma separated `<feature-name>=<true|false>` pairs that describe feature gates for alpha/experimental features. See [list of features](#feature-status) or `--help` output for list of recognized features. Example: `--feature-gates Topology=true` to enable Topology feature that's disabled by default.
@@ -146,6 +147,9 @@ To enable this feature in a driver deployment:
   Kubernetes scheduler will ignore it. This can be used to first
   deploy the driver without that flag, then when sufficient
   information has been published, enabled the scheduler usage of it.
+- If external-provisioner is not deployed with a StatefulSet, then
+  configure with `--capacity-ownerref-level` which object is meant to own
+  CSIStorageCapacity objects.
 - Optional: configure how often external-provisioner polls the driver
   to detect changed capacity with `--capacity-poll-interval`.
 - Optional: configure how many worker threads are used in parallel
@@ -183,9 +187,9 @@ To ensure that CSIStorageCapacity objects get removed when the
 external-provisioner gets removed from the cluster, they all have an
 owner and therefore get garbage-collected when that owner
 disappears. The owner is not the external-provisioner pod itself but
-rather its parent. This way, it is possible to switch between
-external-provisioner instances without losing the already gathered
-information.
+rather one of its parents as specified by `--capacity-ownerref-level`.
+This way, it is possible to switch between external-provisioner
+instances without losing the already gathered information.
 
 CSIStorageCapacity objects are namespaced and get created in the
 namespace of the external-provisioner. Only CSIStorageCapacity objects

@@ -28,7 +28,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	flag "github.com/spf13/pflag"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -48,6 +48,7 @@ import (
 	"github.com/kubernetes-csi/external-provisioner/pkg/capacity"
 	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
+	"github.com/kubernetes-csi/external-provisioner/pkg/owner"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned"
 )
 
@@ -86,7 +87,8 @@ var (
 		flag.Var(capacity, "enable-capacity", "Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. Currently supported: --enable-capacity=central.")
 		return capacity
 	}()
-	capacityPollInterval = flag.Duration("capacity-poll-interval", time.Minute, "How long the external-provisioner waits before checking for storage capacity changes.")
+	capacityPollInterval  = flag.Duration("capacity-poll-interval", time.Minute, "How long the external-provisioner waits before checking for storage capacity changes.")
+	capacityOwnerrefLevel = flag.Int("capacity-ownerref-level", 1, "The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -286,20 +288,16 @@ func main() {
 		if podName == "" || namespace == "" {
 			klog.Fatalf("need POD_NAMESPACE/POD_NAME env variables, have only POD_NAMESPACE=%q and POD_NAME=%q", namespace, podName)
 		}
-		pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
+		controller, err := owner.Lookup(config, namespace, podName,
+			schema.GroupVersionKind{
+				Group:   "",
+				Version: "v1",
+				Kind:    "Pod",
+			}, *capacityOwnerrefLevel)
 		if err != nil {
-			klog.Fatalf("error getting our own pod: %v", err)
+			klog.Fatalf("look up owner(s) of pod: %v", err)
 		}
-		var controller *metav1.OwnerReference
-		for _, owner := range pod.OwnerReferences {
-			if owner.Controller != nil && *owner.Controller {
-				controller = &owner
-				break
-			}
-		}
-		if controller == nil {
-			klog.Fatal("pod does not have a controller which owns it")
-		}
+		klog.Infof("using %s/%s %s as owner of CSIStorageCapacity objects", controller.APIVersion, controller.Kind, controller.Name)
 
 		topologyInformer := topology.NewNodeTopology(
 			provisionerName,

@@ -18,6 +18,7 @@ require (
 	k8s.io/csi-translation-lib v0.19.0-rc.2
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.19.0-rc.2
+	sigs.k8s.io/controller-runtime v0.6.2
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.1.0-rc1
 )
 

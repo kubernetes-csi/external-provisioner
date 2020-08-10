@@ -92,9 +92,16 @@ rules:
 - apiGroups: ["storage.k8s.io"]
   resources: ["csistoragecapacities"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# The GET permissions below are needed for walking up the ownership chain
+# for CSIStorageCapacity. They are sufficient for deployment via
+# StatefulSet (only needs to get Pod) and Deployment (needs to get
+# Pod and then ReplicaSet to find the Deployment).
 - apiGroups: [""]
   resources: ["pods"]
-  verbs: ["get"] # Needed for CSIStorageCapacity owner determination.
+  verbs: ["get"]
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get"]
 
 ---
 kind: RoleBinding
