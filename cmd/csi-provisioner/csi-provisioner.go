@@ -84,7 +84,7 @@ var (
 
 	capacityFeatures = func() *capacity.Features {
 		capacity := &capacity.Features{}
-		flag.Var(capacity, "enable-capacity", "Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. Currently supported: --enable-capacity=central.")
+		flag.Var(capacity, "enable-capacity", "Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. Can be given more than once and/or with comma-separated values. Currently supported: --enable-capacity=central,immediate-binding.")
 		return capacity
 	}()
 	capacityPollInterval  = flag.Duration("capacity-poll-interval", time.Minute, "How long the external-provisioner waits before checking for storage capacity changes.")
@@ -326,6 +326,7 @@ func main() {
 			factory.Storage().V1().StorageClasses(),
 			factoryForNamespace.Storage().V1alpha1().CSIStorageCapacities(),
 			*capacityPollInterval,
+			(*capacityFeatures)[capacity.FeatureImmediateBinding],
 		)
 	}
 

@@ -87,6 +87,7 @@ var (
 // several different changes at runtime correctly.
 func TestController(t *testing.T) {
 	testcases := map[string]struct {
+		immediateBinding   bool
 		topology           mockTopology
 		storage            mockCapacity
 		initialSCs         []testSC
@@ -127,6 +128,50 @@ func TestController(t *testing.T) {
 				{
 					name:       "other-sc",
 					driverName: driverName,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+				},
+			},
+		},
+		"ignore SC with immediate binding": {
+			topology: mockTopology{
+				segments: []*topology.Segment{&layer0},
+			},
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:             "other-sc",
+					driverName:       driverName,
+					immediateBinding: true,
+				},
+			},
+		},
+		"support SC with immediate binding": {
+			immediateBinding: true,
+			topology: mockTopology{
+				segments: []*topology.Segment{&layer0},
+			},
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:             "other-sc",
+					driverName:       driverName,
+					immediateBinding: true,
 				},
 			},
 			expectedCapacities: []testCapacity{
@@ -735,7 +780,7 @@ func TestController(t *testing.T) {
 			clientSet := fakeclientset.NewSimpleClientset(objects...)
 			clientSet.PrependReactor("create", "csistoragecapacities", createCSIStorageCapacityReactor())
 			clientSet.PrependReactor("update", "csistoragecapacities", updateCSIStorageCapacityReactor())
-			c := fakeController(ctx, clientSet, &tc.storage, &tc.topology)
+			c := fakeController(ctx, clientSet, &tc.storage, &tc.topology, tc.immediateBinding)
 			for _, testCapacity := range tc.initialCapacities {
 				capacity := makeCapacity(testCapacity)
 				_, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
@@ -892,7 +937,7 @@ func updateCSIStorageCapacityReactor() func(action ktesting.Action) (handled boo
 	}
 }
 
-func fakeController(ctx context.Context, client *fakeclientset.Clientset, storage CSICapacityClient, topologyInformer topology.Informer) *Controller {
+func fakeController(ctx context.Context, client *fakeclientset.Clientset, storage CSICapacityClient, topologyInformer topology.Informer, immediateBinding bool) *Controller {
 	utilruntime.ReallyCrash = false // avoids os.Exit after "close of closed channel" in shared informer code
 
 	// We don't need resyncs, they just lead to confusing log output if they get triggered while already some
@@ -915,6 +960,7 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, storag
 		scInformer,
 		cInformer,
 		1000*time.Hour, // Not used, but even if it was, we wouldn't want automatic capacity polling while the test runs...
+		immediateBinding,
 	)
 
 	// This ensures that the informers are running and up-to-date.
@@ -1098,18 +1144,24 @@ func makeCapacity(in testCapacity) *storagev1alpha1.CSIStorageCapacity {
 }
 
 type testSC struct {
-	name       string
-	driverName string
-	parameters map[string]string
+	name             string
+	driverName       string
+	parameters       map[string]string
+	immediateBinding bool
 }
 
 func makeSC(in testSC) *storagev1.StorageClass {
+	volumeBinding := storagev1.VolumeBindingWaitForFirstConsumer
+	if in.immediateBinding {
+		volumeBinding = storagev1.VolumeBindingImmediate
+	}
 	return &storagev1.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: in.name,
 		},
-		Provisioner: in.driverName,
-		Parameters:  in.parameters,
+		Provisioner:       in.driverName,
+		Parameters:        in.parameters,
+		VolumeBindingMode: &volumeBinding,
 	}
 }
 

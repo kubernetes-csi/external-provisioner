@@ -78,7 +78,7 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * `--capacity-poll-interval <interval>`: How long the external-provisioner waits before checking for storage capacity changes. Defaults to `1m`.
 
-* `--enable-capacity <enumeration>`: Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. Currently supported: `--enable-capacity=central`.
+* `--enable-capacity <enumeration>`: Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. Can be given more than once and/or with comma-separated values. Currently supported: --enable-capacity=central,immediate-binding.
 
 * `--capacity-ownerref-level <levels>`: The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc. Defaults to `1` (= StatefulSet).
 
@@ -154,6 +154,12 @@ To enable this feature in a driver deployment:
   to detect changed capacity with `--capacity-poll-interval`.
 - Optional: configure how many worker threads are used in parallel
   with `--capacity-threads`.
+- Optional: enable producing information also for storage classes that
+  use immediate volume binding with
+  `--enable-capacity=immediate-binding`. This is usually not needed
+  because such volumes are created by the driver without involving the
+  Kubernetes scheduler and thus the published information would just
+  be ignored.
 
 To determine how many different topology segments exist,
 external-provisioner uses the topology keys and labels that the CSI

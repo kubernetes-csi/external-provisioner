@@ -83,6 +83,7 @@ type Controller struct {
 	scInformer       storageinformersv1.StorageClassInformer
 	cInformer        storageinformersv1alpha1.CSIStorageCapacityInformer
 	pollPeriod       time.Duration
+	immediateBinding bool
 
 	// capacities contains one entry for each object that is supposed
 	// to exist.
@@ -122,6 +123,7 @@ func NewCentralCapacityController(
 	scInformer storageinformersv1.StorageClassInformer,
 	cInformer storageinformersv1alpha1.CSIStorageCapacityInformer,
 	pollPeriod time.Duration,
+	immediateBinding bool,
 ) *Controller {
 	c := &Controller{
 		csiController:    csiController,
@@ -134,6 +136,7 @@ func NewCentralCapacityController(
 		scInformer:       scInformer,
 		cInformer:        cInformer,
 		pollPeriod:       pollPeriod,
+		immediateBinding: immediateBinding,
 		capacities:       map[workItem]*storagev1alpha1.CSIStorageCapacity{},
 	}
 
@@ -247,6 +250,9 @@ func (c *Controller) onTopologyChanges(added []*topology.Segment, removed []*top
 		if sc.Provisioner != c.driverName {
 			continue
 		}
+		if !c.immediateBinding && sc.VolumeBindingMode != nil && *sc.VolumeBindingMode == storagev1.VolumeBindingImmediate {
+			return
+		}
 		for _, segment := range added {
 			c.addWorkItem(segment, sc)
 		}
@@ -264,6 +270,10 @@ func (c *Controller) onSCAddOrUpdate(sc *storagev1.StorageClass) {
 	}
 
 	klog.V(3).Infof("Capacity Controller: storage class %s was updated or added", sc.Name)
+	if !c.immediateBinding && sc.VolumeBindingMode != nil && *sc.VolumeBindingMode == storagev1.VolumeBindingImmediate {
+		klog.V(3).Infof("Capacity Controller: ignoring storage class %s because it uses immediate binding", sc.Name)
+		return
+	}
 	segments := c.topologyInformer.List()
 
 	c.capacitiesLock.Lock()

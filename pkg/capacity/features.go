@@ -39,6 +39,12 @@ const (
 	// FeatureLocal enables the mode where external-provisioner
 	// is deployed on each node. Not implemented yet.
 	FeatureLocal = Feature("local")
+
+	// FeatureImmediateBinding enables the publishing of information
+	// for storage classes with immediate binding. Off by default
+	// because normally that information is not used as the Kubernetes
+	// scheduler lets the driver pick a topology segment.
+	FeatureImmediateBinding = Feature("immediate-binding")
 )
 
 // Set enables the named features. Multiple features can be listed, separated by commas,
