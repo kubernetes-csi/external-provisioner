@@ -143,9 +143,34 @@ func NewCentralCapacityController(
 	// Now register for changes. Depending on the implementation of the informers,
 	// this may already invoke callbacks.
 	handler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { c.onSCAddOrUpdate(obj.(*storagev1.StorageClass)) },
-		UpdateFunc: func(_ interface{}, newObj interface{}) { c.onSCAddOrUpdate(newObj.(*storagev1.StorageClass)) },
-		DeleteFunc: func(obj interface{}) { c.onSCDelete(obj.(*storagev1.StorageClass)) },
+		AddFunc: func(obj interface{}) {
+			sc, ok := obj.(*storagev1.StorageClass)
+			if !ok {
+				klog.Errorf("added object: expected StorageClass, got %T -> ignoring it", obj)
+				return
+			}
+			c.onSCAddOrUpdate(sc)
+		},
+		UpdateFunc: func(_ interface{}, newObj interface{}) {
+			sc, ok := newObj.(*storagev1.StorageClass)
+			if !ok {
+				klog.Errorf("updated object: expected StorageClass, got %T -> ignoring it", newObj)
+				return
+			}
+			c.onSCAddOrUpdate(sc)
+		},
+		DeleteFunc: func(obj interface{}) {
+			// Beware of "xxx deleted" events
+			if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
+				obj = unknown.Obj
+			}
+			sc, ok := obj.(*storagev1.StorageClass)
+			if !ok {
+				klog.Errorf("deleted object: expected StorageClass, got %T -> ignoring it", obj)
+				return
+			}
+			c.onSCDelete(sc)
+		},
 	}
 	c.scInformer.Informer().AddEventHandler(handler)
 	c.topologyInformer.AddCallback(c.onTopologyChanges)
@@ -211,11 +236,34 @@ func (c *Controller) prepare(ctx context.Context) {
 	// for all objects immediately when adding it.
 	klog.V(3).Info("Checking for existing CSIStorageCapacity objects")
 	handler := cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) { c.onCAddOrUpdate(ctx, obj.(*storagev1alpha1.CSIStorageCapacity)) },
-		UpdateFunc: func(_ interface{}, newObj interface{}) {
-			c.onCAddOrUpdate(ctx, newObj.(*storagev1alpha1.CSIStorageCapacity))
+		AddFunc: func(obj interface{}) {
+			csc, ok := obj.(*storagev1alpha1.CSIStorageCapacity)
+			if !ok {
+				klog.Errorf("added object: expected CSIStorageCapacity, got %T -> ignoring it", obj)
+				return
+			}
+			c.onCAddOrUpdate(ctx, csc)
 		},
-		DeleteFunc: func(obj interface{}) { c.onCDelete(ctx, obj.(*storagev1alpha1.CSIStorageCapacity)) },
+		UpdateFunc: func(_ interface{}, newObj interface{}) {
+			csc, ok := newObj.(*storagev1alpha1.CSIStorageCapacity)
+			if !ok {
+				klog.Errorf("updated object: expected CSIStorageCapacity, got %T -> ignoring it", newObj)
+				return
+			}
+			c.onCAddOrUpdate(ctx, csc)
+		},
+		DeleteFunc: func(obj interface{}) {
+			// Beware of "xxx deleted" events
+			if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
+				obj = unknown.Obj
+			}
+			csc, ok := obj.(*storagev1alpha1.CSIStorageCapacity)
+			if !ok {
+				klog.Errorf("deleted object: expected CSIStorageCapacity, got %T -> ignoring it", obj)
+				return
+			}
+			c.onCDelete(ctx, csc)
+		},
 	}
 	c.cInformer.Informer().AddEventHandler(handler)
 	capacities, err := c.cInformer.Lister().List(labels.Everything())

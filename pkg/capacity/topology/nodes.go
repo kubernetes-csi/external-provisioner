@@ -61,40 +61,88 @@ func NewNodeTopology(
 	// a bit and just remember that there is work to be done.
 	nodeHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			klog.V(5).Infof("capacity topology: new node: %s", obj.(*v1.Node).Name)
+			node, ok := obj.(*v1.Node)
+			if !ok {
+				klog.Errorf("added object: expected Node, got %T -> ignoring it", obj)
+				return
+			}
+			klog.V(5).Infof("capacity topology: new node: %s", node.Name)
 			queue.Add("")
 		},
 		UpdateFunc: func(oldObj interface{}, newObj interface{}) {
-			if reflect.DeepEqual(oldObj.(*v1.Node).Labels, newObj.(*v1.Node).Labels) {
+			oldNode, ok := oldObj.(*v1.Node)
+			if !ok {
+				klog.Errorf("original object: expected Node, got %T -> ignoring it", oldObj)
+				return
+			}
+			newNode, ok := newObj.(*v1.Node)
+			if !ok {
+				klog.Errorf("updated object: expected Node, got %T -> ignoring it", newObj)
+				return
+			}
+			if reflect.DeepEqual(oldNode.Labels, newNode.Labels) {
 				// Shortcut: labels haven't changed, no need to sync.
 				return
 			}
-			klog.V(5).Infof("capacity topology: updated node: %s", newObj.(*v1.Node).Name)
+			klog.V(5).Infof("capacity topology: updated node: %s", newNode.Name)
 			queue.Add("")
 		},
 		DeleteFunc: func(obj interface{}) {
-			klog.V(5).Infof("capacity topology: removed node: %s", obj.(*v1.Node).Name)
+			// Beware of "xxx deleted" events
+			if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
+				obj = unknown.Obj
+			}
+			node, ok := obj.(*v1.Node)
+			if !ok {
+				klog.Errorf("deleted object: expected Node, got %T -> ignoring it", obj)
+				return
+			}
+			klog.V(5).Infof("capacity topology: removed node: %s", node.Name)
 			queue.Add("")
 		},
 	}
 	nodeInformer.Informer().AddEventHandler(nodeHandler)
 	csiNodeHandler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			klog.V(5).Infof("capacity topology: new CSINode: %s", obj.(*storagev1.CSINode).Name)
+			csiNode, ok := obj.(*storagev1.CSINode)
+			if !ok {
+				klog.Errorf("added object: expected CSINode, got %T -> ignoring it", obj)
+				return
+			}
+			klog.V(5).Infof("capacity topology: new CSINode: %s", csiNode.Name)
 			queue.Add("")
 		},
 		UpdateFunc: func(oldObj interface{}, newObj interface{}) {
-			oldKeys := nt.driverTopologyKeys(oldObj.(*storagev1.CSINode))
-			newKeys := nt.driverTopologyKeys(newObj.(*storagev1.CSINode))
+			oldCSINode, ok := oldObj.(*storagev1.CSINode)
+			if !ok {
+				klog.Errorf("original object: expected CSINode, got %T -> ignoring it", oldObj)
+				return
+			}
+			newCSINode, ok := newObj.(*storagev1.CSINode)
+			if !ok {
+				klog.Errorf("updated object: expected CSINode, got %T -> ignoring it", newObj)
+				return
+			}
+			oldKeys := nt.driverTopologyKeys(oldCSINode)
+			newKeys := nt.driverTopologyKeys(newCSINode)
 			if reflect.DeepEqual(oldKeys, newKeys) {
 				// Shortcut: keys haven't changed, no need to sync.
 				return
 			}
-			klog.V(5).Infof("capacity topology: updated CSINode: %s", newObj.(*storagev1.CSINode).Name)
+			klog.V(5).Infof("capacity topology: updated CSINode: %s", newCSINode.Name)
 			queue.Add("")
 		},
 		DeleteFunc: func(obj interface{}) {
-			klog.V(5).Infof("capacity topology: removed CSINode: %s", obj.(*storagev1.CSINode).Name)
+			// Beware of "xxx deleted" events
+			if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
+				obj = unknown.Obj
+			}
+			csiNode, ok := obj.(*storagev1.CSINode)
+			if !ok {
+				klog.Errorf("deleted object: expected CSINode, got %T -> ignoring it", obj)
+				return
+			}
+			klog.V(5).Infof("capacity topology: removed CSINode: %s", csiNode.Name)
 			queue.Add("")
 		},
 	}
