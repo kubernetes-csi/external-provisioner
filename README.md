@@ -128,6 +128,15 @@ information](https://kubernetes.io/docs/concepts/storage/storage-capacity]
 when selecting nodes for pods with unbound volumes that wait for the
 first consumer.
 
+Currently, all CSIStorageCapacity objects created by an instance of
+the external-provisioner must have the same
+[owner](https://kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/#owners-and-dependents). That
+owner is how external-provisioner distinguishes between objects that
+it must manage and those that it must leave alone. The owner is
+determine with the `POD_NAME/POD_NAMESPACE` environment variables and
+the `--capacity-ownerref-level` parameter. Other solutions will be
+added in the future.
+
 To enable this feature in a driver deployment (see also the
 [`deploy/kubernetes/storage-capacity.yaml`](deploy/kubernetes/storage-capacity.yaml)
 example):
