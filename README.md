@@ -128,7 +128,10 @@ information](https://kubernetes.io/docs/concepts/storage/storage-capacity]
 when selecting nodes for pods with unbound volumes that wait for the
 first consumer.
 
-To enable this feature in a driver deployment:
+To enable this feature in a driver deployment (see also the
+[`deploy/kubernetes/storage-capacity.yaml`](deploy/kubernetes/storage-capacity.yaml)
+example):
+
 - Set the `POD_NAME` and `POD_NAMESPACE` environment variables like this:
 ```yaml
    env:
