@@ -78,9 +78,11 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * `--capacity-poll-interval <interval>`: How long the external-provisioner waits before checking for storage capacity changes. Defaults to `1m`.
 
-* `--enable-capacity <enumeration>`: Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. Can be given more than once and/or with comma-separated values. Currently supported: --enable-capacity=central,immediate-binding.
+* `--capacity-controller-deployment-mode central|none`: Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. 'central' is currently the only supported mode. Use it when there is just one active provisioner in the cluster. Defaults to `none`.
 
 * `--capacity-ownerref-level <levels>`: The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc. Defaults to `1` (= StatefulSet).
+
+* `--capacity-for-immediate-binding <bool>`: Enables producing capacity information for storage classes with immediate binding. Not needed for the Kubernetes scheduler, maybe useful for other consumers or for debugging. Defaults to `false`.
 
 #### Other recognized arguments
 * `--feature-gates <gates>`: A set of comma separated `<feature-name>=<true|false>` pairs that describe feature gates for alpha/experimental features. See [list of features](#feature-status) or `--help` output for list of recognized features. Example: `--feature-gates Topology=true` to enable Topology feature that's disabled by default.

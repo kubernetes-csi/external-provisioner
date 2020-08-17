@@ -82,13 +82,14 @@ var (
 	kubeAPIQPS   = flag.Float32("kube-api-qps", 5, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
 	kubeAPIBurst = flag.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
 
-	capacityFeatures = func() *capacity.Features {
-		capacity := &capacity.Features{}
-		flag.Var(capacity, "enable-capacity", "Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. Can be given more than once and/or with comma-separated values. Currently supported: --enable-capacity=central,immediate-binding.")
-		return capacity
+	capacityMode = func() *capacity.DeploymentMode {
+		mode := capacity.DeploymentModeNone
+		flag.Var(&mode, "capacity-controller-deployment-mode", "Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. 'central' is currently the only supported mode. Use it when there is just one active provisioner in the cluster.")
+		return &mode
 	}()
-	capacityPollInterval  = flag.Duration("capacity-poll-interval", time.Minute, "How long the external-provisioner waits before checking for storage capacity changes.")
-	capacityOwnerrefLevel = flag.Int("capacity-ownerref-level", 1, "The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc.")
+	capacityImmediateBinding = flag.Bool("capacity-for-immediate-binding", false, "Enables producing capacity information for storage classes with immediate binding. Not needed for the Kubernetes scheduler, maybe useful for other consumers or for debugging.")
+	capacityPollInterval     = flag.Duration("capacity-poll-interval", time.Minute, "How long the external-provisioner waits before checking for storage capacity changes.")
+	capacityOwnerrefLevel    = flag.Int("capacity-ownerref-level", 1, "The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -282,7 +283,7 @@ func main() {
 	)
 
 	var capacityController *capacity.Controller
-	if (*capacityFeatures)[capacity.FeatureCentral] {
+	if *capacityMode == capacity.DeploymentModeCentral {
 		podName := os.Getenv("POD_NAME")
 		namespace := os.Getenv("POD_NAMESPACE")
 		if podName == "" || namespace == "" {
@@ -326,7 +327,7 @@ func main() {
 			factory.Storage().V1().StorageClasses(),
 			factoryForNamespace.Storage().V1alpha1().CSIStorageCapacities(),
 			*capacityPollInterval,
-			(*capacityFeatures)[capacity.FeatureImmediateBinding],
+			*capacityImmediateBinding,
 		)
 	}
 
