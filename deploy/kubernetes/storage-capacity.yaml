@@ -1,0 +1,57 @@
+# This YAML file demonstrates how to enable the
+# storage capacity feature when deploying the
+# external provisioner, in this example together
+# with the mock CSI driver.
+#
+# It depends on the RBAC definitions from rbac.yaml.
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: csi-provisioner
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: csi-provisioner
+  template:
+    metadata:
+      labels:
+        app: csi-provisioner
+    spec:
+      serviceAccount: csi-provisioner
+      containers:
+        - name: csi-provisioner
+          image: k8s.gcr.io/sig-storage/csi-provisioner:v2.0.0
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--leader-election"
+            - "--enable-capacity=central"
+            - "--capacity-ownerref-level=2"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/mock.socket
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+
+        - name: mock-driver
+          image: quay.io/k8scsi/mock-driver:canary
+          env:
+            - name: CSI_ENDPOINT
+              value: /var/lib/csi/sockets/pluginproxy/mock.socket
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+      volumes:
+        - name: socket-dir
+          emptyDir:

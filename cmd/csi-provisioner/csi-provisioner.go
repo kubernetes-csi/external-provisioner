@@ -26,7 +26,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	flag "github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -43,7 +45,10 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/deprecatedflags"
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
+	"github.com/kubernetes-csi/external-provisioner/pkg/capacity"
+	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
+	"github.com/kubernetes-csi/external-provisioner/pkg/owner"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned"
 )
 
@@ -58,7 +63,8 @@ var (
 	retryIntervalStart   = flag.Duration("retry-interval-start", time.Second, "Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to retry-interval-max.")
 	retryIntervalMax     = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
 	workerThreads        = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
-	finalizerThreads     = flag.Uint("cloning-protection-threads", 1, "Number of simultaniously running threads, handling cloning finalizer removal")
+	finalizerThreads     = flag.Uint("cloning-protection-threads", 1, "Number of simultaneously running threads, handling cloning finalizer removal")
+	capacityThreads      = flag.Uint("capacity-threads", 1, "Number of simultaneously running threads, handling CSIStorageCapacity objects")
 	operationTimeout     = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for creation or deletion of a volume")
 	_                    = deprecatedflags.Add("provisioner")
 
@@ -75,6 +81,15 @@ var (
 
 	kubeAPIQPS   = flag.Float32("kube-api-qps", 5, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
 	kubeAPIBurst = flag.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
+
+	capacityMode = func() *capacity.DeploymentMode {
+		mode := capacity.DeploymentModeNone
+		flag.Var(&mode, "capacity-controller-deployment-mode", "Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. 'central' is currently the only supported mode. Use it when there is just one active provisioner in the cluster.")
+		return &mode
+	}()
+	capacityImmediateBinding = flag.Bool("capacity-for-immediate-binding", false, "Enables producing capacity information for storage classes with immediate binding. Not needed for the Kubernetes scheduler, maybe useful for other consumers or for debugging.")
+	capacityPollInterval     = flag.Duration("capacity-poll-interval", time.Minute, "How long the external-provisioner waits before checking for storage capacity changes.")
+	capacityOwnerrefLevel    = flag.Int("capacity-ownerref-level", 1, "The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -181,6 +196,7 @@ func main() {
 	identity := strconv.FormatInt(timeStamp, 10) + "-" + strconv.Itoa(rand.Intn(10000)) + "-" + provisionerName
 
 	factory := informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
+	var factoryForNamespace informers.SharedInformerFactory // usually nil, only used for CSIStorageCapacity
 
 	// -------------------------------
 	// Listers
@@ -266,8 +282,62 @@ func main() {
 		controllerCapabilities,
 	)
 
+	var capacityController *capacity.Controller
+	if *capacityMode == capacity.DeploymentModeCentral {
+		podName := os.Getenv("POD_NAME")
+		namespace := os.Getenv("POD_NAMESPACE")
+		if podName == "" || namespace == "" {
+			klog.Fatalf("need POD_NAMESPACE/POD_NAME env variables, have only POD_NAMESPACE=%q and POD_NAME=%q", namespace, podName)
+		}
+		controller, err := owner.Lookup(config, namespace, podName,
+			schema.GroupVersionKind{
+				Group:   "",
+				Version: "v1",
+				Kind:    "Pod",
+			}, *capacityOwnerrefLevel)
+		if err != nil {
+			klog.Fatalf("look up owner(s) of pod: %v", err)
+		}
+		klog.Infof("using %s/%s %s as owner of CSIStorageCapacity objects", controller.APIVersion, controller.Kind, controller.Name)
+
+		topologyInformer := topology.NewNodeTopology(
+			provisionerName,
+			clientset,
+			factory.Core().V1().Nodes(),
+			factory.Storage().V1().CSINodes(),
+			workqueue.NewNamedRateLimitingQueue(rateLimiter, "csitopology"),
+		)
+
+		// We only need objects from our own namespace. The normal factory would give
+		// us an informer for the entire cluster.
+		factoryForNamespace = informers.NewSharedInformerFactoryWithOptions(clientset,
+			ctrl.ResyncPeriodOfCsiNodeInformer,
+			informers.WithNamespace(namespace),
+		)
+
+		capacityController = capacity.NewCentralCapacityController(
+			csi.NewControllerClient(grpcClient),
+			provisionerName,
+			clientset,
+			// TODO: metrics for the queue?!
+			workqueue.NewNamedRateLimitingQueue(rateLimiter, "csistoragecapacity"),
+			*controller,
+			namespace,
+			topologyInformer,
+			factory.Storage().V1().StorageClasses(),
+			factoryForNamespace.Storage().V1alpha1().CSIStorageCapacities(),
+			*capacityPollInterval,
+			*capacityImmediateBinding,
+		)
+	}
+
 	run := func(ctx context.Context) {
 		factory.Start(ctx.Done())
+		if factoryForNamespace != nil {
+			// Starting is enough, the capacity controller will
+			// wait for sync.
+			factoryForNamespace.Start(ctx.Done())
+		}
 		cacheSyncResult := factory.WaitForCacheSync(ctx.Done())
 		for _, v := range cacheSyncResult {
 			if !v {
@@ -275,6 +345,9 @@ func main() {
 			}
 		}
 
+		if capacityController != nil {
+			go capacityController.Run(ctx, int(*capacityThreads))
+		}
 		if csiClaimController != nil {
 			go csiClaimController.Run(ctx, int(*finalizerThreads))
 		}
