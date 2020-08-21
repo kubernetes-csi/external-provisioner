@@ -74,13 +74,13 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 See the [storage capacity section](#capacity-support) below for details.
 
+* `--capacity-controller-deployment-mode=central`: Setting this enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. 'central' is currently the only supported mode. Use it when there is just one active provisioner in the cluster. The default is to not produce CSIStorageCapacity objects.
+
+* `--capacity-ownerref-level <levels>`: The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc. Defaults to `1` (= StatefulSet).
+
 * `--capacity-threads <num>`: Number of simultaneously running threads, handling CSIStorageCapacity objects. Defaults to `1`.
 
 * `--capacity-poll-interval <interval>`: How long the external-provisioner waits before checking for storage capacity changes. Defaults to `1m`.
-
-* `--capacity-controller-deployment-mode central|none`: Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. 'central' is currently the only supported mode. Use it when there is just one active provisioner in the cluster. Defaults to `none`.
-
-* `--capacity-ownerref-level <levels>`: The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc. Defaults to `1` (= StatefulSet).
 
 * `--capacity-for-immediate-binding <bool>`: Enables producing capacity information for storage classes with immediate binding. Not needed for the Kubernetes scheduler, maybe useful for other consumers or for debugging. Defaults to `false`.
 

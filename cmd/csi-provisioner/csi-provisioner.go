@@ -83,8 +83,8 @@ var (
 	kubeAPIBurst = flag.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
 
 	capacityMode = func() *capacity.DeploymentMode {
-		mode := capacity.DeploymentModeNone
-		flag.Var(&mode, "capacity-controller-deployment-mode", "Enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. 'central' is currently the only supported mode. Use it when there is just one active provisioner in the cluster.")
+		mode := capacity.DeploymentModeUnset
+		flag.Var(&mode, "capacity-controller-deployment-mode", "Setting this enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. 'central' is currently the only supported mode. Use it when there is just one active provisioner in the cluster.")
 		return &mode
 	}()
 	capacityImmediateBinding = flag.Bool("capacity-for-immediate-binding", false, "Enables producing capacity information for storage classes with immediate binding. Not needed for the Kubernetes scheduler, maybe useful for other consumers or for debugging.")

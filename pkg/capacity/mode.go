@@ -36,15 +36,15 @@ const (
 	// is deployed on each node. Not implemented yet.
 	DeploymentModeLocal = DeploymentMode("local")
 
-	// DeploymentModeNone disables capacity support.
-	DeploymentModeNone = DeploymentMode("none")
+	// DeploymentModeUnset disables the capacity feature completely.
+	DeploymentModeUnset = DeploymentMode("")
 )
 
 // Set enables the named features. Multiple features can be listed, separated by commas,
 // with optional whitespace.
 func (mode *DeploymentMode) Set(value string) error {
 	switch DeploymentMode(value) {
-	case DeploymentModeCentral, DeploymentModeNone:
+	case DeploymentModeCentral, DeploymentModeUnset:
 		*mode = DeploymentMode(value)
 	default:
 		return errors.New("invalid value")
@@ -57,7 +57,7 @@ func (mode *DeploymentMode) String() string {
 }
 
 func (mode *DeploymentMode) Type() string {
-	return strings.Join([]string{string(DeploymentModeCentral), string(DeploymentModeNone)}, "|")
+	return strings.Join([]string{string(DeploymentModeCentral) /*, string(DeploymentModeLocal) */}, "|")
 }
 
 var _ flag.Value = new(DeploymentMode)
