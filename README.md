@@ -101,11 +101,6 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * All glog / klog arguments are supported, such as `-v <log level>` or `-alsologtostderr`.
 
-#### Deprecated arguments
-* `--connection-timeout <duration>`: This option was used to limit establishing connection to CSI driver. Currently, the option does not have any effect and the external-provisioner tries to connect to CSI driver socket indefinitely. It is recommended to run ReadinessProbe on the driver to ensure that the driver comes up in reasonable time.
-
-* `--provisioner`: This option was used to set a provisioner name to look for in the StorageClass. Currently, the option does not have any effect and the external-provisioner uses the CSI driver name.
-
 ### Topology support
 When `Topology` feature is enabled and the driver specifies `VOLUME_ACCESSIBILITY_CONSTRAINTS` in its plugin capabilities, external-provisioner prepares `CreateVolumeRequest.AccessibilityRequirements` while calling `Controller.CreateVolume`. The driver has to consider these topology constraints while creating the volume. Below table shows how these `AccessibilityRequirements` are prepared:
 
