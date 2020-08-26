@@ -7,7 +7,7 @@ require (
 	github.com/golang/mock v1.4.3
 	github.com/kubernetes-csi/csi-lib-utils v0.7.0
 	github.com/kubernetes-csi/csi-test/v3 v3.1.1
-	github.com/kubernetes-csi/external-snapshotter/v2 v2.2.0-rc2
+	github.com/kubernetes-csi/external-snapshotter/client/v2 v2.2.0-rc3
 	github.com/spf13/pflag v1.0.5
 	google.golang.org/grpc v1.29.1
 	k8s.io/api v0.19.0-rc.2
