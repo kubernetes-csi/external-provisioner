@@ -299,7 +299,7 @@ func (c *Controller) onTopologyChanges(added []*topology.Segment, removed []*top
 			continue
 		}
 		if !c.immediateBinding && sc.VolumeBindingMode != nil && *sc.VolumeBindingMode == storagev1.VolumeBindingImmediate {
-			return
+			continue
 		}
 		for _, segment := range added {
 			c.addWorkItem(segment, sc)
