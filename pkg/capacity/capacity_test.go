@@ -95,6 +95,7 @@ func TestController(t *testing.T) {
 		expectedCapacities []testCapacity
 		modify             func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) (modifiedExpected []testCapacity, err error)
 		capacityChange     func(ctx context.Context, storage *mockCapacity, expected []testCapacity) (modifiedExpected []testCapacity)
+		topologyChange     func(ctx context.Context, topology *mockTopology, expected []testCapacity) (modifiedExpected []testCapacity)
 	}{
 		"empty": {
 			expectedCapacities: []testCapacity{},
@@ -764,6 +765,162 @@ func TestController(t *testing.T) {
 				return expected
 			},
 		},
+		"add storage topology segment": {
+			topology: mockTopology{},
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				// We intentionally create a SC with immediate binding first.
+				// It needs to be skipped while still processing the other one.
+				// Ordering of the objects is not guaranteed, but in practice
+				// the informer seems to be "first in, first out", which is what
+				// we need.
+				{
+					name:             "immediate-sc",
+					driverName:       driverName,
+					immediateBinding: true,
+				},
+				{
+					name:       "late-sc",
+					driverName: driverName,
+				},
+			},
+			expectedCapacities: nil,
+			topologyChange: func(ctx context.Context, topo *mockTopology, expected []testCapacity) []testCapacity {
+				topo.modify([]*topology.Segment{&layer0} /* added */, nil /* removed */)
+				return append(expected, testCapacity{
+					uid:              "CSISC-UID-1",
+					resourceVersion:  csiscRev + "0",
+					segment:          layer0,
+					storageClassName: "late-sc",
+					quantity:         "1Gi",
+				})
+			},
+		},
+		"add storage topology segment, immediate binding": {
+			immediateBinding: true,
+			topology:         mockTopology{},
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:             "immediate-sc",
+					driverName:       driverName,
+					immediateBinding: true,
+				},
+				{
+					name:       "late-sc",
+					driverName: driverName,
+				},
+			},
+			expectedCapacities: nil,
+			topologyChange: func(ctx context.Context, topo *mockTopology, expected []testCapacity) []testCapacity {
+				topo.modify([]*topology.Segment{&layer0} /* added */, nil /* removed */)
+				// We don't check the UID here because we don't want to fail when
+				// ordering of storage classes isn't such that the "immediate-sc" is seen first.
+				return append(expected, testCapacity{
+					resourceVersion:  csiscRev + "0",
+					segment:          layer0,
+					storageClassName: "immediate-sc",
+					quantity:         "1Gi",
+				},
+					testCapacity{
+						resourceVersion:  csiscRev + "0",
+						segment:          layer0,
+						storageClassName: "late-sc",
+						quantity:         "1Gi",
+					},
+				)
+			},
+		},
+		"remove storage topology segment": {
+			topology: mockTopology{
+				segments: []*topology.Segment{&layer0},
+			},
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:             "immediate-sc",
+					driverName:       driverName,
+					immediateBinding: true,
+				},
+				{
+					name:       "late-sc",
+					driverName: driverName,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					uid:              "CSISC-UID-1",
+					resourceVersion:  csiscRev + "0",
+					segment:          layer0,
+					storageClassName: "late-sc",
+					quantity:         "1Gi",
+				},
+			},
+			topologyChange: func(ctx context.Context, topo *mockTopology, expected []testCapacity) []testCapacity {
+				topo.modify(nil /* added */, topo.segments[:] /* removed */)
+				return nil
+			},
+		},
+		"add and remove storage topology segment": {
+			topology: mockTopology{
+				segments: []*topology.Segment{&layer0},
+			},
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+					"bar": "2Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:             "immediate-sc",
+					driverName:       driverName,
+					immediateBinding: true,
+				},
+				{
+					name:       "late-sc",
+					driverName: driverName,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					uid:              "CSISC-UID-1",
+					resourceVersion:  csiscRev + "0",
+					segment:          layer0,
+					storageClassName: "late-sc",
+					quantity:         "1Gi",
+				},
+			},
+			topologyChange: func(ctx context.Context, topo *mockTopology, expected []testCapacity) []testCapacity {
+				topo.modify([]*topology.Segment{&layer0other}, /* added */
+					topo.segments[:] /* removed */)
+				return []testCapacity{
+					{
+						uid:              "CSISC-UID-2",
+						resourceVersion:  csiscRev + "0",
+						segment:          layer0other,
+						storageClassName: "late-sc",
+						quantity:         "2Gi",
+					},
+				}
+			},
+		},
 	}
 
 	for name, tc := range testcases {
@@ -816,6 +973,13 @@ func TestController(t *testing.T) {
 				klog.Info("modifying capacity")
 				expectedCapacities = tc.capacityChange(ctx, &tc.storage, expectedCapacities)
 				c.pollCapacities()
+				if err := validateCapacitiesEventually(ctx, c, clientSet, expectedCapacities); err != nil {
+					t.Fatalf("modified capacity: %v", err)
+				}
+			}
+			if tc.topologyChange != nil {
+				klog.Info("modifying topology")
+				expectedCapacities = tc.topologyChange(ctx, &tc.topology, expectedCapacities)
 				if err := validateCapacitiesEventually(ctx, c, clientSet, expectedCapacities); err != nil {
 					t.Fatalf("modified capacity: %v", err)
 				}
@@ -1098,6 +1262,35 @@ func (mt *mockTopology) Run(ctx context.Context) {
 
 func (mt *mockTopology) HasSynced() bool {
 	return true
+}
+
+func (mt *mockTopology) modify(add, remove []*topology.Segment) {
+	var added, removed []*topology.Segment
+	for _, segment := range add {
+		if mt.segmentIndex(segment) == -1 {
+			added = append(added, segment)
+			mt.segments = append(mt.segments, segment)
+		}
+	}
+	for _, segment := range remove {
+		index := mt.segmentIndex(segment)
+		if index != -1 {
+			removed = append(removed, segment)
+			mt.segments = append(mt.segments[0:index], mt.segments[index+1:]...)
+		}
+	}
+	for _, cb := range mt.callbacks {
+		cb(added, removed)
+	}
+}
+
+func (mt *mockTopology) segmentIndex(segment *topology.Segment) int {
+	for i, otherSegment := range mt.segments {
+		if otherSegment == segment {
+			return i
+		}
+	}
+	return -1
 }
 
 type testCapacity struct {
