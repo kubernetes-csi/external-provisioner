@@ -1,3 +1,26 @@
+# Release notes for v2.0.1
+
+[Documentation](https://kubernetes-csi.github.io)
+
+# Changelog since v2.0.0
+
+## Changes by Kind
+
+### Bug or Regression
+
+- CSIStorageCapacity objects were potentially incomplete when at least one storage class used "immediate binding" and topology changed while the controller was already running. ([#477](https://github.com/kubernetes-csi/external-provisioner/pull/477), [@pohly](https://github.com/pohly))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # Release notes for v2.0.0
 
 [Documentation](https://kubernetes-csi.github.io)
