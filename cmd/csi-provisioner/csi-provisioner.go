@@ -202,7 +202,13 @@ func main() {
 	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
 
 	var csiNodeLister storagelistersv1.CSINodeLister
-	vaLister := factory.Storage().V1().VolumeAttachments().Lister()
+	var vaLister storagelistersv1.VolumeAttachmentLister
+	if controllerCapabilities[csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME] {
+		klog.Info("CSI driver supports PUBLISH_UNPUBLISH_VOLUME, watching VolumeAttachments")
+		vaLister = factory.Storage().V1().VolumeAttachments().Lister()
+	} else {
+		klog.Info("CSI driver does not support PUBLISH_UNPUBLISH_VOLUME, not watching VolumeAttachments")
+	}
 	var nodeLister v1.NodeLister
 	if ctrl.SupportsTopology(pluginCapabilities) {
 		csiNodeLister = factory.Storage().V1().CSINodes().Lister()
