@@ -271,7 +271,10 @@ func GetDriverCapabilities(conn *grpc.ClientConn, timeout time.Duration) (rpc.Pl
 	return pluginCapabilities, controllerCapabilities, nil
 }
 
-// NewCSIProvisioner creates new CSI provisioner
+// NewCSIProvisioner creates new CSI provisioner.
+//
+// vaLister is optional and only needed when VolumeAttachments are
+// meant to be checked before deleting a volume.
 func NewCSIProvisioner(client kubernetes.Interface,
 	connectionTimeout time.Duration,
 	identity string,
@@ -1046,6 +1049,21 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 	deleteCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
+	if err := p.canDeleteVolume(volume); err != nil {
+		return err
+	}
+
+	_, err = p.csiClient.DeleteVolume(deleteCtx, &req)
+
+	return err
+}
+
+func (p *csiProvisioner) canDeleteVolume(volume *v1.PersistentVolume) error {
+	if p.vaLister == nil {
+		// Nothing to check.
+		return nil
+	}
+
 	// Verify if volume is attached to a node before proceeding with deletion
 	vaList, err := p.vaLister.List(labels.Everything())
 	if err != nil {
@@ -1058,9 +1076,7 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 		}
 	}
 
-	_, err = p.csiClient.DeleteVolume(deleteCtx, &req)
-
-	return err
+	return nil
 }
 
 func (p *csiProvisioner) SupportsBlock(ctx context.Context) bool {
