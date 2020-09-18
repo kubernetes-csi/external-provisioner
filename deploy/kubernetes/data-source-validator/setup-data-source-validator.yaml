@@ -1,0 +1,32 @@
+# This YAML file shows how to deploy the data-source-validator controller
+
+# The data-source-validator controller does asynchronous validation of PVC data sources
+# It should be installed as part of the base Kubernetes distribution in an appropriate
+# namespace for components implementing base system functionality. For installing with
+# Vanilla Kubernetes, kube-system makes sense for the namespace.
+
+---
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: data-source-validator
+  namespace: default # TODO: replace with the namespace you want for your controller, e.g. kube-system
+spec:
+  serviceName: data-source-validator
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-source-validator
+  template:
+    metadata:
+      labels:
+        app: data-source-validator
+    spec:
+      serviceAccount: data-source-validator
+      containers:
+        - name: data-source-validator
+          image: quay.io/k8scsi/data-source-validator:canary
+          args:
+            - "--v=5"
+            - "--leader-election=false"
+          imagePullPolicy: Always

@@ -1,0 +1,42 @@
+# RBAC file for the populator controller.
+#
+# The populator controller implements the XXX.
+# It should be installed as part of the base Kubernetes distribution in an appropriate
+# namespace for components implementing base system functionality. For installing with
+# Vanilla Kubernetes, kube-system makes sense for the namespace.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: data-source-validator
+  namespace: default # replace with non-default namespace name
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: data-source-validator
+rules:
+  - apiGroups: [populator.storage.k8s.io]
+    resources: [volumepopulators]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [list, watch, create, update, patch]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: data-source-validator
+subjects:
+  - kind: ServiceAccount
+    name: data-source-validator
+    namespace: default # replace with non-default namespace name
+roleRef:
+  kind: ClusterRole
+  name: data-source-validator
+  apiGroup: rbac.authorization.k8s.io

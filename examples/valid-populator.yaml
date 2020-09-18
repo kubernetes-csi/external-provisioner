@@ -1,0 +1,7 @@
+kind: VolumePopulator
+apiVersion: populator.storage.k8s.io/v1alpha1
+metadata:
+  name: valid-populator
+sourceKind:
+  group: valid.storage.k8s.io
+  kind: Valid

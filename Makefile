@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-CMDS=csi-provisioner
+.PHONY: all csi-provisioner data-source-validator clean test
+
+CMDS=csi-provisioner data-source-validator
 all: build
 
 include release-tools/build.make
