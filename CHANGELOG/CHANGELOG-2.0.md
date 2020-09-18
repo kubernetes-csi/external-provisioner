@@ -1,3 +1,25 @@
+# Release notes for v2.0.2
+
+[Documentation](https://kubernetes-csi.github.io)
+
+# Changelog since v2.0.1
+
+## Changes by Kind
+
+### Feature
+ - The watch of VolumeAttachements is avoided for drivers which don't support attach/detach (aka controller `PUBLISH_UNPUBLISH_VOLUME`) ([#480](https://github.com/kubernetes-csi/external-provisioner/pull/480), [@pohly](https://github.com/pohly))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # Release notes for v2.0.1
 
 [Documentation](https://kubernetes-csi.github.io)
