@@ -37,6 +37,7 @@ github.com/google/go-cmp/cmp/internal/flags
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
 # github.com/google/gofuzz v1.1.0
+## explicit
 github.com/google/gofuzz
 # github.com/google/uuid v1.1.1
 github.com/google/uuid
@@ -49,6 +50,8 @@ github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
 # github.com/imdario/mergo v0.3.9
 github.com/imdario/mergo
+# github.com/inconshreveable/mousetrap v1.0.0
+github.com/inconshreveable/mousetrap
 # github.com/json-iterator/go v1.1.10
 github.com/json-iterator/go
 # github.com/kubernetes-csi/csi-lib-utils v0.8.1
@@ -62,6 +65,17 @@ github.com/kubernetes-csi/csi-lib-utils/rpc
 ## explicit
 github.com/kubernetes-csi/csi-test/v3/driver
 github.com/kubernetes-csi/csi-test/v3/utils
+# github.com/kubernetes-csi/external-provisioner/client v0.0.0 => ./client
+## explicit
+github.com/kubernetes-csi/external-provisioner/client/apis/volumepopulator/v1alpha1
+github.com/kubernetes-csi/external-provisioner/client/clientset/versioned
+github.com/kubernetes-csi/external-provisioner/client/clientset/versioned/scheme
+github.com/kubernetes-csi/external-provisioner/client/clientset/versioned/typed/volumepopulator/v1alpha1
+github.com/kubernetes-csi/external-provisioner/client/informers/externalversions
+github.com/kubernetes-csi/external-provisioner/client/informers/externalversions/internalinterfaces
+github.com/kubernetes-csi/external-provisioner/client/informers/externalversions/volumepopulator
+github.com/kubernetes-csi/external-provisioner/client/informers/externalversions/volumepopulator/v1alpha1
+github.com/kubernetes-csi/external-provisioner/client/listers/volumepopulator/v1alpha1
 # github.com/kubernetes-csi/external-snapshotter/client/v2 v2.2.0-rc3
 ## explicit
 github.com/kubernetes-csi/external-snapshotter/client/v2/apis/volumesnapshot/v1beta1
@@ -94,6 +108,9 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
+# github.com/spf13/cobra v1.0.0
+## explicit
+github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.5
 ## explicit
 github.com/spf13/pflag
@@ -222,6 +239,8 @@ gopkg.in/inf.v0
 gopkg.in/yaml.v2
 # k8s.io/api v0.19.0 => k8s.io/api v0.19.0
 ## explicit
+k8s.io/api/admission/v1
+k8s.io/api/admission/v1beta1
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1beta1
 k8s.io/api/apps/v1
@@ -265,6 +284,7 @@ k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
 # k8s.io/apimachinery v0.19.0 => k8s.io/apimachinery v0.19.0
 ## explicit
+k8s.io/apimachinery/pkg/api/apitesting/fuzzer
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
 k8s.io/apimachinery/pkg/api/resource
@@ -548,6 +568,7 @@ k8s.io/klog/v2
 k8s.io/kube-openapi/pkg/util/proto
 # k8s.io/kubernetes v1.19.0
 ## explicit
+k8s.io/kubernetes/pkg/apis/admission/fuzzer
 k8s.io/kubernetes/pkg/apis/core
 k8s.io/kubernetes/pkg/apis/core/helper
 # k8s.io/utils v0.0.0-20200729134348-d5654de09c73
@@ -594,3 +615,4 @@ sigs.k8s.io/yaml
 # k8s.io/component-base => k8s.io/component-base v0.19.0
 # k8s.io/controller-manager => k8s.io/controller-manager v0.19.0
 # k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.19.0
+# github.com/kubernetes-csi/external-provisioner/client => ./client

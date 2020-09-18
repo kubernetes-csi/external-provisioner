@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-CMDS=csi-provisioner
+.PHONY: all csi-provisioner populator-validation-webhook clean test
+
+CMDS=csi-provisioner populator-validation-webhook
 all: build
 
 include release-tools/build.make

@@ -1,0 +1,22 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validation-webhook.populator.storage.k8s.io
+webhooks:
+- name: validation-webhook.populator.storage.k8s.io
+  rules:
+  - apiGroups: [""]
+    apiVersions: [v1]
+    operations: [CREATE]
+    resources: [persistentvolumeclaims]
+    scope: "*"
+  clientConfig:
+    service:
+      namespace: default
+      name: populator-validation-service
+      path: /pvc
+    caBundle: ${CA_BUNDLE}
+  admissionReviewVersions: [v1, v1beta1]
+  sideEffects: None
+  failurePolicy: Ignore # We recommend switching to Fail only after successful installation of the webhook server and webhook.
+  timeoutSeconds: 10

@@ -5,9 +5,12 @@ go 1.15
 require (
 	github.com/container-storage-interface/spec v1.2.0
 	github.com/golang/mock v1.4.3
+	github.com/google/gofuzz v1.1.0
 	github.com/kubernetes-csi/csi-lib-utils v0.8.1
 	github.com/kubernetes-csi/csi-test/v3 v3.1.1
+	github.com/kubernetes-csi/external-provisioner/client v0.0.0
 	github.com/kubernetes-csi/external-snapshotter/client/v2 v2.2.0-rc3
+	github.com/spf13/cobra v1.0.0
 	github.com/spf13/pflag v1.0.5
 	google.golang.org/grpc v1.29.1
 	k8s.io/api v0.19.0
@@ -71,3 +74,5 @@ replace k8s.io/component-base => k8s.io/component-base v0.19.0
 replace k8s.io/controller-manager => k8s.io/controller-manager v0.19.0
 
 replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.19.0
+
+replace github.com/kubernetes-csi/external-provisioner/client => ./client
