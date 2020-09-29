@@ -58,9 +58,9 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 * `--worker-threads <num>`: Number of simultaneously running `ControllerCreateVolume` and `ControllerDeleteVolume` operations. Default value is `100`.
 
-* `--kube-api-qps <num>`: QPS for clients that communicate with the kubernetes apiserver. Defaults to `5.0`.
+* `--kube-api-qps <num>`: The number of requests per second sent by a Kubernetes client to the Kubernetes API server. Defaults to `5.0`.
 
-* `--kube-api-burst <num>`: Burst for clients that communicate with the kubernetes apiserver. Defaults to `10`.
+* `--kube-api-burst <num>`: The number of requests to the Kubernetes API server, exceeding the QPS, that can be sent at any given time. Defaults to `10`.
 
 * `--cloning-protection-threads <num>`: Number of simultaneously running threads, handling cloning finalizer removal. Defaults to `1`.
 
