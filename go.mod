@@ -5,7 +5,7 @@ go 1.15
 require (
 	github.com/container-storage-interface/spec v1.2.0
 	github.com/golang/mock v1.4.3
-	github.com/kubernetes-csi/csi-lib-utils v0.7.0
+	github.com/kubernetes-csi/csi-lib-utils v0.8.1
 	github.com/kubernetes-csi/csi-test/v3 v3.1.1
 	github.com/kubernetes-csi/external-snapshotter/client/v2 v2.2.0-rc3
 	github.com/spf13/pflag v1.0.5
