@@ -39,10 +39,11 @@ naming convention `<hostpath-deployment-version>-on-<kubernetes-version>`.
 1. Changes can then be updated in all the sidecar repos and hostpath driver repo
    by following the [update
    instructions](https://github.com/kubernetes-csi/csi-release-tools/blob/master/README.md#sharing-and-updating).
-1. New pull and CI jobs are configured by
+1. New pull and CI jobs are configured by adding new K8s versions to the top of
    [gen-jobs.sh](https://github.com/kubernetes/test-infra/blob/master/config/jobs/kubernetes-csi/gen-jobs.sh).
-   New pull jobs that have been unverified should be initially made optional.
-   [Example](https://github.com/kubernetes/test-infra/pull/15055)
+   New pull jobs that have been unverified should be initially made optional by
+   setting the new K8s version as
+   [experimental](https://github.com/kubernetes/test-infra/blob/a1858f46d6014480b130789df58b230a49203a64/config/jobs/kubernetes-csi/gen-jobs.sh#L40).
 1. Once new pull and CI jobs have been verified, and the new Kubernetes version
    is released, we can make the optional jobs required, and also remove the
    Kubernetes versions that are no longer supported.
@@ -50,18 +51,27 @@ naming convention `<hostpath-deployment-version>-on-<kubernetes-version>`.
 ## Release Process
 1. Identify all issues and ongoing PRs that should go into the release, and
   drive them to resolution.
-1. Download [K8s release notes
+1. Download v2.8+ [K8s release notes
   generator](https://github.com/kubernetes/release/tree/master/cmd/release-notes)
 1. Generate release notes for the release. Replace arguments with the relevant
   information.
-    ```
-    GITHUB_TOKEN=<token> ./release-notes --start-sha=0ed6978fd199e3ca10326b82b4b8b8e916211c9b --end-sha=3cb3d2f18ed8cb40371c6d8886edcabd1f27e7b9 \
-    --github-org=kubernetes-csi --github-repo=external-attacher -branch=master -output out.md
-    ```
-    * `--start-sha` should point to the last release from the same branch. For
-    example:
-        * `1.X-1.0` tag when releasing `1.X.0`
-        * `1.X.Y-1` tag when releasing `1.X.Y`
+    * Clean up old cached information (also needed if you are generating release
+      notes for multiple repos)
+      ```bash
+      rm -rf /tmp/k8s-repo
+      ```
+    * For new minor releases on master:
+        ```bash
+        GITHUB_TOKEN=<token> release-notes --discover=mergebase-to-latest
+        --github-org=kubernetes-csi --github-repo=external-provisioner
+        --required-author="" --output out.md
+        ```
+    * For new patch releases on a release branch:
+        ```bash
+        GITHUB_TOKEN=<token> release-notes --discover=patch-to-latest --branch=release-1.1
+        --github-org=kubernetes-csi --github-repo=external-provisioner
+        --required-author="" --output out.md
+        ```
 1. Compare the generated output to the new commits for the release to check if
    any notable change missed a release note.
 1. Reword release notes as needed. Make sure to check notes for breaking
@@ -82,6 +92,12 @@ naming convention `<hostpath-deployment-version>-on-<kubernetes-version>`.
    [external-provisioner example](https://github.com/kubernetes-csi/external-provisioner/releases/new)
 1. If release was a new major/minor version, create a new `release-<minor>`
    branch at that commit.
+1. Check [image build status](https://k8s-testgrid.appspot.com/sig-storage-image-build).
+1. Promote images from k8s-staging-sig-storage to k8s.gcr.io/sig-storage. From
+   the [k8s image
+   repo](https://github.com/kubernetes/k8s.io/tree/master/k8s.gcr.io/images/k8s-staging-sig-storage),
+   run `./generate.sh > images.yaml`, and send a PR with the updated images.
+   Once merged, the image promoter will copy the images from staging to prod.
 1. Update [kubernetes-csi/docs](https://github.com/kubernetes-csi/docs) sidecar
    and feature pages with the new released version.
 1. After all the sidecars have been released, update
