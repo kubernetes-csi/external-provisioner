@@ -1,12 +1,12 @@
-# Release notes for v1.6.1
-# Changelog since v1.6.0
+# Release notes for v1.6.1 (Changelog since v1.6.0)
 
 ## Changes by Kind
 
 ### Uncategorized
 
-- Build with Go 1.15 ([#464](https://github.com/kubernetes-csi/external-provisioner/pull/464), [@pohly](https://github.com/pohly))
-- Publishing of images on k8s.gcr.io ([#439](https://github.com/kubernetes-csi/external-provisioner/pull/439), [@pohly](https://github.com/pohly))
+- release-1.6: update release-tools ([#496](https://github.com/kubernetes-csi/external-provisioner/pull/496), [@Jiawei0227](https://github.com/Jiawei0227))
+  - Build with Go 1.15
+
 
 ## Dependencies
 
@@ -19,8 +19,7 @@ _Nothing has changed._
 ### Removed
 _Nothing has changed._
 
-# Release notes for v1.6.0
-# Changes since v1.5.0
+# Release notes for v1.6.0 (Changelog since v1.5.0)
 
 ## Deprecations
 
