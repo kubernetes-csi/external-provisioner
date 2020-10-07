@@ -1,3 +1,25 @@
+# Release notes for v1.6.1
+# Changelog since v1.6.0
+
+## Changes by Kind
+
+### Uncategorized
+
+- Build with Go 1.15 ([#464](https://github.com/kubernetes-csi/external-provisioner/pull/464), [@pohly](https://github.com/pohly))
+- Publishing of images on k8s.gcr.io ([#439](https://github.com/kubernetes-csi/external-provisioner/pull/439), [@pohly](https://github.com/pohly))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+- github.com/kubernetes-csi/csi-lib-utils: [v0.7.0 → v0.7.1](https://github.com/kubernetes-csi/csi-lib-utils/compare/v0.7.0...v0.7.1)
+
+### Removed
+_Nothing has changed._
+
+# Release notes for v1.6.0
 # Changes since v1.5.0
 
 ## Deprecations
