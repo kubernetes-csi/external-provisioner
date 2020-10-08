@@ -1,3 +1,28 @@
+# Release notes for v2.0.3
+
+[Documentation](https://kubernetes-csi.github.io)
+# Changelog since v2.0.2
+
+## Changes by Kind
+
+### Feature
+
+- Add `process_start_time_seconds` metric. ([#490](https://github.com/kubernetes-csi/external-provisioner/pull/490), [@Jiawei0227](https://github.com/Jiawei0227))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+- github.com/kubernetes-csi/csi-lib-utils: [v0.7.0 → v0.8.1](https://github.com/kubernetes-csi/csi-lib-utils/compare/v0.7.0...v0.8.1)
+- github.com/stretchr/testify: [v1.4.0 → v1.5.1](https://github.com/stretchr/testify/compare/v1.4.0...v1.5.1)
+
+### Removed
+_Nothing has changed._
+hanged._
+
+
 # Release notes for v2.0.2
 
 [Documentation](https://kubernetes-csi.github.io)
