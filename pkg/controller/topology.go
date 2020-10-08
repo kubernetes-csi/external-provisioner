@@ -119,6 +119,7 @@ func GenerateAccessibilityRequirements(
 	allowedTopologies []v1.TopologySelectorTerm,
 	selectedNode *v1.Node,
 	strictTopology bool,
+	immediateTopology bool,
 	csiNodeLister storagelistersv1.CSINodeLister,
 	nodeLister corelisters.NodeLister) (*csi.TopologyRequirement, error) {
 	requirement := &csi.TopologyRequirement{}
@@ -181,6 +182,13 @@ func GenerateAccessibilityRequirements(
 			// Distribute out one of the OR layers in allowedTopologies
 			requisiteTerms = flatten(allowedTopologies)
 		} else {
+			if selectedNode == nil && !immediateTopology {
+				// Don't specify any topology requirements because neither the PVC nor
+				// the storage class have limitations and the CSI driver is not interested
+				// in being told where it runs (perhaps it already knows, for example).
+				return nil, nil
+			}
+
 			// Aggregate existing topologies in nodes across the entire cluster.
 			requisiteTerms, err = aggregateTopologies(kubeClient, driverName, selectedCSINode, csiNodeLister, nodeLister)
 			if err != nil {
