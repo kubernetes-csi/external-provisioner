@@ -35,7 +35,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 // topologyTerm represents a single term where its topology key value pairs are AND'd together.

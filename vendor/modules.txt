@@ -313,7 +313,7 @@ k8s.io/apimachinery/third_party/forked/golang/reflect
 # k8s.io/apiserver v0.19.0 => k8s.io/apiserver v0.19.0
 ## explicit
 k8s.io/apiserver/pkg/util/feature
-# k8s.io/client-go v0.19.0 => k8s.io/client-go v0.19.0
+# k8s.io/client-go v0.19.1 => k8s.io/client-go v0.19.0
 ## explicit
 k8s.io/client-go/discovery
 k8s.io/client-go/discovery/fake
@@ -540,9 +540,9 @@ k8s.io/component-base/version
 k8s.io/csi-translation-lib
 k8s.io/csi-translation-lib/plugins
 # k8s.io/klog v1.0.0
-## explicit
 k8s.io/klog
-# k8s.io/klog/v2 v2.2.0
+# k8s.io/klog/v2 v2.3.0
+## explicit
 k8s.io/klog/v2
 # k8s.io/kube-openapi v0.0.0-20200805222855-6aeccd4b50c6
 k8s.io/kube-openapi/pkg/util/proto
@@ -560,7 +560,7 @@ sigs.k8s.io/controller-runtime/pkg/client
 sigs.k8s.io/controller-runtime/pkg/client/apiutil
 sigs.k8s.io/controller-runtime/pkg/client/fake
 sigs.k8s.io/controller-runtime/pkg/internal/objectutil
-# sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.1.0-rc1
+# sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.1.0
 ## explicit
 sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller
 sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller/metrics
