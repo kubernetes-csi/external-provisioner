@@ -33,9 +33,9 @@
 # The expected environment is:
 # - $GOPATH/src/<import path> for the repository that is to be tested,
 #   with PR branch merged (when testing a PR)
+# - optional: bazel installed (when testing against Kubernetes master),
+#   must be recent enough for Kubernetes master
 # - running on linux-amd64
-# - bazel installed (when testing against Kubernetes master), must be recent
-#   enough for Kubernetes master
 # - kind (https://github.com/kubernetes-sigs/kind) installed
 # - optional: Go already installed
 
@@ -100,6 +100,9 @@ kindest/node:v1.16.15@sha256:a89c771f7de234e6547d43695c7ab047809ffc71a0c3b65aa54
 kindest/node:v1.15.12@sha256:d9b939055c1e852fe3d86955ee24976cab46cba518abcb8b13ba70917e6547a6
 kindest/node:v1.14.10@sha256:ce4355398a704fca68006f8a29f37aafb49f8fc2f64ede3ccd0d9198da910146
 kindest/node:v1.13.12@sha256:1c1a48c2bfcbae4d5f4fa4310b5ed10756facad0b7a2ca93c7a4b5bae5db29f5" "kind images"
+
+# Use kind node-image --type=bazel by default, but allow to disable that.
+configvar CSI_PROW_USE_BAZEL true "use Bazel during 'kind node-image' invocation"
 
 # ginkgo test runner version to use. If the pre-installed version is
 # different, the desired version is built from source.
@@ -534,6 +537,8 @@ start_cluster () {
 
     # Try to find a pre-built kind image if asked to use a specific version.
     if ! [[ "${CSI_PROW_KUBERNETES_VERSION}" =~ ^release-|^latest$ ]]; then
+        # Ignore: See if you can use ${variable//search/replace} instead.
+        # shellcheck disable=SC2001
         major_minor=$(echo "${CSI_PROW_KUBERNETES_VERSION}" | sed -e 's/^\([0-9]*\)\.\([0-9]*\).*/\1.\2/')
         for i in ${CSI_PROW_KIND_IMAGES}; do
             if echo "$i" | grep -q "kindest/node:v${major_minor}"; then
@@ -550,10 +555,15 @@ start_cluster () {
             if [ "$version" = "latest" ]; then
                 version=master
             fi
+            if ${CSI_PROW_USE_BAZEL}; then
+                type="bazel"
+            else
+                type="docker"
+            fi
             git_clone_branch https://github.com/kubernetes/kubernetes "${CSI_PROW_WORK}/src/kubernetes" "$version" || die "checking out Kubernetes $version failed"
 
             go_version="$(go_version_for_kubernetes "${CSI_PROW_WORK}/src/kubernetes" "$version")" || die "cannot proceed without knowing Go version for Kubernetes"
-            run_with_go "$go_version" kind build node-image --type bazel --image csiprow/node:latest --kube-root "${CSI_PROW_WORK}/src/kubernetes" || die "'kind build node-image' failed"
+            run_with_go "$go_version" kind build node-image --image csiprow/node:latest --type="$type" --kube-root "${CSI_PROW_WORK}/src/kubernetes" || die "'kind build node-image' failed"
             csi_prow_kind_have_kubernetes=true
         fi
         image="csiprow/node:latest"
