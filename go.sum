@@ -873,8 +873,8 @@ k8s.io/code-generator v0.19.0/go.mod h1:moqLn7w0t9cMs4+5CQyxnfA/HV8MF6aAVENF+WZZ
 k8s.io/component-base v0.19.0 h1:OueXf1q3RW7NlLlUCj2Dimwt7E1ys6ZqRnq53l2YuoE=
 k8s.io/component-base v0.19.0/go.mod h1:dKsY8BxkA+9dZIAh2aWJLL/UdASFDNtGYTCItL4LM7Y=
 k8s.io/cri-api v0.19.0/go.mod h1:UN/iU9Ua0iYdDREBXNE9vqCJ7MIh/FW3VIL0d8pw7Fw=
-k8s.io/csi-translation-lib v0.19.0 h1:YvOGPac2+5ggChyttAAfHu/hEhQfzFEWAxCCnOu8KlQ=
-k8s.io/csi-translation-lib v0.19.0/go.mod h1:zGS1YqV8U2So/t4Hz8SoRXMx5y5/KSKnA6BXXxGuo4A=
+k8s.io/csi-translation-lib v0.19.3 h1:V+ekutp6xR8GJNwOpBky8jL/RTlqRO5Mk5HOp6YQA4o=
+k8s.io/csi-translation-lib v0.19.3/go.mod h1:9/DxcmqzkTDF6oezqYE/IVx11g3iW1xXbf24z2u1vdk=
 k8s.io/gengo v0.0.0-20200413195148-3a45101e95ac/go.mod h1:ezvh/TsK7cY6rbqRK0oQQ8IAqLxYwwyPxAX1Pzy0ii0=
 k8s.io/gengo v0.0.0-20200428234225-8167cfdcfc14/go.mod h1:ezvh/TsK7cY6rbqRK0oQQ8IAqLxYwwyPxAX1Pzy0ii0=
 k8s.io/heapster v1.2.0-beta.1/go.mod h1:h1uhptVXMwC8xtZBYsPXKVi8fpdlYkTs6k949KozGrM=
