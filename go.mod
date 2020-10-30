@@ -10,12 +10,12 @@ require (
 	github.com/kubernetes-csi/external-snapshotter/client/v2 v2.2.0-rc3
 	github.com/spf13/pflag v1.0.5
 	google.golang.org/grpc v1.29.1
-	k8s.io/api v0.19.0
-	k8s.io/apimachinery v0.19.0
+	k8s.io/api v0.19.3
+	k8s.io/apimachinery v0.19.3
 	k8s.io/apiserver v0.19.0
 	k8s.io/client-go v0.19.0
 	k8s.io/component-base v0.19.0
-	k8s.io/csi-translation-lib v0.19.0
+	k8s.io/csi-translation-lib v0.19.3
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.19.0
 	sigs.k8s.io/controller-runtime v0.6.2
@@ -70,4 +70,4 @@ replace k8s.io/component-base => k8s.io/component-base v0.19.0
 
 replace k8s.io/controller-manager => k8s.io/controller-manager v0.19.0
 
-replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.19.0
+replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.19.3
