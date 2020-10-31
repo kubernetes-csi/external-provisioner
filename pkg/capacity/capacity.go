@@ -41,7 +41,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -217,7 +217,7 @@ func (c *Controller) prepare(ctx context.Context) {
 	// topology segments, onTopologyChanges lists the classes.
 	c.onTopologyChanges(c.topologyInformer.List(), nil)
 
-	if klog.V(3) {
+	if klog.V(3).Enabled() {
 		scs, err := c.scInformer.Lister().List(labels.Everything())
 		if err != nil {
 			// Shouldn't happen.
