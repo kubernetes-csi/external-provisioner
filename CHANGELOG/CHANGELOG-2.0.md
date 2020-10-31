@@ -1,3 +1,25 @@
+# Release notes for v2.0.4
+
+[Documentation](https://kubernetes-csi.github.io)
+# Changelog since v2.0.3
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Upgrade azure translation lib to fix the azure file migration issue ([#519](https://github.com/kubernetes-csi/external-provisioner/pull/519), [@andyzhangx](https://github.com/andyzhangx))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+- k8s.io/csi-translation-lib: v0.19.0 → v0.19.3
+
+### Removed
+_Nothing has changed._
+
 # Release notes for v2.0.3
 
 [Documentation](https://kubernetes-csi.github.io)
