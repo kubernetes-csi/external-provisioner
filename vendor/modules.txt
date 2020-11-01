@@ -62,14 +62,17 @@ github.com/kubernetes-csi/csi-lib-utils/rpc
 ## explicit
 github.com/kubernetes-csi/csi-test/v3/driver
 github.com/kubernetes-csi/csi-test/v3/utils
-# github.com/kubernetes-csi/external-snapshotter/client/v2 v2.2.0-rc3
+# github.com/kubernetes-csi/external-snapshotter/client/v3 v3.0.1-0.20201116082704-1e5a7ef7a73d
 ## explicit
-github.com/kubernetes-csi/external-snapshotter/client/v2/apis/volumesnapshot/v1beta1
-github.com/kubernetes-csi/external-snapshotter/client/v2/clientset/versioned
-github.com/kubernetes-csi/external-snapshotter/client/v2/clientset/versioned/fake
-github.com/kubernetes-csi/external-snapshotter/client/v2/clientset/versioned/scheme
-github.com/kubernetes-csi/external-snapshotter/client/v2/clientset/versioned/typed/volumesnapshot/v1beta1
-github.com/kubernetes-csi/external-snapshotter/client/v2/clientset/versioned/typed/volumesnapshot/v1beta1/fake
+github.com/kubernetes-csi/external-snapshotter/client/v3/apis/volumesnapshot/v1
+github.com/kubernetes-csi/external-snapshotter/client/v3/apis/volumesnapshot/v1beta1
+github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned
+github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned/fake
+github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned/scheme
+github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned/typed/volumesnapshot/v1
+github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned/typed/volumesnapshot/v1/fake
+github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned/typed/volumesnapshot/v1beta1
+github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned/typed/volumesnapshot/v1beta1/fake
 # github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/miekg/dns v1.1.29

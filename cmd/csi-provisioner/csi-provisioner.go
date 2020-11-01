@@ -48,7 +48,7 @@ import (
 	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	"github.com/kubernetes-csi/external-provisioner/pkg/owner"
-	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v2/clientset/versioned"
+	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned"
 )
 
 var (

@@ -52,8 +52,8 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	"github.com/kubernetes-csi/csi-test/v3/driver"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
-	crdv1 "github.com/kubernetes-csi/external-snapshotter/client/v2/apis/volumesnapshot/v1beta1"
-	"github.com/kubernetes-csi/external-snapshotter/client/v2/clientset/versioned/fake"
+	crdv1 "github.com/kubernetes-csi/external-snapshotter/client/v3/apis/volumesnapshot/v1"
+	"github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned/fake"
 )
 
 func init() {
@@ -1817,7 +1817,7 @@ func newSnapshot(name, className, boundToContent, snapshotUID, claimName string,
 			Namespace:       "default",
 			UID:             types.UID(snapshotUID),
 			ResourceVersion: "1",
-			SelfLink:        "/apis/snapshot.storage.k8s.io/v1beta1/namespaces/" + "default" + "/volumesnapshots/" + name,
+			SelfLink:        "/apis/snapshot.storage.k8s.io/v1/namespaces/" + "default" + "/volumesnapshots/" + name,
 		},
 		Spec: crdv1.VolumeSnapshotSpec{
 			Source: crdv1.VolumeSnapshotSource{
@@ -2034,7 +2034,7 @@ func newContent(name, className, snapshotHandle, volumeUID, volumeName, boundToS
 	if boundToSnapshotName != "" {
 		content.Spec.VolumeSnapshotRef = v1.ObjectReference{
 			Kind:       "VolumeSnapshot",
-			APIVersion: "snapshot.storage.k8s.io/v1beta1",
+			APIVersion: "snapshot.storage.k8s.io/v1",
 			UID:        types.UID(boundToSnapshotUID),
 			Namespace:  "default",
 			Name:       boundToSnapshotName,
