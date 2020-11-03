@@ -16,3 +16,4 @@ CMDS=csi-provisioner
 all: build
 
 include release-tools/build.make
+include doc/doc.make
