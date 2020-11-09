@@ -121,7 +121,7 @@ No | Irrelevant | Yes | `Requisite` = Allowed topologies<br>`Preferred` = `Requi
 The external-provisioner can be used to create CSIStorageCapacity
 objects that hold information about the storage capacity available
 through the driver. The Kubernetes scheduler then [uses that
-information](https://kubernetes.io/docs/concepts/storage/storage-capacity]
+information](https://kubernetes.io/docs/concepts/storage/storage-capacity)
 when selecting nodes for pods with unbound volumes that wait for the
 first consumer.
 
@@ -218,11 +218,11 @@ other driver.
 ### CSI error and timeout handling
 The external-provisioner invokes all gRPC calls to CSI driver with timeout provided by `--timeout` command line argument (15 seconds by default).
 
-Correct timeout value and number of worker threads depends on the storage backend and how quickly it is able to processes `ControllerCreateVolume` and `ControllerDeleteVolume` calls. The value should be set to accommodate majority of them. It is fine if some calls time out - such calls will be retried after exponential backoff (starting with 1s by default), however, this backoff will introduce delay when the call times out several times for a single volume.
+Correct timeout value and number of worker threads depends on the storage backend and how quickly it is able to process `ControllerCreateVolume` and `ControllerDeleteVolume` calls. The value should be set to accommodate majority of them. It is fine if some calls time out - such calls will be retried after exponential backoff (starting with 1s by default), however, this backoff will introduce delay when the call times out several times for a single volume.
 
 Frequency of `ControllerCreateVolume` and `ControllerDeleteVolume` retries can be configured by `--retry-interval-start` and `--retry-interval-max` parameters. The external-provisioner starts retries with `retry-interval-start` interval (1s by default) and doubles it with each failure until it reaches `retry-interval-max` (5 minutes by default). The external provisioner stops increasing the retry interval when it reaches `retry-interval-max`, however, it still retries provisioning/deletion of a volume until it's provisioned. The external-provisioner keeps its own number of provisioning/deletion failures for each volume.
 
-The external-provisioner can invoke up to `--worker-threads` (100 by default) `ControllerCreateVolume` **and** up to `--worker-threads` `ControllerDeleteVolume` calls in parallel, i.e. these two calls are counted separately. The external-provisioner assumes that the storage backend can cope with such high number of parallel requests and that the requests are handled in relatively short time (ideally sub-second). Lower value should be used for storage backends that expect slower processing related to newly created / deleted volumes or can handle lower amount of parallel calls.
+The external-provisioner can invoke up to `--worker-threads` (100 by default) `ControllerCreateVolume` **and** up to `--worker-threads` (100 by default) `ControllerDeleteVolume` calls in parallel, i.e. these two calls are counted separately. The external-provisioner assumes that the storage backend can cope with such high number of parallel requests and that the requests are handled in relatively short time (ideally sub-second). Lower value should be used for storage backends that expect slower processing related to newly created / deleted volumes or can handle lower amount of parallel calls.
 
 Details of error handling of individual CSI calls:
 * `ControllerCreateVolume`: The call might have timed out just before the driver provisioned a volume and was sending a response. From that reason, timeouts from `ControllerCreateVolume` is considered as "*volume may be provisioned*" or "*volume is being provisioned in the background*." The external-provisioner will retry calling `ControllerCreateVolume` after exponential backoff until it gets either successful response or final (non-timeout) error that the volume cannot be created.
