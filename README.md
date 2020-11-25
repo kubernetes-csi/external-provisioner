@@ -89,6 +89,8 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * `--strict-topology`: This controls what topology information is passed to `CreateVolumeRequest.AccessibilityRequirements` in case of delayed binding. See [the table below](#topology-support) for an explanation how this option changes the result. This option has no effect if either `Topology` feature is disabled or `Immediate` volume binding mode is used.
 
+* `--immediate-topology`: This controls what topology information is passed to `CreateVolumeRequest.AccessibilityRequirements` in case of immediate binding. See [the table below](#topology-support) for an explanation how this option changes the result. This option has no effect if either `Topology` feature is disabled or `WaitForFirstConsumer` (= delayed) volume binding mode is used. The default is true, so use `--immediate-topology=false` to disable it. It should not be disabled if the CSI driver might create volumes in a topology segment that is not accessible in the cluster. Such a driver should use the topology information to create new volumes where they can be accessed.
+
 * `--kubeconfig <path>`: Path to Kubernetes client configuration that the external-provisioner uses to connect to Kubernetes API server. When omitted, default token provided by Kubernetes will be used. This option is useful only when the external-provisioner does not run as a Kubernetes pod, e.g. for debugging. Either this or `--master` needs to be set if the external-provisioner is being run out of cluster.
 
 * `--master <url>`: Master URL to build a client config from. When omitted, default token provided by Kubernetes will be used. This option is useful only when the external-provisioner does not run as a Kubernetes pod, e.g. for debugging. Either this or `--kubeconfig` needs to be set if the external-provisioner is being run out of cluster.
@@ -104,13 +106,14 @@ See the [storage capacity section](#capacity-support) below for details.
 ### Topology support
 When `Topology` feature is enabled and the driver specifies `VOLUME_ACCESSIBILITY_CONSTRAINTS` in its plugin capabilities, external-provisioner prepares `CreateVolumeRequest.AccessibilityRequirements` while calling `Controller.CreateVolume`. The driver has to consider these topology constraints while creating the volume. Below table shows how these `AccessibilityRequirements` are prepared:
 
-[Delayed binding](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode) | Strict topology | [Allowed topologies](https://kubernetes.io/docs/concepts/storage/storage-classes/#allowed-topologies) | [Resulting accessability requirements](https://github.com/container-storage-interface/spec/blob/master/spec.md#createvolume)
-:---: |:---:|:---:|:---|
-Yes | Yes | Irrelevant | `Requisite` = `Preferred` = Selected node topology
-Yes | No  | No | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` with selected node topology as first element
-Yes | No | Yes | `Requisite` = Allowed topologies<br>`Preferred` = `Requisite` with selected node topology as first element
-No | Irrelevant | No | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` with randomly selected node topology as first element
-No | Irrelevant | Yes | `Requisite` = Allowed topologies<br>`Preferred` = `Requisite` with randomly selected node topology as first element
+[Delayed binding](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode) | Strict topology | [Allowed topologies](https://kubernetes.io/docs/concepts/storage/storage-classes/#allowed-topologies) | Immediate Topology | [Resulting accessability requirements](https://github.com/container-storage-interface/spec/blob/master/spec.md#createvolume)
+:---: |:---:|:---:|:---:|:---|
+Yes | Yes | Irrelevant | Irrelevant | `Requisite` = `Preferred` = Selected node topology
+Yes | No  | No  | Irrelevant | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` with selected node topology as first element
+Yes | No  | Yes | Irrelevant | `Requisite` = Allowed topologies<br>`Preferred` = `Requisite` with selected node topology as first element
+No | Irrelevant | Yes | Irrelevant | `Requisite` = Allowed topologies<br>`Preferred` = `Requisite` with randomly selected node topology as first element
+No | Irrelevant | No  | Yes | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` with randomly selected node topology as first element
+No | Irrelevant | No  | No  | `Requisite` and `Preferred` both nil
 
 ### Capacity support
 

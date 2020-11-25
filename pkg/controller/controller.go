@@ -218,6 +218,7 @@ type csiProvisioner struct {
 	controllerCapabilities                rpc.ControllerCapabilitySet
 	supportsMigrationFromInTreePluginName string
 	strictTopology                        bool
+	immediateTopology                     bool
 	translator                            ProvisionerCSITranslator
 	scLister                              storagelistersv1.StorageClassLister
 	csiNodeLister                         storagelistersv1.CSINodeLister
@@ -287,6 +288,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	controllerCapabilities rpc.ControllerCapabilitySet,
 	supportsMigrationFromInTreePluginName string,
 	strictTopology bool,
+	immediateTopology bool,
 	translator ProvisionerCSITranslator,
 	scLister storagelistersv1.StorageClassLister,
 	csiNodeLister storagelistersv1.CSINodeLister,
@@ -317,6 +319,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		controllerCapabilities:                controllerCapabilities,
 		supportsMigrationFromInTreePluginName: supportsMigrationFromInTreePluginName,
 		strictTopology:                        strictTopology,
+		immediateTopology:                     immediateTopology,
 		translator:                            translator,
 		scLister:                              scLister,
 		csiNodeLister:                         csiNodeLister,
@@ -562,6 +565,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 			options.StorageClass.AllowedTopologies,
 			options.SelectedNode,
 			p.strictTopology,
+			p.immediateTopology,
 			p.csiNodeLister,
 			p.nodeLister)
 		if err != nil {
