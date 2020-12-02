@@ -94,6 +94,8 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * `--node-deployment-max-delay`: Determines how long the external-provisioner sleeps at most before trying to own a PVC with immediate binding. Defaults to 60 seconds.
 
+* `--local-topology`: Instead of watching Node and CSINode objects, use only the topology provided by the CSI driver. Only valid in combination with `--node-deployment`. Disabled by default, but recommended for drivers which have a single topology key with different values for each node (i.e. local volumes).
+
 #### Other recognized arguments
 * `--feature-gates <gates>`: A set of comma separated `<feature-name>=<true|false>` pairs that describe feature gates for alpha/experimental features. See [list of features](#feature-status) or `--help` output for list of recognized features. Example: `--feature-gates Topology=true` to enable Topology feature that's disabled by default.
 
@@ -271,6 +273,8 @@ each CSI driver on different nodes. The CSI driver deployment must:
   to match the expected cluster size and desired response times
   (only relevant when there are storage classes with immediate binding,
   see below for details)
+- use `--local-topology` if volumes are only accessible inside the node
+  where they get provisioned
 - set the `NODE_NAME` environment variable to the name of the Kubernetes node
 - implement `GetCapacity`
 
@@ -303,11 +307,10 @@ can own it.
 
 The `--node-deployment-base-delay` parameter determines the initial
 wait period. It also sets the jitter, so in practice the initial wait period will be
-in the range from zero to the base delay. After a collision, the delay
-increases exponentially. If the value is high, volumes with immediate
-binding get created more slowly. If it is low, then the risk of
-conflicts while setting the "selected node" annotation increases and
-the apiserver load will be higher.
+in the range from zero to the base delay. If the value is high,
+volumes with immediate binding get created more slowly. If it is low,
+then the risk of conflicts while setting the "selected node"
+annotation increases and the apiserver load will be higher.
 
 There is an exponential backoff per PVC which is used for unexpected
 problems. Normally, an owner for a PVC is chosen during the first

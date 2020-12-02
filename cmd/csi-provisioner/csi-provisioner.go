@@ -29,11 +29,14 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	flag "github.com/spf13/pflag"
+	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	v1 "k8s.io/client-go/listers/core/v1"
+	listersv1 "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -94,6 +97,7 @@ var (
 	nodeDeploymentImmediateBinding = flag.Bool("node-deployment-immediate-binding", true, "Determines whether immediate binding is supported when deployed on each node.")
 	nodeDeploymentBaseDelay        = flag.Duration("node-deployment-base-delay", 20*time.Second, "Determines how long the external-provisioner sleeps initially before trying to own a PVC with immediate binding.")
 	nodeDeploymentMaxDelay         = flag.Duration("node-deployment-max-delay", 60*time.Second, "Determines how long the external-provisioner sleeps at most before trying to own a PVC with immediate binding.")
+	localTopology                  = flag.Bool("local-topology", false, "Instead of watching Node and CSINode objects, use only the topology provided by the CSI driver. Only valid in combination with --node-deployment.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -261,14 +265,55 @@ func main() {
 		nodeDeployment.NodeInfo = *nodeInfo
 	}
 
-	var nodeLister v1.NodeLister
+	var nodeLister listersv1.NodeLister
 	var csiNodeLister storagelistersv1.CSINodeLister
 	if ctrl.SupportsTopology(pluginCapabilities) {
-		// TODO (?): when deployed on each node with --strict-topology=true, then the topology
-		// code only needs the static information about the local node. We can avoid the overhead
-		// of watching the actual objects by providing just that information.
-		csiNodeLister = factory.Storage().V1().CSINodes().Lister()
-		nodeLister = factory.Core().V1().Nodes().Lister()
+		if *localTopology {
+			if nodeDeployment == nil {
+				klog.Fatal("--local-topology is only valid in combination with --node-deployment")
+			}
+			// Avoid watching in favor of fake, static objects. This is particularly relevant for
+			// Node objects, which can generate significant traffic.
+			csiNode := &storagev1.CSINode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeDeployment.NodeName,
+				},
+				Spec: storagev1.CSINodeSpec{
+					Drivers: []storagev1.CSINodeDriver{
+						{
+							Name:   provisionerName,
+							NodeID: nodeDeployment.NodeInfo.NodeId,
+						},
+					},
+				},
+			}
+			node := &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeDeployment.NodeName,
+				},
+			}
+			if nodeDeployment.NodeInfo.AccessibleTopology != nil {
+				for key := range nodeDeployment.NodeInfo.AccessibleTopology.Segments {
+					csiNode.Spec.Drivers[0].TopologyKeys = append(csiNode.Spec.Drivers[0].TopologyKeys, key)
+				}
+				node.Labels = nodeDeployment.NodeInfo.AccessibleTopology.Segments
+			}
+			klog.Infof("using local topology with Node = %+v and CSINode = %+v", node, csiNode)
+
+			// We make those fake objects available to the topology code via informers which
+			// never change.
+			stoppedFactory := informers.NewSharedInformerFactory(clientset, 1000*time.Hour)
+			csiNodes := stoppedFactory.Storage().V1().CSINodes()
+			nodes := stoppedFactory.Core().V1().Nodes()
+			csiNodes.Informer().GetStore().Add(csiNode)
+			nodes.Informer().GetStore().Add(node)
+			csiNodeLister = csiNodes.Lister()
+			nodeLister = nodes.Lister()
+
+		} else {
+			csiNodeLister = factory.Storage().V1().CSINodes().Lister()
+			nodeLister = factory.Core().V1().Nodes().Lister()
+		}
 	}
 
 	// -------------------------------
