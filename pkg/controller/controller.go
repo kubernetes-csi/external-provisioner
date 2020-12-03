@@ -489,7 +489,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 			// DataSource is not VolumeSnapshot and PVC
 			// Wait for an external data populator to create the volume
 			p.eventRecorder.Event(options.PVC, v1.EventTypeNormal, "Provisioning", fmt.Sprintf("Waiting for a volume to be created by an external data populator"))
-			return nil, controller.ProvisioningFinished, nil
+			return nil, controller.ProvisioningFinished, fmt.Errorf("data source %s not handled by external provisioner", options.PVC.Spec.DataSource.Kind)
 		}
 	}
 	if err := p.checkDriverCapabilities(rc); err != nil {
