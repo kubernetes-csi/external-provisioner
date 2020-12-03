@@ -211,6 +211,7 @@ type csiProvisioner struct {
 	identity                              string
 	volumeNamePrefix                      string
 	defaultFSType                         string
+	annotationPrefix                      string
 	volumeNameUUIDLength                  int
 	config                                *rest.Config
 	driverName                            string
@@ -297,6 +298,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	vaLister storagelistersv1.VolumeAttachmentLister,
 	extraCreateMetadata bool,
 	defaultFSType string,
+	annotationPrefix string,
 ) controller.Provisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
@@ -313,6 +315,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		identity:                              identity,
 		volumeNamePrefix:                      volumeNamePrefix,
 		defaultFSType:                         defaultFSType,
+		annotationPrefix:                      annotationPrefix,
 		volumeNameUUIDLength:                  volumeNameUUIDLength,
 		driverName:                            driverName,
 		pluginCapabilities:                    pluginCapabilities,
@@ -622,6 +625,14 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		req.Parameters[pvcNameKey] = options.PVC.GetName()
 		req.Parameters[pvcNamespaceKey] = options.PVC.GetNamespace()
 		req.Parameters[pvNameKey] = pvName
+	}
+	if 0 < len(p.annotationPrefix) {
+		prefix := p.annotationPrefix + "/"
+		for key, value := range options.PVC.Annotations {
+			if strings.HasPrefix(key, prefix) {
+				req.Parameters[key] = value
+			}
+		}
 	}
 
 	createCtx, cancel := context.WithTimeout(ctx, p.timeout)
