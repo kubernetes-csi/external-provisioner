@@ -342,6 +342,27 @@ instead implement a custom policy in a separate controller which sets
 the "selected node" annotation to trigger local provisioning on the
 desired node.
 
+### Deleting local volumes after a node failure or removal
+
+When a node with local volumes gets removed from a cluster before
+deleting those volumes, the PV and PVC objects may still exist. It may
+be possible to remove the PVC normally if the volume was not in use by
+any pod on the node, but normal deletion of the volume and thus
+deletion of the PV is not possible anymore because the CSI driver
+instance on the node is not available or reachable anymore and therefore
+Kubernetes cannot be sure that it is okay to remove the PV.
+
+When an administrator is sure that the node is never going to come
+back, then the local volumes can be removed manually:
+- force-delete objects: `kubectl delete pv <pv> --wait=false --grace-period=0 --force`
+- remove all finalizers: `kubectl patch pv <pv> -p '{"metadata":{"finalizers":null}}'`
+
+If there still was a PVC which was bound to that PV, it then will be
+moved to phase "Lost". It has to be deleted and re-created if still
+needed because no new volume will be created for it. Editing the PVC
+to revert it to phase "Unbound" is not allowed by the Kubernetes
+API server.
+
 ## Community, discussion, contribution, and support
 
 Learn how to engage with the Kubernetes community on the [community page](http://kubernetes.io/community/).
