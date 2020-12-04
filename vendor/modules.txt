@@ -560,7 +560,7 @@ sigs.k8s.io/controller-runtime/pkg/client
 sigs.k8s.io/controller-runtime/pkg/client/apiutil
 sigs.k8s.io/controller-runtime/pkg/client/fake
 sigs.k8s.io/controller-runtime/pkg/internal/objectutil
-# sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.1.0
+# sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.2.0
 ## explicit
 sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller
 sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller/metrics
