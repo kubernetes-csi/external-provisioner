@@ -21,6 +21,7 @@ import (
 	goflag "flag"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -71,9 +72,9 @@ var (
 	strictTopology          = flag.Bool("strict-topology", false, "Late binding: pass only selected node topology to CreateVolume Request, unlike default behavior of passing aggregated cluster topologies that match with topology keys of the selected node.")
 	immediateTopology       = flag.Bool("immediate-topology", true, "Immediate binding: pass aggregated cluster topologies for all nodes where the CSI driver is available (enabled, the default) or no topology requirements (if disabled).")
 	extraCreateMetadata     = flag.Bool("extra-create-metadata", false, "If set, add pv/pvc metadata to plugin create requests as parameters.")
-
-	metricsAddress = flag.String("metrics-address", "", "The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled.")
-	metricsPath    = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
+	metricsAddress          = flag.String("metrics-address", "", "(deprecated) The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled. Only one of `--metrics-address` and `--http-endpoint` can be set.")
+	httpEndpoint            = flag.String("http-endpoint", "", "The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled. Only one of `--metrics-address` and `--http-endpoint` can be set.")
+	metricsPath             = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
 
 	defaultFSType = flag.String("default-fstype", "", "The default filesystem type of the volume to provision when fstype is unspecified in the StorageClass. If the default is not set and fstype is unset in the StorageClass, then no fstype will be set")
 
@@ -120,6 +121,15 @@ func main() {
 		os.Exit(0)
 	}
 	klog.Infof("Version: %s", version)
+
+	if *metricsAddress != "" && *httpEndpoint != "" {
+		klog.Error("only one of `--metrics-address` and `--http-endpoint` can be set.")
+		os.Exit(1)
+	}
+	addr := *metricsAddress
+	if addr == "" {
+		addr = *httpEndpoint
+	}
 
 	// get the KUBECONFIG from env if specified (useful for local/debug cluster)
 	kubeconfigEnv := os.Getenv("KUBECONFIG")
@@ -181,8 +191,20 @@ func main() {
 		klog.Fatalf("Error getting CSI driver name: %s", err)
 	}
 	klog.V(2).Infof("Detected CSI driver %s", provisionerName)
-	metricsManager.SetDriverName(provisionerName)
-	metricsManager.StartMetricsEndpoint(*metricsAddress, *metricsPath)
+
+	// Prepare http endpoint for metrics + leader election healthz
+	mux := http.NewServeMux()
+	if addr != "" {
+		metricsManager.RegisterToServer(mux, *metricsPath)
+		metricsManager.SetDriverName(provisionerName)
+		go func() {
+			klog.Infof("ServeMux listening at %q", addr)
+			err := http.ListenAndServe(addr, mux)
+			if err != nil {
+				klog.Fatalf("Failed to start HTTP server at specified address (%q) and metrics path (%q): %s", addr, *metricsPath, err)
+			}
+		}()
+	}
 
 	pluginCapabilities, controllerCapabilities, err := ctrl.GetDriverCapabilities(grpcClient, *operationTimeout)
 	if err != nil {
@@ -373,6 +395,9 @@ func main() {
 		}
 
 		le := leaderelection.NewLeaderElection(leClientset, lockName, run)
+		if *httpEndpoint != "" {
+			le.PrepareHealthCheck(mux, leaderelection.DefaultHealthCheckTimeout)
+		}
 
 		if *leaderElectionNamespace != "" {
 			le.WithNamespace(*leaderElectionNamespace)
