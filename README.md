@@ -64,7 +64,7 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 * `--cloning-protection-threads <num>`: Number of simultaneously running threads, handling cloning finalizer removal. Defaults to `1`.
 
-* `--metrics-address`: The TCP network address where the prometheus metrics endpoint will run (example: `:8080` which corresponds to port 8080 on local host). The default is empty string, which means metrics endpoint is disabled.
+* `--http-endpoint`: The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080` which corresponds to port 8080 on local host). The default is empty string, which means the server is disabled.
 
 * `--metrics-path`: The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.
 
@@ -94,6 +94,8 @@ See the [storage capacity section](#capacity-support) below for details.
 * `--kubeconfig <path>`: Path to Kubernetes client configuration that the external-provisioner uses to connect to Kubernetes API server. When omitted, default token provided by Kubernetes will be used. This option is useful only when the external-provisioner does not run as a Kubernetes pod, e.g. for debugging. Either this or `--master` needs to be set if the external-provisioner is being run out of cluster.
 
 * `--master <url>`: Master URL to build a client config from. When omitted, default token provided by Kubernetes will be used. This option is useful only when the external-provisioner does not run as a Kubernetes pod, e.g. for debugging. Either this or `--kubeconfig` needs to be set if the external-provisioner is being run out of cluster.
+
+* `--metrics-address`: (deprecated) The TCP network address where the prometheus metrics endpoint will run (example: `:8080` which corresponds to port 8080 on local host). The default is empty string, which means metrics endpoint is disabled.
 
 * `--volume-name-prefix <prefix>`: Prefix of PersistentVolume names created by the external-provisioner. Default value is "pvc", i.e. created PersistentVolume objects will have name `pvc-<uuid>`.
 
@@ -232,6 +234,13 @@ Details of error handling of individual CSI calls:
 * `ControllerDeleteVolume`: This is similar to `ControllerCreateVolume`, The external-provisioner will retry calling `ControllerDeleteVolume` with exponential backoff after timeout until it gets either successful response or a final error that the volume cannot be deleted.
 * `Probe`: The external-provisioner retries calling Probe until the driver reports it's ready. It retries also when it receives timeout from `Probe` call. The external-provisioner has no limit of retries. It is expected that ReadinessProbe on the driver container will catch case when the driver takes too long time to get ready.
 * `GetPluginInfo`, `GetPluginCapabilitiesRequest`, `ControllerGetCapabilities`: The external-provisioner expects that these calls are quick and does not retry them on any error, including timeout. Instead, it assumes that the driver is faulty and exits. Note that Kubernetes will likely start a new provisioner container and it will start with `Probe` call.
+
+### HTTP endpoint
+
+The external-provisioner optionally exposes an HTTP endpoint at address:port specified by `--http-endpoint` argument. When set, these two paths are exposed:
+
+* Metrics path, as set by `--metrics-path` argument (default is `/metrics`).
+* Leader election health check at `/healthz/leader-election`. It is recommended to run a liveness probe against this endpoint when leader election is used to kill external-provisioner leader that fails to connect to the API server to renew its leadership. See https://github.com/kubernetes-csi/csi-lib-utils/issues/66 for details.
 
 ## Community, discussion, contribution, and support
 
