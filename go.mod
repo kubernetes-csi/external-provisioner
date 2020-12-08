@@ -19,7 +19,7 @@ require (
 	k8s.io/klog/v2 v2.3.0
 	k8s.io/kubernetes v1.19.0
 	sigs.k8s.io/controller-runtime v0.6.2
-	sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.1.0
+	sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.2.0
 )
 
 replace k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.19.0

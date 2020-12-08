@@ -915,8 +915,8 @@ sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.9/go.mod h1:dzAXnQb
 sigs.k8s.io/controller-runtime v0.6.2 h1:jkAnfdTYBpFwlmBn3pS5HFO06SfxvnTZ1p5PeEF/zAA=
 sigs.k8s.io/controller-runtime v0.6.2/go.mod h1:vhcq/rlnENJ09SIRp3EveTaZ0yqH526hjf9iJdbUJ/E=
 sigs.k8s.io/kustomize v2.0.3+incompatible/go.mod h1:MkjgH3RdOWrievjo6c9T245dYlB5QeXV4WCbnt/PEpU=
-sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.1.0 h1:4kyxBJ/3fzLooWOZkx5NEO/pUN6woM9JBnHuyWzqkc8=
-sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.1.0/go.mod h1:DhZ52sQMJHW21+JXyA2LRUPRIxKnrNrwh+QFV+2tVA4=
+sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.2.0 h1:W9pg6FBDxI8A/G0FbDjwKXvIG7ZDfyQODtoGzHFxa60=
+sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.2.0/go.mod h1:DhZ52sQMJHW21+JXyA2LRUPRIxKnrNrwh+QFV+2tVA4=
 sigs.k8s.io/structured-merge-diff/v4 v4.0.1 h1:YXTMot5Qz/X1iBRJhAt+vI+HVttY0WkSqqhKxQ0xVbA=
 sigs.k8s.io/structured-merge-diff/v4 v4.0.1/go.mod h1:bJZC9H9iH24zzfZ/41RGcq60oK1F7G282QMXDPYydCw=
 sigs.k8s.io/yaml v1.1.0 h1:4A07+ZFc2wgJwo8YNlQpr1rVlgUDlxXHhPJciaPY5gs=

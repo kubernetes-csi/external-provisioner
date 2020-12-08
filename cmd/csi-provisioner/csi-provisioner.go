@@ -253,6 +253,7 @@ func main() {
 		controller.Threadiness(int(*workerThreads)),
 		controller.CreateProvisionedPVLimiter(workqueue.DefaultControllerRateLimiter()),
 		controller.ClaimsInformer(claimInformer),
+		controller.NodesLister(nodeLister),
 	}
 
 	translator := csitrans.New()
