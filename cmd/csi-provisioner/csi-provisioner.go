@@ -390,7 +390,8 @@ func main() {
 	)
 
 	var capacityController *capacity.Controller
-	if *capacityMode == capacity.DeploymentModeCentral {
+	if *capacityMode == capacity.DeploymentModeCentral ||
+		*capacityMode == capacity.DeploymentModeLocal {
 		podName := os.Getenv("POD_NAME")
 		namespace := os.Getenv("POD_NAMESPACE")
 		if podName == "" || namespace == "" {
@@ -407,13 +408,28 @@ func main() {
 		}
 		klog.Infof("using %s/%s %s as owner of CSIStorageCapacity objects", controller.APIVersion, controller.Kind, controller.Name)
 
-		topologyInformer := topology.NewNodeTopology(
-			provisionerName,
-			clientset,
-			factory.Core().V1().Nodes(),
-			factory.Storage().V1().CSINodes(),
-			workqueue.NewNamedRateLimitingQueue(rateLimiter, "csitopology"),
-		)
+		var topologyInformer topology.Informer
+		if *capacityMode == capacity.DeploymentModeCentral {
+			topologyInformer = topology.NewNodeTopology(
+				provisionerName,
+				clientset,
+				factory.Core().V1().Nodes(),
+				factory.Storage().V1().CSINodes(),
+				workqueue.NewNamedRateLimitingQueue(rateLimiter, "csitopology"),
+			)
+		} else {
+			var segment topology.Segment
+			if nodeDeployment == nil {
+				klog.Fatal("--capacity-controller-deployment-mode=local is only valid in combination with --node-deployment")
+			}
+			if nodeDeployment.NodeInfo.AccessibleTopology != nil {
+				for key, value := range nodeDeployment.NodeInfo.AccessibleTopology.Segments {
+					segment = append(segment, topology.SegmentEntry{Key: key, Value: value})
+				}
+			}
+			klog.Infof("producing CSIStorageCapacity objects with fixed topology segment %s", segment)
+			topologyInformer = topology.NewFixedNodeTopology(&segment)
+		}
 
 		// We only need objects from our own namespace. The normal factory would give
 		// us an informer for the entire cluster.
