@@ -209,12 +209,22 @@ type requiredCapabilities struct {
 // NodeDeployment contains additional parameters for running external-provisioner alongside a
 // CSI driver on one or more nodes in the cluster.
 type NodeDeployment struct {
-	NodeName         string
-	ClaimInformer    coreinformers.PersistentVolumeClaimInformer
-	NodeInfo         csi.NodeGetInfoResponse
+	// NodeName is the name of the node in Kubernetes on which the external-provisioner runs.
+	NodeName string
+	// ClaimInformer is needed to detect when some other external-provisioner
+	// became the owner of a PVC while the local one is still waiting before
+	// trying to become the owner itself.
+	ClaimInformer coreinformers.PersistentVolumeClaimInformer
+	// NodeInfo is the result of NodeGetInfo. It is need to determine which
+	// PVs were created for the node.
+	NodeInfo csi.NodeGetInfoResponse
+	// ImmediateBinding enables support for PVCs with immediate binding.
 	ImmediateBinding bool
-	BaseDelay        time.Duration
-	MaxDelay         time.Duration
+	// BaseDelay is the initial time that the external-provisioner waits
+	// before trying to become the owner of a PVC with immediate binding.
+	BaseDelay time.Duration
+	// MaxDelay is the maximum for the initial wait time.
+	MaxDelay time.Duration
 }
 
 type internalNodeDeployment struct {
@@ -1362,7 +1372,15 @@ func (nc *internalNodeDeployment) becomeOwner(ctx context.Context, p *csiProvisi
 	klog.V(5).Infof("will try to become owner of PVC %s/%s with resource version %s in %s (attempt #%d)", claim.Namespace, claim.Name, claim.ResourceVersion, delay, requeues)
 	sleep, cancel := context.WithTimeout(ctx, delay)
 	defer cancel()
-	ticker := time.NewTicker(10 * time.Millisecond)
+	// When the base delay is high we also should check less often.
+	// With multiple provisioners running in parallel, it becomes more
+	// likely that one of them became the owner quickly, so we don't
+	// want to check too slowly either.
+	pollInterval := nc.BaseDelay / 100
+	if pollInterval < 10*time.Millisecond {
+		pollInterval = 10 * time.Millisecond
+	}
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	check := func() (bool, *v1.PersistentVolumeClaim, error) {
 		current, err := nc.ClaimInformer.Lister().PersistentVolumeClaims(claim.Namespace).Get(claim.Name)

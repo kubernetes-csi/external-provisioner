@@ -88,7 +88,7 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * `--node-deployment`: Enables deploying the external-provisioner together with a CSI driver on nodes to manage node-local volumes. Off by default.
 
-* `--node-deployment-immediate-binding`: Determines whether immediate binding is supported when deployed on each node. Enabled by default, use `--node-deployment-immediate-binding=false` if not desired.
+* `--node-deployment-immediate-binding`: Determines whether immediate binding is supported when deployed on each node. Enabled by default, use `--node-deployment-immediate-binding=false` if not desired. Disabling it may be useful for example when a custom controller will select nodes for PVCs.
 
 * `--node-deployment-base-delay`: Determines how long the external-provisioner sleeps initially before trying to own a PVC with immediate binding. Defaults to 20 seconds.
 
@@ -335,7 +335,10 @@ volume was probably higher, but that wasn't measured.
 
 Note that the QPS settings of kube-controller-manager and
 external-provisioner have to be increased at the moment (Kubernetes
-1.19) to provision volumes faster than around 4 volumes/second.
+1.19) to provision volumes faster than around 4 volumes/second. Those
+settings will eventually get replaced with [flow control in the API
+server
+itself](https://kubernetes.io/docs/concepts/cluster-administration/flow-control/).
 
 Beware that if *no* node has sufficient storage available, then also
 no `CreateVolume` call is attempted and thus no events are generated
@@ -364,6 +367,9 @@ When an administrator is sure that the node is never going to come
 back, then the local volumes can be removed manually:
 - force-delete objects: `kubectl delete pv <pv> --wait=false --grace-period=0 --force`
 - remove all finalizers: `kubectl patch pv <pv> -p '{"metadata":{"finalizers":null}}'`
+
+It may also be necessary to scrub disks before reusing them because
+the CSI driver had no chance to do that.
 
 If there still was a PVC which was bound to that PV, it then will be
 moved to phase "Lost". It has to be deleted and re-created if still
