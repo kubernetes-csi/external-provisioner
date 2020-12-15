@@ -94,8 +94,6 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * `--node-deployment-max-delay`: Determines how long the external-provisioner sleeps at most before trying to own a PVC with immediate binding. Defaults to 60 seconds.
 
-* `--local-topology`: Instead of watching Node and CSINode objects, use only the topology provided by the CSI driver. Only valid in combination with `--node-deployment`. Disabled by default, but recommended for drivers which have a single topology key with different values for each node (i.e. local volumes).
-
 #### Other recognized arguments
 * `--feature-gates <gates>`: A set of comma separated `<feature-name>=<true|false>` pairs that describe feature gates for alpha/experimental features. See [list of features](#feature-status) or `--help` output for list of recognized features. Example: `--feature-gates Topology=true` to enable Topology feature that's disabled by default.
 
@@ -281,13 +279,17 @@ each CSI driver on different nodes. The CSI driver deployment must:
   to match the expected cluster size and desired response times
   (only relevant when there are storage classes with immediate binding,
   see below for details)
-- use `--local-topology` if volumes are only accessible inside the node
-  where they get provisioned
 - set the `NODE_NAME` environment variable to the name of the Kubernetes node
 - implement `GetCapacity`
 
 Usage of `--strict-topology` and `--immediate-topology=false` is
 recommended because it makes the `CreateVolume` invocations simpler.
+Topology information is always derived exclusively from the
+information returned by the CSI driver that runs on the same node,
+without combining that with information stored for other nodes. This
+works as long as each node is in its own topology segment,
+i.e. usually with a single topology key and one unique value for each
+node.
 
 Volume provisioning with late binding works as before, except that
 each external-provisioner instance checks the "selected node"

@@ -97,7 +97,6 @@ var (
 	nodeDeploymentImmediateBinding = flag.Bool("node-deployment-immediate-binding", true, "Determines whether immediate binding is supported when deployed on each node.")
 	nodeDeploymentBaseDelay        = flag.Duration("node-deployment-base-delay", 20*time.Second, "Determines how long the external-provisioner sleeps initially before trying to own a PVC with immediate binding.")
 	nodeDeploymentMaxDelay         = flag.Duration("node-deployment-max-delay", 60*time.Second, "Determines how long the external-provisioner sleeps at most before trying to own a PVC with immediate binding.")
-	localTopology                  = flag.Bool("local-topology", false, "Instead of watching Node and CSINode objects, use only the topology provided by the CSI driver. Only valid in combination with --node-deployment.")
 
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
@@ -268,10 +267,7 @@ func main() {
 	var nodeLister listersv1.NodeLister
 	var csiNodeLister storagelistersv1.CSINodeLister
 	if ctrl.SupportsTopology(pluginCapabilities) {
-		if *localTopology {
-			if nodeDeployment == nil {
-				klog.Fatal("--local-topology is only valid in combination with --node-deployment")
-			}
+		if nodeDeployment != nil {
 			// Avoid watching in favor of fake, static objects. This is particularly relevant for
 			// Node objects, which can generate significant traffic.
 			csiNode := &storagev1.CSINode{
