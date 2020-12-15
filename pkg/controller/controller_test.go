@@ -1799,7 +1799,7 @@ func TestProvision(t *testing.T) {
 				},
 			},
 			expectState:      controller.ProvisioningFinished,
-			expectErr:        false,
+			expectErr:        true,
 			skipCreateVolume: true,
 		},
 	}

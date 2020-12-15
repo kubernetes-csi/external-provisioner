@@ -485,11 +485,13 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		case pvcKind:
 			rc.clone = true
 		default:
-			klog.Infof("DataSource specified (%s) is not supported by the provisioner, waiting for an external data populator to create the volume", options.PVC.Spec.DataSource.Kind)
 			// DataSource is not VolumeSnapshot and PVC
-			// Wait for an external data populator to create the volume
-			p.eventRecorder.Event(options.PVC, v1.EventTypeNormal, "Provisioning", fmt.Sprintf("Waiting for a volume to be created by an external data populator"))
-			return nil, controller.ProvisioningFinished, nil
+			// Assume external data populator to create the volume, and there is no more work for us to do
+			p.eventRecorder.Event(options.PVC, v1.EventTypeNormal, "Provisioning", fmt.Sprintf("Assuming an external populator will provision the volume"))
+			return nil, controller.ProvisioningFinished, &controller.IgnoredError{
+				Reason: fmt.Sprintf("data source (%s) is not handled by the provisioner, assuming an external populator will provision it",
+					options.PVC.Spec.DataSource.Kind),
+			}
 		}
 	}
 	if err := p.checkDriverCapabilities(rc); err != nil {
