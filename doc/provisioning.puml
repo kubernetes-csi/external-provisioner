@@ -27,6 +27,6 @@ DeleteVolume -->[failure] VOLUME_READY_FOR_DELETION
 DeleteVolume -->[success] "volume deleted"
 -->[ **external-provisioner** set ""PV.Status.Phase: Released"" ] "PV ready for deletion" as PV_READY_FOR_DELETION
 -->[ **external-provisioner** deletes PV ] "PV marked for deletion"
--->[ **PV controller** determines that PV has no volume ] "PV deleted"
+-->[ **PV controller** checks the volume one last time\l and removes the pv protection finalizer ] "PV deleted"
 --> (*)
 @enduml
