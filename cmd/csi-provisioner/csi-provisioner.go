@@ -84,11 +84,7 @@ var (
 	kubeAPIQPS   = flag.Float32("kube-api-qps", 5, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
 	kubeAPIBurst = flag.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
 
-	capacityMode = func() *capacity.DeploymentMode {
-		mode := capacity.DeploymentModeUnset
-		flag.Var(&mode, "capacity-controller-deployment-mode", "Setting this enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. 'central' is currently the only supported mode. Use it when there is just one active provisioner in the cluster.")
-		return &mode
-	}()
+	enableCapacity           = flag.Bool("enable-capacity", false, "This enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call.")
 	capacityImmediateBinding = flag.Bool("capacity-for-immediate-binding", false, "Enables producing capacity information for storage classes with immediate binding. Not needed for the Kubernetes scheduler, maybe useful for other consumers or for debugging.")
 	capacityPollInterval     = flag.Duration("capacity-poll-interval", time.Minute, "How long the external-provisioner waits before checking for storage capacity changes.")
 	capacityOwnerrefLevel    = flag.Int("capacity-ownerref-level", 1, "The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc.")
@@ -386,8 +382,7 @@ func main() {
 	)
 
 	var capacityController *capacity.Controller
-	if *capacityMode == capacity.DeploymentModeCentral ||
-		*capacityMode == capacity.DeploymentModeLocal {
+	if *enableCapacity {
 		podName := os.Getenv("POD_NAME")
 		namespace := os.Getenv("POD_NAMESPACE")
 		if podName == "" || namespace == "" {
@@ -405,7 +400,7 @@ func main() {
 		klog.Infof("using %s/%s %s as owner of CSIStorageCapacity objects", controller.APIVersion, controller.Kind, controller.Name)
 
 		var topologyInformer topology.Informer
-		if *capacityMode == capacity.DeploymentModeCentral {
+		if nodeDeployment == nil {
 			topologyInformer = topology.NewNodeTopology(
 				provisionerName,
 				clientset,
@@ -415,9 +410,6 @@ func main() {
 			)
 		} else {
 			var segment topology.Segment
-			if nodeDeployment == nil {
-				klog.Fatal("--capacity-controller-deployment-mode=local is only valid in combination with --node-deployment")
-			}
 			if nodeDeployment.NodeInfo.AccessibleTopology != nil {
 				for key, value := range nodeDeployment.NodeInfo.AccessibleTopology.Segments {
 					segment = append(segment, topology.SegmentEntry{Key: key, Value: value})

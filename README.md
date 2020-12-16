@@ -74,7 +74,7 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 See the [storage capacity section](#capacity-support) below for details.
 
-* `--capacity-controller-deployment-mode=central|local`: Setting this enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. Use `central` when there is just one active external-provisioner in the cluster. Use `local` when deploying external-provisioner on each node with distributed provisioning. The default is to not produce CSIStorageCapacity objects.
+* `--enable-capacity`: This enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. The default is to not produce CSIStorageCapacity objects.
 
 * `--capacity-ownerref-level <levels>`: The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc. Defaults to `1` (= StatefulSet).
 
@@ -165,7 +165,7 @@ example):
         fieldRef:
         fieldPath: metadata.name
 ```
-- Add `--capacity-controller-deployment-mode=central` to the command line flags.
+- Add `--enable-capacity` to the command line flags.
 - Add `StorageCapacity: true` to the CSIDriver information object.
   Without it, external-provisioner will publish information, but the
   Kubernetes scheduler will ignore it. This can be used to first
@@ -232,8 +232,7 @@ other driver.
 
 The deployment with [distributed
 provisioning](#distributed-provisioning) is almost the same as above,
-with some minor changes:
-- Add `--capacity-controller-deployment-mode=local` to the command line flags.
+with some minor change:
 - Use `--capacity-ownerref-level=0` and the `POD_NAMESPACE/POD_NAME`
   variables to make the pod that contains the external-provisioner
   the owner of CSIStorageCapacity objects for the node.
