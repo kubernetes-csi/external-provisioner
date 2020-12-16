@@ -33,7 +33,7 @@ const (
 	DeploymentModeCentral = DeploymentMode("central")
 
 	// DeploymentModeLocal enables the mode where external-provisioner
-	// is deployed on each node. Not implemented yet.
+	// is deployed on each node.
 	DeploymentModeLocal = DeploymentMode("local")
 
 	// DeploymentModeUnset disables the capacity feature completely.
@@ -44,7 +44,7 @@ const (
 // with optional whitespace.
 func (mode *DeploymentMode) Set(value string) error {
 	switch DeploymentMode(value) {
-	case DeploymentModeCentral, DeploymentModeUnset:
+	case DeploymentModeCentral, DeploymentModeLocal, DeploymentModeUnset:
 		*mode = DeploymentMode(value)
 	default:
 		return errors.New("invalid value")
@@ -57,7 +57,7 @@ func (mode *DeploymentMode) String() string {
 }
 
 func (mode *DeploymentMode) Type() string {
-	return strings.Join([]string{string(DeploymentModeCentral) /*, string(DeploymentModeLocal) */}, "|")
+	return strings.Join([]string{string(DeploymentModeCentral), string(DeploymentModeLocal)}, "|")
 }
 
 var _ flag.Value = new(DeploymentMode)

@@ -31,19 +31,23 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	_ "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/util"
@@ -131,6 +135,7 @@ const (
 
 	annMigratedTo         = "pv.kubernetes.io/migrated-to"
 	annStorageProvisioner = "volume.beta.kubernetes.io/storage-provisioner"
+	annSelectedNode       = "volume.kubernetes.io/selected-node"
 
 	snapshotNotBound = "snapshot %s not bound"
 
@@ -201,7 +206,32 @@ type requiredCapabilities struct {
 	clone    bool
 }
 
-// CSIProvisioner struct
+// NodeDeployment contains additional parameters for running external-provisioner alongside a
+// CSI driver on one or more nodes in the cluster.
+type NodeDeployment struct {
+	// NodeName is the name of the node in Kubernetes on which the external-provisioner runs.
+	NodeName string
+	// ClaimInformer is needed to detect when some other external-provisioner
+	// became the owner of a PVC while the local one is still waiting before
+	// trying to become the owner itself.
+	ClaimInformer coreinformers.PersistentVolumeClaimInformer
+	// NodeInfo is the result of NodeGetInfo. It is need to determine which
+	// PVs were created for the node.
+	NodeInfo csi.NodeGetInfoResponse
+	// ImmediateBinding enables support for PVCs with immediate binding.
+	ImmediateBinding bool
+	// BaseDelay is the initial time that the external-provisioner waits
+	// before trying to become the owner of a PVC with immediate binding.
+	BaseDelay time.Duration
+	// MaxDelay is the maximum for the initial wait time.
+	MaxDelay time.Duration
+}
+
+type internalNodeDeployment struct {
+	NodeDeployment
+	rateLimiter workqueue.RateLimiter
+}
+
 type csiProvisioner struct {
 	client                                kubernetes.Interface
 	csiClient                             csi.ControllerClient
@@ -227,6 +257,7 @@ type csiProvisioner struct {
 	vaLister                              storagelistersv1.VolumeAttachmentLister
 	extraCreateMetadata                   bool
 	eventRecorder                         record.EventRecorder
+	nodeDeployment                        *internalNodeDeployment
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -272,6 +303,13 @@ func GetDriverCapabilities(conn *grpc.ClientConn, timeout time.Duration) (rpc.Pl
 	return pluginCapabilities, controllerCapabilities, nil
 }
 
+func GetNodeInfo(conn *grpc.ClientConn, timeout time.Duration) (*csi.NodeGetInfoResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	client := csi.NewNodeClient(conn)
+	return client.NodeGetInfo(ctx, &csi.NodeGetInfoRequest{})
+}
+
 // NewCSIProvisioner creates new CSI provisioner.
 //
 // vaLister is optional and only needed when VolumeAttachments are
@@ -297,6 +335,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	vaLister storagelistersv1.VolumeAttachmentLister,
 	extraCreateMetadata bool,
 	defaultFSType string,
+	nodeDeployment *NodeDeployment,
 ) controller.Provisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
@@ -304,6 +343,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf("external-provisioner")})
 
 	csiClient := csi.NewControllerClient(grpcClient)
+
 	provisioner := &csiProvisioner{
 		client:                                client,
 		grpcClient:                            grpcClient,
@@ -329,6 +369,22 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		extraCreateMetadata:                   extraCreateMetadata,
 		eventRecorder:                         eventRecorder,
 	}
+	if nodeDeployment != nil {
+		provisioner.nodeDeployment = &internalNodeDeployment{
+			NodeDeployment: *nodeDeployment,
+			rateLimiter:    newItemExponentialFailureRateLimiterWithJitter(nodeDeployment.BaseDelay, nodeDeployment.MaxDelay),
+		}
+		// Remove deleted PVCs from rate limiter.
+		claimHandler := cache.ResourceEventHandlerFuncs{
+			DeleteFunc: func(obj interface{}) {
+				if claim, ok := obj.(*v1.PersistentVolumeClaim); ok {
+					provisioner.nodeDeployment.rateLimiter.Forget(claim.UID)
+				}
+			},
+		}
+		provisioner.nodeDeployment.ClaimInformer.Informer().AddEventHandler(claimHandler)
+	}
+
 	return provisioner
 }
 
@@ -415,38 +471,35 @@ func getAccessMode(pvcAccessMode v1.PersistentVolumeAccessMode) *csi.VolumeCapab
 }
 
 func getVolumeCapability(
-	options controller.ProvisionOptions,
+	claim *v1.PersistentVolumeClaim,
+	sc *storagev1.StorageClass,
 	pvcAccessMode v1.PersistentVolumeAccessMode,
 	fsType string,
 ) *csi.VolumeCapability {
-	if util.CheckPersistentVolumeClaimModeBlock(options.PVC) {
+	if util.CheckPersistentVolumeClaimModeBlock(claim) {
 		return &csi.VolumeCapability{
 			AccessType: getAccessTypeBlock(),
 			AccessMode: getAccessMode(pvcAccessMode),
 		}
 	}
 	return &csi.VolumeCapability{
-		AccessType: getAccessTypeMount(fsType, options.StorageClass.MountOptions),
+		AccessType: getAccessTypeMount(fsType, sc.MountOptions),
 		AccessMode: getAccessMode(pvcAccessMode),
 	}
 
 }
 
-func (p *csiProvisioner) Provision(ctx context.Context, options controller.ProvisionOptions) (*v1.PersistentVolume, controller.ProvisioningState, error) {
-	if options.StorageClass == nil {
+type prepareProvisionResult struct {
+	fsType         string
+	migratedVolume bool
+	req            *csi.CreateVolumeRequest
+	csiPVSource    *v1.CSIPersistentVolumeSource
+}
+
+// prepareProvision does non-destructive parameter checking and preparations for provisioning a volume.
+func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass, selectedNode *v1.Node) (*prepareProvisionResult, controller.ProvisioningState, error) {
+	if sc == nil {
 		return nil, controller.ProvisioningFinished, errors.New("storage class was nil")
-	}
-
-	if options.PVC.Annotations[annStorageProvisioner] != p.driverName && options.PVC.Annotations[annMigratedTo] != p.driverName {
-		// The storage provisioner annotation may not equal driver name but the
-		// PVC could have annotation "migrated-to" which is the new way to
-		// signal a PVC is migrated (k8s v1.17+)
-		return nil, controller.ProvisioningFinished, &controller.IgnoredError{
-			Reason: fmt.Sprintf("PVC annotated with external-provisioner name %s does not match provisioner driver name %s. This could mean the PVC is not migrated",
-				options.PVC.Annotations[annStorageProvisioner],
-				p.driverName),
-		}
-
 	}
 
 	migratedVolume := false
@@ -455,31 +508,31 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		// the in-tree provisioner name in case of CSI migration scenarios. The annotation will be
 		// set to the CSI provisioner name by PV controller for migration scenarios
 		// so that external provisioner can correctly pick up the PVC pointing to an in-tree plugin
-		if options.StorageClass.Provisioner == p.supportsMigrationFromInTreePluginName {
-			klog.V(2).Infof("translating storage class for in-tree plugin %s to CSI", options.StorageClass.Provisioner)
-			storageClass, err := p.translator.TranslateInTreeStorageClassToCSI(p.supportsMigrationFromInTreePluginName, options.StorageClass)
+		if sc.Provisioner == p.supportsMigrationFromInTreePluginName {
+			klog.V(2).Infof("translating storage class for in-tree plugin %s to CSI", sc.Provisioner)
+			storageClass, err := p.translator.TranslateInTreeStorageClassToCSI(p.supportsMigrationFromInTreePluginName, sc)
 			if err != nil {
 				return nil, controller.ProvisioningFinished, fmt.Errorf("failed to translate storage class: %v", err)
 			}
-			options.StorageClass = storageClass
+			sc = storageClass
 			migratedVolume = true
 		} else {
-			klog.V(4).Infof("skip translation of storage class for plugin: %s", options.StorageClass.Provisioner)
+			klog.V(4).Infof("skip translation of storage class for plugin: %s", sc.Provisioner)
 		}
 	}
 
 	// Make sure the plugin is capable of fulfilling the requested options
 	rc := &requiredCapabilities{}
-	if options.PVC.Spec.DataSource != nil {
+	if claim.Spec.DataSource != nil {
 		// PVC.Spec.DataSource.Name is the name of the VolumeSnapshot API object
-		if options.PVC.Spec.DataSource.Name == "" {
-			return nil, controller.ProvisioningFinished, fmt.Errorf("the PVC source not found for PVC %s", options.PVC.Name)
+		if claim.Spec.DataSource.Name == "" {
+			return nil, controller.ProvisioningFinished, fmt.Errorf("the PVC source not found for PVC %s", claim.Name)
 		}
 
-		switch options.PVC.Spec.DataSource.Kind {
+		switch claim.Spec.DataSource.Kind {
 		case snapshotKind:
-			if *(options.PVC.Spec.DataSource.APIGroup) != snapshotAPIGroup {
-				return nil, controller.ProvisioningFinished, fmt.Errorf("the PVC source does not belong to the right APIGroup. Expected %s, Got %s", snapshotAPIGroup, *(options.PVC.Spec.DataSource.APIGroup))
+			if *(claim.Spec.DataSource.APIGroup) != snapshotAPIGroup {
+				return nil, controller.ProvisioningFinished, fmt.Errorf("the PVC source does not belong to the right APIGroup. Expected %s, Got %s", snapshotAPIGroup, *(claim.Spec.DataSource.APIGroup))
 			}
 			rc.snapshot = true
 		case pvcKind:
@@ -487,10 +540,10 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		default:
 			// DataSource is not VolumeSnapshot and PVC
 			// Assume external data populator to create the volume, and there is no more work for us to do
-			p.eventRecorder.Event(options.PVC, v1.EventTypeNormal, "Provisioning", fmt.Sprintf("Assuming an external populator will provision the volume"))
+			p.eventRecorder.Event(claim, v1.EventTypeNormal, "Provisioning", fmt.Sprintf("Assuming an external populator will provision the volume"))
 			return nil, controller.ProvisioningFinished, &controller.IgnoredError{
 				Reason: fmt.Sprintf("data source (%s) is not handled by the provisioner, assuming an external populator will provision it",
-					options.PVC.Spec.DataSource.Kind),
+					claim.Spec.DataSource.Kind),
 			}
 		}
 	}
@@ -498,18 +551,18 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		return nil, controller.ProvisioningFinished, err
 	}
 
-	if options.PVC.Spec.Selector != nil {
+	if claim.Spec.Selector != nil {
 		return nil, controller.ProvisioningFinished, fmt.Errorf("claim Selector is not supported")
 	}
 
-	pvName, err := makeVolumeName(p.volumeNamePrefix, fmt.Sprintf("%s", options.PVC.ObjectMeta.UID), p.volumeNameUUIDLength)
+	pvName, err := makeVolumeName(p.volumeNamePrefix, fmt.Sprintf("%s", claim.ObjectMeta.UID), p.volumeNameUUIDLength)
 	if err != nil {
 		return nil, controller.ProvisioningFinished, err
 	}
 
 	fsTypesFound := 0
 	fsType := ""
-	for k, v := range options.StorageClass.Parameters {
+	for k, v := range sc.Parameters {
 		if strings.ToLower(k) == "fstype" || k == prefixedFsTypeKey {
 			fsType = v
 			fsTypesFound++
@@ -525,35 +578,35 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		fsType = p.defaultFSType
 	}
 
-	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+	capacity := claim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 
 	// Get access mode
 	volumeCaps := make([]*csi.VolumeCapability, 0)
-	for _, pvcAccessMode := range options.PVC.Spec.AccessModes {
-		volumeCaps = append(volumeCaps, getVolumeCapability(options, pvcAccessMode, fsType))
+	for _, pvcAccessMode := range claim.Spec.AccessModes {
+		volumeCaps = append(volumeCaps, getVolumeCapability(claim, sc, pvcAccessMode, fsType))
 	}
 
 	// Create a CSI CreateVolumeRequest and Response
 	req := csi.CreateVolumeRequest{
 		Name:               pvName,
-		Parameters:         options.StorageClass.Parameters,
+		Parameters:         sc.Parameters,
 		VolumeCapabilities: volumeCaps,
 		CapacityRange: &csi.CapacityRange{
 			RequiredBytes: int64(volSizeBytes),
 		},
 	}
 
-	if options.PVC.Spec.DataSource != nil && (rc.clone || rc.snapshot) {
-		volumeContentSource, err := p.getVolumeContentSource(ctx, options)
+	if claim.Spec.DataSource != nil && (rc.clone || rc.snapshot) {
+		volumeContentSource, err := p.getVolumeContentSource(ctx, claim, sc)
 		if err != nil {
-			return nil, controller.ProvisioningNoChange, fmt.Errorf("error getting handle for DataSource Type %s by Name %s: %v", options.PVC.Spec.DataSource.Kind, options.PVC.Spec.DataSource.Name, err)
+			return nil, controller.ProvisioningNoChange, fmt.Errorf("error getting handle for DataSource Type %s by Name %s: %v", claim.Spec.DataSource.Kind, claim.Spec.DataSource.Name, err)
 		}
 		req.VolumeContentSource = volumeContentSource
 	}
 
-	if options.PVC.Spec.DataSource != nil && rc.clone {
-		err = p.setCloneFinalizer(ctx, options.PVC)
+	if claim.Spec.DataSource != nil && rc.clone {
+		err = p.setCloneFinalizer(ctx, claim)
 		if err != nil {
 			return nil, controller.ProvisioningNoChange, err
 		}
@@ -563,9 +616,9 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		requirements, err := GenerateAccessibilityRequirements(
 			p.client,
 			p.driverName,
-			options.PVC.Name,
-			options.StorageClass.AllowedTopologies,
-			options.SelectedNode,
+			claim.Name,
+			sc.AllowedTopologies,
+			selectedNode,
 			p.strictTopology,
 			p.immediateTopology,
 			p.csiNodeLister,
@@ -576,15 +629,11 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		req.AccessibilityRequirements = requirements
 	}
 
-	klog.V(5).Infof("CreateVolumeRequest %+v", req)
-
-	rep := &csi.CreateVolumeResponse{}
-
 	// Resolve provision secret credentials.
-	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, options.StorageClass.Parameters, pvName, &v1.PersistentVolumeClaim{
+	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, sc.Parameters, pvName, &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      options.PVC.Name,
-			Namespace: options.PVC.Namespace,
+			Name:      claim.Name,
+			Namespace: claim.Namespace,
 		},
 	})
 	if err != nil {
@@ -597,38 +646,91 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	req.Secrets = provisionerCredentials
 
 	// Resolve controller publish, node stage, node publish secret references
-	controllerPublishSecretRef, err := getSecretReference(controllerPublishSecretParams, options.StorageClass.Parameters, pvName, options.PVC)
+	controllerPublishSecretRef, err := getSecretReference(controllerPublishSecretParams, sc.Parameters, pvName, claim)
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
-	nodeStageSecretRef, err := getSecretReference(nodeStageSecretParams, options.StorageClass.Parameters, pvName, options.PVC)
+	nodeStageSecretRef, err := getSecretReference(nodeStageSecretParams, sc.Parameters, pvName, claim)
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
-	nodePublishSecretRef, err := getSecretReference(nodePublishSecretParams, options.StorageClass.Parameters, pvName, options.PVC)
+	nodePublishSecretRef, err := getSecretReference(nodePublishSecretParams, sc.Parameters, pvName, claim)
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
-	controllerExpandSecretRef, err := getSecretReference(controllerExpandSecretParams, options.StorageClass.Parameters, pvName, options.PVC)
+	controllerExpandSecretRef, err := getSecretReference(controllerExpandSecretParams, sc.Parameters, pvName, claim)
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
+	}
+	csiPVSource := &v1.CSIPersistentVolumeSource{
+		Driver: p.driverName,
+		// VolumeHandle and VolumeAttributes will be added after provisioning.
+		ControllerPublishSecretRef: controllerPublishSecretRef,
+		NodeStageSecretRef:         nodeStageSecretRef,
+		NodePublishSecretRef:       nodePublishSecretRef,
+		ControllerExpandSecretRef:  controllerExpandSecretRef,
 	}
 
-	req.Parameters, err = removePrefixedParameters(options.StorageClass.Parameters)
+	req.Parameters, err = removePrefixedParameters(sc.Parameters)
 	if err != nil {
 		return nil, controller.ProvisioningFinished, fmt.Errorf("failed to strip CSI Parameters of prefixed keys: %v", err)
 	}
 
 	if p.extraCreateMetadata {
 		// add pvc and pv metadata to request for use by the plugin
-		req.Parameters[pvcNameKey] = options.PVC.GetName()
-		req.Parameters[pvcNamespaceKey] = options.PVC.GetNamespace()
+		req.Parameters[pvcNameKey] = claim.GetName()
+		req.Parameters[pvcNamespaceKey] = claim.GetNamespace()
 		req.Parameters[pvNameKey] = pvName
 	}
 
+	return &prepareProvisionResult{
+		fsType:         fsType,
+		migratedVolume: migratedVolume,
+		req:            &req,
+		csiPVSource:    csiPVSource,
+	}, controller.ProvisioningNoChange, nil
+}
+
+func (p *csiProvisioner) Provision(ctx context.Context, options controller.ProvisionOptions) (*v1.PersistentVolume, controller.ProvisioningState, error) {
+	claim := options.PVC
+	if claim.Annotations[annStorageProvisioner] != p.driverName && claim.Annotations[annMigratedTo] != p.driverName {
+		// The storage provisioner annotation may not equal driver name but the
+		// PVC could have annotation "migrated-to" which is the new way to
+		// signal a PVC is migrated (k8s v1.17+)
+		return nil, controller.ProvisioningFinished, &controller.IgnoredError{
+			Reason: fmt.Sprintf("PVC annotated with external-provisioner name %s does not match provisioner driver name %s. This could mean the PVC is not migrated",
+				claim.Annotations[annStorageProvisioner],
+				p.driverName),
+		}
+
+	}
+
+	// The same check already ran in ShouldProvision, but perhaps
+	// it couldn't complete due to some unexpected error.
+	owned, err := p.checkNode(ctx, claim, options.StorageClass, "provision")
+	if err != nil {
+		return nil, controller.ProvisioningNoChange,
+			fmt.Errorf("node check failed: %v", err)
+	}
+	if !owned {
+		return nil, controller.ProvisioningNoChange, &controller.IgnoredError{
+			Reason: fmt.Sprintf("not responsible for provisioning of PVC %s/%s because it is not assigned to node %q", claim.Namespace, claim.Name, p.nodeDeployment.NodeName),
+		}
+	}
+
+	result, state, err := p.prepareProvision(ctx, claim, options.StorageClass, options.SelectedNode)
+	if result == nil {
+		return nil, state, err
+	}
+	req := result.req
+	volSizeBytes := req.CapacityRange.RequiredBytes
+	pvName := req.Name
+	provisionerCredentials := req.Secrets
+
 	createCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
-	rep, err = p.csiClient.CreateVolume(createCtx, &req)
+	klog.V(5).Infof("CreateVolumeRequest %+v", req)
+	rep, err := p.csiClient.CreateVolume(createCtx, req)
 
 	if err != nil {
 		// Giving up after an error and telling the pod scheduler to retry with a different node
@@ -698,6 +800,8 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		}
 	}
 
+	result.csiPVSource.VolumeHandle = p.volumeIdToHandle(rep.Volume.VolumeId)
+	result.csiPVSource.VolumeAttributes = volumeAttributes
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: pvName,
@@ -710,15 +814,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 			},
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
-				CSI: &v1.CSIPersistentVolumeSource{
-					Driver:                     p.driverName,
-					VolumeHandle:               p.volumeIdToHandle(rep.Volume.VolumeId),
-					VolumeAttributes:           volumeAttributes,
-					ControllerPublishSecretRef: controllerPublishSecretRef,
-					NodeStageSecretRef:         nodeStageSecretRef,
-					NodePublishSecretRef:       nodePublishSecretRef,
-					ControllerExpandSecretRef:  controllerExpandSecretRef,
-				},
+				CSI: result.csiPVSource,
 			},
 		},
 	}
@@ -737,12 +833,12 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	}
 	// Set FSType if PV is not Block Volume
 	if !util.CheckPersistentVolumeClaimModeBlock(options.PVC) {
-		pv.Spec.PersistentVolumeSource.CSI.FSType = fsType
+		pv.Spec.PersistentVolumeSource.CSI.FSType = result.fsType
 	}
 
 	klog.V(2).Infof("successfully created PV %v for PVC %v and csi volume name %v", pv.Name, options.PVC.Name, pv.Spec.CSI.VolumeHandle)
 
-	if migratedVolume {
+	if result.migratedVolume {
 		pv, err = p.translator.TranslateCSIPVToInTree(pv)
 		if err != nil {
 			klog.Warningf("failed to translate CSI PV to in-tree due to: %v. Deleting provisioned PV", err)
@@ -814,12 +910,12 @@ func removePrefixedParameters(param map[string]string) (map[string]string, error
 // currently we provide Snapshot and PVC, the default case allows the provisioner to still create a volume
 // so that an external controller can act upon it.   Additional DataSource types can be added here with
 // an appropriate implementation function
-func (p *csiProvisioner) getVolumeContentSource(ctx context.Context, options controller.ProvisionOptions) (*csi.VolumeContentSource, error) {
-	switch options.PVC.Spec.DataSource.Kind {
+func (p *csiProvisioner) getVolumeContentSource(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass) (*csi.VolumeContentSource, error) {
+	switch claim.Spec.DataSource.Kind {
 	case snapshotKind:
-		return p.getSnapshotSource(ctx, options)
+		return p.getSnapshotSource(ctx, claim, sc)
 	case pvcKind:
-		return p.getPVCSource(ctx, options)
+		return p.getPVCSource(ctx, claim, sc)
 	default:
 		// For now we shouldn't pass other things to this function, but treat it as a noop and extend as needed
 		return nil, nil
@@ -828,32 +924,32 @@ func (p *csiProvisioner) getVolumeContentSource(ctx context.Context, options con
 
 // getPVCSource verifies DataSource.Kind of type PersistentVolumeClaim, making sure that the requested PVC is available/ready
 // returns the VolumeContentSource for the requested PVC
-func (p *csiProvisioner) getPVCSource(ctx context.Context, options controller.ProvisionOptions) (*csi.VolumeContentSource, error) {
-	sourcePVC, err := p.claimLister.PersistentVolumeClaims(options.PVC.Namespace).Get(options.PVC.Spec.DataSource.Name)
+func (p *csiProvisioner) getPVCSource(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass) (*csi.VolumeContentSource, error) {
+	sourcePVC, err := p.claimLister.PersistentVolumeClaims(claim.Namespace).Get(claim.Spec.DataSource.Name)
 	if err != nil {
-		return nil, fmt.Errorf("error getting PVC %s (namespace %q) from api server: %v", options.PVC.Spec.DataSource.Name, options.PVC.Namespace, err)
+		return nil, fmt.Errorf("error getting PVC %s (namespace %q) from api server: %v", claim.Spec.DataSource.Name, claim.Namespace, err)
 	}
 	if string(sourcePVC.Status.Phase) != "Bound" {
-		return nil, fmt.Errorf("the PVC DataSource %s must have a status of Bound.  Got %v", options.PVC.Spec.DataSource.Name, sourcePVC.Status)
+		return nil, fmt.Errorf("the PVC DataSource %s must have a status of Bound.  Got %v", claim.Spec.DataSource.Name, sourcePVC.Status)
 	}
 	if sourcePVC.ObjectMeta.DeletionTimestamp != nil {
-		return nil, fmt.Errorf("the PVC DataSource %s is currently being deleted", options.PVC.Spec.DataSource.Name)
+		return nil, fmt.Errorf("the PVC DataSource %s is currently being deleted", claim.Spec.DataSource.Name)
 	}
 
 	if sourcePVC.Spec.StorageClassName == nil {
 		return nil, fmt.Errorf("the source PVC (%s) storageclass cannot be empty", sourcePVC.Name)
 	}
 
-	if options.PVC.Spec.StorageClassName == nil {
-		return nil, fmt.Errorf("the requested PVC (%s) storageclass cannot be empty", options.PVC.Name)
+	if claim.Spec.StorageClassName == nil {
+		return nil, fmt.Errorf("the requested PVC (%s) storageclass cannot be empty", claim.Name)
 	}
 
-	if *sourcePVC.Spec.StorageClassName != *options.PVC.Spec.StorageClassName {
+	if *sourcePVC.Spec.StorageClassName != *claim.Spec.StorageClassName {
 		return nil, fmt.Errorf("the source PVC and destination PVCs must be in the same storage class for cloning.  Source is in %v, but new PVC is in %v",
-			*sourcePVC.Spec.StorageClassName, *options.PVC.Spec.StorageClassName)
+			*sourcePVC.Spec.StorageClassName, *claim.Spec.StorageClassName)
 	}
 
-	capacity := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+	capacity := claim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	requestedSize := capacity.Value()
 	srcCapacity := sourcePVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	srcPVCSize := srcCapacity.Value()
@@ -876,8 +972,8 @@ func (p *csiProvisioner) getPVCSource(ctx context.Context, options controller.Pr
 		return nil, fmt.Errorf("claim in dataSource not bound or invalid")
 	}
 
-	if sourcePV.Spec.CSI.Driver != options.StorageClass.Provisioner {
-		klog.Warningf("the source volume %s for PVC %s/%s is handled by a different CSI driver than requested by StorageClass %s", sourcePVC.Spec.VolumeName, sourcePVC.Namespace, sourcePVC.Name, *options.PVC.Spec.StorageClassName)
+	if sourcePV.Spec.CSI.Driver != sc.Provisioner {
+		klog.Warningf("the source volume %s for PVC %s/%s is handled by a different CSI driver than requested by StorageClass %s", sourcePVC.Spec.VolumeName, sourcePVC.Namespace, sourcePVC.Name, *claim.Spec.StorageClassName)
 		return nil, fmt.Errorf("claim in dataSource not bound or invalid")
 	}
 
@@ -896,13 +992,13 @@ func (p *csiProvisioner) getPVCSource(ctx context.Context, options controller.Pr
 		return nil, fmt.Errorf("claim in dataSource not bound or invalid")
 	}
 
-	if options.PVC.Spec.VolumeMode == nil || *options.PVC.Spec.VolumeMode == v1.PersistentVolumeFilesystem {
+	if claim.Spec.VolumeMode == nil || *claim.Spec.VolumeMode == v1.PersistentVolumeFilesystem {
 		if sourcePV.Spec.VolumeMode != nil && *sourcePV.Spec.VolumeMode != v1.PersistentVolumeFilesystem {
 			return nil, fmt.Errorf("the source PVC and destination PVCs must have the same volume mode for cloning.  Source is Block, but new PVC requested Filesystem")
 		}
 	}
 
-	if options.PVC.Spec.VolumeMode != nil && *options.PVC.Spec.VolumeMode == v1.PersistentVolumeBlock {
+	if claim.Spec.VolumeMode != nil && *claim.Spec.VolumeMode == v1.PersistentVolumeBlock {
 		if sourcePV.Spec.VolumeMode == nil || *sourcePV.Spec.VolumeMode != v1.PersistentVolumeBlock {
 			return nil, fmt.Errorf("the source PVC and destination PVCs must have the same volume mode for cloning.  Source is Filesystem, but new PVC requested Block")
 		}
@@ -923,46 +1019,46 @@ func (p *csiProvisioner) getPVCSource(ctx context.Context, options controller.Pr
 
 // getSnapshotSource verifies DataSource.Kind of type VolumeSnapshot, making sure that the requested Snapshot is available/ready
 // returns the VolumeContentSource for the requested snapshot
-func (p *csiProvisioner) getSnapshotSource(ctx context.Context, options controller.ProvisionOptions) (*csi.VolumeContentSource, error) {
-	snapshotObj, err := p.snapshotClient.SnapshotV1beta1().VolumeSnapshots(options.PVC.Namespace).Get(ctx, options.PVC.Spec.DataSource.Name, metav1.GetOptions{})
+func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass) (*csi.VolumeContentSource, error) {
+	snapshotObj, err := p.snapshotClient.SnapshotV1beta1().VolumeSnapshots(claim.Namespace).Get(ctx, claim.Spec.DataSource.Name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting snapshot %s from api server: %v", options.PVC.Spec.DataSource.Name, err)
+		return nil, fmt.Errorf("error getting snapshot %s from api server: %v", claim.Spec.DataSource.Name, err)
 	}
 
 	if snapshotObj.ObjectMeta.DeletionTimestamp != nil {
-		return nil, fmt.Errorf("snapshot %s is currently being deleted", options.PVC.Spec.DataSource.Name)
+		return nil, fmt.Errorf("snapshot %s is currently being deleted", claim.Spec.DataSource.Name)
 	}
 	klog.V(5).Infof("VolumeSnapshot %+v", snapshotObj)
 
 	if snapshotObj.Status == nil || snapshotObj.Status.BoundVolumeSnapshotContentName == nil {
-		return nil, fmt.Errorf(snapshotNotBound, options.PVC.Spec.DataSource.Name)
+		return nil, fmt.Errorf(snapshotNotBound, claim.Spec.DataSource.Name)
 	}
 
 	snapContentObj, err := p.snapshotClient.SnapshotV1beta1().VolumeSnapshotContents().Get(ctx, *snapshotObj.Status.BoundVolumeSnapshotContentName, metav1.GetOptions{})
 
 	if err != nil {
 		klog.Warningf("error getting snapshotcontent %s for snapshot %s/%s from api server: %s", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, err)
-		return nil, fmt.Errorf(snapshotNotBound, options.PVC.Spec.DataSource.Name)
+		return nil, fmt.Errorf(snapshotNotBound, claim.Spec.DataSource.Name)
 	}
 
 	if snapContentObj.Spec.VolumeSnapshotRef.UID != snapshotObj.UID || snapContentObj.Spec.VolumeSnapshotRef.Namespace != snapshotObj.Namespace || snapContentObj.Spec.VolumeSnapshotRef.Name != snapshotObj.Name {
 		klog.Warningf("snapshotcontent %s for snapshot %s/%s is bound to a different snapshot", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name)
-		return nil, fmt.Errorf(snapshotNotBound, options.PVC.Spec.DataSource.Name)
+		return nil, fmt.Errorf(snapshotNotBound, claim.Spec.DataSource.Name)
 	}
 
-	if snapContentObj.Spec.Driver != options.StorageClass.Provisioner {
-		klog.Warningf("snapshotcontent %s for snapshot %s/%s is handled by a different CSI driver than requested by StorageClass %s", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, options.StorageClass.Name)
-		return nil, fmt.Errorf(snapshotNotBound, options.PVC.Spec.DataSource.Name)
+	if snapContentObj.Spec.Driver != sc.Provisioner {
+		klog.Warningf("snapshotcontent %s for snapshot %s/%s is handled by a different CSI driver than requested by StorageClass %s", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, sc.Name)
+		return nil, fmt.Errorf(snapshotNotBound, claim.Spec.DataSource.Name)
 	}
 
 	if snapshotObj.Status.ReadyToUse == nil || *snapshotObj.Status.ReadyToUse == false {
-		return nil, fmt.Errorf("snapshot %s is not Ready", options.PVC.Spec.DataSource.Name)
+		return nil, fmt.Errorf("snapshot %s is not Ready", claim.Spec.DataSource.Name)
 	}
 
 	klog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
 
 	if snapContentObj.Status == nil || snapContentObj.Status.SnapshotHandle == nil {
-		return nil, fmt.Errorf("snapshot handle %s is not available", options.PVC.Spec.DataSource.Name)
+		return nil, fmt.Errorf("snapshot handle %s is not available", claim.Spec.DataSource.Name)
 	}
 
 	snapshotSource := csi.VolumeContentSource_Snapshot{
@@ -973,9 +1069,9 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, options controll
 	klog.V(5).Infof("VolumeContentSource_Snapshot %+v", snapshotSource)
 
 	if snapshotObj.Status.RestoreSize != nil {
-		capacity, exists := options.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+		capacity, exists := claim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 		if !exists {
-			return nil, fmt.Errorf("error getting capacity for PVC %s when creating snapshot %s", options.PVC.Name, snapshotObj.Name)
+			return nil, fmt.Errorf("error getting capacity for PVC %s when creating snapshot %s", claim.Name, snapshotObj.Name)
 		}
 		volSizeBytes := capacity.Value()
 		klog.V(5).Infof("Requested volume size is %d and snapshot size is %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
@@ -1015,6 +1111,21 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 
 	if volume.Spec.CSI == nil {
 		return fmt.Errorf("invalid CSI PV")
+	}
+
+	// If we run on a single node, then we shouldn't delete volumes
+	// that we didn't create. In practice, that means that the volume
+	// is accessible (only!) on this node.
+	if p.nodeDeployment != nil {
+		accessible, err := VolumeIsAccessible(volume.Spec.NodeAffinity, p.nodeDeployment.NodeInfo.AccessibleTopology)
+		if err != nil {
+			return fmt.Errorf("checking volume affinity failed: %v", err)
+		}
+		if !accessible {
+			return &controller.IgnoredError{
+				Reason: "PV was not provisioned on this node",
+			}
+		}
 	}
 
 	volumeId := p.volumeHandleToId(volume.Spec.CSI.VolumeHandle)
@@ -1096,13 +1207,34 @@ func (p *csiProvisioner) SupportsBlock(ctx context.Context) bool {
 func (p *csiProvisioner) ShouldProvision(ctx context.Context, claim *v1.PersistentVolumeClaim) bool {
 	provisioner := claim.Annotations[annStorageProvisioner]
 	migratedTo := claim.Annotations[annMigratedTo]
-	if provisioner == p.driverName || migratedTo == p.driverName {
-		// Either CSI volume is requested or in-tree volume is migrated to CSI in PV controller
-		// and therefore PVC has CSI annotation.
-		return true
+	if provisioner != p.driverName && migratedTo != p.driverName {
+		// Non-migrated in-tree volume is requested.
+		return false
 	}
-	// Non-migrated in-tree volume is requested.
-	return false
+	// Either CSI volume is requested or in-tree volume is migrated to CSI in PV controller
+	// and therefore PVC has CSI annotation.
+	//
+	// But before we start provisioning, check that we are (or can
+	// become) the owner if there are multiple provisioner instances.
+	// That we do this here is crucial because if we return false here,
+	// the claim will be ignored without logging an event for it.
+	// We don't want each provisioner instance to log events for the same
+	// claim unless they really need to do some work for it.
+	owned, err := p.checkNode(ctx, claim, nil, "should provision")
+	if err == nil {
+		if !owned {
+			return false
+		}
+	} else {
+		// This is unexpected. Here we can only log it and let
+		// a provisioning attempt start. If that still fails,
+		// a proper event will be created.
+		klog.V(2).Infof("trying to become an owner of PVC %s/%s in advance failed, will try again during provisioning: %s",
+			claim.Namespace, claim.Name, err)
+	}
+
+	// Start provisioning.
+	return true
 }
 
 //TODO use a unique volume handle from and to Id
@@ -1112,6 +1244,238 @@ func (p *csiProvisioner) volumeIdToHandle(id string) string {
 
 func (p *csiProvisioner) volumeHandleToId(handle string) string {
 	return handle
+}
+
+// checkNode optionally checks whether the PVC is assigned to the current node.
+// If the PVC uses immediate binding, it will try to take the PVC for provisioning
+// on the current node. Returns true if provisioning can proceed, an error
+// in case of a failure that prevented checking.
+func (p *csiProvisioner) checkNode(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass, caller string) (provision bool, err error) {
+	if p.nodeDeployment == nil {
+		return true, nil
+	}
+
+	var selectedNode string
+	if claim.Annotations != nil {
+		selectedNode = claim.Annotations[annSelectedNode]
+	}
+	switch selectedNode {
+	case "":
+		logger := klog.V(5)
+		if logger.Enabled() {
+			logger.Infof("%s: checking node for PVC %s/%s with resource version %s", caller, claim.Namespace, claim.Name, claim.ResourceVersion)
+			defer func() {
+				logger.Infof("%s: done checking node for PVC %s/%s with resource version %s: provision %v, err %v", caller, claim.Namespace, claim.Name, claim.ResourceVersion, provision, err)
+			}()
+		}
+
+		if sc == nil {
+			var err error
+			sc, err = p.scLister.Get(*claim.Spec.StorageClassName)
+			if err != nil {
+				return false, err
+			}
+		}
+		if sc.VolumeBindingMode == nil ||
+			*sc.VolumeBindingMode != storagev1.VolumeBindingImmediate ||
+			!p.nodeDeployment.ImmediateBinding {
+			return false, nil
+		}
+
+		// Try to select the current node if there is a chance of it
+		// being created there, i.e. there is currently enough free space (checked in becomeOwner).
+		//
+		// If later volume provisioning fails on this node, the annotation will be unset and node
+		// selection will happen again. If no other node picks up the volume, then the PVC remains
+		// in the queue and this check will be repeated from time to time.
+		//
+		// A lot of different external-provisioner instances will try to do this at the same time.
+		// To avoid the thundering herd problem, we sleep in becomeOwner for a short random amount of time
+		// (for new PVCs) or exponentially increasing time (for PVCs were we already had a conflict).
+		if err := p.nodeDeployment.becomeOwner(ctx, p, claim); err != nil {
+			return false, fmt.Errorf("PVC %s/%s: %v", claim.Namespace, claim.Name, err)
+		}
+
+		// We are now either the owner or someone else is. We'll check when the updated PVC
+		// enters the workqueue and gets processed by sig-storage-lib-external-provisioner.
+		return false, nil
+	case p.nodeDeployment.NodeName:
+		// Our node is selected.
+		return true, nil
+	default:
+		// Some other node is selected, ignore it.
+		return false, nil
+	}
+}
+
+func (p *csiProvisioner) checkCapacity(ctx context.Context, claim *v1.PersistentVolumeClaim, selectedNodeName string) (bool, error) {
+	capacity := claim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+	volSizeBytes := capacity.Value()
+	if volSizeBytes == 0 {
+		// Nothing to check.
+		return true, nil
+	}
+
+	if claim.Spec.StorageClassName == nil {
+		return false, errors.New("empty storage class name")
+	}
+	sc, err := p.scLister.Get(*claim.Spec.StorageClassName)
+	if err != nil {
+		return false, err
+	}
+
+	node, err := p.nodeLister.Get(selectedNodeName)
+	if err != nil {
+		return false, err
+	}
+
+	result, _, err := p.prepareProvision(ctx, claim, sc, node)
+	if err != nil {
+		return false, err
+	}
+
+	// In practice, we expect exactly one entry here once a node
+	// has been selected. But we have to be prepared for more than
+	// one (=> check all, success if there is at least one) and
+	// none (no node selected => check once without topology).
+	topologies := []*csi.Topology{nil}
+	if result.req.AccessibilityRequirements != nil && len(result.req.AccessibilityRequirements.Requisite) > 0 {
+		topologies = result.req.AccessibilityRequirements.Requisite
+	}
+	for _, topology := range topologies {
+		req := &csi.GetCapacityRequest{
+			VolumeCapabilities: result.req.VolumeCapabilities,
+			Parameters:         result.req.Parameters,
+			AccessibleTopology: topology,
+		}
+		klog.V(5).Infof("GetCapacityRequest %+v", req)
+		resp, err := p.csiClient.GetCapacity(ctx, req)
+		if err != nil {
+			return false, fmt.Errorf("GetCapacity: %v", err)
+		}
+		if volSizeBytes <= resp.AvailableCapacity {
+			// Enough capacity at the moment.
+			return true, nil
+		}
+	}
+
+	// Currently not enough capacity anywhere.
+	return false, nil
+}
+
+// becomeOwner updates the PVC with the current node as selected node.
+// Returns an error if something unexpectedly failed, otherwise an updated PVC with
+// the current node selected or nil if not the owner.
+func (nc *internalNodeDeployment) becomeOwner(ctx context.Context, p *csiProvisioner, claim *v1.PersistentVolumeClaim) error {
+	requeues := nc.rateLimiter.NumRequeues(claim.UID)
+	delay := nc.rateLimiter.When(claim.UID)
+	klog.V(5).Infof("will try to become owner of PVC %s/%s with resource version %s in %s (attempt #%d)", claim.Namespace, claim.Name, claim.ResourceVersion, delay, requeues)
+	sleep, cancel := context.WithTimeout(ctx, delay)
+	defer cancel()
+	// When the base delay is high we also should check less often.
+	// With multiple provisioners running in parallel, it becomes more
+	// likely that one of them became the owner quickly, so we don't
+	// want to check too slowly either.
+	pollInterval := nc.BaseDelay / 100
+	if pollInterval < 10*time.Millisecond {
+		pollInterval = 10 * time.Millisecond
+	}
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	check := func() (bool, *v1.PersistentVolumeClaim, error) {
+		current, err := nc.ClaimInformer.Lister().PersistentVolumeClaims(claim.Namespace).Get(claim.Name)
+		if err != nil {
+			return false, nil, fmt.Errorf("PVC not found: %v", err)
+		}
+		if claim.UID != current.UID {
+			return false, nil, errors.New("PVC was replaced")
+		}
+		if current.Annotations != nil && current.Annotations[annSelectedNode] != "" && current.Annotations[annSelectedNode] != nc.NodeName {
+			return true, current, nil
+		}
+		return false, current, nil
+	}
+	var stop bool
+	var current *v1.PersistentVolumeClaim
+	var err error
+loop:
+	for {
+		select {
+		case <-ctx.Done():
+			return errors.New("timed out waiting to become PVC owner")
+		case <-sleep.Done():
+			stop, current, err = check()
+			break loop
+		case <-ticker.C:
+			// Abort the waiting early if we know that someone else is the owner.
+			stop, current, err = check()
+			if err != nil || stop {
+				break loop
+			}
+		}
+	}
+	if err != nil {
+		return err
+	}
+	if stop {
+		// Some other instance was faster and we don't need to provision for
+		// this PVC. If the PVC needs to be rescheduled, we start the delay from scratch.
+		nc.rateLimiter.Forget(claim.UID)
+		klog.V(5).Infof("did not become owner of PVC %s/%s with resource revision %s, now owned by %s with resource revision %s",
+			claim.Namespace, claim.Name, claim.ResourceVersion,
+			current.Annotations[annSelectedNode], current.ResourceVersion)
+		return nil
+	}
+
+	// Check capacity as late as possible before trying to become the owner, because that is a
+	// relatively expensive operation.
+	//
+	// The exact same parameters are computed here as if we were provisioning. If a precondition
+	// is violated, like "storage class does not exist", then we have two options:
+	// - silently ignore the problem, but if all instances do that, the problem is not surfaced
+	//   to the user
+	// - try to become the owner and let provisioning start, which then will probably
+	//   fail the same way, but then has a chance to inform the user via events
+	//
+	// We do the latter.
+	hasCapacity, err := p.checkCapacity(ctx, claim, p.nodeDeployment.NodeName)
+	if err != nil {
+		klog.V(3).Infof("proceeding with becoming owner although the capacity check failed: %v", err)
+	} else if !hasCapacity {
+		// Don't try to provision.
+		klog.V(5).Infof("not enough capacity for PVC %s/%s with resource revision %s", claim.Namespace, claim.Name, claim.ResourceVersion)
+		return nil
+	}
+
+	// Update PVC with our node as selected node if necessary.
+	current = current.DeepCopy()
+	if current.Annotations == nil {
+		current.Annotations = map[string]string{}
+	}
+	if current.Annotations[annSelectedNode] == nc.NodeName {
+		// A mere sanity check. Should not happen.
+		klog.V(5).Infof("already owner of PVC %s/%s with updated resource version %s", current.Namespace, current.Name, current.ResourceVersion)
+		return nil
+	}
+	current.Annotations[annSelectedNode] = nc.NodeName
+	klog.V(5).Infof("trying to become owner of PVC %s/%s with resource version %s now", current.Namespace, current.Name, current.ResourceVersion)
+	current, err = p.client.CoreV1().PersistentVolumeClaims(current.Namespace).Update(ctx, current, metav1.UpdateOptions{})
+	if err != nil {
+		// Next attempt will use a longer delay and most likely
+		// stop quickly once we see who owns the PVC now.
+		if apierrors.IsConflict(err) {
+			// Lost the race or some other concurrent modification. Repeat the attempt.
+			klog.V(3).Infof("conflict during PVC %s/%s update, will try again", claim.Namespace, claim.Name)
+			return nc.becomeOwner(ctx, p, claim)
+		}
+		// Some unexpected error. Report it.
+		return fmt.Errorf("selecting node %q for PVC failed: %v", nc.NodeName, err)
+	}
+
+	// Successfully became owner. Future delays will be smaller again.
+	nc.rateLimiter.Forget(claim.UID)
+	klog.V(5).Infof("became owner of PVC %s/%s with updated resource version %s", current.Namespace, current.Name, current.ResourceVersion)
+	return nil
 }
 
 // verifyAndGetSecretNameAndNamespaceTemplate gets the values (templates) associated

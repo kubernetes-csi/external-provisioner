@@ -29,11 +29,14 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	flag "github.com/spf13/pflag"
+	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	v1 "k8s.io/client-go/listers/core/v1"
+	listersv1 "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -90,6 +93,11 @@ var (
 	capacityPollInterval     = flag.Duration("capacity-poll-interval", time.Minute, "How long the external-provisioner waits before checking for storage capacity changes.")
 	capacityOwnerrefLevel    = flag.Int("capacity-ownerref-level", 1, "The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc.")
 
+	enableNodeDeployment           = flag.Bool("node-deployment", false, "Enables deploying the external-provisioner together with a CSI driver on nodes to manage node-local volumes.")
+	nodeDeploymentImmediateBinding = flag.Bool("node-deployment-immediate-binding", true, "Determines whether immediate binding is supported when deployed on each node.")
+	nodeDeploymentBaseDelay        = flag.Duration("node-deployment-base-delay", 20*time.Second, "Determines how long the external-provisioner sleeps initially before trying to own a PVC with immediate binding.")
+	nodeDeploymentMaxDelay         = flag.Duration("node-deployment-max-delay", 60*time.Second, "Determines how long the external-provisioner sleeps at most before trying to own a PVC with immediate binding.")
+
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
 	version             = "unknown"
@@ -114,6 +122,11 @@ func main() {
 
 	if err := utilfeature.DefaultMutableFeatureGate.SetFromMap(featureGates); err != nil {
 		klog.Fatal(err)
+	}
+
+	node := os.Getenv("NODE_NAME")
+	if *enableNodeDeployment && node == "" {
+		klog.Fatal("The NODE_NAME environment variable must be set when using --enable-node-deployment.")
 	}
 
 	if *showVersion {
@@ -214,6 +227,9 @@ func main() {
 	// Generate a unique ID for this provisioner
 	timeStamp := time.Now().UnixNano() / int64(time.Millisecond)
 	identity := strconv.FormatInt(timeStamp, 10) + "-" + strconv.Itoa(rand.Intn(10000)) + "-" + provisionerName
+	if *enableNodeDeployment {
+		identity = identity + "-" + node
+	}
 
 	factory := informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
 	var factoryForNamespace informers.SharedInformerFactory // usually nil, only used for CSIStorageCapacity
@@ -224,7 +240,6 @@ func main() {
 	scLister := factory.Storage().V1().StorageClasses().Lister()
 	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
 
-	var csiNodeLister storagelistersv1.CSINodeLister
 	var vaLister storagelistersv1.VolumeAttachmentLister
 	if controllerCapabilities[csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME] {
 		klog.Info("CSI driver supports PUBLISH_UNPUBLISH_VOLUME, watching VolumeAttachments")
@@ -232,10 +247,69 @@ func main() {
 	} else {
 		klog.Info("CSI driver does not support PUBLISH_UNPUBLISH_VOLUME, not watching VolumeAttachments")
 	}
-	var nodeLister v1.NodeLister
+
+	var nodeDeployment *ctrl.NodeDeployment
+	if *enableNodeDeployment {
+		nodeDeployment = &ctrl.NodeDeployment{
+			NodeName:         node,
+			ClaimInformer:    factory.Core().V1().PersistentVolumeClaims(),
+			ImmediateBinding: *nodeDeploymentImmediateBinding,
+			BaseDelay:        *nodeDeploymentBaseDelay,
+			MaxDelay:         *nodeDeploymentMaxDelay,
+		}
+		nodeInfo, err := ctrl.GetNodeInfo(grpcClient, *operationTimeout)
+		if err != nil {
+			klog.Fatalf("Failed to get node info from CSI driver: %v", err)
+		}
+		nodeDeployment.NodeInfo = *nodeInfo
+	}
+
+	var nodeLister listersv1.NodeLister
+	var csiNodeLister storagelistersv1.CSINodeLister
 	if ctrl.SupportsTopology(pluginCapabilities) {
-		csiNodeLister = factory.Storage().V1().CSINodes().Lister()
-		nodeLister = factory.Core().V1().Nodes().Lister()
+		if nodeDeployment != nil {
+			// Avoid watching in favor of fake, static objects. This is particularly relevant for
+			// Node objects, which can generate significant traffic.
+			csiNode := &storagev1.CSINode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeDeployment.NodeName,
+				},
+				Spec: storagev1.CSINodeSpec{
+					Drivers: []storagev1.CSINodeDriver{
+						{
+							Name:   provisionerName,
+							NodeID: nodeDeployment.NodeInfo.NodeId,
+						},
+					},
+				},
+			}
+			node := &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: nodeDeployment.NodeName,
+				},
+			}
+			if nodeDeployment.NodeInfo.AccessibleTopology != nil {
+				for key := range nodeDeployment.NodeInfo.AccessibleTopology.Segments {
+					csiNode.Spec.Drivers[0].TopologyKeys = append(csiNode.Spec.Drivers[0].TopologyKeys, key)
+				}
+				node.Labels = nodeDeployment.NodeInfo.AccessibleTopology.Segments
+			}
+			klog.Infof("using local topology with Node = %+v and CSINode = %+v", node, csiNode)
+
+			// We make those fake objects available to the topology code via informers which
+			// never change.
+			stoppedFactory := informers.NewSharedInformerFactory(clientset, 1000*time.Hour)
+			csiNodes := stoppedFactory.Storage().V1().CSINodes()
+			nodes := stoppedFactory.Core().V1().Nodes()
+			csiNodes.Informer().GetStore().Add(csiNode)
+			nodes.Informer().GetStore().Add(node)
+			csiNodeLister = csiNodes.Lister()
+			nodeLister = nodes.Lister()
+
+		} else {
+			csiNodeLister = factory.Storage().V1().CSINodes().Lister()
+			nodeLister = factory.Core().V1().Nodes().Lister()
+		}
 	}
 
 	// -------------------------------
@@ -292,6 +366,7 @@ func main() {
 		vaLister,
 		*extraCreateMetadata,
 		*defaultFSType,
+		nodeDeployment,
 	)
 
 	provisionController = controller.NewProvisionController(
@@ -311,7 +386,8 @@ func main() {
 	)
 
 	var capacityController *capacity.Controller
-	if *capacityMode == capacity.DeploymentModeCentral {
+	if *capacityMode == capacity.DeploymentModeCentral ||
+		*capacityMode == capacity.DeploymentModeLocal {
 		podName := os.Getenv("POD_NAME")
 		namespace := os.Getenv("POD_NAMESPACE")
 		if podName == "" || namespace == "" {
@@ -328,13 +404,28 @@ func main() {
 		}
 		klog.Infof("using %s/%s %s as owner of CSIStorageCapacity objects", controller.APIVersion, controller.Kind, controller.Name)
 
-		topologyInformer := topology.NewNodeTopology(
-			provisionerName,
-			clientset,
-			factory.Core().V1().Nodes(),
-			factory.Storage().V1().CSINodes(),
-			workqueue.NewNamedRateLimitingQueue(rateLimiter, "csitopology"),
-		)
+		var topologyInformer topology.Informer
+		if *capacityMode == capacity.DeploymentModeCentral {
+			topologyInformer = topology.NewNodeTopology(
+				provisionerName,
+				clientset,
+				factory.Core().V1().Nodes(),
+				factory.Storage().V1().CSINodes(),
+				workqueue.NewNamedRateLimitingQueue(rateLimiter, "csitopology"),
+			)
+		} else {
+			var segment topology.Segment
+			if nodeDeployment == nil {
+				klog.Fatal("--capacity-controller-deployment-mode=local is only valid in combination with --node-deployment")
+			}
+			if nodeDeployment.NodeInfo.AccessibleTopology != nil {
+				for key, value := range nodeDeployment.NodeInfo.AccessibleTopology.Segments {
+					segment = append(segment, topology.SegmentEntry{Key: key, Value: value})
+				}
+			}
+			klog.Infof("producing CSIStorageCapacity objects with fixed topology segment %s", segment)
+			topologyInformer = topology.NewFixedNodeTopology(&segment)
+		}
 
 		// We only need objects from our own namespace. The normal factory would give
 		// us an informer for the entire cluster.

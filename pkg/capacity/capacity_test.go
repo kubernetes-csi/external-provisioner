@@ -88,22 +88,20 @@ var (
 func TestController(t *testing.T) {
 	testcases := map[string]struct {
 		immediateBinding   bool
-		topology           mockTopology
+		topology           *topology.Mock
 		storage            mockCapacity
 		initialSCs         []testSC
 		initialCapacities  []testCapacity
 		expectedCapacities []testCapacity
 		modify             func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) (modifiedExpected []testCapacity, err error)
 		capacityChange     func(ctx context.Context, storage *mockCapacity, expected []testCapacity) (modifiedExpected []testCapacity)
-		topologyChange     func(ctx context.Context, topology *mockTopology, expected []testCapacity) (modifiedExpected []testCapacity)
+		topologyChange     func(ctx context.Context, topology *topology.Mock, expected []testCapacity) (modifiedExpected []testCapacity)
 	}{
 		"empty": {
 			expectedCapacities: []testCapacity{},
 		},
 		"one segment": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology:           topology.NewMock(&layer0),
 			expectedCapacities: []testCapacity{},
 		},
 		"one class": {
@@ -116,9 +114,7 @@ func TestController(t *testing.T) {
 			expectedCapacities: []testCapacity{},
 		},
 		"one capacity object": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -140,9 +136,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"ignore SC with immediate binding": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -159,9 +153,7 @@ func TestController(t *testing.T) {
 		},
 		"support SC with immediate binding": {
 			immediateBinding: true,
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology:         topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -184,9 +176,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"reuse one capacity object, no changes": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -218,9 +208,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"reuse one capacity object, update capacity": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -252,9 +240,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"obsolete object, missing SC": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -332,12 +318,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"two segments, two classes, four objects missing": {
-			topology: mockTopology{
-				segments: []*topology.Segment{
-					&layer0,
-					&layer0other,
-				},
-			},
+			topology: topology.NewMock(&layer0, &layer0other),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -386,12 +367,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"two segments, two classes, four objects updated": {
-			topology: mockTopology{
-				segments: []*topology.Segment{
-					&layer0,
-					&layer0other,
-				},
-			},
+			topology: topology.NewMock(&layer0, &layer0other),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -470,12 +446,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"two segments, two classes, two added, two removed": {
-			topology: mockTopology{
-				segments: []*topology.Segment{
-					&layer0,
-					&layer0other,
-				},
-			},
+			topology: topology.NewMock(&layer0, &layer0other),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -552,9 +523,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"fix modified capacity": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -591,9 +560,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"re-create capacity": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -638,9 +605,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"ignore capacity after owner change": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -688,9 +653,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"delete and recreate by someone": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -734,9 +697,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"storage capacity change": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -766,7 +727,6 @@ func TestController(t *testing.T) {
 			},
 		},
 		"add storage topology segment": {
-			topology: mockTopology{},
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -790,8 +750,8 @@ func TestController(t *testing.T) {
 				},
 			},
 			expectedCapacities: nil,
-			topologyChange: func(ctx context.Context, topo *mockTopology, expected []testCapacity) []testCapacity {
-				topo.modify([]*topology.Segment{&layer0} /* added */, nil /* removed */)
+			topologyChange: func(ctx context.Context, topo *topology.Mock, expected []testCapacity) []testCapacity {
+				topo.Modify([]*topology.Segment{&layer0} /* added */, nil /* removed */)
 				return append(expected, testCapacity{
 					uid:              "CSISC-UID-1",
 					resourceVersion:  csiscRev + "0",
@@ -803,7 +763,6 @@ func TestController(t *testing.T) {
 		},
 		"add storage topology segment, immediate binding": {
 			immediateBinding: true,
-			topology:         mockTopology{},
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -822,8 +781,8 @@ func TestController(t *testing.T) {
 				},
 			},
 			expectedCapacities: nil,
-			topologyChange: func(ctx context.Context, topo *mockTopology, expected []testCapacity) []testCapacity {
-				topo.modify([]*topology.Segment{&layer0} /* added */, nil /* removed */)
+			topologyChange: func(ctx context.Context, topo *topology.Mock, expected []testCapacity) []testCapacity {
+				topo.Modify([]*topology.Segment{&layer0} /* added */, nil /* removed */)
 				// We don't check the UID here because we don't want to fail when
 				// ordering of storage classes isn't such that the "immediate-sc" is seen first.
 				return append(expected, testCapacity{
@@ -842,9 +801,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		"remove storage topology segment": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -871,15 +828,13 @@ func TestController(t *testing.T) {
 					quantity:         "1Gi",
 				},
 			},
-			topologyChange: func(ctx context.Context, topo *mockTopology, expected []testCapacity) []testCapacity {
-				topo.modify(nil /* added */, topo.segments[:] /* removed */)
+			topologyChange: func(ctx context.Context, topo *topology.Mock, expected []testCapacity) []testCapacity {
+				topo.Modify(nil /* added */, topo.List()[:] /* removed */)
 				return nil
 			},
 		},
 		"add and remove storage topology segment": {
-			topology: mockTopology{
-				segments: []*topology.Segment{&layer0},
-			},
+			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
 				capacity: map[string]interface{}{
 					// This matches layer0.
@@ -907,9 +862,9 @@ func TestController(t *testing.T) {
 					quantity:         "1Gi",
 				},
 			},
-			topologyChange: func(ctx context.Context, topo *mockTopology, expected []testCapacity) []testCapacity {
-				topo.modify([]*topology.Segment{&layer0other}, /* added */
-					topo.segments[:] /* removed */)
+			topologyChange: func(ctx context.Context, topo *topology.Mock, expected []testCapacity) []testCapacity {
+				topo.Modify([]*topology.Segment{&layer0other}, /* added */
+					topo.List()[:] /* removed */)
 				return []testCapacity{
 					{
 						uid:              "CSISC-UID-2",
@@ -937,7 +892,11 @@ func TestController(t *testing.T) {
 			clientSet := fakeclientset.NewSimpleClientset(objects...)
 			clientSet.PrependReactor("create", "csistoragecapacities", createCSIStorageCapacityReactor())
 			clientSet.PrependReactor("update", "csistoragecapacities", updateCSIStorageCapacityReactor())
-			c := fakeController(ctx, clientSet, &tc.storage, &tc.topology, tc.immediateBinding)
+			topo := tc.topology
+			if topo == nil {
+				topo = topology.NewMock()
+			}
+			c := fakeController(ctx, clientSet, &tc.storage, topo, tc.immediateBinding)
 			for _, testCapacity := range tc.initialCapacities {
 				capacity := makeCapacity(testCapacity)
 				_, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
@@ -979,7 +938,7 @@ func TestController(t *testing.T) {
 			}
 			if tc.topologyChange != nil {
 				klog.Info("modifying topology")
-				expectedCapacities = tc.topologyChange(ctx, &tc.topology, expectedCapacities)
+				expectedCapacities = tc.topologyChange(ctx, topo, expectedCapacities)
 				if err := validateCapacitiesEventually(ctx, c, clientSet, expectedCapacities); err != nil {
 					t.Fatalf("modified capacity: %v", err)
 				}
@@ -1240,57 +1199,6 @@ func getCapacity(capacity map[string]interface{}, segments map[string]string, la
 		return result, nil
 	}
 	return "", nil
-}
-
-// mockTopology simulates a driver installation on different nodes.
-type mockTopology struct {
-	segments  []*topology.Segment
-	callbacks []topology.Callback
-}
-
-func (mt *mockTopology) AddCallback(cb topology.Callback) {
-	mt.callbacks = append(mt.callbacks, cb)
-	cb(mt.segments, nil)
-}
-
-func (mt *mockTopology) List() []*topology.Segment {
-	return mt.segments
-}
-
-func (mt *mockTopology) Run(ctx context.Context) {
-}
-
-func (mt *mockTopology) HasSynced() bool {
-	return true
-}
-
-func (mt *mockTopology) modify(add, remove []*topology.Segment) {
-	var added, removed []*topology.Segment
-	for _, segment := range add {
-		if mt.segmentIndex(segment) == -1 {
-			added = append(added, segment)
-			mt.segments = append(mt.segments, segment)
-		}
-	}
-	for _, segment := range remove {
-		index := mt.segmentIndex(segment)
-		if index != -1 {
-			removed = append(removed, segment)
-			mt.segments = append(mt.segments[0:index], mt.segments[index+1:]...)
-		}
-	}
-	for _, cb := range mt.callbacks {
-		cb(added, removed)
-	}
-}
-
-func (mt *mockTopology) segmentIndex(segment *topology.Segment) int {
-	for i, otherSegment := range mt.segments {
-		if otherSegment == segment {
-			return i
-		}
-	}
-	return -1
 }
 
 type testCapacity struct {
