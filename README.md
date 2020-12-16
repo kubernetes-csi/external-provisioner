@@ -107,29 +107,8 @@ See the [storage capacity section](#capacity-support) below for details.
 
 External-provisioner interacts with Kubernetes by watching PVCs and
 PVs and implementing the [external provisioner
-protocol](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/storage/container-storage-interface.md#provisioning-and-deleting). The
-following diagram illustrates that, starting with the creation of a
-PVC by a user and ending with the removal of all resources.
-
-![](doc/provisioning.png)
-
-When an object is marked for deletion, actual deletion is delayed
-until the controller checks the necessary preconditions for deletion
-and removes its finalizer.
-
-Failures are handled by retrying, which is only shown here for
-`CreateVolume` calls because it is a bit special: for late binding, a
-CSI driver can trigger the re-scheduling of a pod by returning the
-special `ResourceExhausted` gRPC status code.
-
-Note that a timed-out `CreateVolume` call does not change any state
-and will simply get repeated. If the CSI driver has completed volume
-creation in the meantime, it must recognize the repeated call and
-return information about it ("idempotency"). All gRPC calls have to be
-idempotent.
-
-How the selected node is communicated to the CSI driver is explained
-in the next section.
+protocol](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/storage/container-storage-interface.md#provisioning-and-deleting).
+The [design document](./docs/design.md) explains this in more detail.
 
 ### Topology support
 When `Topology` feature is enabled and the driver specifies `VOLUME_ACCESSIBILITY_CONSTRAINTS` in its plugin capabilities, external-provisioner prepares `CreateVolumeRequest.AccessibilityRequirements` while calling `Controller.CreateVolume`. The driver has to consider these topology constraints while creating the volume. Below table shows how these `AccessibilityRequirements` are prepared:
