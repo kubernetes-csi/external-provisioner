@@ -361,14 +361,14 @@ func TestBytesToQuantity(t *testing.T) {
 		quantString string
 	}{
 		{
-			"Gibibyte rounding up from above .5",
+			"Gibibyte that cannot be put into any nice format without loss precision",
 			5.56 * 1024 * 1024 * 1024,
-			"6Gi",
+			"5970004541",
 		},
 		{
-			"Gibibyte rounding up from below .5",
-			5.23 * 1024 * 1024 * 1024,
-			"6Gi",
+			"Gibibyte that can be parsed nicer",
+			5.5 * 1024 * 1024 * 1024,
+			"5632Mi",
 		},
 		{
 			"Gibibyte exact",
@@ -376,20 +376,20 @@ func TestBytesToQuantity(t *testing.T) {
 			"5Gi",
 		},
 		{
-			"Mebibyte rounding up from below .5",
+			"Mebibyte that cannot be parsed nicer",
 			5.23 * 1024 * 1024,
-			"6Mi",
+			"5484052",
 		},
 		{
-			"Mebibyte/Gibibyte barrier (Quantity type rounds this)",
-			// (1024 * 1024 * 1024) - 1
-			1073741823,
-			"1Gi",
+			"Kibibyte that can be parsed nicer",
+			// (100 * 1024)
+			102400,
+			"100Ki",
 		},
 	}
 
 	for _, test := range tests {
-		q := bytesToGiQuantity(int64(test.bytes))
+		q := bytesToQuantity(int64(test.bytes))
 		if q.String() != test.quantString {
 			t.Errorf("test: %s, expected: %v, got: %v", test.testName, test.quantString, q.String())
 		}
@@ -907,7 +907,7 @@ func TestFSTypeProvision(t *testing.T) {
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -935,7 +935,7 @@ func TestFSTypeProvision(t *testing.T) {
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -966,7 +966,7 @@ func TestFSTypeProvision(t *testing.T) {
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -996,7 +996,7 @@ func TestFSTypeProvision(t *testing.T) {
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -1049,7 +1049,7 @@ func TestProvision(t *testing.T) {
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -1078,7 +1078,7 @@ func TestProvision(t *testing.T) {
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -1133,7 +1133,7 @@ func TestProvision(t *testing.T) {
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -1179,7 +1179,7 @@ func TestProvision(t *testing.T) {
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteMany},
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -1231,7 +1231,7 @@ func TestProvision(t *testing.T) {
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany},
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -1283,7 +1283,7 @@ func TestProvision(t *testing.T) {
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -1335,7 +1335,7 @@ func TestProvision(t *testing.T) {
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany, v1.ReadWriteOnce},
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -1378,7 +1378,7 @@ func TestProvision(t *testing.T) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				CSIPVS: &v1.CSIPersistentVolumeSource{
@@ -1429,7 +1429,7 @@ func TestProvision(t *testing.T) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				CSIPVS: &v1.CSIPersistentVolumeSource{
@@ -1480,7 +1480,7 @@ func TestProvision(t *testing.T) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				CSIPVS: &v1.CSIPersistentVolumeSource{
@@ -1522,7 +1522,7 @@ func TestProvision(t *testing.T) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				VolumeMode:    &volumeModeFileSystem,
@@ -1549,7 +1549,7 @@ func TestProvision(t *testing.T) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				VolumeMode:    &volumeModeBlock,
@@ -1673,7 +1673,7 @@ func TestProvision(t *testing.T) {
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
 				MountOptions:  []string{"foo=bar", "baz=qux"},
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -1780,7 +1780,7 @@ func TestProvision(t *testing.T) {
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -1847,7 +1847,7 @@ func TestProvision(t *testing.T) {
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -1926,7 +1926,7 @@ func TestProvision(t *testing.T) {
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -2320,7 +2320,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",
@@ -3766,7 +3766,7 @@ func TestProvisionFromPVC(t *testing.T) {
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
 				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(requestedBytes),
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
 				CSIPVS: &v1.CSIPersistentVolumeSource{
 					Driver:       "test-driver",

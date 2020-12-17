@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"strings"
 	"time"
@@ -810,7 +809,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 			AccessModes:  options.PVC.Spec.AccessModes,
 			MountOptions: options.StorageClass.MountOptions,
 			Capacity: v1.ResourceList{
-				v1.ResourceName(v1.ResourceStorage): bytesToGiQuantity(respCap),
+				v1.ResourceName(v1.ResourceStorage): bytesToQuantity(respCap),
 			},
 			// TODO wait for CSI VolumeSource API
 			PersistentVolumeSource: v1.PersistentVolumeSource{
@@ -1641,24 +1640,9 @@ func getCredentials(ctx context.Context, k8s kubernetes.Interface, ref *v1.Secre
 	return credentials, nil
 }
 
-func bytesToGiQuantity(bytes int64) resource.Quantity {
-	var num int64
-	var floatBytes, MiB, GiB float64
-	var suffix string
-	floatBytes = float64(bytes)
-	MiB = 1024 * 1024
-	GiB = MiB * 1024
-	// Need to give Quantity nice whole numbers or else it
-	// sometimes spits out the value in milibytes. We round up.
-	if floatBytes < GiB {
-		num = int64(math.Ceil(floatBytes / MiB))
-		suffix = "Mi"
-	} else {
-		num = int64(math.Ceil(floatBytes / GiB))
-		suffix = "Gi"
-	}
-	stringQuantity := fmt.Sprintf("%v%s", num, suffix)
-	return resource.MustParse(stringQuantity)
+func bytesToQuantity(bytes int64) resource.Quantity {
+	quantity := resource.NewQuantity(bytes, resource.BinarySI)
+	return *quantity
 }
 
 func deprecationWarning(deprecatedParam, newParam, removalVersion string) string {
