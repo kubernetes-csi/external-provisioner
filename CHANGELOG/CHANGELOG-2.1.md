@@ -6,6 +6,9 @@
 
 ## Changes by Kind
 
+### Deprecations
+- `metrics-address` flag is deprecated and replaced by `http-endpoint`, which enables handlers from both metrics manager and leader election health check. ([#537](https://github.com/kubernetes-csi/external-provisioner/pull/537), [@verult](https://github.com/verult))
+
 ### API Change
 
 - -capacity-controller-deployment-mode gets replaced with -enable-capacity ([#540](https://github.com/kubernetes-csi/external-provisioner/pull/540), [@pohly](https://github.com/pohly))
@@ -14,10 +17,9 @@
 
 - Added leader election health check at the metrics port + path "/healthz/leader-election".
   - klog/v2 is used for logging
-  - process_start_time metric is now reported
-  - `metrics-address` flag is deprecated and replaced by `http-endpoint`, which enables handlers from both metrics manager and leader election health check. ([#537](https://github.com/kubernetes-csi/external-provisioner/pull/537), [@verult](https://github.com/verult))
+  - process_start_time metric is now reported ([#537](https://github.com/kubernetes-csi/external-provisioner/pull/537), [@verult](https://github.com/verult))
 - External-provisioner can be deployed alongside a CSI driver on each node to manage local volumes. ([#524](https://github.com/kubernetes-csi/external-provisioner/pull/524), [@pohly](https://github.com/pohly))
-- Add `--immediate-topology` to controls what topology information is passed to `CreateVolumeRequest.AccessibilityRequirements` ([#501](https://github.com/kubernetes-csi/external-provisioner/pull/501), [@pohly](https://github.com/pohly))
+- Add `--immediate-topology` to control if topology information is passed to `CreateVolumeRequest.AccessibilityRequirements` during immediate binding. ([#501](https://github.com/kubernetes-csi/external-provisioner/pull/501), [@pohly](https://github.com/pohly))
 
 ### Bug or Regression
 
