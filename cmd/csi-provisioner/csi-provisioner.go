@@ -180,7 +180,10 @@ func main() {
 		klog.Fatalf("Error getting server version: %v", err)
 	}
 
-	metricsManager := metrics.NewCSIMetricsManager("" /* driverName */)
+	metricsManager := metrics.NewCSIMetricsManagerWithOptions(
+		"", /* driverName */
+		metrics.WithLabelNames("is_migrated"),
+	)
 
 	grpcClient, err := ctrl.Connect(*csiEndpoint, metricsManager)
 	if err != nil {
@@ -346,6 +349,7 @@ func main() {
 		identity,
 		*volumeNamePrefix,
 		*volumeNameUUIDLength,
+		metricsManager,
 		grpcClient,
 		snapClient,
 		provisionerName,

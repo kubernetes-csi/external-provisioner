@@ -234,6 +234,7 @@ type internalNodeDeployment struct {
 type csiProvisioner struct {
 	client                                kubernetes.Interface
 	csiClient                             csi.ControllerClient
+	metricsManager                        metrics.CSIMetricsManager
 	grpcClient                            *grpc.ClientConn
 	snapshotClient                        snapclientset.Interface
 	timeout                               time.Duration
@@ -318,6 +319,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	identity string,
 	volumeNamePrefix string,
 	volumeNameUUIDLength int,
+	metricsManager metrics.CSIMetricsManager,
 	grpcClient *grpc.ClientConn,
 	snapshotClient snapclientset.Interface,
 	driverName string,
@@ -345,6 +347,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 
 	provisioner := &csiProvisioner{
 		client:                                client,
+		metricsManager:                        metricsManager,
 		grpcClient:                            grpcClient,
 		csiClient:                             csiClient,
 		snapshotClient:                        snapshotClient,
@@ -725,6 +728,8 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	volSizeBytes := req.CapacityRange.RequiredBytes
 	pvName := req.Name
 	provisionerCredentials := req.Secrets
+	// record if this is migrated PV
+	p.metricsManager.WithLabelValues(map[string]string{"is_migrated": fmt.Sprintf("%t", result.migratedVolume)})
 
 	createCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
