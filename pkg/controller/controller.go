@@ -1097,6 +1097,7 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 	}
 
 	var err error
+	volumeMigrated := false
 	if p.translator.IsPVMigratable(volume) {
 		// we end up here only if CSI migration is enabled in-tree (both overall
 		// and for the specific plugin that is migratable) causing in-tree PV
@@ -1106,6 +1107,7 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 		if err != nil {
 			return err
 		}
+		volumeMigrated = true
 	}
 
 	if volume.Spec.CSI == nil {
@@ -1141,6 +1143,20 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 	storageClassName := util.GetPersistentVolumeClass(volume)
 	if len(storageClassName) != 0 {
 		if storageClass, err := p.scLister.Get(storageClassName); err == nil {
+			if volumeMigrated {
+				inTreePluginName, err := p.translator.GetInTreeNameFromCSIName(volume.Spec.CSI.Driver)
+				if err != nil {
+					return err
+				}
+				
+				if inTreePluginName == storageClass.Provisioner {
+					storageClass, err = p.translator.TranslateInTreeStorageClassToCSI(inTreePluginName, storageClass)
+					if err != nil {
+						return err
+					}
+				}
+			}
+
 			// Resolve provision secret credentials.
 			provisionerSecretRef, err := getSecretReference(provisionerSecretParams, storageClass.Parameters, volume.Name, &v1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
