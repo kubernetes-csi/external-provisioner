@@ -496,6 +496,16 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 	}
 
 	quantity := resource.NewQuantity(resp.AvailableCapacity, resource.BinarySI)
+	if capacity != nil && capacity.Capacity.Value() == quantity.Value() {
+		klog.V(5).Infof("Capacity Controller: no need to update %s for %+v, same capacity %v", capacity.Name, item, quantity)
+		return nil
+	}
+
+	// We must lock before reaching out to the apiserver to avoid
+	// racing against our onCAddOrUpdate informer event handler.
+	c.capacitiesLock.Lock()
+	defer c.capacitiesLock.Unlock()
+
 	if capacity == nil {
 		// Create new object.
 		capacity = &storagev1alpha1.CSIStorageCapacity{
@@ -514,9 +524,6 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 			return fmt.Errorf("create CSIStorageCapacity for %+v: %v", item, err)
 		}
 		klog.V(5).Infof("Capacity Controller: created %s for %+v with capacity %v", capacity.Name, item, quantity)
-	} else if capacity.Capacity.Value() == quantity.Value() {
-		klog.V(5).Infof("Capacity Controller: no need to update %s for %+v, same capacity %v", capacity.Name, item, quantity)
-		return nil
 	} else {
 		// Update existing object. Must not modify object in the informer cache.
 		capacity := capacity.DeepCopy()
@@ -529,7 +536,6 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		}
 	}
 
-	c.capacitiesLock.Lock()
 	_, found = c.capacities[item]
 	if found {
 		// Remember the new or updated object for future updates.
@@ -538,7 +544,6 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		klog.V(5).Infof("Capacity Controller: %+v became obsolete during refresh, enqueue %s for deletion", item, capacity.Name)
 		c.queue.Add(capacity)
 	}
-	c.capacitiesLock.Unlock()
 
 	return nil
 }
