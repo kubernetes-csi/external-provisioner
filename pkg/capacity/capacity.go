@@ -529,17 +529,6 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		}
 	}
 
-	c.capacitiesLock.Lock()
-	_, found = c.capacities[item]
-	if found {
-		// Remember the new or updated object for future updates.
-		c.capacities[item] = capacity
-	} else {
-		klog.V(5).Infof("Capacity Controller: %+v became obsolete during refresh, enqueue %s for deletion", item, capacity.Name)
-		c.queue.Add(capacity)
-	}
-	c.capacitiesLock.Unlock()
-
 	return nil
 }
 
@@ -579,12 +568,6 @@ func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1alph
 		if capacity2 != nil && capacity2.UID == capacity.UID {
 			// We already have matched the object.
 			klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s is already known to match %+v", capacity.Name, item)
-			// If it has a different capacity than our old copy, then someone else must have
-			// modified the capacity and we need to check the capacity anew.
-			if capacity2.Capacity.Value() != capacity.Capacity.Value() {
-				klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s was modified by someone, enqueueing %v for fixing", capacity.Name, item)
-				c.queue.Add(item)
-			}
 			// Either way, remember the new object revision to avoid the "conflict" error
 			// when we try to update the old object.
 			c.capacities[item] = capacity
