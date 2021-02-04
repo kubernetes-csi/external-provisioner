@@ -529,17 +529,6 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		}
 	}
 
-	c.capacitiesLock.Lock()
-	_, found = c.capacities[item]
-	if found {
-		// Remember the new or updated object for future updates.
-		c.capacities[item] = capacity
-	} else {
-		klog.V(5).Infof("Capacity Controller: %+v became obsolete during refresh, enqueue %s for deletion", item, capacity.Name)
-		c.queue.Add(capacity)
-	}
-	c.capacitiesLock.Unlock()
-
 	return nil
 }
 
