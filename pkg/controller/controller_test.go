@@ -4394,6 +4394,23 @@ func TestDeleteMigration(t *testing.T) {
 	}
 }
 
+func TestMarkAsMigrated(t *testing.T) {
+	t.Run("context has the migrated label for the migratable plugins", func(t *testing.T) {
+		ctx := context.Background()
+		migratedCtx := markAsMigrated(ctx, true)
+		additionalInfo := migratedCtx.Value(connection.AdditionalInfoKey)
+		if additionalInfo == nil {
+			t.Errorf("test: %s, no migrated label found in the context", t.Name())
+		}
+		additionalInfoVal := additionalInfo.(connection.AdditionalInfo)
+		migrated := additionalInfoVal.Migrated
+
+		if migrated != "true" {
+			t.Errorf("test: %s, expected: %v, got: %v", t.Name(), "true", migrated)
+		}
+	})
+}
+
 func createFakeCSIPV(volumeHandle string) *v1.PersistentVolume {
 	return &v1.PersistentVolume{
 		Spec: v1.PersistentVolumeSpec{

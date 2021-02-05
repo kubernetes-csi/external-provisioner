@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -726,7 +727,8 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	pvName := req.Name
 	provisionerCredentials := req.Secrets
 
-	createCtx, cancel := context.WithTimeout(ctx, p.timeout)
+	createCtx := markAsMigrated(ctx, result.migratedVolume)
+	createCtx, cancel := context.WithTimeout(createCtx, p.timeout)
 	defer cancel()
 	klog.V(5).Infof("CreateVolumeRequest %+v", req)
 	rep, err := p.csiClient.CreateVolume(createCtx, req)
@@ -1097,11 +1099,13 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 	}
 
 	var err error
+	var migratedVolume bool
 	if p.translator.IsPVMigratable(volume) {
 		// we end up here only if CSI migration is enabled in-tree (both overall
 		// and for the specific plugin that is migratable) causing in-tree PV
 		// controller to yield deletion of PVs with in-tree source to external provisioner
 		// based on AnnDynamicallyProvisioned annotation.
+		migratedVolume = true
 		volume, err = p.translator.TranslateInTreePVToCSI(volume)
 		if err != nil {
 			return err
@@ -1162,7 +1166,8 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 			klog.Warningf("failed to get storageclass: %s, proceeding to delete without secrets. %v", storageClassName, err)
 		}
 	}
-	deleteCtx, cancel := context.WithTimeout(ctx, p.timeout)
+	deleteCtx := markAsMigrated(ctx, migratedVolume)
+	deleteCtx, cancel := context.WithTimeout(deleteCtx, p.timeout)
 	defer cancel()
 
 	if err := p.canDeleteVolume(volume); err != nil {
@@ -1713,4 +1718,8 @@ func checkFinalizer(obj metav1.Object, finalizer string) bool {
 		}
 	}
 	return false
+}
+
+func markAsMigrated(parent context.Context, hasMigrated bool) context.Context {
+	return context.WithValue(parent, connection.AdditionalInfoKey, connection.AdditionalInfo{Migrated: strconv.FormatBool(hasMigrated)})
 }

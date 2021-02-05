@@ -201,6 +201,32 @@ func main() {
 	}
 	klog.V(2).Infof("Detected CSI driver %s", provisionerName)
 
+	translator := csitrans.New()
+	supportsMigrationFromInTreePluginName := ""
+	if translator.IsMigratedCSIDriverByName(provisionerName) {
+		supportsMigrationFromInTreePluginName, err = translator.GetInTreeNameFromCSIName(provisionerName)
+		if err != nil {
+			klog.Fatalf("Failed to get InTree plugin name for migrated CSI plugin %s: %v", provisionerName, err)
+		}
+		klog.V(2).Infof("Supports migration from in-tree plugin: %s", supportsMigrationFromInTreePluginName)
+
+		// Create a new connection with the metrics manager with migrated label
+		metricsManager = metrics.NewCSIMetricsManagerWithOptions(provisionerName, metrics.WithMigration())
+		migratedGrpcClient, err := ctrl.Connect(*csiEndpoint, metricsManager)
+		if err != nil {
+			klog.Error(err.Error())
+			os.Exit(1)
+		}
+		grpcClient.Close()
+		grpcClient = migratedGrpcClient
+
+		err = ctrl.Probe(grpcClient, *operationTimeout)
+		if err != nil {
+			klog.Error(err.Error())
+			os.Exit(1)
+		}
+	}
+
 	// Prepare http endpoint for metrics + leader election healthz
 	mux := http.NewServeMux()
 	if addr != "" {
@@ -326,15 +352,7 @@ func main() {
 		controller.NodesLister(nodeLister),
 	}
 
-	translator := csitrans.New()
-
-	supportsMigrationFromInTreePluginName := ""
-	if translator.IsMigratedCSIDriverByName(provisionerName) {
-		supportsMigrationFromInTreePluginName, err = translator.GetInTreeNameFromCSIName(provisionerName)
-		if err != nil {
-			klog.Fatalf("Failed to get InTree plugin name for migrated CSI plugin %s: %v", provisionerName, err)
-		}
-		klog.V(2).Infof("Supports migration from in-tree plugin: %s", supportsMigrationFromInTreePluginName)
+	if supportsMigrationFromInTreePluginName != "" {
 		provisionerOptions = append(provisionerOptions, controller.AdditionalProvisionerNames([]string{supportsMigrationFromInTreePluginName}))
 	}
 
