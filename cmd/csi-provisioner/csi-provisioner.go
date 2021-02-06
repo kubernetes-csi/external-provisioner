@@ -93,10 +93,10 @@ var (
 	nodeDeploymentImmediateBinding = flag.Bool("node-deployment-immediate-binding", true, "Determines whether immediate binding is supported when deployed on each node.")
 	nodeDeploymentBaseDelay        = flag.Duration("node-deployment-base-delay", 20*time.Second, "Determines how long the external-provisioner sleeps initially before trying to own a PVC with immediate binding.")
 	nodeDeploymentMaxDelay         = flag.Duration("node-deployment-max-delay", 60*time.Second, "Determines how long the external-provisioner sleeps at most before trying to own a PVC with immediate binding.")
-
-	featureGates        map[string]bool
-	provisionController *controller.ProvisionController
-	version             = "unknown"
+	volumesInUseProtection         = flag.Bool("volumes-in-use-by-nodes-protection", false, "Enabling this flag will check for VolumesInUse node status, to identify volumes which are still attached/staged on a node. If the volume plugin supports Controller Publish/Unpublish calls, the flag will be ignored. The flag is honored for volume plugins which exclusively support Node Stage/Unstage (and/or NodeUnpublish) calls. The flag should be enabled when deployed with kubelet that reports node staged volumes in node status.")
+	featureGates                   map[string]bool
+	provisionController            *controller.ProvisionController
+	version                        = "unknown"
 )
 
 type leaderElection interface {
@@ -334,6 +334,18 @@ func main() {
 		}
 	}
 
+	// If the provisioner is being used for a driver which supports controller publish/unpublish CSI calls, then
+	// deletion will be protected by VA objects checks i.e deletion cannot proceed until controller unpublish succeeds from the node.
+	// Hence we can skip the additional checks for volumesInUse by querying the node.
+	// For volumes which does not support controller publish/unpublish
+	if controllerCapabilities[csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME] {
+		*volumesInUseProtection = false
+	}
+
+	if *volumesInUseProtection && nodeLister == nil {
+		nodeLister = factory.Core().V1().Nodes().Lister()
+	}
+
 	// -------------------------------
 	// PersistentVolumeClaims informer
 	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)
@@ -381,6 +393,7 @@ func main() {
 		*extraCreateMetadata,
 		*defaultFSType,
 		nodeDeployment,
+		*volumesInUseProtection,
 	)
 
 	provisionController = controller.NewProvisionController(

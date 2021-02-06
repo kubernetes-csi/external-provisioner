@@ -188,6 +188,11 @@ var (
 	}
 )
 
+const (
+	volumeHandleCSIPrefix = "kubernetes.io/csi/"
+	volumeHandleSep       = "^"
+)
+
 // ProvisionerCSITranslator contains the set of CSI Translation functionality
 // required by the provisioner
 type ProvisionerCSITranslator interface {
@@ -258,6 +263,7 @@ type csiProvisioner struct {
 	extraCreateMetadata                   bool
 	eventRecorder                         record.EventRecorder
 	nodeDeployment                        *internalNodeDeployment
+	volumesInUseProtection                bool
 }
 
 var _ controller.Provisioner = &csiProvisioner{}
@@ -336,6 +342,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	extraCreateMetadata bool,
 	defaultFSType string,
 	nodeDeployment *NodeDeployment,
+	volumesInUseProtection bool,
 ) controller.Provisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
@@ -368,6 +375,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		vaLister:                              vaLister,
 		extraCreateMetadata:                   extraCreateMetadata,
 		eventRecorder:                         eventRecorder,
+		volumesInUseProtection:                volumesInUseProtection,
 	}
 	if nodeDeployment != nil {
 		provisioner.nodeDeployment = &internalNodeDeployment{
@@ -1180,20 +1188,26 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 }
 
 func (p *csiProvisioner) canDeleteVolume(volume *v1.PersistentVolume) error {
-	if p.vaLister == nil {
-		// Nothing to check.
-		return nil
-	}
+	if p.vaLister != nil {
+		// Verify if volume is attached to a node before proceeding with deletion
+		vaList, err := p.vaLister.List(labels.Everything())
+		if err != nil {
+			return fmt.Errorf("failed to list volumeattachments: %v", err)
+		}
 
-	// Verify if volume is attached to a node before proceeding with deletion
-	vaList, err := p.vaLister.List(labels.Everything())
-	if err != nil {
-		return fmt.Errorf("failed to list volumeattachments: %v", err)
-	}
+		for _, va := range vaList {
+			if va.Spec.Source.PersistentVolumeName != nil && *va.Spec.Source.PersistentVolumeName == volume.Name {
+				return fmt.Errorf("persistentvolume %s is still attached to node %s", volume.Name, va.Spec.NodeName)
+			}
+		}
+	} else if p.volumesInUseProtection {
+		inuse, nodeName, err := p.VolumesInUseByNode(volume)
+		if err != nil {
+			return fmt.Errorf("For PersistentVolume %s failed to check if its in use by node: %v", volume.Name, err)
+		}
 
-	for _, va := range vaList {
-		if va.Spec.Source.PersistentVolumeName != nil && *va.Spec.Source.PersistentVolumeName == volume.Name {
-			return fmt.Errorf("persistentvolume %s is still attached to node %s", volume.Name, va.Spec.NodeName)
+		if inuse {
+			return fmt.Errorf("PersistentVolume %s is still is use by node %s", volume.Name, nodeName)
 		}
 	}
 
@@ -1365,6 +1379,38 @@ func (p *csiProvisioner) checkCapacity(ctx context.Context, claim *v1.Persistent
 
 	// Currently not enough capacity anywhere.
 	return false, nil
+}
+
+func (p *csiProvisioner) VolumesInUseByNode(pv *v1.PersistentVolume) (bool, string, error) {
+	if pv.Spec.CSI == nil {
+		return false, "", fmt.Errorf("failed to find CSI PersistentVolume source")
+	}
+
+	uniqueVolHandle, err := generateUniqueCSIVolumeHandle(pv.Spec.CSI)
+	if err != nil {
+		return false, "", err
+	}
+
+	nodes, err := p.nodeLister.List(labels.Everything())
+	if err != nil {
+		return false, "", fmt.Errorf("unexpected error listing nodes from node informer: %v", err)
+	}
+
+	found, nodeName := isVolumeInUse(uniqueVolHandle, nodes)
+	if !found {
+		// Check nodes list from API server.
+		nodes, err := p.client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			return false, "", fmt.Errorf("unexpected error listing nodes from API server: %v", err)
+		}
+		nodesPtr := []*v1.Node{}
+		for i := range nodes.Items {
+			nodesPtr = append(nodesPtr, &nodes.Items[i])
+		}
+		found, nodeName = isVolumeInUse(uniqueVolHandle, nodesPtr)
+	}
+
+	return found, nodeName, nil
 }
 
 // becomeOwner updates the PVC with the current node as selected node.
@@ -1722,4 +1768,27 @@ func checkFinalizer(obj metav1.Object, finalizer string) bool {
 
 func markAsMigrated(parent context.Context, hasMigrated bool) context.Context {
 	return context.WithValue(parent, connection.AdditionalInfoKey, connection.AdditionalInfo{Migrated: strconv.FormatBool(hasMigrated)})
+}
+
+// Helper function to generate unique CSI volume handle.
+// TODO move this to a common util
+func generateUniqueCSIVolumeHandle(source *v1.CSIPersistentVolumeSource) (string, error) {
+	if source.Driver == "" || source.VolumeHandle == "" {
+		return "", fmt.Errorf("Failed to fetch CSI driver plugin or volume for CSI source %+v", source)
+	}
+	return fmt.Sprintf("%s%s%s", source.Driver, volumeHandleSep, source.VolumeHandle), nil
+}
+
+// Helper function to determine if a given volume is present in the node's volumesInUse list.
+func isVolumeInUse(volHandle string, nodes []*v1.Node) (bool, string) {
+	for _, node := range nodes {
+		for _, volInUse := range node.Status.VolumesInUse {
+			volInUseStr := strings.TrimPrefix(string(volInUse), volumeHandleCSIPrefix)
+			if volInUseStr == volHandle {
+				klog.Infof("Found volume %s in use at node %s", volInUseStr, node.Name)
+				return true, node.Name
+			}
+		}
+	}
+	return false, ""
 }
