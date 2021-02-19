@@ -1144,13 +1144,9 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 	if len(storageClassName) != 0 {
 		if storageClass, err := p.scLister.Get(storageClassName); err == nil {
 			if volumeMigrated {
-				inTreePluginName, err := p.translator.GetInTreeNameFromCSIName(volume.Spec.CSI.Driver)
-				if err != nil {
-					return err
-				}
-				
-				if inTreePluginName == storageClass.Provisioner {
-					storageClass, err = p.translator.TranslateInTreeStorageClassToCSI(inTreePluginName, storageClass)
+				if storageClass.Provisioner == p.supportsMigrationFromInTreePluginName {
+					klog.V(2).Infof("translating storage class for in-tree plugin %s to CSI", sc.Provisioner)
+					storageClass, err = p.translator.TranslateInTreeStorageClassToCSI(p.supportsMigrationFromInTreePluginName, storageClass)
 					if err != nil {
 						return err
 					}
