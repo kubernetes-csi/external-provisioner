@@ -26,14 +26,14 @@ require (
 	google.golang.org/genproto v0.0.0-20201211151036-40ec1c210f7a // indirect
 	google.golang.org/grpc v1.34.0
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	k8s.io/api v0.20.0
-	k8s.io/apimachinery v0.20.0
+	k8s.io/api v0.21.0-alpha.3
+	k8s.io/apimachinery v0.21.0-alpha.3
 	k8s.io/apiserver v0.20.0
 	k8s.io/client-go v0.20.0
 	k8s.io/component-base v0.20.0
 	k8s.io/component-helpers v0.20.0
-	k8s.io/csi-translation-lib v0.20.0
-	k8s.io/klog/v2 v2.4.0
+	k8s.io/csi-translation-lib v0.21.0-alpha.3
+	k8s.io/klog/v2 v2.5.0
 	k8s.io/kubernetes v1.20.0
 	sigs.k8s.io/controller-runtime v0.7.0
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.3.0
@@ -87,7 +87,7 @@ replace k8s.io/component-base => k8s.io/component-base v0.20.0
 
 replace k8s.io/controller-manager => k8s.io/controller-manager v0.20.0
 
-replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.20.0
+replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.21.0-alpha.3
 
 replace k8s.io/component-helpers => k8s.io/component-helpers v0.20.0
 
