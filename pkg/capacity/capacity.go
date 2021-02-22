@@ -85,8 +85,11 @@ type Controller struct {
 	pollPeriod       time.Duration
 	immediateBinding bool
 
-	// capacities contains one entry for each object that is supposed
-	// to exist.
+	// capacities contains one entry for each object that is
+	// supposed to exist. Entries that exist on the API server
+	// have a non-nil pointer. Those get added and updated
+	// exclusively through the informer event handler to avoid
+	// races.
 	capacities     map[workItem]*storagev1alpha1.CSIStorageCapacity
 	capacitiesLock sync.Mutex
 }
@@ -513,7 +516,11 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		if err != nil {
 			return fmt.Errorf("create CSIStorageCapacity for %+v: %v", item, err)
 		}
-		klog.V(5).Infof("Capacity Controller: created %s for %+v with capacity %v", capacity.Name, item, quantity)
+		klog.V(5).Infof("Capacity Controller: created %s with resource version %s for %+v with capacity %v", capacity.Name, capacity.ResourceVersion, item, quantity)
+		// We intentionally avoid storing the created object in c.capacities because that
+		// would race with receiving that object through the event handler. In the unlikely
+		// scenario that we end up creating two objects for the same work item, the second
+		// one will be recognized as duplicate and get deleted again once we receive it.
 	} else if capacity.Capacity.Value() == quantity.Value() {
 		klog.V(5).Infof("Capacity Controller: no need to update %s for %+v, same capacity %v", capacity.Name, item, quantity)
 		return nil
@@ -527,18 +534,10 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		if err != nil {
 			return fmt.Errorf("update CSIStorageCapacity for %+v: %v", item, err)
 		}
+		klog.V(5).Infof("Capacity Controller: updated %s with new resource version %s for %+v with capacity %v", capacity.Name, capacity.ResourceVersion, item, quantity)
+		// As for Create above, c.capacities intentionally doesn't get updated with the modified
+		// object to avoid races.
 	}
-
-	c.capacitiesLock.Lock()
-	_, found = c.capacities[item]
-	if found {
-		// Remember the new or updated object for future updates.
-		c.capacities[item] = capacity
-	} else {
-		klog.V(5).Infof("Capacity Controller: %+v became obsolete during refresh, enqueue %s for deletion", item, capacity.Name)
-		c.queue.Add(capacity)
-	}
-	c.capacitiesLock.Unlock()
 
 	return nil
 }
@@ -578,13 +577,7 @@ func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1alph
 	for item, capacity2 := range c.capacities {
 		if capacity2 != nil && capacity2.UID == capacity.UID {
 			// We already have matched the object.
-			klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s is already known to match %+v", capacity.Name, item)
-			// If it has a different capacity than our old copy, then someone else must have
-			// modified the capacity and we need to check the capacity anew.
-			if capacity2.Capacity.Value() != capacity.Capacity.Value() {
-				klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s was modified by someone, enqueueing %v for fixing", capacity.Name, item)
-				c.queue.Add(item)
-			}
+			klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s with resource version %s is already known to match %+v", capacity.Name, capacity.ResourceVersion, item)
 			// Either way, remember the new object revision to avoid the "conflict" error
 			// when we try to update the old object.
 			c.capacities[item] = capacity
@@ -595,13 +588,13 @@ func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1alph
 			reflect.DeepEqual(item.segment.GetLabelSelector(), capacity.NodeTopology) {
 			// This is the capacity object for this particular combination
 			// of parameters. Reuse it.
-			klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s matches %+v", capacity.Name, item)
+			klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s with resource version %s matches %+v", capacity.Name, capacity.ResourceVersion, item)
 			c.capacities[item] = capacity
 			return
 		}
 	}
 	// The CSIStorageCapacity object is obsolete, delete it.
-	klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s is obsolete, enqueue for removal", capacity.Name)
+	klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s with resource version %s is obsolete, enqueue for removal", capacity.Name, capacity.ResourceVersion)
 	c.queue.Add(capacity)
 }
 
