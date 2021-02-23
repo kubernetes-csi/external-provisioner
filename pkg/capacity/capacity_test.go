@@ -522,43 +522,6 @@ func TestController(t *testing.T) {
 				},
 			},
 		},
-		"fix modified capacity": {
-			topology: topology.NewMock(&layer0),
-			storage: mockCapacity{
-				capacity: map[string]interface{}{
-					// This matches layer0.
-					"foo": "1Gi",
-				},
-			},
-			initialSCs: []testSC{
-				{
-					name:       "other-sc",
-					driverName: driverName,
-				},
-			},
-			expectedCapacities: []testCapacity{
-				{
-					uid:              "CSISC-UID-1",
-					resourceVersion:  csiscRev + "0",
-					segment:          layer0,
-					storageClassName: "other-sc",
-					quantity:         "1Gi",
-				},
-			},
-			modify: func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) ([]testCapacity, error) {
-				capacities, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
-				if err != nil {
-					return nil, err
-				}
-				capacity := capacities.Items[0]
-				capacity.Capacity = &mb
-				if _, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).Update(ctx, &capacity, metav1.UpdateOptions{}); err != nil {
-					return nil, err
-				}
-				expected[0].resourceVersion = csiscRev + "2"
-				return expected, nil
-			},
-		},
 		"re-create capacity": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
