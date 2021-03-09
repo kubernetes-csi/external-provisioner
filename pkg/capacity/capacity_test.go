@@ -17,6 +17,7 @@ limitations under the License.
 package capacity
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -43,6 +44,8 @@ import (
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/component-base/metrics"
+	"k8s.io/component-base/metrics/testutil"
 	"k8s.io/klog/v2"
 )
 
@@ -83,9 +86,33 @@ var (
 	mb = resource.MustParse("1Mi")
 )
 
+type objects struct {
+	goal, current, obsolete int64
+}
+
+func (o objects) verify(m metrics.Gatherer) error {
+	if err := testutil.GatherAndCompare(m, bytes.NewBufferString(
+		fmt.Sprintf(`# HELP csistoragecapacities_desired_goal [ALPHA] Number of CSIStorageCapacity objects that are supposed to be managed automatically.
+# TYPE csistoragecapacities_desired_goal gauge
+csistoragecapacities_desired_goal %d
+# HELP csistoragecapacities_desired_current [ALPHA] Number of CSIStorageCapacity objects that exist and are supposed to be managed automatically.
+# TYPE csistoragecapacities_desired_current gauge
+csistoragecapacities_desired_current %d
+# HELP csistoragecapacities_obsolete [ALPHA] Number of CSIStorageCapacity objects that exist and will be deleted automatically. Objects that exist and may need an update are not considered obsolete and therefore not included in this value.
+# TYPE csistoragecapacities_obsolete gauge
+csistoragecapacities_obsolete %d
+`, o.goal, o.current, o.obsolete))); err != nil {
+		return fmt.Errorf("expected goal/current/obsolete object numbers %d/%d/%d: %v",
+			o.goal, o.current, o.obsolete,
+			err,
+		)
+	}
+	return nil
+}
+
 // TestCapacityController checks that the controller handles the initial state and
 // several different changes at runtime correctly.
-func TestController(t *testing.T) {
+func TestCapacityController(t *testing.T) {
 	testcases := map[string]struct {
 		immediateBinding   bool
 		topology           *topology.Mock
@@ -96,6 +123,9 @@ func TestController(t *testing.T) {
 		modify             func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) (modifiedExpected []testCapacity, err error)
 		capacityChange     func(ctx context.Context, storage *mockCapacity, expected []testCapacity) (modifiedExpected []testCapacity)
 		topologyChange     func(ctx context.Context, topology *topology.Mock, expected []testCapacity) (modifiedExpected []testCapacity)
+
+		expectedObjectsPrepared objects
+		expectedTotalProcessed  int64
 	}{
 		"empty": {
 			expectedCapacities: []testCapacity{},
@@ -134,6 +164,10 @@ func TestController(t *testing.T) {
 					quantity:         "1Gi",
 				},
 			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
 		},
 		"ignore SC with immediate binding": {
 			topology: topology.NewMock(&layer0),
@@ -174,6 +208,10 @@ func TestController(t *testing.T) {
 					quantity:         "1Gi",
 				},
 			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
 		},
 		"reuse one capacity object, no changes": {
 			topology: topology.NewMock(&layer0),
@@ -206,6 +244,11 @@ func TestController(t *testing.T) {
 					quantity:         "1Gi",
 				},
 			},
+			expectedObjectsPrepared: objects{
+				goal:    1,
+				current: 1,
+			},
+			expectedTotalProcessed: 1,
 		},
 		"reuse one capacity object, update capacity": {
 			topology: topology.NewMock(&layer0),
@@ -238,6 +281,11 @@ func TestController(t *testing.T) {
 					quantity:         "2Gi",
 				},
 			},
+			expectedObjectsPrepared: objects{
+				goal:    1,
+				current: 1,
+			},
+			expectedTotalProcessed: 1,
 		},
 		"obsolete object, missing SC": {
 			topology: topology.NewMock(&layer0),
@@ -255,6 +303,9 @@ func TestController(t *testing.T) {
 				},
 			},
 			expectedCapacities: []testCapacity{},
+			expectedObjectsPrepared: objects{
+				obsolete: 1,
+			},
 		},
 		"obsolete object, missing segment": {
 			storage: mockCapacity{
@@ -275,6 +326,9 @@ func TestController(t *testing.T) {
 					storageClassName: "other-sc",
 					quantity:         "1Gi",
 				},
+			},
+			expectedObjectsPrepared: objects{
+				obsolete: 1,
 			},
 		},
 		"ignore capacity with other owner": {
@@ -365,6 +419,10 @@ func TestController(t *testing.T) {
 					quantity:         "6Gi",
 				},
 			},
+			expectedObjectsPrepared: objects{
+				goal: 4,
+			},
+			expectedTotalProcessed: 4,
 		},
 		"two segments, two classes, four objects updated": {
 			topology: topology.NewMock(&layer0, &layer0other),
@@ -444,6 +502,11 @@ func TestController(t *testing.T) {
 					quantity:         "6Gi",
 				},
 			},
+			expectedObjectsPrepared: objects{
+				goal:    4,
+				current: 4,
+			},
+			expectedTotalProcessed: 4,
 		},
 		"two segments, two classes, two added, two removed": {
 			topology: topology.NewMock(&layer0, &layer0other),
@@ -521,6 +584,12 @@ func TestController(t *testing.T) {
 					quantity:         "6Gi",
 				},
 			},
+			expectedObjectsPrepared: objects{
+				goal:     4,
+				current:  2,
+				obsolete: 2,
+			},
+			expectedTotalProcessed: 4,
 		},
 		"re-create capacity": {
 			topology: topology.NewMock(&layer0),
@@ -557,6 +626,10 @@ func TestController(t *testing.T) {
 				expected[0].uid = "CSISC-UID-2"
 				return expected, nil
 			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
 		},
 		"delete redundant capacity": {
 			modify: func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) ([]testCapacity, error) {
@@ -614,6 +687,10 @@ func TestController(t *testing.T) {
 				})
 				return expected, nil
 			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
 		},
 		"delete and recreate by someone": {
 			topology: topology.NewMock(&layer0),
@@ -658,6 +735,10 @@ func TestController(t *testing.T) {
 				expected[0].resourceVersion = csiscRev + "1"
 				return expected, nil
 			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
 		},
 		"storage capacity change": {
 			topology: topology.NewMock(&layer0),
@@ -688,6 +769,10 @@ func TestController(t *testing.T) {
 				expected[0].resourceVersion = csiscRev + "1"
 				return expected
 			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
 		},
 		"add storage topology segment": {
 			storage: mockCapacity{
@@ -723,6 +808,7 @@ func TestController(t *testing.T) {
 					quantity:         "1Gi",
 				})
 			},
+			expectedTotalProcessed: 1,
 		},
 		"add storage topology segment, immediate binding": {
 			immediateBinding: true,
@@ -762,6 +848,7 @@ func TestController(t *testing.T) {
 					},
 				)
 			},
+			expectedTotalProcessed: 2,
 		},
 		"remove storage topology segment": {
 			topology: topology.NewMock(&layer0),
@@ -794,6 +881,9 @@ func TestController(t *testing.T) {
 			topologyChange: func(ctx context.Context, topo *topology.Mock, expected []testCapacity) []testCapacity {
 				topo.Modify(nil /* added */, topo.List()[:] /* removed */)
 				return nil
+			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
 			},
 		},
 		"add and remove storage topology segment": {
@@ -838,11 +928,16 @@ func TestController(t *testing.T) {
 					},
 				}
 			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
 		},
 	}
 
 	for name, tc := range testcases {
-		// Not run in parallel. That doesn't work well in combination with global logging.
+		// Not run in parallel. That doesn't work well in combination with global logging
+		// and global metrics instances.
 		t.Run(name, func(t *testing.T) {
 			// There is no good way to shut down the controller. It spawns
 			// various goroutines and some of them (in particular shared informer)
@@ -850,16 +945,16 @@ func TestController(t *testing.T) {
 			// that gets cancelled. Therefore we just keep everything running.
 			ctx := context.Background()
 
-			var objects []runtime.Object
-			objects = append(objects, makeSCs(tc.initialSCs)...)
-			clientSet := fakeclientset.NewSimpleClientset(objects...)
+			var initialObjects []runtime.Object
+			initialObjects = append(initialObjects, makeSCs(tc.initialSCs)...)
+			clientSet := fakeclientset.NewSimpleClientset(initialObjects...)
 			clientSet.PrependReactor("create", "csistoragecapacities", createCSIStorageCapacityReactor())
 			clientSet.PrependReactor("update", "csistoragecapacities", updateCSIStorageCapacityReactor())
 			topo := tc.topology
 			if topo == nil {
 				topo = topology.NewMock()
 			}
-			c := fakeController(ctx, clientSet, &tc.storage, topo, tc.immediateBinding)
+			c, registry := fakeController(ctx, clientSet, &tc.storage, topo, tc.immediateBinding)
 			for _, testCapacity := range tc.initialCapacities {
 				capacity := makeCapacity(testCapacity)
 				_, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
@@ -868,6 +963,9 @@ func TestController(t *testing.T) {
 				}
 			}
 			c.prepare(ctx)
+			if err := tc.expectedObjectsPrepared.verify(registry); err != nil {
+				t.Fatalf("metrics after prepare: %v", err)
+			}
 			if err := process(ctx, c); err != nil {
 				t.Fatalf("unexpected processing error: %v", err)
 			}
@@ -905,6 +1003,20 @@ func TestController(t *testing.T) {
 				if err := validateCapacitiesEventually(ctx, c, clientSet, expectedCapacities); err != nil {
 					t.Fatalf("modified capacity: %v", err)
 				}
+			}
+
+			// Processing the work queues may take some time.
+			validateMetrics := func(ctx context.Context) error {
+				return objects{
+					goal:    tc.expectedTotalProcessed,
+					current: tc.expectedTotalProcessed,
+				}.verify(registry)
+			}
+			if err := validateEventually(ctx, c, validateMetrics); err != nil {
+				t.Fatalf("metrics after processing: %v", err)
+			}
+			if err := validateConsistently(ctx, c, validateMetrics); err != nil {
+				t.Fatalf("metrics not stable after processing: %v", err)
 			}
 		})
 	}
@@ -963,6 +1075,12 @@ nextActual:
 }
 
 func validateCapacitiesEventually(ctx context.Context, c *Controller, clientSet *fakeclientset.Clientset, expectedCapacities []testCapacity) error {
+	return validateEventually(ctx, c, func(ctx context.Context) error {
+		return validateCapacities(ctx, clientSet, expectedCapacities)
+	})
+}
+
+func validateEventually(ctx context.Context, c *Controller, validate func(ctx context.Context) error) error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	deadline, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -975,12 +1093,32 @@ func validateCapacitiesEventually(ctx context.Context, c *Controller, clientSet 
 			if err := process(ctx, c); err != nil {
 				return fmt.Errorf("unexpected processing error: %v", err)
 			}
-			lastValidationError = validateCapacities(ctx, clientSet, expectedCapacities)
+			lastValidationError = validate(ctx)
 			if lastValidationError == nil {
 				return nil
 			}
 		case <-deadline.Done():
 			return fmt.Errorf("timed out waiting for controller, last unexpected state:\n%v", lastValidationError)
+		}
+	}
+}
+
+func validateConsistently(ctx context.Context, c *Controller, validate func(ctx context.Context) error) error {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	deadline, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	for {
+		select {
+		case <-deadline.Done():
+			return nil
+		case <-ticker.C:
+			if err := process(ctx, c); err != nil {
+				return fmt.Errorf("unexpected processing error: %v", err)
+			}
+			if err := validate(ctx); err != nil {
+				return err
+			}
 		}
 	}
 }
@@ -1023,7 +1161,7 @@ func updateCSIStorageCapacityReactor() func(action ktesting.Action) (handled boo
 	}
 }
 
-func fakeController(ctx context.Context, client *fakeclientset.Clientset, storage CSICapacityClient, topologyInformer topology.Informer, immediateBinding bool) *Controller {
+func fakeController(ctx context.Context, client *fakeclientset.Clientset, storage CSICapacityClient, topologyInformer topology.Informer, immediateBinding bool) (*Controller, metrics.KubeRegistry) {
 	utilruntime.ReallyCrash = false // avoids os.Exit after "close of closed channel" in shared informer code
 
 	// We don't need resyncs, they just lead to confusing log output if they get triggered while already some
@@ -1053,7 +1191,10 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, storag
 	go informerFactory.Start(ctx.Done())
 	informerFactory.WaitForCacheSync(ctx.Done())
 
-	return c
+	registry := metrics.NewKubeRegistry()
+	registry.CustomMustRegister(c)
+
+	return c, registry
 }
 
 // process handles work items until the queue is empty and the informers are synced.

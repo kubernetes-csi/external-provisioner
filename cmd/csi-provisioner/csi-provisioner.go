@@ -468,6 +468,7 @@ func main() {
 			*capacityPollInterval,
 			*capacityImmediateBinding,
 		)
+		legacyregistry.CustomMustRegister(capacityController)
 	}
 
 	// Start HTTP server, regardless whether we are the leader or not.
