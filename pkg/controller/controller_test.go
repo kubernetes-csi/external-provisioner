@@ -462,6 +462,15 @@ func provisionCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilityS
 		}
 }
 
+func provisionWithSingleNodeMultiWriterCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
+	return rpc.PluginCapabilitySet{
+			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
+		}, rpc.ControllerCapabilitySet{
+			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:     true,
+			csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER: true,
+		}
+}
+
 func provisionFromSnapshotCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
 	return rpc.PluginCapabilitySet{
 			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
@@ -805,26 +814,27 @@ func TestGetSecretReference(t *testing.T) {
 }
 
 type provisioningTestcase struct {
-	capacity           int64 // if zero, default capacity, otherwise available bytes
-	volOpts            controller.ProvisionOptions
-	notNilSelector     bool
-	makeVolumeNameErr  bool
-	getSecretRefErr    bool
-	getCredentialsErr  bool
-	volWithLessCap     bool
-	volWithZeroCap     bool
-	expectedPVSpec     *pvSpec
-	clientSetObjects   []runtime.Object
-	createVolumeError  error
-	expectErr          bool
-	expectState        controller.ProvisioningState
-	expectCreateVolDo  func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest)
-	withExtraMetadata  bool
-	skipCreateVolume   bool
-	deploymentNode     string // fake distributed provisioning with this node as host
-	immediateBinding   bool   // enable immediate binding support for distributed provisioning
-	expectSelectedNode string // a specific selected-node of the PVC in the apiserver after the test, same as before if empty
-	expectNoProvision  bool   // if true, then ShouldProvision should return false
+	capacity                      int64 // if zero, default capacity, otherwise available bytes
+	volOpts                       controller.ProvisionOptions
+	notNilSelector                bool
+	makeVolumeNameErr             bool
+	getSecretRefErr               bool
+	getCredentialsErr             bool
+	volWithLessCap                bool
+	volWithZeroCap                bool
+	expectedPVSpec                *pvSpec
+	clientSetObjects              []runtime.Object
+	createVolumeError             error
+	expectErr                     bool
+	expectState                   controller.ProvisioningState
+	expectCreateVolDo             func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest)
+	withExtraMetadata             bool
+	skipCreateVolume              bool
+	deploymentNode                string // fake distributed provisioning with this node as host
+	immediateBinding              bool   // enable immediate binding support for distributed provisioning
+	expectSelectedNode            string // a specific selected-node of the PVC in the apiserver after the test, same as before if empty
+	expectNoProvision             bool   // if true, then ShouldProvision should return false
+	supportsSingleNodeMultiWriter bool   // if true, then provision with single node multi writer capabilities
 }
 
 type provisioningFSTypeTestcase struct {
@@ -1258,7 +1268,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			},
 			expectState: controller.ProvisioningFinished,
 		},
-		"provision with access mode single writer": {
+		"provision with access mode single node writer": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
@@ -1306,6 +1316,112 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				}
 				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
 					t.Errorf("Expected single_node_writer")
+				}
+			},
+			expectState: controller.ProvisioningFinished,
+		},
+		"provision with access mode single node writer and single node multi writer capability": {
+			supportsSingleNodeMultiWriter: true,
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+					},
+				},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
+				if len(req.GetVolumeCapabilities()) != 1 {
+					t.Errorf("Incorrect length in volume capabilities")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+					t.Errorf("Expected access mode to be set")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER {
+					t.Errorf("Expected single_node_multi_writer")
+				}
+			},
+			expectState: controller.ProvisioningFinished,
+		},
+		"provision with access mode single node single writer and single node multi writer capability": {
+			supportsSingleNodeMultiWriter: true,
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						Selector: nil,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod},
+					},
+				},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
+				if len(req.GetVolumeCapabilities()) != 1 {
+					t.Errorf("Incorrect length in volume capabilities")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+					t.Errorf("Expected access mode to be set")
+				}
+				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER {
+					t.Errorf("Expected single_node_multi_writer")
 				}
 			},
 			expectState: controller.ProvisioningFinished,
@@ -2299,7 +2415,14 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 		}
 	}
 
-	pluginCaps, controllerCaps := provisionCapabilities()
+	var pluginCaps rpc.PluginCapabilitySet
+	var controllerCaps rpc.ControllerCapabilitySet
+	if tc.supportsSingleNodeMultiWriter {
+		pluginCaps, controllerCaps = provisionWithSingleNodeMultiWriterCapabilities()
+	} else {
+		pluginCaps, controllerCaps = provisionCapabilities()
+	}
+
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
 		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(), nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment)
 
