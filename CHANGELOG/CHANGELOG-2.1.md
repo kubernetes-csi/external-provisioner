@@ -1,3 +1,56 @@
+# Release notes for release-2.1
+
+[Documentation](https://kubernetes-csi.github.io)
+
+# Changelog since v2.1.0
+
+## Changes by Kind
+
+### Bug or Regression
+ - External-provisioner may have [stopped provisioning](https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/pull/103) for a PVC depending on certain timing conditions (provisioning failed once, next attempt currently running, PVC update arrives from API server). ([#564](https://github.com/kubernetes-csi/external-provisioner/pull/564), [@pohly](https://github.com/pohly))
+ - Fix CSI translation issues with EBS, AzureFile and Cinder drivers ([#571](https://github.com/kubernetes-csi/external-provisioner/pull/571), [@ialidzhikov](https://github.com/ialidzhikov))
+ - Producing storage capacity may have failed with `the object has been modified` errors ([#568](https://github.com/kubernetes-csi/external-provisioner/pull/568), [@pohly](https://github.com/pohly))
+ - Fix topology translation during CSI migration for gce-pd, aws-ebs, cinder drivers ([#580](https://github.com/kubernetes-csi/external-provisioner/pull/580), [@Jiawei0227](https://github.com/Jiawei0227))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+- github.com/go-logr/logr: [v0.3.0 → v0.4.0](https://github.com/go-logr/logr/compare/v0.3.0...v0.4.0)
+- github.com/google/cadvisor: [v0.38.5 → v0.38.7](https://github.com/google/cadvisor/compare/v0.38.5...v0.38.7)
+- k8s.io/api: v0.20.0 → v0.20.4
+- k8s.io/apiextensions-apiserver: v0.20.0 → v0.20.4
+- k8s.io/apimachinery: v0.20.0 → v0.20.4
+- k8s.io/apiserver: v0.20.0 → v0.20.4
+- k8s.io/cli-runtime: v0.20.0 → v0.20.4
+- k8s.io/client-go: v0.20.0 → v0.20.4
+- k8s.io/cloud-provider: v0.20.0 → v0.20.4
+- k8s.io/cluster-bootstrap: v0.20.0 → v0.20.4
+- k8s.io/code-generator: v0.20.0 → v0.20.4
+- k8s.io/component-base: v0.20.0 → v0.20.4
+- k8s.io/component-helpers: v0.20.0 → v0.20.4
+- k8s.io/controller-manager: v0.20.0 → v0.20.4
+- k8s.io/cri-api: v0.20.0 → v0.20.4
+- k8s.io/csi-translation-lib: v0.20.0 → v0.21.0-alpha.3
+- k8s.io/klog/v2: v2.4.0 → v2.5.0
+- k8s.io/kube-aggregator: v0.20.0 → v0.20.4
+- k8s.io/kube-controller-manager: v0.20.0 → v0.20.4
+- k8s.io/kube-proxy: v0.20.0 → v0.20.4
+- k8s.io/kube-scheduler: v0.20.0 → v0.20.4
+- k8s.io/kubectl: v0.20.0 → v0.20.4
+- k8s.io/kubelet: v0.20.0 → v0.20.4
+- k8s.io/kubernetes: v1.20.0 → v1.20.4
+- k8s.io/legacy-cloud-providers: v0.20.0 → v0.20.4
+- k8s.io/metrics: v0.20.0 → v0.20.4
+- k8s.io/mount-utils: v0.20.0 → v0.20.4
+- k8s.io/sample-apiserver: v0.20.0 → v0.20.4
+- sigs.k8s.io/sig-storage-lib-external-provisioner/v6: v6.2.0 → v6.3.0
+
+### Removed
+_Nothing has changed._
+
 # Release notes for v2.1.0
 
 [Documentation](https://kubernetes-csi.github.io)
