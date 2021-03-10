@@ -1,4 +1,4 @@
-# Release notes for release-2.1
+# Release notes for v2.1.1
 
 [Documentation](https://kubernetes-csi.github.io)
 
