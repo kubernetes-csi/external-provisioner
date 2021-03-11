@@ -48,7 +48,8 @@ import (
 )
 
 const (
-	ResyncPeriodOfCSIStorageCapacityInformer = 1 * time.Hour // same as ResyncPeriodOfCsiNodeInformer
+	DriverNameLabel = "csi.storage.k8s.io/drivername"
+	ManagedByLabel  = "csi.storage.k8s.io/managed-by"
 )
 
 // Controller creates and updates CSIStorageCapacity objects.  It
@@ -82,7 +83,8 @@ type Controller struct {
 	driverName       string
 	client           kubernetes.Interface
 	queue            workqueue.RateLimitingInterface
-	owner            metav1.OwnerReference
+	owner            *metav1.OwnerReference
+	managedByID      string
 	ownerNamespace   string
 	topologyInformer topology.Informer
 	scInformer       storageinformersv1.StorageClassInformer
@@ -154,7 +156,8 @@ func NewCentralCapacityController(
 	driverName string,
 	client kubernetes.Interface,
 	queue workqueue.RateLimitingInterface,
-	owner metav1.OwnerReference,
+	owner *metav1.OwnerReference,
+	managedByID string,
 	ownerNamespace string,
 	topologyInformer topology.Informer,
 	scInformer storageinformersv1.StorageClassInformer,
@@ -168,6 +171,7 @@ func NewCentralCapacityController(
 		client:           client,
 		queue:            queue,
 		owner:            owner,
+		managedByID:      managedByID,
 		ownerNamespace:   ownerNamespace,
 		topologyInformer: topologyInformer,
 		scInformer:       scInformer,
@@ -607,13 +611,19 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		// Create new object.
 		capacity = &storagev1beta1.CSIStorageCapacity{
 			ObjectMeta: metav1.ObjectMeta{
-				GenerateName:    "csisc-",
-				OwnerReferences: []metav1.OwnerReference{c.owner},
+				GenerateName: "csisc-",
+				Labels: map[string]string{
+					DriverNameLabel: c.driverName,
+					ManagedByLabel:  c.managedByID,
+				},
 			},
 			StorageClassName:  item.storageClassName,
 			NodeTopology:      item.segment.GetLabelSelector(),
 			Capacity:          quantity,
 			MaximumVolumeSize: maximumVolumeSize,
+		}
+		if c.owner != nil {
+			capacity.OwnerReferences = []metav1.OwnerReference{*c.owner}
 		}
 		var err error
 		klog.V(5).Infof("Capacity Controller: creating new object for %+v, new capacity %v", item, quantity)
@@ -626,14 +636,18 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		// would race with receiving that object through the event handler. In the unlikely
 		// scenario that we end up creating two objects for the same work item, the second
 		// one will be recognized as duplicate and get deleted again once we receive it.
-	} else if capacity.Capacity.Value() == quantity.Value() {
-		klog.V(5).Infof("Capacity Controller: no need to update %s for %+v, same capacity %v", capacity.Name, item, quantity)
+	} else if capacity.Capacity.Value() == quantity.Value() &&
+		(c.owner == nil || c.isOwnedByUs(capacity)) {
+		klog.V(5).Infof("Capacity Controller: no need to update %s for %+v, same capacity %v and correct owner", capacity.Name, item, quantity)
 		return nil
 	} else {
 		// Update existing object. Must not modify object in the informer cache.
 		capacity := capacity.DeepCopy()
 		capacity.Capacity = quantity
 		capacity.MaximumVolumeSize = maximumVolumeSize
+		if c.owner != nil && !c.isOwnedByUs(capacity) {
+			capacity.OwnerReferences = append(capacity.OwnerReferences, *c.owner)
+		}
 		var err error
 		klog.V(5).Infof("Capacity Controller: updating %s for %+v, new capacity %v", capacity.Name, item, quantity)
 		capacity, err = c.client.StorageV1beta1().CSIStorageCapacities(capacity.Namespace).Update(ctx, capacity, metav1.UpdateOptions{})
@@ -658,12 +672,12 @@ func (c *Controller) deleteCapacity(ctx context.Context, capacity *storagev1beta
 	return err
 }
 
-// syncCSIStorageObject takes a read-only CSIStorageCapacity object
+// onCAddOrUpdate takes a read-only CSIStorageCapacity object
 // and either remembers the pointer to it for future updates or
 // ensures that it gets deleted if no longer needed. Foreign objects
 // are ignored.
 func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1beta1.CSIStorageCapacity) {
-	if !c.isControlledByUs(capacity.OwnerReferences) {
+	if !c.isManaged(capacity) {
 		// Not ours (anymore?). For the unlikely case that someone removed our owner reference,
 		// we also must remove our reference to the object.
 		c.capacitiesLock.Lock()
@@ -775,7 +789,7 @@ func (c *Controller) getObjectsObsolete() int64 {
 		return 0
 	}
 	for _, capacity := range capacities {
-		if !c.isControlledByUs(capacity.OwnerReferences) {
+		if !c.isManaged(capacity) {
 			continue
 		}
 		if c.isObsolete(capacity) {
@@ -794,13 +808,20 @@ func (c *Controller) isObsolete(capacity *storagev1beta1.CSIStorageCapacity) boo
 	return true
 }
 
-// isControlledByUs implements the same logic as https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1?tab=doc#IsControlledBy,
+// isOwnedByUs implements the same logic as https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1?tab=doc#IsControlledBy,
 // just with the expected owner identified directly with the UID.
-func (c *Controller) isControlledByUs(owners []metav1.OwnerReference) bool {
-	for _, owner := range owners {
+func (c *Controller) isOwnedByUs(capacity *storagev1beta1.CSIStorageCapacity) bool {
+	for _, owner := range capacity.OwnerReferences {
 		if owner.Controller != nil && *owner.Controller && owner.UID == c.owner.UID {
 			return true
 		}
 	}
 	return false
+}
+
+// isManaged checks the labels to determine whether this capacity object is managed by
+// the controller instance.
+func (c *Controller) isManaged(capacity *storagev1beta1.CSIStorageCapacity) bool {
+	return capacity.Labels[DriverNameLabel] == c.driverName &&
+		capacity.Labels[ManagedByLabel] == c.managedByID
 }

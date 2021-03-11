@@ -26,12 +26,12 @@ spec:
           args:
             - "--csi-address=$(ADDRESS)"
             - "--leader-election"
-            - "--enable-capacity=central"
+            - "--enable-capacity"
             - "--capacity-ownerref-level=2"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/mock.socket
-            - name: POD_NAMESPACE
+            - name: NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace

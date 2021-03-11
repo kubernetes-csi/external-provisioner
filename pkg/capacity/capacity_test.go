@@ -61,6 +61,9 @@ const (
 	driverName     = "test-driver"
 	ownerNamespace = "testns"
 	csiscRev       = "CSISC-REV-"
+	managedByID    = "external-provisioner"
+	noManager      = "none"
+	otherManager   = "manual"
 )
 
 var (
@@ -329,6 +332,45 @@ func TestCapacityController(t *testing.T) {
 			},
 			expectedTotalProcessed: 1,
 		},
+		"reuse one capacity object, add owner": {
+			topology: topology.NewMock(&layer0),
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+				},
+			},
+			initialCapacities: []testCapacity{
+				{
+					uid:              "test-capacity-1",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					owner:            &noOwner,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					uid:              "test-capacity-1",
+					resourceVersion:  csiscRev + "1",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					owner:            &defaultOwner,
+				},
+			},
+			expectedObjectsPrepared: objects{
+				goal:    1,
+				current: 1,
+			},
+			expectedTotalProcessed: 1,
+		},
 		"obsolete object, missing SC": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
@@ -373,10 +415,10 @@ func TestCapacityController(t *testing.T) {
 				obsolete: 1,
 			},
 		},
-		"ignore capacity with other owner": {
+		"ignore capacity with other manager": {
 			initialCapacities: []testCapacity{
 				{
-					owner:            &otherOwner,
+					managedByID:      otherManager,
 					uid:              "test-capacity-1",
 					segment:          layer0,
 					storageClassName: "other-sc",
@@ -385,7 +427,7 @@ func TestCapacityController(t *testing.T) {
 			},
 			expectedCapacities: []testCapacity{
 				{
-					owner:            &otherOwner,
+					managedByID:      otherManager,
 					uid:              "test-capacity-1",
 					segment:          layer0,
 					storageClassName: "other-sc",
@@ -393,10 +435,10 @@ func TestCapacityController(t *testing.T) {
 				},
 			},
 		},
-		"ignore capacity with no owner": {
+		"ignore capacity with no manager": {
 			initialCapacities: []testCapacity{
 				{
-					owner:            &noOwner,
+					managedByID:      noManager,
 					uid:              "test-capacity-1",
 					segment:          layer0,
 					storageClassName: "other-sc",
@@ -405,7 +447,7 @@ func TestCapacityController(t *testing.T) {
 			},
 			expectedCapacities: []testCapacity{
 				{
-					owner:            &noOwner,
+					managedByID:      noManager,
 					uid:              "test-capacity-1",
 					segment:          layer0,
 					storageClassName: "other-sc",
@@ -711,14 +753,14 @@ func TestCapacityController(t *testing.T) {
 					return nil, err
 				}
 				capacity := capacities.Items[0]
-				// Unset owner. It's not clear why anyone would want to do that, but lets deal with it anyway:
+				// Unset labels. It's not clear why anyone would want to do that, but lets deal with it anyway:
 				// - the now "foreign" object must be left alone
 				// - an entry must be created anew
-				capacity.OwnerReferences = []metav1.OwnerReference{}
+				capacity.Labels = nil
 				if _, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Update(ctx, &capacity, metav1.UpdateOptions{}); err != nil {
 					return nil, err
 				}
-				expected[0].owner = &noOwner
+				expected[0].managedByID = noManager
 				expected[0].resourceVersion = csiscRev + "1"
 				expected = append(expected, testCapacity{
 					uid:              "CSISC-UID-2",
@@ -1076,12 +1118,14 @@ func validateCapacities(ctx context.Context, clientSet *fakeclientset.Clientset,
 nextActual:
 	for _, actual := range actualCapacities.Items {
 		for i, expected := range expectedCapacities {
-			expectedOwnerReferences := makeCapacity(expected).OwnerReferences
+			expectedCapacity := makeCapacity(expected)
 			if reflect.DeepEqual(actual.NodeTopology, expected.segment.GetLabelSelector()) &&
 				actual.StorageClassName == expected.storageClassName &&
-				(len(actual.OwnerReferences) == 0 && len(expectedOwnerReferences) == 0 ||
-					reflect.DeepEqual(actual.OwnerReferences, expectedOwnerReferences)) {
+				reflect.DeepEqual(actual.Labels, expectedCapacity.Labels) {
 				var mismatches []string
+				if !reflect.DeepEqual(actual.OwnerReferences, expectedCapacity.OwnerReferences) {
+					mismatches = append(mismatches, fmt.Sprintf("expected owner %v, got %v", expectedCapacity.OwnerReferences, actual.OwnerReferences))
+				}
 				mismatches = append(mismatches, validateQuantity("available capacity", actual.Capacity, expected.quantity)...)
 				mismatches = append(mismatches, validateQuantity("maximum volume size", actual.MaximumVolumeSize, expected.maxVolume)...)
 				if expected.uid != "" && actual.UID != expected.uid {
@@ -1226,7 +1270,8 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, storag
 		driverName,
 		client,
 		queue,
-		defaultOwner,
+		&defaultOwner,
+		managedByID,
 		ownerNamespace,
 		topologyInformer,
 		scInformer,
@@ -1455,6 +1500,7 @@ type testCapacity struct {
 	quantity         string
 	maxVolume        string
 	owner            *metav1.OwnerReference
+	managedByID      string
 }
 
 func (tc testCapacity) getCapacity() *resource.Quantity {
@@ -1486,12 +1532,26 @@ func makeCapacity(in testCapacity) *storagev1beta1.CSIStorageCapacity {
 	default:
 		owners = append(owners, *in.owner)
 	}
+	var labels map[string]string
+	switch in.managedByID {
+	case noManager:
+	case "":
+		labels = map[string]string{
+			DriverNameLabel: driverName,
+			ManagedByLabel:  managedByID,
+		}
+	default:
+		labels = map[string]string{
+			ManagedByLabel: in.managedByID,
+		}
+	}
 	return &storagev1beta1.CSIStorageCapacity{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:             in.uid,
 			ResourceVersion: in.resourceVersion,
 			Name:            fmt.Sprintf("csisc-%d", capacityCounter),
 			OwnerReferences: owners,
+			Labels:          labels,
 		},
 		NodeTopology:      in.segment.GetLabelSelector(),
 		StorageClassName:  in.storageClassName,
