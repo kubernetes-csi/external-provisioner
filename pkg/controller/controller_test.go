@@ -62,9 +62,11 @@ func init() {
 }
 
 const (
-	timeout           = 10 * time.Second
-	driverName        = "test-driver"
-	driverTopologyKey = "test-driver-node"
+	timeout                = 10 * time.Second
+	driverName             = "test-driver"
+	driverTopologyKey      = "test-driver-node"
+	inTreePluginName       = "test-in-tree-plugin"
+	inTreeStorageClassName = "test-in-tree-sc"
 )
 
 var (
@@ -4316,6 +4318,7 @@ func TestDeleteMigration(t *testing.T) {
 	testCases := []struct {
 		name              string
 		pv                *v1.PersistentVolume
+		sc                *storagev1.StorageClass
 		expectTranslation bool
 		expectErr         bool
 	}{
@@ -4324,7 +4327,14 @@ func TestDeleteMigration(t *testing.T) {
 			// The PV could be any random in-tree plugin - it doesn't really
 			// matter here. We only care that the translation is called and the
 			// function will work after some CSI volume is created
-			pv:                &v1.PersistentVolume{},
+			pv: &v1.PersistentVolume{},
+			sc: &storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: inTreeStorageClassName,
+				},
+				Provisioner: inTreePluginName,
+				Parameters:  map[string]string{},
+			},
 			expectTranslation: true,
 		},
 		{
@@ -4353,13 +4363,20 @@ func TestDeleteMigration(t *testing.T) {
 			mockTranslator := NewMockProvisionerCSITranslator(mockController)
 			defer mockController.Finish()
 			defer driver.Stop()
-			clientSet := fakeclientset.NewSimpleClientset()
+
+			var clientSet *fakeclientset.Clientset
+			if tc.sc != nil {
+				clientSet = fakeclientset.NewSimpleClientset(tc.sc)
+			} else {
+				clientSet = fakeclientset.NewSimpleClientset()
+			}
+
 			pluginCaps, controllerCaps := provisionCapabilities()
-			_, _, _, _, vaLister, stopCh := listers(clientSet)
+			scLister, _, _, _, vaLister, stopCh := listers(clientSet)
 			defer close(stopCh)
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
-				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "",
-				false, true, mockTranslator, nil, nil, nil, nil, vaLister, false, defaultfsType, nil)
+				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, inTreePluginName,
+				false, true, mockTranslator, scLister, nil, nil, nil, vaLister, false, defaultfsType, nil)
 
 			// Set mock return values (AnyTimes to avoid overfitting on implementation details)
 			mockTranslator.EXPECT().IsPVMigratable(gomock.Any()).Return(tc.expectTranslation).AnyTimes()
@@ -4367,6 +4384,7 @@ func TestDeleteMigration(t *testing.T) {
 				// In the translation case we translate to CSI we return a fake
 				// PV with a different handle
 				mockTranslator.EXPECT().TranslateInTreePVToCSI(gomock.Any()).Return(createFakeCSIPV(translatedHandle), nil).AnyTimes()
+				mockTranslator.EXPECT().TranslateInTreeStorageClassToCSI(gomock.Any(), gomock.Any()).Return(tc.sc, nil).AnyTimes()
 			}
 
 			volID := normalHandle
@@ -4419,6 +4437,11 @@ func createFakeCSIPV(volumeHandle string) *v1.PersistentVolume {
 					VolumeHandle: volumeHandle,
 				},
 			},
+			ClaimRef: &v1.ObjectReference{
+				Name:      "test-pvc",
+				Namespace: "test-namespace",
+			},
+			StorageClassName: inTreeStorageClassName,
 		},
 	}
 }
