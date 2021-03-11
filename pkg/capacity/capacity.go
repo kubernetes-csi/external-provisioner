@@ -820,7 +820,8 @@ func (c *Controller) isOwnedByUs(capacity *storagev1beta1.CSIStorageCapacity) bo
 }
 
 // isManaged checks the labels to determine whether this capacity object is managed by
-// the controller instance.
+// the controller instance. With server-side filtering via the informer, this
+// function becomes a simple safe-guard and should always return true.
 func (c *Controller) isManaged(capacity *storagev1beta1.CSIStorageCapacity) bool {
 	return capacity.Labels[DriverNameLabel] == c.driverName &&
 		capacity.Labels[ManagedByLabel] == c.managedByID

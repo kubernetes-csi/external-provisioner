@@ -34,6 +34,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
@@ -444,10 +445,17 @@ func main() {
 		}
 
 		// We only need objects from our own namespace. The normal factory would give
-		// us an informer for the entire cluster.
+		// us an informer for the entire cluster. We can further restrict the
+		// watch to just those objects with the right labels.
 		factoryForNamespace = informers.NewSharedInformerFactoryWithOptions(clientset,
 			ctrl.ResyncPeriodOfCsiNodeInformer,
 			informers.WithNamespace(namespace),
+			informers.WithTweakListOptions(func(lo *metav1.ListOptions) {
+				lo.LabelSelector = labels.Set{
+					capacity.DriverNameLabel: provisionerName,
+					capacity.ManagedByLabel:  managedByID,
+				}.AsSelector().String()
+			}),
 		)
 
 		capacityController = capacity.NewCentralCapacityController(
