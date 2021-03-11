@@ -31,6 +31,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 	storagev1 "k8s.io/api/storage/v1"
 	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -162,6 +163,33 @@ func TestCapacityController(t *testing.T) {
 					segment:          layer0,
 					storageClassName: "other-sc",
 					quantity:         "1Gi",
+				},
+			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
+		},
+		"one maximum volume size": {
+			topology: topology.NewMock(&layer0),
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi,1Mi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					maxVolume:        "1Mi",
 				},
 			},
 			expectedObjectsPrepared: objects{
@@ -1040,15 +1068,8 @@ nextActual:
 				(len(actual.OwnerReferences) == 0 && len(expectedOwnerReferences) == 0 ||
 					reflect.DeepEqual(actual.OwnerReferences, expectedOwnerReferences)) {
 				var mismatches []string
-				if expected.quantity != "" && actual.Capacity == nil {
-					mismatches = append(mismatches, "unexpected nil quantity")
-				}
-				if expected.quantity == "" && actual.Capacity != nil {
-					mismatches = append(mismatches, "unexpected quantity")
-				}
-				if expected.quantity != "" && actual.Capacity.Cmp(*expected.getCapacity()) != 0 {
-					mismatches = append(mismatches, fmt.Sprintf("expected quantity %v, got %v", expected.quantity, *actual.Capacity))
-				}
+				mismatches = append(mismatches, validateQuantity("available capacity", actual.Capacity, expected.quantity)...)
+				mismatches = append(mismatches, validateQuantity("maximum volume size", actual.MaximumVolumeSize, expected.maxVolume)...)
 				if expected.uid != "" && actual.UID != expected.uid {
 					mismatches = append(mismatches, fmt.Sprintf("expected UID %s, got %s", expected.uid, actual.UID))
 				}
@@ -1072,6 +1093,20 @@ nextActual:
 		return errors.New(strings.Join(messages, "\n"))
 	}
 	return nil
+}
+
+func validateQuantity(what string, actual *resource.Quantity, expected string) []string {
+	var mismatches []string
+	if expected != "" && actual == nil {
+		mismatches = append(mismatches, fmt.Sprintf("%s: unexpected nil quantity", what))
+	}
+	if expected == "" && actual != nil {
+		mismatches = append(mismatches, fmt.Sprintf("%s: unexpected quantity", what))
+	}
+	if expected != "" && actual.Cmp(resource.MustParse(expected)) != 0 {
+		mismatches = append(mismatches, fmt.Sprintf("%s: expected quantity %v, got %v", what, expected, *actual))
+	}
+	return mismatches
 }
 
 func validateCapacitiesEventually(ctx context.Context, c *Controller, clientSet *fakeclientset.Clientset, expectedCapacities []testCapacity) error {
@@ -1255,7 +1290,8 @@ const (
 // one pool for each data center, one pool for reach region).
 //
 // It uses "layer1", "layer2", ... etc. as topology keys to dive into
-// the map, which then either has a string or another map.
+// the map, which then either has a string in the format "<capacity>" or
+// "<capacity>,<max volume size>", or another map.
 // A fake "multiplier" parameter is applied to the resulting capacity.
 type mockCapacity struct {
 	capacity map[string]interface{}
@@ -1272,8 +1308,13 @@ func (mc *mockCapacity) GetCapacity(ctx context.Context, in *csi.GetCapacityRequ
 	}
 	resp := &csi.GetCapacityResponse{}
 	if available != "" {
-		quantity := resource.MustParse(available)
+		parts := strings.SplitN(available, ",", 2)
+		quantity := resource.MustParse(parts[0])
 		resp.AvailableCapacity = quantity.Value()
+		if len(parts) > 1 {
+			maxVolume := resource.MustParse(parts[1])
+			resp.MaximumVolumeSize = &wrapperspb.Int64Value{Value: maxVolume.Value()}
+		}
 	}
 	multiplierStr, ok := in.Parameters[mockMultiplier]
 	if ok {
@@ -1311,14 +1352,23 @@ type testCapacity struct {
 	segment          topology.Segment
 	storageClassName string
 	quantity         string
+	maxVolume        string
 	owner            *metav1.OwnerReference
 }
 
 func (tc testCapacity) getCapacity() *resource.Quantity {
-	if tc.quantity == "" {
+	return str2quantity(tc.quantity)
+}
+
+func (tc testCapacity) getMaximumVolumeSize() *resource.Quantity {
+	return str2quantity(tc.maxVolume)
+}
+
+func str2quantity(str string) *resource.Quantity {
+	if str == "" {
 		return nil
 	}
-	quantity := resource.MustParse(tc.quantity)
+	quantity := resource.MustParse(str)
 	return &quantity
 }
 
@@ -1342,9 +1392,10 @@ func makeCapacity(in testCapacity) *storagev1beta1.CSIStorageCapacity {
 			Name:            fmt.Sprintf("csisc-%d", capacityCounter),
 			OwnerReferences: owners,
 		},
-		NodeTopology:     in.segment.GetLabelSelector(),
-		StorageClassName: in.storageClassName,
-		Capacity:         in.getCapacity(),
+		NodeTopology:      in.segment.GetLabelSelector(),
+		StorageClassName:  in.storageClassName,
+		Capacity:          in.getCapacity(),
+		MaximumVolumeSize: in.getMaximumVolumeSize(),
 	}
 }
 

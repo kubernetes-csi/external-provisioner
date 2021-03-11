@@ -536,6 +536,11 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 	}
 
 	quantity := resource.NewQuantity(resp.AvailableCapacity, resource.BinarySI)
+	var maximumVolumeSize *resource.Quantity
+	if resp.MaximumVolumeSize != nil {
+		maximumVolumeSize = resource.NewQuantity(resp.MaximumVolumeSize.Value, resource.BinarySI)
+	}
+
 	if capacity == nil {
 		// Create new object.
 		capacity = &storagev1beta1.CSIStorageCapacity{
@@ -543,9 +548,10 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 				GenerateName:    "csisc-",
 				OwnerReferences: []metav1.OwnerReference{c.owner},
 			},
-			StorageClassName: item.storageClassName,
-			NodeTopology:     item.segment.GetLabelSelector(),
-			Capacity:         quantity,
+			StorageClassName:  item.storageClassName,
+			NodeTopology:      item.segment.GetLabelSelector(),
+			Capacity:          quantity,
+			MaximumVolumeSize: maximumVolumeSize,
 		}
 		var err error
 		klog.V(5).Infof("Capacity Controller: creating new object for %+v, new capacity %v", item, quantity)
@@ -565,6 +571,7 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		// Update existing object. Must not modify object in the informer cache.
 		capacity := capacity.DeepCopy()
 		capacity.Capacity = quantity
+		capacity.MaximumVolumeSize = maximumVolumeSize
 		var err error
 		klog.V(5).Infof("Capacity Controller: updating %s for %+v, new capacity %v", capacity.Name, item, quantity)
 		capacity, err = c.client.StorageV1beta1().CSIStorageCapacities(capacity.Namespace).Update(ctx, capacity, metav1.UpdateOptions{})
