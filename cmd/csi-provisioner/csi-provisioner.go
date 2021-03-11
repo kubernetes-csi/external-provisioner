@@ -464,7 +464,7 @@ func main() {
 			namespace,
 			topologyInformer,
 			factory.Storage().V1().StorageClasses(),
-			factoryForNamespace.Storage().V1alpha1().CSIStorageCapacities(),
+			factoryForNamespace.Storage().V1beta1().CSIStorageCapacities(),
 			*capacityPollInterval,
 			*capacityImmediateBinding,
 		)
