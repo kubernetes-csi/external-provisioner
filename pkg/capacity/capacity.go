@@ -22,12 +22,14 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
 	"google.golang.org/grpc"
+	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
@@ -379,6 +381,68 @@ func (c *Controller) onSCDelete(sc *storagev1.StorageClass) {
 	defer c.capacitiesLock.Unlock()
 	for _, segment := range segments {
 		c.removeWorkItem(segment, sc)
+	}
+}
+
+// refreshTopology identifies all work items matching the topology and schedules
+// a refresh. The node affinity is expected to come from controller.GenerateVolumeNodeAffinity,
+// i.e. only use NodeSelectorTerms and each of those must be based on the CSI driver's
+// topology key/value pairs of a topology segment.
+func (c *Controller) refreshTopology(nodeAffinity v1.VolumeNodeAffinity) {
+	if nodeAffinity.Required == nil || nodeAffinity.Required.NodeSelectorTerms == nil {
+		klog.Errorf("Capacity Controller: skipping refresh: unexpected VolumeNodeAffinity, missing NodeSelectorTerms: %v", nodeAffinity)
+		return
+	}
+
+	c.capacitiesLock.Lock()
+	defer c.capacitiesLock.Unlock()
+
+	for _, term := range nodeAffinity.Required.NodeSelectorTerms {
+		segment, err := termToSegment(term)
+		if err != nil {
+			klog.Errorf("Capacity Controller: skipping refresh: unexpected node selector term %+v: %v", term, err)
+			continue
+		}
+		for item := range c.capacities {
+			if item.segment.Compare(segment) == 0 {
+				klog.V(5).Infof("Capacity Controller: skipping refresh: enqueuing %+v because of the topology", item)
+				c.queue.Add(item)
+			}
+		}
+	}
+}
+
+func termToSegment(term v1.NodeSelectorTerm) (segment topology.Segment, err error) {
+	if len(term.MatchFields) > 0 {
+		err = fmt.Errorf("MatchFields not empty: %+v", term.MatchFields)
+		return
+	}
+	for _, match := range term.MatchExpressions {
+		if match.Operator != v1.NodeSelectorOpIn {
+			err = fmt.Errorf("unexpected operator: %v", match.Operator)
+			return
+		}
+		if len(match.Values) != 1 {
+			err = fmt.Errorf("need exactly one label value, got: %v", match.Values)
+			return
+		}
+		segment = append(segment, topology.SegmentEntry{Key: match.Key, Value: match.Values[0]})
+	}
+	sort.Sort(&segment)
+	return
+}
+
+// refreshSC identifies all work items matching the storage class and schedules
+// a refresh.
+func (c *Controller) refreshSC(storageClassName string) {
+	c.capacitiesLock.Lock()
+	defer c.capacitiesLock.Unlock()
+
+	for item := range c.capacities {
+		if item.storageClassName == storageClassName {
+			klog.V(5).Infof("Capacity Controller: enqueuing %+v because of the storage class", item)
+			c.queue.Add(item)
+		}
 	}
 }
 

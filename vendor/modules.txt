@@ -88,6 +88,8 @@ github.com/modern-go/concurrent
 github.com/modern-go/reflect2
 # github.com/pkg/errors v0.9.1
 github.com/pkg/errors
+# github.com/pmezard/go-difflib v1.0.0
+github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/client_golang v1.9.0
 ## explicit
 github.com/prometheus/client_golang/prometheus
@@ -110,6 +112,10 @@ github.com/prometheus/procfs/internal/util
 # github.com/spf13/pflag v1.0.5
 ## explicit
 github.com/spf13/pflag
+# github.com/stretchr/testify v1.7.0
+## explicit
+github.com/stretchr/testify/assert
+github.com/stretchr/testify/require
 # golang.org/x/crypto v0.0.0-20210317152858-513c2a44f670
 ## explicit
 golang.org/x/crypto/ed25519

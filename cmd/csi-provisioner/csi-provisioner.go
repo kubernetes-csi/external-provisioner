@@ -393,22 +393,6 @@ func main() {
 		nodeDeployment,
 	)
 
-	provisionController = controller.NewProvisionController(
-		clientset,
-		provisionerName,
-		csiProvisioner,
-		serverVersion.GitVersion,
-		provisionerOptions...,
-	)
-
-	csiClaimController := ctrl.NewCloningProtectionController(
-		clientset,
-		claimLister,
-		claimInformer,
-		claimQueue,
-		controllerCapabilities,
-	)
-
 	var capacityController *capacity.Controller
 	if *enableCapacity {
 		podName := os.Getenv("POD_NAME")
@@ -469,7 +453,26 @@ func main() {
 			*capacityImmediateBinding,
 		)
 		legacyregistry.CustomMustRegister(capacityController)
+
+		// Wrap Provision and Delete to detect when it is time to refresh capacity.
+		csiProvisioner = capacity.NewProvisionWrapper(csiProvisioner, capacityController)
 	}
+
+	provisionController = controller.NewProvisionController(
+		clientset,
+		provisionerName,
+		csiProvisioner,
+		serverVersion.GitVersion,
+		provisionerOptions...,
+	)
+
+	csiClaimController := ctrl.NewCloningProtectionController(
+		clientset,
+		claimLister,
+		claimInformer,
+		claimQueue,
+		controllerCapabilities,
+	)
 
 	// Start HTTP server, regardless whether we are the leader or not.
 	if addr != "" {
