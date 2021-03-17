@@ -115,6 +115,13 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * All glog / klog arguments are supported, such as `-v <log level>` or `-alsologtostderr`.
 
+### Design
+
+External-provisioner interacts with Kubernetes by watching PVCs and
+PVs and implementing the [external provisioner
+protocol](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/storage/container-storage-interface.md#provisioning-and-deleting).
+The [design document](./docs/design.md) explains this in more detail.
+
 ### Topology support
 When `Topology` feature is enabled and the driver specifies `VOLUME_ACCESSIBILITY_CONSTRAINTS` in its plugin capabilities, external-provisioner prepares `CreateVolumeRequest.AccessibilityRequirements` while calling `Controller.CreateVolume`. The driver has to consider these topology constraints while creating the volume. Below table shows how these `AccessibilityRequirements` are prepared:
 
