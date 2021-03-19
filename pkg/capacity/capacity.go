@@ -187,8 +187,6 @@ func NewCentralCapacityController(
 func (c *Controller) Run(ctx context.Context, threadiness int) {
 	klog.Info("Starting Capacity Controller")
 	defer c.queue.ShutDown()
-	go c.scInformer.Informer().Run(ctx.Done())
-	go c.topologyInformer.Run(ctx)
 
 	c.prepare(ctx)
 	for i := 0; i < threadiness; i++ {
