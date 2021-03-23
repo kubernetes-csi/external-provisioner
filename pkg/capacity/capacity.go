@@ -102,6 +102,11 @@ type workItem struct {
 	storageClassName string
 }
 
+func (w workItem) equals(capacity *storagev1alpha1.CSIStorageCapacity) bool {
+	return w.storageClassName == capacity.StorageClassName &&
+		reflect.DeepEqual(w.segment.GetLabelSelector(), capacity.NodeTopology)
+}
+
 var (
 	// Defines parameters for ExponentialBackoff used while starting up
 	// and listing CSIStorageCapacity objects.
@@ -616,8 +621,7 @@ func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1alph
 			return
 		}
 		if capacity2 == nil &&
-			item.storageClassName == capacity.StorageClassName &&
-			reflect.DeepEqual(item.segment.GetLabelSelector(), capacity.NodeTopology) {
+			item.equals(capacity) {
 			// This is the capacity object for this particular combination
 			// of parameters. Reuse it.
 			klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s with resource version %s matches %+v", capacity.Name, capacity.ResourceVersion, item)
@@ -714,8 +718,7 @@ func (c *Controller) getObjectsObsolete() int64 {
 
 func (c *Controller) isObsolete(capacity *storagev1alpha1.CSIStorageCapacity) bool {
 	for item, _ := range c.capacities {
-		if item.storageClassName == capacity.StorageClassName &&
-			reflect.DeepEqual(item.segment.GetLabelSelector(), capacity.NodeTopology) {
+		if item.equals(capacity) {
 			return false
 		}
 	}
