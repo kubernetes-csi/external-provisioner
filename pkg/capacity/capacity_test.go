@@ -31,8 +31,9 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 	storagev1 "k8s.io/api/storage/v1"
-	storagev1alpha1 "k8s.io/api/storage/v1alpha1"
+	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -162,6 +163,33 @@ func TestCapacityController(t *testing.T) {
 					segment:          layer0,
 					storageClassName: "other-sc",
 					quantity:         "1Gi",
+				},
+			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
+		},
+		"one maximum volume size": {
+			topology: topology.NewMock(&layer0),
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi,1Mi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					maxVolume:        "1Mi",
 				},
 			},
 			expectedObjectsPrepared: objects{
@@ -615,12 +643,12 @@ func TestCapacityController(t *testing.T) {
 				},
 			},
 			modify: func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) ([]testCapacity, error) {
-				capacities, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
+				capacities, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
 				if err != nil {
 					return nil, err
 				}
 				capacity := capacities.Items[0]
-				if err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{}); err != nil {
+				if err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{}); err != nil {
 					return nil, err
 				}
 				expected[0].uid = "CSISC-UID-2"
@@ -634,7 +662,7 @@ func TestCapacityController(t *testing.T) {
 		"delete redundant capacity": {
 			modify: func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) ([]testCapacity, error) {
 				capacity := makeCapacity(testCapacity{quantity: "1Gi"})
-				if _, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{}); err != nil {
+				if _, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{}); err != nil {
 					return nil, err
 				}
 				return expected, nil
@@ -664,7 +692,7 @@ func TestCapacityController(t *testing.T) {
 				},
 			},
 			modify: func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) ([]testCapacity, error) {
-				capacities, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
+				capacities, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
 				if err != nil {
 					return nil, err
 				}
@@ -673,7 +701,7 @@ func TestCapacityController(t *testing.T) {
 				// - the now "foreign" object must be left alone
 				// - an entry must be created anew
 				capacity.OwnerReferences = []metav1.OwnerReference{}
-				if _, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).Update(ctx, &capacity, metav1.UpdateOptions{}); err != nil {
+				if _, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Update(ctx, &capacity, metav1.UpdateOptions{}); err != nil {
 					return nil, err
 				}
 				expected[0].owner = &noOwner
@@ -716,19 +744,19 @@ func TestCapacityController(t *testing.T) {
 				},
 			},
 			modify: func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) ([]testCapacity, error) {
-				capacities, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
+				capacities, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
 				if err != nil {
 					return nil, err
 				}
 				capacity := capacities.Items[0]
 				// Delete and recreate with wrong capacity. This changes the UID while keeping the name
 				// the same. The capacity then must get corrected by the controller.
-				if err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{}); err != nil {
+				if err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{}); err != nil {
 					return nil, err
 				}
 				capacity.UID = "CSISC-UID-2"
 				capacity.Capacity = &mb
-				if _, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).Create(ctx, &capacity, metav1.CreateOptions{}); err != nil {
+				if _, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Create(ctx, &capacity, metav1.CreateOptions{}); err != nil {
 					return nil, err
 				}
 				expected[0].uid = capacity.UID
@@ -957,7 +985,7 @@ func TestCapacityController(t *testing.T) {
 			c, registry := fakeController(ctx, clientSet, &tc.storage, topo, tc.immediateBinding)
 			for _, testCapacity := range tc.initialCapacities {
 				capacity := makeCapacity(testCapacity)
-				_, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
+				_, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -1023,7 +1051,7 @@ func TestCapacityController(t *testing.T) {
 }
 
 func validateCapacities(ctx context.Context, clientSet *fakeclientset.Clientset, expectedCapacities []testCapacity) error {
-	actualCapacities, err := clientSet.StorageV1alpha1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
+	actualCapacities, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("unexpected error: %v", err)
 	}
@@ -1040,15 +1068,8 @@ nextActual:
 				(len(actual.OwnerReferences) == 0 && len(expectedOwnerReferences) == 0 ||
 					reflect.DeepEqual(actual.OwnerReferences, expectedOwnerReferences)) {
 				var mismatches []string
-				if expected.quantity != "" && actual.Capacity == nil {
-					mismatches = append(mismatches, "unexpected nil quantity")
-				}
-				if expected.quantity == "" && actual.Capacity != nil {
-					mismatches = append(mismatches, "unexpected quantity")
-				}
-				if expected.quantity != "" && actual.Capacity.Cmp(*expected.getCapacity()) != 0 {
-					mismatches = append(mismatches, fmt.Sprintf("expected quantity %v, got %v", expected.quantity, *actual.Capacity))
-				}
+				mismatches = append(mismatches, validateQuantity("available capacity", actual.Capacity, expected.quantity)...)
+				mismatches = append(mismatches, validateQuantity("maximum volume size", actual.MaximumVolumeSize, expected.maxVolume)...)
 				if expected.uid != "" && actual.UID != expected.uid {
 					mismatches = append(mismatches, fmt.Sprintf("expected UID %s, got %s", expected.uid, actual.UID))
 				}
@@ -1072,6 +1093,20 @@ nextActual:
 		return errors.New(strings.Join(messages, "\n"))
 	}
 	return nil
+}
+
+func validateQuantity(what string, actual *resource.Quantity, expected string) []string {
+	var mismatches []string
+	if expected != "" && actual == nil {
+		mismatches = append(mismatches, fmt.Sprintf("%s: unexpected nil quantity", what))
+	}
+	if expected == "" && actual != nil {
+		mismatches = append(mismatches, fmt.Sprintf("%s: unexpected quantity", what))
+	}
+	if expected != "" && actual.Cmp(resource.MustParse(expected)) != 0 {
+		mismatches = append(mismatches, fmt.Sprintf("%s: expected quantity %v, got %v", what, expected, *actual))
+	}
+	return mismatches
 }
 
 func validateCapacitiesEventually(ctx context.Context, c *Controller, clientSet *fakeclientset.Clientset, expectedCapacities []testCapacity) error {
@@ -1129,7 +1164,7 @@ func createCSIStorageCapacityReactor() func(action ktesting.Action) (handled boo
 	var uidCounter int
 	var mutex sync.Mutex
 	return func(action ktesting.Action) (handled bool, ret runtime.Object, err error) {
-		s := action.(ktesting.CreateAction).GetObject().(*storagev1alpha1.CSIStorageCapacity)
+		s := action.(ktesting.CreateAction).GetObject().(*storagev1beta1.CSIStorageCapacity)
 		if s.Name == "" && s.GenerateName != "" {
 			s.Name = fmt.Sprintf("%s-%s", s.GenerateName, krand.String(16))
 		}
@@ -1148,7 +1183,7 @@ func createCSIStorageCapacityReactor() func(action ktesting.Action) (handled boo
 // the fake client. Add it with client.PrependReactor to your fake client.
 func updateCSIStorageCapacityReactor() func(action ktesting.Action) (handled bool, ret runtime.Object, err error) {
 	return func(action ktesting.Action) (handled bool, ret runtime.Object, err error) {
-		s := action.(ktesting.UpdateAction).GetObject().(*storagev1alpha1.CSIStorageCapacity)
+		s := action.(ktesting.UpdateAction).GetObject().(*storagev1beta1.CSIStorageCapacity)
 		if !strings.HasPrefix(s.ResourceVersion, csiscRev) {
 			return false, nil, fmt.Errorf("resource version %q should have prefix %s", s.ResourceVersion, csiscRev)
 		}
@@ -1169,7 +1204,7 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, storag
 	resyncPeriod := time.Hour
 	informerFactory := informers.NewSharedInformerFactory(client, resyncPeriod)
 	scInformer := informerFactory.Storage().V1().StorageClasses()
-	cInformer := informerFactory.Storage().V1alpha1().CSIStorageCapacities()
+	cInformer := informerFactory.Storage().V1beta1().CSIStorageCapacities()
 	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(time.Second, 2*time.Second)
 	queue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "items")
 
@@ -1255,7 +1290,8 @@ const (
 // one pool for each data center, one pool for reach region).
 //
 // It uses "layer1", "layer2", ... etc. as topology keys to dive into
-// the map, which then either has a string or another map.
+// the map, which then either has a string in the format "<capacity>" or
+// "<capacity>,<max volume size>", or another map.
 // A fake "multiplier" parameter is applied to the resulting capacity.
 type mockCapacity struct {
 	capacity map[string]interface{}
@@ -1272,8 +1308,13 @@ func (mc *mockCapacity) GetCapacity(ctx context.Context, in *csi.GetCapacityRequ
 	}
 	resp := &csi.GetCapacityResponse{}
 	if available != "" {
-		quantity := resource.MustParse(available)
+		parts := strings.SplitN(available, ",", 2)
+		quantity := resource.MustParse(parts[0])
 		resp.AvailableCapacity = quantity.Value()
+		if len(parts) > 1 {
+			maxVolume := resource.MustParse(parts[1])
+			resp.MaximumVolumeSize = &wrapperspb.Int64Value{Value: maxVolume.Value()}
+		}
 	}
 	multiplierStr, ok := in.Parameters[mockMultiplier]
 	if ok {
@@ -1311,20 +1352,29 @@ type testCapacity struct {
 	segment          topology.Segment
 	storageClassName string
 	quantity         string
+	maxVolume        string
 	owner            *metav1.OwnerReference
 }
 
 func (tc testCapacity) getCapacity() *resource.Quantity {
-	if tc.quantity == "" {
+	return str2quantity(tc.quantity)
+}
+
+func (tc testCapacity) getMaximumVolumeSize() *resource.Quantity {
+	return str2quantity(tc.maxVolume)
+}
+
+func str2quantity(str string) *resource.Quantity {
+	if str == "" {
 		return nil
 	}
-	quantity := resource.MustParse(tc.quantity)
+	quantity := resource.MustParse(str)
 	return &quantity
 }
 
 var capacityCounter int
 
-func makeCapacity(in testCapacity) *storagev1alpha1.CSIStorageCapacity {
+func makeCapacity(in testCapacity) *storagev1beta1.CSIStorageCapacity {
 	capacityCounter++
 	var owners []metav1.OwnerReference
 	switch in.owner {
@@ -1335,16 +1385,17 @@ func makeCapacity(in testCapacity) *storagev1alpha1.CSIStorageCapacity {
 	default:
 		owners = append(owners, *in.owner)
 	}
-	return &storagev1alpha1.CSIStorageCapacity{
+	return &storagev1beta1.CSIStorageCapacity{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:             in.uid,
 			ResourceVersion: in.resourceVersion,
 			Name:            fmt.Sprintf("csisc-%d", capacityCounter),
 			OwnerReferences: owners,
 		},
-		NodeTopology:     in.segment.GetLabelSelector(),
-		StorageClassName: in.storageClassName,
-		Capacity:         in.getCapacity(),
+		NodeTopology:      in.segment.GetLabelSelector(),
+		StorageClassName:  in.storageClassName,
+		Capacity:          in.getCapacity(),
+		MaximumVolumeSize: in.getMaximumVolumeSize(),
 	}
 }
 
