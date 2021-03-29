@@ -41,6 +41,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/component-base/metrics"
 	"k8s.io/klog/v2"
 )
 
@@ -73,6 +74,8 @@ const (
 // and storage class name as some other object. That should never happen,
 // but the controller is prepared to clean that up, just in case.
 type Controller struct {
+	metrics.BaseStableCollector
+
 	csiController    CSICapacityClient
 	driverName       string
 	client           kubernetes.Interface
@@ -99,6 +102,11 @@ type workItem struct {
 	storageClassName string
 }
 
+func (w workItem) equals(capacity *storagev1alpha1.CSIStorageCapacity) bool {
+	return w.storageClassName == capacity.StorageClassName &&
+		reflect.DeepEqual(w.segment.GetLabelSelector(), capacity.NodeTopology)
+}
+
 var (
 	// Defines parameters for ExponentialBackoff used while starting up
 	// and listing CSIStorageCapacity objects.
@@ -107,6 +115,28 @@ var (
 		Factor:   1.1,
 		Steps:    10,
 	}
+
+	objectsGoalDesc = metrics.NewDesc(
+		"csistoragecapacities_desired_goal",
+		"Number of CSIStorageCapacity objects that are supposed to be managed automatically.",
+		nil, nil,
+		metrics.ALPHA,
+		"",
+	)
+	objectsCurrentDesc = metrics.NewDesc(
+		"csistoragecapacities_desired_current",
+		"Number of CSIStorageCapacity objects that exist and are supposed to be managed automatically.",
+		nil, nil,
+		metrics.ALPHA,
+		"",
+	)
+	objectsObsoleteDesc = metrics.NewDesc(
+		"csistoragecapacities_obsolete",
+		"Number of CSIStorageCapacity objects that exist and will be deleted automatically. Objects that exist and may need an update are not considered obsolete and therefore not included in this value.",
+		nil, nil,
+		metrics.ALPHA,
+		"",
+	)
 )
 
 // CSICapacityClient is the relevant subset of csi.ControllerClient.
@@ -115,6 +145,8 @@ type CSICapacityClient interface {
 }
 
 // NewController creates a new controller for CSIStorageCapacity objects.
+// It implements metrics.StableCollector and thus can be registered in
+// a registry.
 func NewCentralCapacityController(
 	csiController CSICapacityClient,
 	driverName string,
@@ -185,6 +217,8 @@ func NewCentralCapacityController(
 
 	return c
 }
+
+var _ metrics.StableCollector = &Controller{}
 
 // Run is a main Controller handler
 func (c *Controller) Run(ctx context.Context, threadiness int) {
@@ -358,8 +392,11 @@ func (c *Controller) addWorkItem(segment *topology.Segment, sc *storagev1.Storag
 		storageClassName: sc.Name,
 	}
 	// Ensure that we have an entry for it...
-	capacity := c.capacities[item]
-	c.capacities[item] = capacity
+	_, found := c.capacities[item]
+	if !found {
+		c.capacities[item] = nil
+	}
+
 	// ... and then tell our workers to update
 	// or create that capacity object.
 	klog.V(5).Infof("Capacity Controller: enqueuing %+v", item)
@@ -584,8 +621,7 @@ func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1alph
 			return
 		}
 		if capacity2 == nil &&
-			item.storageClassName == capacity.StorageClassName &&
-			reflect.DeepEqual(item.segment.GetLabelSelector(), capacity.NodeTopology) {
+			item.equals(capacity) {
 			// This is the capacity object for this particular combination
 			// of parameters. Reuse it.
 			klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s with resource version %s matches %+v", capacity.Name, capacity.ResourceVersion, item)
@@ -611,6 +647,82 @@ func (c *Controller) onCDelete(ctx context.Context, capacity *storagev1alpha1.CS
 			return
 		}
 	}
+}
+
+// DescribeWithStability implements the metrics.StableCollector interface.
+func (c *Controller) DescribeWithStability(ch chan<- *metrics.Desc) {
+	ch <- objectsGoalDesc
+	ch <- objectsCurrentDesc
+	ch <- objectsObsoleteDesc
+}
+
+// CollectWithStability implements the metrics.StableCollector interface.
+func (c *Controller) CollectWithStability(ch chan<- metrics.Metric) {
+	c.capacitiesLock.Lock()
+	defer c.capacitiesLock.Unlock()
+
+	ch <- metrics.NewLazyConstMetric(objectsGoalDesc,
+		metrics.GaugeValue,
+		float64(c.getObjectsGoal()),
+	)
+	ch <- metrics.NewLazyConstMetric(objectsCurrentDesc,
+		metrics.GaugeValue,
+		float64(c.getObjectsCurrent()),
+	)
+	ch <- metrics.NewLazyConstMetric(objectsObsoleteDesc,
+		metrics.GaugeValue,
+		float64(c.getObjectsObsolete()),
+	)
+}
+
+// getObjectsGoal is called during metrics gathering and calculates the number
+// of CSIStorageCapacity objects which are are meant to
+// to exist.
+func (c *Controller) getObjectsGoal() int64 {
+	return int64(len(c.capacities))
+}
+
+// getObjectsCurrent is called during metrics gathering and calculates the number
+// of CSIStorageCapacity objects which are currently exist and are meant to
+// continue to exist.
+func (c *Controller) getObjectsCurrent() int64 {
+	current := int64(0)
+	for _, capacity := range c.capacities {
+		if capacity != nil {
+			current++
+		}
+	}
+	return current
+}
+
+// getObsoleteObjects is called during metrics gathering and calculates the number
+// of CSIStorageCapacity objects which currently exist (according to our informer)
+// and which are no longer needed.
+func (c *Controller) getObjectsObsolete() int64 {
+	obsolete := int64(0)
+	capacities, _ := c.cInformer.Lister().List(labels.Everything())
+	if capacities == nil {
+		// Shouldn't happen, local operation.
+		return 0
+	}
+	for _, capacity := range capacities {
+		if !c.isControlledByUs(capacity.OwnerReferences) {
+			continue
+		}
+		if c.isObsolete(capacity) {
+			obsolete++
+		}
+	}
+	return obsolete
+}
+
+func (c *Controller) isObsolete(capacity *storagev1alpha1.CSIStorageCapacity) bool {
+	for item, _ := range c.capacities {
+		if item.equals(capacity) {
+			return false
+		}
+	}
+	return true
 }
 
 // isControlledByUs implements the same logic as https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1?tab=doc#IsControlledBy,

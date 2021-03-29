@@ -28,6 +28,8 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	flag "github.com/spf13/pflag"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -42,6 +44,9 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
 	utilflag "k8s.io/component-base/cli/flag"
+	"k8s.io/component-base/metrics/legacyregistry"
+	_ "k8s.io/component-base/metrics/prometheus/clientgo/leaderelection" // register leader election in the default legacy registry
+	_ "k8s.io/component-base/metrics/prometheus/workqueue"               // register work queues in the default legacy registry
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
@@ -180,7 +185,11 @@ func main() {
 		klog.Fatalf("Error getting server version: %v", err)
 	}
 
-	metricsManager := metrics.NewCSIMetricsManager("" /* driverName */)
+	metricsManager := metrics.NewCSIMetricsManagerWithOptions("", /* driverName */
+		// Will be provided via default gatherer.
+		metrics.WithProcessStartTime(false),
+		metrics.WithSubsystem(metrics.SubsystemSidecar),
+	)
 
 	grpcClient, err := ctrl.Connect(*csiEndpoint, metricsManager)
 	if err != nil {
@@ -200,6 +209,7 @@ func main() {
 		klog.Fatalf("Error getting CSI driver name: %s", err)
 	}
 	klog.V(2).Infof("Detected CSI driver %s", provisionerName)
+	metricsManager.SetDriverName(provisionerName)
 
 	translator := csitrans.New()
 	supportsMigrationFromInTreePluginName := ""
@@ -229,16 +239,16 @@ func main() {
 
 	// Prepare http endpoint for metrics + leader election healthz
 	mux := http.NewServeMux()
-	if addr != "" {
-		metricsManager.RegisterToServer(mux, *metricsPath)
-		metricsManager.SetDriverName(provisionerName)
-		go func() {
-			klog.Infof("ServeMux listening at %q", addr)
-			err := http.ListenAndServe(addr, mux)
-			if err != nil {
-				klog.Fatalf("Failed to start HTTP server at specified address (%q) and metrics path (%q): %s", addr, *metricsPath, err)
-			}
-		}()
+	gatherers := prometheus.Gatherers{
+		// For workqueue and leader election metrics, set up via the anonymous imports of:
+		// https://github.com/kubernetes/kubernetes/blob/master/staging/src/k8s.io/component-base/metrics/prometheus/workqueue/metrics.go
+		// https://github.com/kubernetes/kubernetes/blob/master/staging/src/k8s.io/component-base/metrics/prometheus/clientgo/leaderelection/metrics.go
+		//
+		// Also to happens to include Go runtime and process metrics:
+		// https://github.com/kubernetes/kubernetes/blob/9780d88cb6a4b5b067256ecb4abf56892093ee87/staging/src/k8s.io/component-base/metrics/legacyregistry/registry.go#L46-L49
+		legacyregistry.DefaultGatherer,
+		// For CSI operations.
+		metricsManager.GetRegistry(),
 	}
 
 	pluginCapabilities, controllerCapabilities, err := ctrl.GetDriverCapabilities(grpcClient, *operationTimeout)
@@ -448,7 +458,7 @@ func main() {
 			csi.NewControllerClient(grpcClient),
 			provisionerName,
 			clientset,
-			// TODO: metrics for the queue?!
+			// Metrics for the queue is available in the default registry.
 			workqueue.NewNamedRateLimitingQueue(rateLimiter, "csistoragecapacity"),
 			*controller,
 			namespace,
@@ -458,6 +468,32 @@ func main() {
 			*capacityPollInterval,
 			*capacityImmediateBinding,
 		)
+		legacyregistry.CustomMustRegister(capacityController)
+	}
+
+	// Start HTTP server, regardless whether we are the leader or not.
+	if addr != "" {
+		// To collect metrics data from the metric handler itself, we
+		// let it register itself and then collect from that registry.
+		reg := prometheus.NewRegistry()
+		gatherers = append(gatherers, reg)
+
+		// This is similar to k8s.io/component-base/metrics HandlerWithReset
+		// except that we gather from multiple sources. This is necessary
+		// because both CSI metrics manager and component-base manage
+		// their own registry. Probably could be avoided by making
+		// CSI metrics manager a bit more flexible.
+		mux.Handle(*metricsPath,
+			promhttp.InstrumentMetricHandler(
+				reg,
+				promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})))
+		go func() {
+			klog.Infof("ServeMux listening at %q", addr)
+			err := http.ListenAndServe(addr, mux)
+			if err != nil {
+				klog.Fatalf("Failed to start HTTP server at specified address (%q) and metrics path (%q): %s", addr, *metricsPath, err)
+			}
+		}()
 	}
 
 	run := func(ctx context.Context) {
