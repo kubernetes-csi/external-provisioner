@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,8 +31,10 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -58,6 +61,9 @@ const (
 	driverName     = "test-driver"
 	ownerNamespace = "testns"
 	csiscRev       = "CSISC-REV-"
+	managedByID    = "external-provisioner"
+	noManager      = "none"
+	otherManager   = "manual"
 )
 
 var (
@@ -83,6 +89,17 @@ var (
 	}
 	layer0other = topology.Segment{
 		{Key: "layer0", Value: "bar"},
+	}
+
+	deep = topology.Segment{
+		{Key: "layer0", Value: "foo"},
+		{Key: "layer1", Value: "X"},
+		{Key: "layer2", Value: "A"},
+	}
+	deepOther = topology.Segment{
+		{Key: "layer0", Value: "foo"},
+		{Key: "layer1", Value: "X"},
+		{Key: "layer2", Value: "B"},
 	}
 	mb = resource.MustParse("1Mi")
 )
@@ -116,6 +133,7 @@ csistoragecapacities_obsolete %d
 func TestCapacityController(t *testing.T) {
 	testcases := map[string]struct {
 		immediateBinding   bool
+		owner              *metav1.OwnerReference
 		topology           *topology.Mock
 		storage            mockCapacity
 		initialSCs         []testSC
@@ -163,6 +181,34 @@ func TestCapacityController(t *testing.T) {
 					segment:          layer0,
 					storageClassName: "other-sc",
 					quantity:         "1Gi",
+				},
+			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
+		},
+		"no owner": {
+			owner:    &noOwner,
+			topology: topology.NewMock(&layer0),
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					owner:            &noOwner,
 				},
 			},
 			expectedObjectsPrepared: objects{
@@ -315,6 +361,85 @@ func TestCapacityController(t *testing.T) {
 			},
 			expectedTotalProcessed: 1,
 		},
+		"reuse one capacity object, add owner": {
+			topology: topology.NewMock(&layer0),
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+				},
+			},
+			initialCapacities: []testCapacity{
+				{
+					uid:              "test-capacity-1",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					owner:            &noOwner,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					uid:              "test-capacity-1",
+					resourceVersion:  csiscRev + "1",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					owner:            &defaultOwner,
+				},
+			},
+			expectedObjectsPrepared: objects{
+				goal:    1,
+				current: 1,
+			},
+			expectedTotalProcessed: 1,
+		},
+		"reuse one capacity object, keep owner": {
+			owner:    &noOwner,
+			topology: topology.NewMock(&layer0),
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+				},
+			},
+			initialCapacities: []testCapacity{
+				{
+					uid:              "test-capacity-1",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					owner:            &defaultOwner,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					uid:              "test-capacity-1",
+					resourceVersion:  csiscRev + "0",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					owner:            &defaultOwner,
+				},
+			},
+			expectedObjectsPrepared: objects{
+				goal:    1,
+				current: 1,
+			},
+			expectedTotalProcessed: 1,
+		},
 		"obsolete object, missing SC": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
@@ -359,10 +484,10 @@ func TestCapacityController(t *testing.T) {
 				obsolete: 1,
 			},
 		},
-		"ignore capacity with other owner": {
+		"ignore capacity with other manager": {
 			initialCapacities: []testCapacity{
 				{
-					owner:            &otherOwner,
+					managedByID:      otherManager,
 					uid:              "test-capacity-1",
 					segment:          layer0,
 					storageClassName: "other-sc",
@@ -371,7 +496,7 @@ func TestCapacityController(t *testing.T) {
 			},
 			expectedCapacities: []testCapacity{
 				{
-					owner:            &otherOwner,
+					managedByID:      otherManager,
 					uid:              "test-capacity-1",
 					segment:          layer0,
 					storageClassName: "other-sc",
@@ -379,10 +504,10 @@ func TestCapacityController(t *testing.T) {
 				},
 			},
 		},
-		"ignore capacity with no owner": {
+		"ignore capacity with no manager": {
 			initialCapacities: []testCapacity{
 				{
-					owner:            &noOwner,
+					managedByID:      noManager,
 					uid:              "test-capacity-1",
 					segment:          layer0,
 					storageClassName: "other-sc",
@@ -391,7 +516,7 @@ func TestCapacityController(t *testing.T) {
 			},
 			expectedCapacities: []testCapacity{
 				{
-					owner:            &noOwner,
+					managedByID:      noManager,
 					uid:              "test-capacity-1",
 					segment:          layer0,
 					storageClassName: "other-sc",
@@ -697,14 +822,14 @@ func TestCapacityController(t *testing.T) {
 					return nil, err
 				}
 				capacity := capacities.Items[0]
-				// Unset owner. It's not clear why anyone would want to do that, but lets deal with it anyway:
+				// Unset labels. It's not clear why anyone would want to do that, but lets deal with it anyway:
 				// - the now "foreign" object must be left alone
 				// - an entry must be created anew
-				capacity.OwnerReferences = []metav1.OwnerReference{}
+				capacity.Labels = nil
 				if _, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Update(ctx, &capacity, metav1.UpdateOptions{}); err != nil {
 					return nil, err
 				}
-				expected[0].owner = &noOwner
+				expected[0].managedByID = noManager
 				expected[0].resourceVersion = csiscRev + "1"
 				expected = append(expected, testCapacity{
 					uid:              "CSISC-UID-2",
@@ -982,7 +1107,14 @@ func TestCapacityController(t *testing.T) {
 			if topo == nil {
 				topo = topology.NewMock()
 			}
-			c, registry := fakeController(ctx, clientSet, &tc.storage, topo, tc.immediateBinding)
+			owner := tc.owner
+			switch owner {
+			case &noOwner:
+				owner = nil
+			case nil:
+				owner = &defaultOwner
+			}
+			c, registry := fakeController(ctx, clientSet, owner, &tc.storage, topo, tc.immediateBinding)
 			for _, testCapacity := range tc.initialCapacities {
 				capacity := makeCapacity(testCapacity)
 				_, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
@@ -1062,12 +1194,14 @@ func validateCapacities(ctx context.Context, clientSet *fakeclientset.Clientset,
 nextActual:
 	for _, actual := range actualCapacities.Items {
 		for i, expected := range expectedCapacities {
-			expectedOwnerReferences := makeCapacity(expected).OwnerReferences
+			expectedCapacity := makeCapacity(expected)
 			if reflect.DeepEqual(actual.NodeTopology, expected.segment.GetLabelSelector()) &&
 				actual.StorageClassName == expected.storageClassName &&
-				(len(actual.OwnerReferences) == 0 && len(expectedOwnerReferences) == 0 ||
-					reflect.DeepEqual(actual.OwnerReferences, expectedOwnerReferences)) {
+				reflect.DeepEqual(actual.Labels, expectedCapacity.Labels) {
 				var mismatches []string
+				if !reflect.DeepEqual(actual.OwnerReferences, expectedCapacity.OwnerReferences) {
+					mismatches = append(mismatches, fmt.Sprintf("expected owner %v, got %v", expectedCapacity.OwnerReferences, actual.OwnerReferences))
+				}
 				mismatches = append(mismatches, validateQuantity("available capacity", actual.Capacity, expected.quantity)...)
 				mismatches = append(mismatches, validateQuantity("maximum volume size", actual.MaximumVolumeSize, expected.maxVolume)...)
 				if expected.uid != "" && actual.UID != expected.uid {
@@ -1196,7 +1330,7 @@ func updateCSIStorageCapacityReactor() func(action ktesting.Action) (handled boo
 	}
 }
 
-func fakeController(ctx context.Context, client *fakeclientset.Clientset, storage CSICapacityClient, topologyInformer topology.Informer, immediateBinding bool) (*Controller, metrics.KubeRegistry) {
+func fakeController(ctx context.Context, client *fakeclientset.Clientset, owner *metav1.OwnerReference, storage CSICapacityClient, topologyInformer topology.Informer, immediateBinding bool) (*Controller, metrics.KubeRegistry) {
 	utilruntime.ReallyCrash = false // avoids os.Exit after "close of closed channel" in shared informer code
 
 	// We don't need resyncs, they just lead to confusing log output if they get triggered while already some
@@ -1205,15 +1339,15 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, storag
 	informerFactory := informers.NewSharedInformerFactory(client, resyncPeriod)
 	scInformer := informerFactory.Storage().V1().StorageClasses()
 	cInformer := informerFactory.Storage().V1beta1().CSIStorageCapacities()
-	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(time.Second, 2*time.Second)
-	queue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "items")
+	queue := &rateLimitingQueue{}
 
 	c := NewCentralCapacityController(
 		storage,
 		driverName,
 		client,
 		queue,
-		defaultOwner,
+		owner,
+		managedByID,
 		ownerNamespace,
 		topologyInformer,
 		scInformer,
@@ -1230,6 +1364,94 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, storag
 	registry.CustomMustRegister(c)
 
 	return c, registry
+}
+
+// rateLimitingQueue is a stripped down implementation
+// which only supports adding and removing items.
+type rateLimitingQueue struct {
+	mutex        sync.Mutex
+	items        []interface{}
+	shuttingDown bool
+}
+
+var _ workqueue.RateLimitingInterface = &rateLimitingQueue{}
+
+func (r *rateLimitingQueue) Add(item interface{}) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	for _, existing := range r.items {
+		if existing == item {
+			return
+		}
+	}
+	r.items = append(r.items, item)
+}
+func (r *rateLimitingQueue) Len() int {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	return len(r.items)
+}
+func (r *rateLimitingQueue) Get() (item interface{}, shutdown bool) {
+	done := func() bool {
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
+
+		if len(r.items) > 0 {
+			item = r.items[0]
+			r.items = r.items[1:]
+			return true
+		}
+
+		if r.shuttingDown {
+			shutdown = true
+			return true
+		}
+		return false
+	}
+
+	for !done() {
+		time.Sleep(time.Millisecond)
+	}
+	return
+}
+func (r *rateLimitingQueue) Done(item interface{}) {
+}
+func (r *rateLimitingQueue) ShutDown() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.shuttingDown = true
+}
+func (r *rateLimitingQueue) ShuttingDown() bool {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	return r.shuttingDown
+}
+func (r *rateLimitingQueue) AddRateLimited(item interface{}) {}
+func (r *rateLimitingQueue) Forget(item interface{}) {
+}
+func (r *rateLimitingQueue) NumRequeues(item interface{}) int {
+	return 0
+}
+func (r *rateLimitingQueue) AddAfter(item interface{}, duration time.Duration) {
+	r.Add(item)
+}
+
+func (r *rateLimitingQueue) allItems() []interface{} {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	return r.items[:]
+}
+
+func (r *rateLimitingQueue) clear() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	r.items = nil
 }
 
 // process handles work items until the queue is empty and the informers are synced.
@@ -1354,6 +1576,7 @@ type testCapacity struct {
 	quantity         string
 	maxVolume        string
 	owner            *metav1.OwnerReference
+	managedByID      string
 }
 
 func (tc testCapacity) getCapacity() *resource.Quantity {
@@ -1385,12 +1608,26 @@ func makeCapacity(in testCapacity) *storagev1beta1.CSIStorageCapacity {
 	default:
 		owners = append(owners, *in.owner)
 	}
+	var labels map[string]string
+	switch in.managedByID {
+	case noManager:
+	case "":
+		labels = map[string]string{
+			DriverNameLabel: driverName,
+			ManagedByLabel:  managedByID,
+		}
+	default:
+		labels = map[string]string{
+			ManagedByLabel: in.managedByID,
+		}
+	}
 	return &storagev1beta1.CSIStorageCapacity{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:             in.uid,
 			ResourceVersion: in.resourceVersion,
 			Name:            fmt.Sprintf("csisc-%d", capacityCounter),
 			OwnerReferences: owners,
+			Labels:          labels,
 		},
 		NodeTopology:      in.segment.GetLabelSelector(),
 		StorageClassName:  in.storageClassName,
@@ -1426,4 +1663,323 @@ func makeSCs(in []testSC) (items []runtime.Object) {
 		items = append(items, makeSC(item))
 	}
 	return
+}
+
+func TestTermToSegment(t *testing.T) {
+	testcases := map[string]struct {
+		term          v1.NodeSelectorTerm
+		expectSegment topology.Segment
+		expectError   bool
+	}{
+		"matchfields": {
+			term: v1.NodeSelectorTerm{
+				MatchFields: []v1.NodeSelectorRequirement{
+					{
+						Key:    "name",
+						Values: []string{"worker-1"},
+					},
+				},
+			},
+			expectError: true,
+		},
+		"invalid-operator": {
+			term: v1.NodeSelectorTerm{
+				MatchExpressions: []v1.NodeSelectorRequirement{
+					{
+						Key:      "segment",
+						Operator: v1.NodeSelectorOpNotIn,
+						Values:   []string{"a"},
+					},
+				},
+			},
+			expectError: true,
+		},
+		"invalid-values": {
+			term: v1.NodeSelectorTerm{
+				MatchExpressions: []v1.NodeSelectorRequirement{
+					{
+						Key:      "segment",
+						Operator: v1.NodeSelectorOpIn,
+						Values:   []string{"a", "b"},
+					},
+				},
+			},
+			expectError: true,
+		},
+		"simple": {
+			term: v1.NodeSelectorTerm{
+				MatchExpressions: []v1.NodeSelectorRequirement{
+					{
+						Key:      "segment",
+						Operator: v1.NodeSelectorOpIn,
+						Values:   []string{"a"},
+					},
+				},
+			},
+			expectSegment: topology.Segment{topology.SegmentEntry{Key: "segment", Value: "a"}},
+		},
+		"multi": {
+			term: v1.NodeSelectorTerm{
+				MatchExpressions: []v1.NodeSelectorRequirement{
+					{
+						Key:      "segment",
+						Operator: v1.NodeSelectorOpIn,
+						Values:   []string{"a"},
+					},
+					{
+						Key:      "zone",
+						Operator: v1.NodeSelectorOpIn,
+						Values:   []string{"X"},
+					},
+				},
+			},
+			expectSegment: topology.Segment{
+				topology.SegmentEntry{Key: "segment", Value: "a"},
+				topology.SegmentEntry{Key: "zone", Value: "X"},
+			},
+		},
+		"unsorted": {
+			term: v1.NodeSelectorTerm{
+				MatchExpressions: []v1.NodeSelectorRequirement{
+					{
+						Key:      "zone",
+						Operator: v1.NodeSelectorOpIn,
+						Values:   []string{"X"},
+					},
+					{
+						Key:      "segment",
+						Operator: v1.NodeSelectorOpIn,
+						Values:   []string{"a"},
+					},
+				},
+			},
+			expectSegment: topology.Segment{
+				topology.SegmentEntry{Key: "segment", Value: "a"},
+				topology.SegmentEntry{Key: "zone", Value: "X"},
+			},
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			segment, err := termToSegment(tc.term)
+			if tc.expectError && err == nil {
+				t.Fatalf("expected error, got segment %v", segment)
+			}
+			if !tc.expectError && err != nil {
+				t.Fatalf("expected no error, got: %v", err)
+			}
+			if segment.Compare(tc.expectSegment) != 0 {
+				t.Fatalf("expected segment %v, got %v", tc.expectSegment, segment)
+			}
+		})
+	}
+}
+
+func TestRefresh(t *testing.T) {
+	testcases := map[string]struct {
+		topology        *topology.Mock
+		initialSCs      []testSC
+		refreshSC       string
+		refreshTopology topology.Segment
+
+		expectItems []string
+	}{
+		"two segments, two classes, refresh storageclass": {
+			topology: topology.NewMock(&layer0, &layer0other),
+			initialSCs: []testSC{
+				{
+					name:       "direct-sc",
+					driverName: driverName,
+				},
+				{
+					name:       "triple-sc",
+					driverName: driverName,
+					parameters: map[string]string{
+						mockMultiplier: "3",
+					},
+				},
+			},
+			refreshSC: "direct-sc",
+
+			expectItems: []string{
+				"direct-sc, [layer0: bar]",
+				"direct-sc, [layer0: foo]",
+			},
+		},
+		"two segments, two classes, refresh topology": {
+			topology: topology.NewMock(&layer0, &layer0other),
+			initialSCs: []testSC{
+				{
+					name:       "direct-sc",
+					driverName: driverName,
+				},
+				{
+					name:       "triple-sc",
+					driverName: driverName,
+					parameters: map[string]string{
+						mockMultiplier: "3",
+					},
+				},
+			},
+			refreshTopology: topology.Segment{
+				{Key: "layer0", Value: "bar"},
+			},
+
+			expectItems: []string{
+				"direct-sc, [layer0: bar]",
+				"triple-sc, [layer0: bar]",
+			},
+		},
+		"deep topology": {
+			topology: topology.NewMock(&deep, &deepOther),
+			initialSCs: []testSC{
+				{
+					name:       "direct-sc",
+					driverName: driverName,
+				},
+				{
+					name:       "triple-sc",
+					driverName: driverName,
+					parameters: map[string]string{
+						mockMultiplier: "3",
+					},
+				},
+			},
+			refreshTopology: deep,
+
+			expectItems: []string{
+				"direct-sc, [layer0: foo layer1: X layer2: A]",
+				"triple-sc, [layer0: foo layer1: X layer2: A]",
+			},
+		},
+		"no such topology": {
+			topology: topology.NewMock(&deep, &deepOther),
+			initialSCs: []testSC{
+				{
+					name:       "direct-sc",
+					driverName: driverName,
+				},
+				{
+					name:       "triple-sc",
+					driverName: driverName,
+					parameters: map[string]string{
+						mockMultiplier: "3",
+					},
+				},
+			},
+			refreshTopology: topology.Segment{
+				{Key: "layer0", Value: "foo"},
+				{Key: "layer1", Value: "X"},
+				{Key: "layer2", Value: "BBBBBBBBBBB"},
+			},
+		},
+		"no such storageclass": {
+			topology: topology.NewMock(&deep, &deepOther),
+			initialSCs: []testSC{
+				{
+					name:       "direct-sc",
+					driverName: driverName,
+				},
+				{
+					name:       "triple-sc",
+					driverName: driverName,
+					parameters: map[string]string{
+						mockMultiplier: "3",
+					},
+				},
+			},
+			refreshSC: "no-such-sc",
+		},
+		"truncated topology": {
+			topology: topology.NewMock(&deep, &deepOther),
+			initialSCs: []testSC{
+				{
+					name:       "direct-sc",
+					driverName: driverName,
+				},
+				{
+					name:       "triple-sc",
+					driverName: driverName,
+					parameters: map[string]string{
+						mockMultiplier: "3",
+					},
+				},
+			},
+			refreshTopology: topology.Segment{
+				{Key: "layer0", Value: "foo"},
+			},
+		},
+	}
+
+	for name, tc := range testcases {
+		// Not run in parallel. That doesn't work well in combination with global logging
+		// and global metrics instances.
+		t.Run(name, func(t *testing.T) {
+			// There is no good way to shut down the controller. It spawns
+			// various goroutines and some of them (in particular shared informer)
+			// become very unhappy ("close on closed channel") when using a context
+			// that gets cancelled. Therefore we just keep everything running.
+			ctx := context.Background()
+
+			var objects []runtime.Object
+			objects = append(objects, makeSCs(tc.initialSCs)...)
+			clientSet := fakeclientset.NewSimpleClientset(objects...)
+			clientSet.PrependReactor("create", "csistoragecapacities", createCSIStorageCapacityReactor())
+			clientSet.PrependReactor("update", "csistoragecapacities", updateCSIStorageCapacityReactor())
+			topo := tc.topology
+			if topo == nil {
+				topo = topology.NewMock()
+			}
+			c, _ := fakeController(ctx, clientSet, &defaultOwner, &mockCapacity{}, topo, false /* immediate binding */)
+			c.prepare(ctx)
+
+			// Clear queue so that below we only get to see items scheduled for refresh.
+			queue := c.queue.(*rateLimitingQueue)
+			queue.clear()
+
+			// Now refresh based on certain criteria.
+			if tc.refreshSC != "" {
+				c.refreshSC(tc.refreshSC)
+			}
+			if tc.refreshTopology != nil {
+				var expressions []v1.NodeSelectorRequirement
+				for _, entry := range tc.refreshTopology {
+					expressions = append(expressions, v1.NodeSelectorRequirement{
+						Key:      entry.Key,
+						Operator: v1.NodeSelectorOpIn,
+						Values:   []string{entry.Value},
+					})
+				}
+
+				selector := v1.VolumeNodeAffinity{
+					Required: &v1.NodeSelector{
+						NodeSelectorTerms: []v1.NodeSelectorTerm{
+							{MatchExpressions: expressions},
+						},
+					},
+				}
+				c.refreshTopology(selector)
+			}
+
+			// Validate the resulting work queue.
+			require.Equal(t, tc.expectItems, itemsAsSortedStringSlice(queue))
+		})
+	}
+}
+
+func itemsAsSortedStringSlice(queue *rateLimitingQueue) []string {
+	var content []string
+	for _, item := range queue.allItems() {
+		switch item := item.(type) {
+		case workItem:
+			content = append(content, fmt.Sprintf("%s, %v", item.storageClassName, *item.segment))
+		case *storagev1beta1.CSIStorageCapacity:
+			content = append(content, fmt.Sprintf("csc for %s, %v", item.StorageClassName, item.NodeTopology))
+		default:
+			content = append(content, fmt.Sprintf("%v", item))
+		}
+	}
+	sort.Strings(content)
+	return content
 }

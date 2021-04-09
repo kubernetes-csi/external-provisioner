@@ -76,7 +76,7 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * `--enable-capacity`: This enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call. The default is to not produce CSIStorageCapacity objects.
 
-* `--capacity-ownerref-level <levels>`: The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc. Defaults to `1` (= StatefulSet).
+* `--capacity-ownerref-level <levels>`: The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet and DaemonSet, 2 for a Deployment, etc. Defaults to `1` (= StatefulSet). Ownership is optional and can be disabled with -1.
 
 * `--capacity-threads <num>`: Number of simultaneously running threads, handling CSIStorageCapacity objects. Defaults to `1`.
 
@@ -136,10 +136,6 @@ No | Irrelevant | No  | No  | `Requisite` and `Preferred` both nil
 
 ### Capacity support
 
-> :warning: *Warning:* This is an alpha feature and only supported by
-> Kubernetes >= 1.19 if the `CSIStorageCapacity` feature gate is
-> enabled.
-
 The external-provisioner can be used to create CSIStorageCapacity
 objects that hold information about the storage capacity available
 through the driver. The Kubernetes scheduler then [uses that
@@ -147,23 +143,52 @@ information](https://kubernetes.io/docs/concepts/storage/storage-capacity)
 when selecting nodes for pods with unbound volumes that wait for the
 first consumer.
 
-Currently, all CSIStorageCapacity objects created by an instance of
-the external-provisioner must have the same
-[owner](https://kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/#owners-and-dependents). That
-owner is how external-provisioner distinguishes between objects that
-it must manage and those that it must leave alone. The owner is
-determine with the `POD_NAME/POD_NAMESPACE` environment variables and
-the `--capacity-ownerref-level` parameter. Other solutions will be
-added in the future.
+All CSIStorageCapacity objects created by an instance of
+the external-provisioner have certain labels:
+
+  * `csi.storage.k8s.io/drivername`: the CSI driver name
+  * `csi.storage.k8s.io/managed-by`: external-provisioner for central
+    provisioning, external-provisioner-<node name> for distributed
+    provisioning
+
+They get created in the namespace identified with the `NAMESPACE`
+environment variable.
+
+Each external-provisioner instance manages exactly those objects with
+the labels that correspond to the instance.
+
+Optionally, all CSIStorageCapacity objects created by an instance of
+the external-provisioner can have an
+[owner](https://kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/#owners-and-dependents).
+This ensures that the objects get removed automatically when uninstalling
+the CSI driver.  The owner is
+determined with the `POD_NAME/NAMESPACE` environment variables and
+the `--capacity-ownerref-level` parameter. Setting an owner reference is highly
+recommended whenever possible (i.e. in the most common case that drivers are
+run inside containers).
+
+If ownership is disabled the storage admin is responsible for removing
+orphaned CSIStorageCapacity objects, and the following command can be
+used to clean up orphaned objects of a driver:
+
+```
+kubectl delete csistoragecapacities -l csi.storage.k8s.io/drivername=my-csi.example.com
+```
+
+When switching from a deployment without ownership to one with
+ownership, managed objects get updated such that they have the
+configured owner. When switching in the other direction, the owner
+reference is not removed because the new deployment doesn't know
+what the old owner was.
 
 To enable this feature in a driver deployment with a central controller (see also the
 [`deploy/kubernetes/storage-capacity.yaml`](deploy/kubernetes/storage-capacity.yaml)
 example):
 
-- Set the `POD_NAME` and `POD_NAMESPACE` environment variables like this:
+- Set the `POD_NAME` and `NAMESPACE` environment variables like this:
 ```yaml
    env:
-   - name: POD_NAMESPACE
+   - name: NAMESPACE
      valueFrom:
         fieldRef:
         fieldPath: metadata.namespace
@@ -240,9 +265,14 @@ other driver.
 The deployment with [distributed
 provisioning](#distributed-provisioning) is almost the same as above,
 with some minor change:
-- Use `--capacity-ownerref-level=0` and the `POD_NAMESPACE/POD_NAME`
-  variables to make the pod that contains the external-provisioner
+- Use `--capacity-ownerref-level=1` and the `NAMESPACE/POD_NAME`
+  variables to make the DaemonSet that contains the external-provisioner
   the owner of CSIStorageCapacity objects for the node.
+
+Deployments of external-provisioner outside of the Kubernetes cluster
+are also possible, albeit only without an owner for the objects.
+`NAMESPACE` still needs to be set to some existing namespace also
+in this case.
 
 ### CSI error and timeout handling
 The external-provisioner invokes all gRPC calls to CSI driver with timeout provided by `--timeout` command line argument (15 seconds by default).

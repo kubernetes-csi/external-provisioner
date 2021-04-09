@@ -34,6 +34,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
@@ -92,7 +93,7 @@ var (
 	enableCapacity           = flag.Bool("enable-capacity", false, "This enables producing CSIStorageCapacity objects with capacity information from the driver's GetCapacity call.")
 	capacityImmediateBinding = flag.Bool("capacity-for-immediate-binding", false, "Enables producing capacity information for storage classes with immediate binding. Not needed for the Kubernetes scheduler, maybe useful for other consumers or for debugging.")
 	capacityPollInterval     = flag.Duration("capacity-poll-interval", time.Minute, "How long the external-provisioner waits before checking for storage capacity changes.")
-	capacityOwnerrefLevel    = flag.Int("capacity-ownerref-level", 1, "The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: 0 for the pod itself, 1 for a StatefulSet, 2 for a Deployment, etc.")
+	capacityOwnerrefLevel    = flag.Int("capacity-ownerref-level", 1, "The level indicates the number of objects that need to be traversed starting from the pod identified by the POD_NAME and POD_NAMESPACE environment variables to reach the owning object for CSIStorageCapacity objects: -1 for no owner, 0 for the pod itself, 1 for a StatefulSet or DaemonSet, 2 for a Deployment, etc.")
 
 	enableNodeDeployment           = flag.Bool("node-deployment", false, "Enables deploying the external-provisioner together with a CSI driver on nodes to manage node-local volumes.")
 	nodeDeploymentImmediateBinding = flag.Bool("node-deployment-immediate-binding", true, "Determines whether immediate binding is supported when deployed on each node.")
@@ -393,39 +394,30 @@ func main() {
 		nodeDeployment,
 	)
 
-	provisionController = controller.NewProvisionController(
-		clientset,
-		provisionerName,
-		csiProvisioner,
-		serverVersion.GitVersion,
-		provisionerOptions...,
-	)
-
-	csiClaimController := ctrl.NewCloningProtectionController(
-		clientset,
-		claimLister,
-		claimInformer,
-		claimQueue,
-		controllerCapabilities,
-	)
-
 	var capacityController *capacity.Controller
 	if *enableCapacity {
-		podName := os.Getenv("POD_NAME")
-		namespace := os.Getenv("POD_NAMESPACE")
-		if podName == "" || namespace == "" {
-			klog.Fatalf("need POD_NAMESPACE/POD_NAME env variables, have only POD_NAMESPACE=%q and POD_NAME=%q", namespace, podName)
+		namespace := os.Getenv("NAMESPACE")
+		if namespace == "" {
+			klog.Fatal("need NAMESPACE env variable for CSIStorageCapacity objects")
 		}
-		controller, err := owner.Lookup(config, namespace, podName,
-			schema.GroupVersionKind{
-				Group:   "",
-				Version: "v1",
-				Kind:    "Pod",
-			}, *capacityOwnerrefLevel)
-		if err != nil {
-			klog.Fatalf("look up owner(s) of pod: %v", err)
+		var controller *metav1.OwnerReference
+		if *capacityOwnerrefLevel >= 0 {
+			podName := os.Getenv("POD_NAME")
+			if podName == "" {
+				klog.Fatal("need POD_NAME env variable to determine CSIStorageCapacity owner")
+			}
+			var err error
+			controller, err = owner.Lookup(config, namespace, podName,
+				schema.GroupVersionKind{
+					Group:   "",
+					Version: "v1",
+					Kind:    "Pod",
+				}, *capacityOwnerrefLevel)
+			if err != nil {
+				klog.Fatalf("look up owner(s) of pod: %v", err)
+			}
+			klog.Infof("using %s/%s %s as owner of CSIStorageCapacity objects", controller.APIVersion, controller.Kind, controller.Name)
 		}
-		klog.Infof("using %s/%s %s as owner of CSIStorageCapacity objects", controller.APIVersion, controller.Kind, controller.Name)
 
 		var topologyInformer topology.Informer
 		if nodeDeployment == nil {
@@ -447,11 +439,23 @@ func main() {
 			topologyInformer = topology.NewFixedNodeTopology(&segment)
 		}
 
+		managedByID := "external-provisioner"
+		if *enableNodeDeployment {
+			managedByID += "-" + node
+		}
+
 		// We only need objects from our own namespace. The normal factory would give
-		// us an informer for the entire cluster.
+		// us an informer for the entire cluster. We can further restrict the
+		// watch to just those objects with the right labels.
 		factoryForNamespace = informers.NewSharedInformerFactoryWithOptions(clientset,
 			ctrl.ResyncPeriodOfCsiNodeInformer,
 			informers.WithNamespace(namespace),
+			informers.WithTweakListOptions(func(lo *metav1.ListOptions) {
+				lo.LabelSelector = labels.Set{
+					capacity.DriverNameLabel: provisionerName,
+					capacity.ManagedByLabel:  managedByID,
+				}.AsSelector().String()
+			}),
 		)
 
 		capacityController = capacity.NewCentralCapacityController(
@@ -460,7 +464,8 @@ func main() {
 			clientset,
 			// Metrics for the queue is available in the default registry.
 			workqueue.NewNamedRateLimitingQueue(rateLimiter, "csistoragecapacity"),
-			*controller,
+			controller,
+			managedByID,
 			namespace,
 			topologyInformer,
 			factory.Storage().V1().StorageClasses(),
@@ -469,7 +474,26 @@ func main() {
 			*capacityImmediateBinding,
 		)
 		legacyregistry.CustomMustRegister(capacityController)
+
+		// Wrap Provision and Delete to detect when it is time to refresh capacity.
+		csiProvisioner = capacity.NewProvisionWrapper(csiProvisioner, capacityController)
 	}
+
+	provisionController = controller.NewProvisionController(
+		clientset,
+		provisionerName,
+		csiProvisioner,
+		serverVersion.GitVersion,
+		provisionerOptions...,
+	)
+
+	csiClaimController := ctrl.NewCloningProtectionController(
+		clientset,
+		claimLister,
+		claimInformer,
+		claimQueue,
+		controllerCapabilities,
+	)
 
 	// Start HTTP server, regardless whether we are the leader or not.
 	if addr != "" {
