@@ -1,3 +1,50 @@
+# Release notes for v2.0.5
+
+[Documentation](https://kubernetes-csi.github.io)
+# Changelog since v2.0.4
+
+## Changes by Kind
+
+### Bug or Regression
+
+- `k8s.io/csi-translation-lib` dependency is updated from v0.19.3 to v0.19.9 to adopt fixes in the upstream library. ([#572](https://github.com/kubernetes-csi/external-provisioner/pull/572), [@ialidzhikov](https://github.com/ialidzhikov))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+- github.com/google/cadvisor: [v0.37.0 → v0.37.5](https://github.com/google/cadvisor/compare/v0.37.0...v0.37.5)
+- golang.org/x/net: ab34263 → 69a7880
+- golang.org/x/sys: ed371f2 → 5cba982
+- k8s.io/api: v0.19.0 → v0.19.9
+- k8s.io/apiextensions-apiserver: v0.19.0 → v0.19.9
+- k8s.io/apimachinery: v0.19.0 → v0.19.9
+- k8s.io/apiserver: v0.19.0 → v0.19.9
+- k8s.io/cli-runtime: v0.19.0 → v0.19.9
+- k8s.io/client-go: v0.19.0 → v0.19.9
+- k8s.io/cloud-provider: v0.19.0 → v0.19.9
+- k8s.io/cluster-bootstrap: v0.19.0 → v0.19.9
+- k8s.io/code-generator: v0.19.0 → v0.19.9
+- k8s.io/component-base: v0.19.0 → v0.19.9
+- k8s.io/cri-api: v0.19.0 → v0.19.9
+- k8s.io/csi-translation-lib: v0.19.3 → v0.19.9
+- k8s.io/kube-aggregator: v0.19.0 → v0.19.9
+- k8s.io/kube-controller-manager: v0.19.0 → v0.19.9
+- k8s.io/kube-proxy: v0.19.0 → v0.19.9
+- k8s.io/kube-scheduler: v0.19.0 → v0.19.9
+- k8s.io/kubectl: v0.19.0 → v0.19.9
+- k8s.io/kubelet: v0.19.0 → v0.19.9
+- k8s.io/kubernetes: v1.19.0 → v1.19.9
+- k8s.io/legacy-cloud-providers: v0.19.0 → v0.19.9
+- k8s.io/metrics: v0.19.0 → v0.19.9
+- k8s.io/sample-apiserver: v0.19.0 → v0.19.9
+- sigs.k8s.io/apiserver-network-proxy/konnectivity-client: v0.0.9 → v0.0.15
+
+### Removed
+_Nothing has changed._
+
 # Release notes for v2.0.4
 
 [Documentation](https://kubernetes-csi.github.io)
