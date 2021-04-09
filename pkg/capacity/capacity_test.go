@@ -133,6 +133,7 @@ csistoragecapacities_obsolete %d
 func TestCapacityController(t *testing.T) {
 	testcases := map[string]struct {
 		immediateBinding   bool
+		owner              *metav1.OwnerReference
 		topology           *topology.Mock
 		storage            mockCapacity
 		initialSCs         []testSC
@@ -180,6 +181,34 @@ func TestCapacityController(t *testing.T) {
 					segment:          layer0,
 					storageClassName: "other-sc",
 					quantity:         "1Gi",
+				},
+			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
+		},
+		"no owner": {
+			owner:    &noOwner,
+			topology: topology.NewMock(&layer0),
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					owner:            &noOwner,
 				},
 			},
 			expectedObjectsPrepared: objects{
@@ -359,6 +388,46 @@ func TestCapacityController(t *testing.T) {
 				{
 					uid:              "test-capacity-1",
 					resourceVersion:  csiscRev + "1",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					owner:            &defaultOwner,
+				},
+			},
+			expectedObjectsPrepared: objects{
+				goal:    1,
+				current: 1,
+			},
+			expectedTotalProcessed: 1,
+		},
+		"reuse one capacity object, keep owner": {
+			owner:    &noOwner,
+			topology: topology.NewMock(&layer0),
+			storage: mockCapacity{
+				capacity: map[string]interface{}{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+				},
+			},
+			initialCapacities: []testCapacity{
+				{
+					uid:              "test-capacity-1",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+					owner:            &defaultOwner,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					uid:              "test-capacity-1",
+					resourceVersion:  csiscRev + "0",
 					segment:          layer0,
 					storageClassName: "other-sc",
 					quantity:         "1Gi",
@@ -1038,7 +1107,14 @@ func TestCapacityController(t *testing.T) {
 			if topo == nil {
 				topo = topology.NewMock()
 			}
-			c, registry := fakeController(ctx, clientSet, &tc.storage, topo, tc.immediateBinding)
+			owner := tc.owner
+			switch owner {
+			case &noOwner:
+				owner = nil
+			case nil:
+				owner = &defaultOwner
+			}
+			c, registry := fakeController(ctx, clientSet, owner, &tc.storage, topo, tc.immediateBinding)
 			for _, testCapacity := range tc.initialCapacities {
 				capacity := makeCapacity(testCapacity)
 				_, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
@@ -1254,7 +1330,7 @@ func updateCSIStorageCapacityReactor() func(action ktesting.Action) (handled boo
 	}
 }
 
-func fakeController(ctx context.Context, client *fakeclientset.Clientset, storage CSICapacityClient, topologyInformer topology.Informer, immediateBinding bool) (*Controller, metrics.KubeRegistry) {
+func fakeController(ctx context.Context, client *fakeclientset.Clientset, owner *metav1.OwnerReference, storage CSICapacityClient, topologyInformer topology.Informer, immediateBinding bool) (*Controller, metrics.KubeRegistry) {
 	utilruntime.ReallyCrash = false // avoids os.Exit after "close of closed channel" in shared informer code
 
 	// We don't need resyncs, they just lead to confusing log output if they get triggered while already some
@@ -1270,7 +1346,7 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, storag
 		driverName,
 		client,
 		queue,
-		&defaultOwner,
+		owner,
 		managedByID,
 		ownerNamespace,
 		topologyInformer,
@@ -1855,7 +1931,7 @@ func TestRefresh(t *testing.T) {
 			if topo == nil {
 				topo = topology.NewMock()
 			}
-			c, _ := fakeController(ctx, clientSet, &mockCapacity{}, topo, false /* immediate binding */)
+			c, _ := fakeController(ctx, clientSet, &defaultOwner, &mockCapacity{}, topo, false /* immediate binding */)
 			c.prepare(ctx)
 
 			// Clear queue so that below we only get to see items scheduled for refresh.
