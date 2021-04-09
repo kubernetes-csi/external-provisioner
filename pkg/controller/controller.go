@@ -54,7 +54,6 @@ import (
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
-	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	snapapi "github.com/kubernetes-csi/external-snapshotter/client/v3/apis/volumesnapshot/v1beta1"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned"
@@ -731,7 +730,6 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	createCtx := markAsMigrated(ctx, result.migratedVolume)
 	createCtx, cancel := context.WithTimeout(createCtx, p.timeout)
 	defer cancel()
-	klog.V(5).Infof("CreateVolumeRequest %+v", protosanitizer.StripSecrets(req))
 	rep, err := p.csiClient.CreateVolume(createCtx, req)
 
 	if err != nil {
@@ -1361,7 +1359,6 @@ func (p *csiProvisioner) checkCapacity(ctx context.Context, claim *v1.Persistent
 			Parameters:         result.req.Parameters,
 			AccessibleTopology: topology,
 		}
-		klog.V(5).Infof("GetCapacityRequest %+v", protosanitizer.StripSecrets(req))
 		resp, err := p.csiClient.GetCapacity(ctx, req)
 		if err != nil {
 			return false, fmt.Errorf("GetCapacity: %v", err)
