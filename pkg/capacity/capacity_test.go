@@ -1089,9 +1089,10 @@ func TestCapacityController(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
-		// Not run in parallel. That doesn't work well in combination with global logging
-		// and global metrics instances.
 		t.Run(name, func(t *testing.T) {
+			// Running in parallel is possible because only logging uses a global instance.
+			t.Parallel()
+
 			// There is no good way to shut down the controller. It spawns
 			// various goroutines and some of them (in particular shared informer)
 			// become very unhappy ("close on closed channel") when using a context
@@ -1252,7 +1253,11 @@ func validateCapacitiesEventually(ctx context.Context, c *Controller, clientSet 
 func validateEventually(ctx context.Context, c *Controller, validate func(ctx context.Context) error) error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
-	deadline, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// A single test completes quickly (a few seconds at most), but when
+	// starting many tests in parallel a longer timeout is needed because
+	// some test might not get to run for over 10 seconds even on a machine
+	// with many cores.
+	deadline, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	var lastValidationError error
 	klog.Info("waiting for controller to catch up")
@@ -1762,6 +1767,8 @@ func TestTermToSegment(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			segment, err := termToSegment(tc.term)
 			if tc.expectError && err == nil {
 				t.Fatalf("expected error, got segment %v", segment)
@@ -1913,9 +1920,10 @@ func TestRefresh(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
-		// Not run in parallel. That doesn't work well in combination with global logging
-		// and global metrics instances.
 		t.Run(name, func(t *testing.T) {
+			// Running in parallel is possible because only logging uses a global instance.
+			t.Parallel()
+
 			// There is no good way to shut down the controller. It spawns
 			// various goroutines and some of them (in particular shared informer)
 			// become very unhappy ("close on closed channel") when using a context
