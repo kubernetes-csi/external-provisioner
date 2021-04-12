@@ -1,3 +1,26 @@
+# Release notes for v2.1.2
+
+[Documentation](https://kubernetes-csi.github.io)
+
+# Changelog since v2.1.1
+
+## Changes by Kind
+
+### Other (Cleanup or Flake)
+
+- Removed redundant log lines at log level 5+ for CreateVolume and GetCapacity requests that could leak secrets. ([#606](https://github.com/kubernetes-csi/external-provisioner/pull/606), [@chrishenzie](https://github.com/chrishenzie))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # Release notes for v2.1.1
 
 [Documentation](https://kubernetes-csi.github.io)
