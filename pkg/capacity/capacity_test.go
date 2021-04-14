@@ -1089,6 +1089,7 @@ func TestCapacityController(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
+		tc := tc
 		t.Run(name, func(t *testing.T) {
 			// Running in parallel is possible because only logging uses a global instance.
 			t.Parallel()
@@ -1766,6 +1767,7 @@ func TestTermToSegment(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
+		tc := tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -1920,6 +1922,7 @@ func TestRefresh(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
+		tc := tc
 		t.Run(name, func(t *testing.T) {
 			// Running in parallel is possible because only logging uses a global instance.
 			t.Parallel()
