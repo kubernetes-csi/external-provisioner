@@ -1293,6 +1293,32 @@ func (p *csiProvisioner) checkNode(ctx context.Context, claim *v1.PersistentVolu
 			return false, nil
 		}
 
+		// If the storage class has AllowedTopologies set, then
+		// it must match our own. We can find out by trying to
+		// create accessibility requirements.  If that fails,
+		// we should not become the owner.
+		if len(sc.AllowedTopologies) > 0 {
+			node, err := p.nodeLister.Get(p.nodeDeployment.NodeName)
+			if err != nil {
+				return false, err
+			}
+			if _, err := GenerateAccessibilityRequirements(
+				p.client,
+				p.driverName,
+				claim.Name,
+				sc.AllowedTopologies,
+				node,
+				p.strictTopology,
+				p.immediateTopology,
+				p.csiNodeLister,
+				p.nodeLister); err != nil {
+				if logger.Enabled() {
+					logger.Infof("%s: ignoring PVC %s/%s, allowed topologies is not compatible: %v", caller, claim.Namespace, claim.Name, err)
+				}
+				return false, nil
+			}
+		}
+
 		// Try to select the current node if there is a chance of it
 		// being created there, i.e. there is currently enough free space (checked in becomeOwner).
 		//

@@ -817,12 +817,13 @@ type provisioningTestcase struct {
 	createVolumeError  error
 	expectErr          bool
 	expectState        controller.ProvisioningState
-	expectCreateVolDo  interface{}
+	expectCreateVolDo  func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest)
 	withExtraMetadata  bool
 	skipCreateVolume   bool
 	deploymentNode     string // fake distributed provisioning with this node as host
 	immediateBinding   bool   // enable immediate binding support for distributed provisioning
 	expectSelectedNode string // a specific selected-node of the PVC in the apiserver after the test, same as before if empty
+	expectNoProvision  bool   // if true, then ShouldProvision should return false
 }
 
 type provisioningFSTypeTestcase struct {
@@ -833,7 +834,6 @@ type provisioningFSTypeTestcase struct {
 	createVolumeError error
 	expectErr         bool
 	expectState       controller.ProvisioningState
-	expectCreateVolDo interface{}
 
 	skipDefaultFSType bool
 }
@@ -1020,7 +1020,7 @@ func TestFSTypeProvision(t *testing.T) {
 	}
 }
 
-func TestProvision(t *testing.T) {
+func provisionTestcases() (int64, map[string]provisioningTestcase) {
 	var requestedBytes int64 = 100
 	deletePolicy := v1.PersistentVolumeReclaimDelete
 	immediateBinding := storagev1.VolumeBindingImmediate
@@ -1035,7 +1035,7 @@ func TestProvision(t *testing.T) {
 			Name: "bar",
 		},
 	}
-	testcases := map[string]provisioningTestcase{
+	return requestedBytes, map[string]provisioningTestcase{
 		"normal provision": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
@@ -1091,7 +1091,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
-			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
 				pvc := createFakePVC(requestedBytes)
 				expectedParams := map[string]string{
 					pvcNameKey:      pvc.GetName(),
@@ -1146,7 +1146,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
-			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
 				if len(req.Parameters) != 0 {
 					t.Errorf("Parameters should have been stripped")
 				}
@@ -1192,7 +1192,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
-			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
 				if len(req.GetVolumeCapabilities()) != 1 {
 					t.Errorf("Incorrect length in volume capabilities")
 				}
@@ -1244,7 +1244,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
-			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
 				if len(req.GetVolumeCapabilities()) != 1 {
 					t.Errorf("Incorrect length in volume capabilities")
 				}
@@ -1296,7 +1296,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
-			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
 				if len(req.GetVolumeCapabilities()) != 1 {
 					t.Errorf("Incorrect length in volume capabilities")
 				}
@@ -1348,7 +1348,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
-			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
 				if len(req.GetVolumeCapabilities()) != 2 {
 					t.Errorf("Incorrect length in volume capabilities")
 				}
@@ -1686,7 +1686,7 @@ func TestProvision(t *testing.T) {
 					},
 				},
 			},
-			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
 				if len(req.GetVolumeCapabilities()) != 1 {
 					t.Errorf("Incorrect length in volume capabilities")
 				}
@@ -1730,7 +1730,7 @@ func TestProvision(t *testing.T) {
 				},
 			},
 			createVolumeError: status.Error(codes.Unauthenticated, "Mock final error"),
-			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
 				// intentionally empty
 			},
 			expectErr:   true,
@@ -1760,7 +1760,7 @@ func TestProvision(t *testing.T) {
 				},
 			},
 			createVolumeError: status.Error(codes.DeadlineExceeded, "Mock timeout"),
-			expectCreateVolDo: func(ctx context.Context, req *csi.CreateVolumeRequest) {
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
 				// intentionally empty
 			},
 			expectErr:   true,
@@ -1877,8 +1877,9 @@ func TestProvision(t *testing.T) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectErr:   true,
-			expectState: controller.ProvisioningNoChange,
+			expectErr:         true,
+			expectState:       controller.ProvisioningNoChange,
+			expectNoProvision: true, // not owner
 		},
 		"distributed, wrong node selected": {
 			deploymentNode: "foo",
@@ -1900,8 +1901,9 @@ func TestProvision(t *testing.T) {
 					return claim
 				}(),
 			},
-			expectErr:   true,
-			expectState: controller.ProvisioningNoChange,
+			expectErr:         true,
+			expectState:       controller.ProvisioningNoChange,
+			expectNoProvision: true, // not owner
 		},
 		"distributed immediate, right node selected": {
 			deploymentNode:   "foo",
@@ -1960,13 +1962,97 @@ func TestProvision(t *testing.T) {
 			},
 			expectErr:          true,
 			expectState:        controller.ProvisioningNoChange,
-			expectSelectedNode: nodeFoo.Name,
+			expectNoProvision:  true,         // not owner yet
+			expectSelectedNode: nodeFoo.Name, // changed by ShouldProvision
+		},
+		"distributed immediate, allowed topologies okay": {
+			deploymentNode:   "foo",
+			immediateBinding: true,
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fakeSCName,
+					},
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+					VolumeBindingMode: &immediateBinding,
+					AllowedTopologies: []v1.TopologySelectorTerm{
+						{
+							MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+								{
+									Key:    driverTopologyKey,
+									Values: []string{"foo"},
+								},
+							},
+						},
+					},
+				},
+				PVName: "test-name",
+				PVC:    createFakePVC(requestedBytes),
+			},
+			expectErr:          true,
+			expectState:        controller.ProvisioningNoChange,
+			expectNoProvision:  true,         // not owner yet
+			expectSelectedNode: nodeFoo.Name, // changed by ShouldProvision
+		},
+		"distributed immediate, allowed topologies not okay": {
+			// This is the same as "distributed immediate, allowed topologies okay"
+			// except that the node names do now not match. The expected outcome
+			// then is that the controller does not attempt to become
+			// the owner (= leaves the selected node annotation unset) because
+			// it would not be able to provision the volume if it was
+			// the owner (generating accessibility requirements would fail).
+			deploymentNode:   "foo",
+			immediateBinding: true,
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fakeSCName,
+					},
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+					VolumeBindingMode: &immediateBinding,
+					AllowedTopologies: []v1.TopologySelectorTerm{
+						{
+							MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+								{
+									Key:    driverTopologyKey,
+									Values: []string{"bar"},
+								},
+							},
+						},
+					},
+				},
+				PVName: "test-name",
+				PVC:    createFakePVC(requestedBytes),
+			},
+			expectErr:          true,
+			expectState:        controller.ProvisioningNoChange,
+			skipCreateVolume:   true,
+			expectNoProvision:  true, // not owner and will not change that either
+			expectSelectedNode: "",   // not changed by ShouldProvision
 		},
 	}
+}
 
+func TestProvision(t *testing.T) {
+	requestedBytes, testcases := provisionTestcases()
 	for k, tc := range testcases {
 		t.Run(k, func(t *testing.T) {
-			runProvisionTest(t, k, tc, requestedBytes, driverName, "" /* no migration */)
+			runProvisionTest(t, tc, requestedBytes, driverName, "" /* no migration */, true /* Provision() */)
+		})
+	}
+}
+
+func TestShouldProvision(t *testing.T) {
+	requestedBytes, testcases := provisionTestcases()
+	for k, tc := range testcases {
+		t.Run(k, func(t *testing.T) {
+			runProvisionTest(t, tc, requestedBytes, driverName, "" /* no migration */, false /* ShouldProvision() */)
 		})
 	}
 }
@@ -2080,8 +2166,7 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 	}
 }
 
-func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requestedBytes int64, provisionDriverName, supportsMigrationFromInTreePluginName string) {
-	t.Logf("Running test: %v", k)
+func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int64, provisionDriverName, supportsMigrationFromInTreePluginName string, testProvision bool) {
 	tmpdir := tempDir(t)
 	defer os.RemoveAll(tmpdir)
 	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
@@ -2106,6 +2191,8 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 	} else if tc.getCredentialsErr {
 		tc.volOpts.StorageClass.Parameters[provisionerSecretNameKey] = "secretx"
 		tc.volOpts.StorageClass.Parameters[provisionerSecretNamespaceKey] = "default"
+	} else if !testProvision {
+		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(0)
 	} else if tc.volWithLessCap {
 		out.Volume.CapacityBytes = int64(80)
 		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(1)
@@ -2114,7 +2201,9 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		out.Volume.CapacityBytes = int64(0)
 		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 	} else if tc.expectCreateVolDo != nil {
-		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(tc.expectCreateVolDo).Return(out, tc.createVolumeError).Times(1)
+		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(func(ctx context.Context, req *csi.CreateVolumeRequest) {
+			tc.expectCreateVolDo(t, ctx, req)
+		}).Return(out, tc.createVolumeError).Times(1)
 	} else {
 		// Setup regular mock call expectations.
 		if !tc.expectErr && !tc.skipCreateVolume {
@@ -2122,21 +2211,57 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 		}
 	}
 
+	getCapacityOut := &csi.GetCapacityResponse{
+		AvailableCapacity: 1024 * 1024 * 1024 * 1024,
+	}
+	controllerServer.EXPECT().GetCapacity(gomock.Any(), gomock.Any()).Return(getCapacityOut, nil).AnyTimes()
+
 	expectSelectedNode := tc.expectSelectedNode
 	objects := tc.clientSetObjects
+	var node *v1.Node
+	var csiNode *storagev1.CSINode
+	if tc.deploymentNode != "" {
+		node = &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: tc.deploymentNode,
+				Labels: map[string]string{
+					driverTopologyKey: tc.deploymentNode,
+				},
+			},
+		}
+		csiNode = &storagev1.CSINode{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: tc.deploymentNode,
+			},
+			Spec: storagev1.CSINodeSpec{
+				Drivers: []storagev1.CSINodeDriver{
+					{
+						Name:         driverName,
+						NodeID:       tc.deploymentNode,
+						TopologyKeys: []string{driverTopologyKey},
+					},
+				},
+			},
+		}
+		objects = append(objects, node, csiNode)
+	}
 	if tc.volOpts.PVC != nil {
+		tc.volOpts.PVC = tc.volOpts.PVC.DeepCopy()
 		objects = append(objects, tc.volOpts.PVC)
 		if expectSelectedNode == "" && tc.volOpts.PVC.Annotations != nil {
 			expectSelectedNode = tc.volOpts.PVC.Annotations[annSelectedNode]
 		}
 	}
 	if tc.volOpts.StorageClass != nil {
+		tc.volOpts.StorageClass = tc.volOpts.StorageClass.DeepCopy()
 		objects = append(objects, tc.volOpts.StorageClass)
 	}
 	clientSet := fakeclientset.NewSimpleClientset(objects...)
 	informerFactory := informers.NewSharedInformerFactory(clientSet, 0)
 	claimInformer := informerFactory.Core().V1().PersistentVolumeClaims()
 	scInformer := informerFactory.Storage().V1().StorageClasses()
+	nodeInformer := informerFactory.Core().V1().Nodes()
+	csiNodeInformer := informerFactory.Storage().V1().CSINodes()
 
 	var nodeDeployment *NodeDeployment
 	if tc.deploymentNode != "" {
@@ -2149,64 +2274,91 @@ func runProvisionTest(t *testing.T, k string, tc provisioningTestcase, requested
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), nil, nil, nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment)
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(), nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment)
 
+	// Adding objects to the informer ensures that they are consistent with
+	// the fake storage without having to start the informers.
 	claimInformer.Informer().GetStore().Add(tc.volOpts.PVC)
-	pv, state, err := csiProvisioner.Provision(context.Background(), tc.volOpts)
-	if tc.expectErr && err == nil {
-		t.Errorf("test %q: Expected error, got none", k)
+	if node != nil {
+		nodeInformer.Informer().GetStore().Add(node)
 	}
-	if !tc.expectErr && err != nil {
-		t.Fatalf("test %q: got error: %v", k, err)
+	if csiNode != nil {
+		csiNodeInformer.Informer().GetStore().Add(csiNode)
 	}
-
-	if tc.expectState == "" {
-		tc.expectState = controller.ProvisioningFinished
-	}
-	if tc.expectState != state {
-		t.Errorf("test %q: expected ProvisioningState %s, got %s", k, tc.expectState, state)
+	if tc.volOpts.StorageClass != nil {
+		scInformer.Informer().GetStore().Add(tc.volOpts.StorageClass)
 	}
 
-	if tc.expectedPVSpec != nil {
-		if pv.Name != tc.expectedPVSpec.Name {
-			t.Errorf("test %q: expected PV name: %q, got: %q", k, tc.expectedPVSpec.Name, pv.Name)
+	if testProvision {
+		pv, state, err := csiProvisioner.Provision(context.Background(), tc.volOpts)
+		if tc.expectErr && err == nil {
+			t.Error("expected error, got none")
+		}
+		if !tc.expectErr && err != nil {
+			t.Fatalf("got error: %v", err)
 		}
 
-		if pv.Spec.PersistentVolumeReclaimPolicy != tc.expectedPVSpec.ReclaimPolicy {
-			t.Errorf("test %q: expected reclaim policy: %v, got: %v", k, tc.expectedPVSpec.ReclaimPolicy, pv.Spec.PersistentVolumeReclaimPolicy)
+		if tc.expectState == "" {
+			tc.expectState = controller.ProvisioningFinished
+		}
+		if tc.expectState != state {
+			t.Errorf("expected ProvisioningState %s, got %s", tc.expectState, state)
 		}
 
-		if !reflect.DeepEqual(pv.Spec.AccessModes, tc.expectedPVSpec.AccessModes) {
-			t.Errorf("test %q: expected access modes: %v, got: %v", k, tc.expectedPVSpec.AccessModes, pv.Spec.AccessModes)
-		}
+		if tc.expectedPVSpec != nil {
+			if pv.Name != tc.expectedPVSpec.Name {
+				t.Errorf("expected PV name: %q, got: %q", tc.expectedPVSpec.Name, pv.Name)
+			}
 
-		if !reflect.DeepEqual(pv.Spec.VolumeMode, tc.expectedPVSpec.VolumeMode) {
-			t.Errorf("test %q: expected volumeMode: %v, got: %v", k, tc.expectedPVSpec.VolumeMode, pv.Spec.VolumeMode)
-		}
+			if pv.Spec.PersistentVolumeReclaimPolicy != tc.expectedPVSpec.ReclaimPolicy {
+				t.Errorf("expected reclaim policy: %v, got: %v", tc.expectedPVSpec.ReclaimPolicy, pv.Spec.PersistentVolumeReclaimPolicy)
+			}
 
-		if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
-			t.Errorf("test %q: expected capacity: %v, got: %v", k, tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
-		}
+			if !reflect.DeepEqual(pv.Spec.AccessModes, tc.expectedPVSpec.AccessModes) {
+				t.Errorf("expected access modes: %v, got: %v", tc.expectedPVSpec.AccessModes, pv.Spec.AccessModes)
+			}
 
-		if !reflect.DeepEqual(pv.Spec.MountOptions, tc.expectedPVSpec.MountOptions) {
-			t.Errorf("test %q: expected mount options: %v, got: %v", k, tc.expectedPVSpec.MountOptions, pv.Spec.MountOptions)
-		}
+			if !reflect.DeepEqual(pv.Spec.VolumeMode, tc.expectedPVSpec.VolumeMode) {
+				t.Errorf("expected volumeMode: %v, got: %v", tc.expectedPVSpec.VolumeMode, pv.Spec.VolumeMode)
+			}
 
-		if tc.expectedPVSpec.CSIPVS != nil {
-			if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
-				t.Errorf("test %q: expected PV: %v, got: %v", k, tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+			if !reflect.DeepEqual(pv.Spec.Capacity, tc.expectedPVSpec.Capacity) {
+				t.Errorf("expected capacity: %v, got: %v", tc.expectedPVSpec.Capacity, pv.Spec.Capacity)
+			}
+
+			if !reflect.DeepEqual(pv.Spec.MountOptions, tc.expectedPVSpec.MountOptions) {
+				t.Errorf("expected mount options: %v, got: %v", tc.expectedPVSpec.MountOptions, pv.Spec.MountOptions)
+			}
+
+			if tc.expectedPVSpec.CSIPVS != nil {
+				if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
+					t.Errorf("expected PV: %v, got: %v", tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+				}
 			}
 		}
+	} else {
+		provision := csiProvisioner.(controller.Qualifier).ShouldProvision(context.Background(), tc.volOpts.PVC)
+		if provision != !tc.expectNoProvision {
+			t.Fatalf("expect ShouldProvision result %v, got %v", !tc.expectNoProvision, provision)
+		}
 	}
 
-	if expectSelectedNode != "" {
+	if tc.volOpts.PVC != nil {
 		claim, err := clientSet.CoreV1().PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(context.Background(), tc.volOpts.PVC.Name, metav1.GetOptions{})
 		if err != nil {
 			t.Errorf("PVC %s not found: %v", tc.volOpts.PVC.Name, err)
-		} else if claim.Annotations == nil {
-			t.Errorf("PVC %s has no annotations", claim.Name)
-		} else if claim.Annotations[annSelectedNode] != expectSelectedNode {
-			t.Errorf("expected selected node %q, got %q", expectSelectedNode, claim.Annotations[annSelectedNode])
+		} else {
+			if expectSelectedNode != "" {
+				if claim.Annotations == nil {
+					t.Errorf("PVC %s has no annotations", claim.Name)
+				} else if claim.Annotations[annSelectedNode] != expectSelectedNode {
+					t.Errorf("expected selected node %q, got %q", expectSelectedNode, claim.Annotations[annSelectedNode])
+				}
+			} else {
+				if claim.Annotations[annSelectedNode] != "" {
+					t.Errorf("expected no selected node, got %q", claim.Annotations[annSelectedNode])
+				}
+			}
 		}
 	}
 }
