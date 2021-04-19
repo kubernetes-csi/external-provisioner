@@ -805,6 +805,7 @@ func TestGetSecretReference(t *testing.T) {
 }
 
 type provisioningTestcase struct {
+	capacity           int64 // if zero, default capacity, otherwise available bytes
 	volOpts            controller.ProvisionOptions
 	notNilSelector     bool
 	makeVolumeNameErr  bool
@@ -1965,6 +1966,29 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectNoProvision:  true,         // not owner yet
 			expectSelectedNode: nodeFoo.Name, // changed by ShouldProvision
 		},
+		"distributed immediate, no capacity ": {
+			deploymentNode:   "foo",
+			immediateBinding: true,
+			capacity:         requestedBytes - 1,
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fakeSCName,
+					},
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+					VolumeBindingMode: &immediateBinding,
+				},
+				PVName: "test-name",
+				PVC:    createFakePVC(requestedBytes),
+			},
+			expectErr:          true,
+			expectState:        controller.ProvisioningNoChange,
+			expectNoProvision:  true, // not owner yet and not becoming it
+			expectSelectedNode: "",   // not changed by ShouldProvision
+		},
 		"distributed immediate, allowed topologies okay": {
 			deploymentNode:   "foo",
 			immediateBinding: true,
@@ -2213,6 +2237,9 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 
 	getCapacityOut := &csi.GetCapacityResponse{
 		AvailableCapacity: 1024 * 1024 * 1024 * 1024,
+	}
+	if tc.capacity != 0 {
+		getCapacityOut.AvailableCapacity = tc.capacity
 	}
 	controllerServer.EXPECT().GetCapacity(gomock.Any(), gomock.Any()).Return(getCapacityOut, nil).AnyTimes()
 
