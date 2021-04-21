@@ -113,6 +113,7 @@ const (
 	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
 	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
 	pvNameKey       = "csi.storage.k8s.io/pv/name"
+	scNameKey       = "csi.storage.k8s.io/sc/name"
 
 	// Defines parameters for ExponentialBackoff used for executing
 	// CSI CreateVolume API call, it gives approx 4 minutes for the CSI
@@ -681,6 +682,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		req.Parameters[pvcNameKey] = claim.GetName()
 		req.Parameters[pvcNamespaceKey] = claim.GetNamespace()
 		req.Parameters[pvNameKey] = pvName
+		req.Parameters[scNameKey] = sc.GetName()
 	}
 
 	return &prepareProvisionResult{
