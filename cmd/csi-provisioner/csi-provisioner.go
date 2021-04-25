@@ -441,6 +441,7 @@ func main() {
 			klog.Infof("producing CSIStorageCapacity objects with fixed topology segment %s", segment)
 			topologyInformer = topology.NewFixedNodeTopology(&segment)
 		}
+		go topologyInformer.RunWorker(context.Background())
 
 		managedByID := "external-provisioner"
 		if *enableNodeDeployment {

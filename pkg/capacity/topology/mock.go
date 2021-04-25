@@ -51,7 +51,7 @@ func (mt *Mock) List() []*Segment {
 	return mt.segments
 }
 
-func (mt *Mock) Run(ctx context.Context) {
+func (mt *Mock) RunWorker(ctx context.Context) {
 }
 
 func (mt *Mock) HasSynced() bool {
