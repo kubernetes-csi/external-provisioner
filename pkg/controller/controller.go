@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -726,9 +727,9 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	pvName := req.Name
 	provisionerCredentials := req.Secrets
 
-	createCtx, cancel := context.WithTimeout(ctx, p.timeout)
+	createCtx := markAsMigrated(ctx, result.migratedVolume)
+	createCtx, cancel := context.WithTimeout(createCtx, p.timeout)
 	defer cancel()
-	klog.V(5).Infof("CreateVolumeRequest %+v", req)
 	rep, err := p.csiClient.CreateVolume(createCtx, req)
 
 	if err != nil {
@@ -1097,11 +1098,13 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 	}
 
 	var err error
+	var migratedVolume bool
 	if p.translator.IsPVMigratable(volume) {
 		// we end up here only if CSI migration is enabled in-tree (both overall
 		// and for the specific plugin that is migratable) causing in-tree PV
 		// controller to yield deletion of PVs with in-tree source to external provisioner
 		// based on AnnDynamicallyProvisioned annotation.
+		migratedVolume = true
 		volume, err = p.translator.TranslateInTreePVToCSI(volume)
 		if err != nil {
 			return err
@@ -1141,6 +1144,14 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 	storageClassName := util.GetPersistentVolumeClass(volume)
 	if len(storageClassName) != 0 {
 		if storageClass, err := p.scLister.Get(storageClassName); err == nil {
+			if migratedVolume && storageClass.Provisioner == p.supportsMigrationFromInTreePluginName {
+				klog.V(2).Infof("translating storage class for in-tree plugin %s to CSI", storageClass.Provisioner)
+				storageClass, err = p.translator.TranslateInTreeStorageClassToCSI(p.supportsMigrationFromInTreePluginName, storageClass)
+				if err != nil {
+					return err
+				}
+			}
+
 			// Resolve provision secret credentials.
 			provisionerSecretRef, err := getSecretReference(provisionerSecretParams, storageClass.Parameters, volume.Name, &v1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1162,7 +1173,8 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 			klog.Warningf("failed to get storageclass: %s, proceeding to delete without secrets. %v", storageClassName, err)
 		}
 	}
-	deleteCtx, cancel := context.WithTimeout(ctx, p.timeout)
+	deleteCtx := markAsMigrated(ctx, migratedVolume)
+	deleteCtx, cancel := context.WithTimeout(deleteCtx, p.timeout)
 	defer cancel()
 
 	if err := p.canDeleteVolume(volume); err != nil {
@@ -1281,6 +1293,32 @@ func (p *csiProvisioner) checkNode(ctx context.Context, claim *v1.PersistentVolu
 			return false, nil
 		}
 
+		// If the storage class has AllowedTopologies set, then
+		// it must match our own. We can find out by trying to
+		// create accessibility requirements.  If that fails,
+		// we should not become the owner.
+		if len(sc.AllowedTopologies) > 0 {
+			node, err := p.nodeLister.Get(p.nodeDeployment.NodeName)
+			if err != nil {
+				return false, err
+			}
+			if _, err := GenerateAccessibilityRequirements(
+				p.client,
+				p.driverName,
+				claim.Name,
+				sc.AllowedTopologies,
+				node,
+				p.strictTopology,
+				p.immediateTopology,
+				p.csiNodeLister,
+				p.nodeLister); err != nil {
+				if logger.Enabled() {
+					logger.Infof("%s: ignoring PVC %s/%s, allowed topologies is not compatible: %v", caller, claim.Namespace, claim.Name, err)
+				}
+				return false, nil
+			}
+		}
+
 		// Try to select the current node if there is a chance of it
 		// being created there, i.e. there is currently enough free space (checked in becomeOwner).
 		//
@@ -1347,7 +1385,6 @@ func (p *csiProvisioner) checkCapacity(ctx context.Context, claim *v1.Persistent
 			Parameters:         result.req.Parameters,
 			AccessibleTopology: topology,
 		}
-		klog.V(5).Infof("GetCapacityRequest %+v", req)
 		resp, err := p.csiClient.GetCapacity(ctx, req)
 		if err != nil {
 			return false, fmt.Errorf("GetCapacity: %v", err)
@@ -1713,4 +1750,8 @@ func checkFinalizer(obj metav1.Object, finalizer string) bool {
 		}
 	}
 	return false
+}
+
+func markAsMigrated(parent context.Context, hasMigrated bool) context.Context {
+	return context.WithValue(parent, connection.AdditionalInfoKey, connection.AdditionalInfo{Migrated: strconv.FormatBool(hasMigrated)})
 }
