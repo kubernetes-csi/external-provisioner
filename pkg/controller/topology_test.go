@@ -23,13 +23,13 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
-	"k8s.io/kubernetes/pkg/apis/core/helper"
 )
 
 const (
@@ -434,7 +434,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 							if expected != nil && requirements.Preferred == nil {
 								t.Fatalf("expected preferred to be %v but requirements.Preferred is nil", expected)
 							}
-							if expected != nil && !helper.Semantic.DeepEqual(requirements.Preferred, expected) {
+							if expected != nil && !equality.Semantic.DeepEqual(requirements.Preferred, expected) {
 								t.Errorf("expected preferred requisite %v; got: %v", expected, requirements.Preferred)
 							}
 						})
@@ -1441,7 +1441,7 @@ func TestPreferredTopologies(t *testing.T) {
 								if requirements == nil {
 									t.Fatalf("expected preferred to be %v but requirements is nil", expectedPreferred)
 								}
-								if !helper.Semantic.DeepEqual(requirements.Preferred, expectedPreferred) {
+								if !equality.Semantic.DeepEqual(requirements.Preferred, expectedPreferred) {
 									t.Errorf("expected requisite %v; got: %v", tc.expectedPreferred, requirements.Preferred)
 								}
 							}
@@ -1603,7 +1603,7 @@ func requisiteEqual(t1, t2 []*csi.Topology) bool {
 	for _, topology := range t2 {
 		found := false
 		for i := range unchecked {
-			if helper.Semantic.DeepEqual(t1[i], topology) {
+			if equality.Semantic.DeepEqual(t1[i], topology) {
 				found = true
 				unchecked.Delete(i)
 				break
