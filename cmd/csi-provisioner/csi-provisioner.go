@@ -222,7 +222,10 @@ func main() {
 		klog.V(2).Infof("Supports migration from in-tree plugin: %s", supportsMigrationFromInTreePluginName)
 
 		// Create a new connection with the metrics manager with migrated label
-		metricsManager = metrics.NewCSIMetricsManagerWithOptions(provisionerName, metrics.WithMigration())
+		metricsManager = metrics.NewCSIMetricsManagerWithOptions(provisionerName,
+			// Will be provided via default gatherer.
+			metrics.WithProcessStartTime(false),
+			metrics.WithMigration())
 		migratedGrpcClient, err := ctrl.Connect(*csiEndpoint, metricsManager)
 		if err != nil {
 			klog.Error(err.Error())
