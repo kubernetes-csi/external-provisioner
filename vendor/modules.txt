@@ -246,7 +246,7 @@ gopkg.in/inf.v0
 gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776
 gopkg.in/yaml.v3
-# k8s.io/api v0.21.0-alpha.3 => k8s.io/api v0.20.4
+# k8s.io/api v0.21.0 => k8s.io/api v0.20.4
 ## explicit
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1beta1
@@ -291,7 +291,7 @@ k8s.io/api/scheduling/v1beta1
 k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
-# k8s.io/apimachinery v0.21.0-alpha.3 => k8s.io/apimachinery v0.20.4
+# k8s.io/apimachinery v0.21.0 => k8s.io/apimachinery v0.20.4
 ## explicit
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
@@ -575,13 +575,13 @@ k8s.io/component-base/version
 ## explicit
 k8s.io/component-helpers/scheduling/corev1
 k8s.io/component-helpers/scheduling/corev1/nodeaffinity
-# k8s.io/csi-translation-lib v0.21.0-alpha.3 => k8s.io/csi-translation-lib v0.21.0-alpha.3
+# k8s.io/csi-translation-lib v0.21.0 => k8s.io/csi-translation-lib v0.21.0
 ## explicit
 k8s.io/csi-translation-lib
 k8s.io/csi-translation-lib/plugins
 # k8s.io/klog v1.0.0
 k8s.io/klog
-# k8s.io/klog/v2 v2.5.0
+# k8s.io/klog/v2 v2.8.0
 ## explicit
 k8s.io/klog/v2
 # k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
@@ -633,6 +633,6 @@ sigs.k8s.io/yaml
 # k8s.io/client-go => k8s.io/client-go v0.20.4
 # k8s.io/component-base => k8s.io/component-base v0.20.4
 # k8s.io/controller-manager => k8s.io/controller-manager v0.20.4
-# k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.21.0-alpha.3
+# k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.21.0
 # k8s.io/component-helpers => k8s.io/component-helpers v0.20.4
 # k8s.io/mount-utils => k8s.io/mount-utils v0.20.4
