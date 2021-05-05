@@ -127,11 +127,11 @@ type Informer interface {
 	// List returns all known segments, in no particular order.
 	List() []*Segment
 
-	// Run starts watching for changes.
-	Run(ctx context.Context)
-
 	// HasSynced returns true once all segments have been found.
 	HasSynced() bool
+
+	// RunWorker starts a worker to process queue.
+	RunWorker(ctx context.Context)
 }
 
 type Callback func(added []*Segment, removed []*Segment)
