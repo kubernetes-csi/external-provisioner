@@ -1,6 +1,25 @@
-# Release notes for v2.2.0
+# Release notes for v2.2.1
 
 [Documentation](https://kubernetes-csi.github.io)
+
+# Changelog since v2.2.0
+
+## Changes by Kind
+
+### Bug or Regression
+ - Fix capacity information updates when topology changes. Only affected central deployment and network attached storage, not deployment on each node. This broke in v2.2.0 as part of a bug fix for capacity informer handling. ([#617](https://github.com/kubernetes-csi/external-provisioner/pull/617), [@bai3shuo4](https://github.com/bai3shuo4))
+ - Fixed reporting of metrics when a migratable CSI driver is used. ([#620](https://github.com/kubernetes-csi/external-provisioner/pull/620), [@jsafrane](https://github.com/jsafrane))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
 
 # Changelog since v2.1.0
 
