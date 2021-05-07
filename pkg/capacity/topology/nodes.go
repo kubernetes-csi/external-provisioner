@@ -202,11 +202,11 @@ func (nt *nodeTopology) List() []*Segment {
 }
 
 func (nt *nodeTopology) RunWorker(ctx context.Context) {
-	go nt.runWorker(ctx)
-
 	klog.Info("Started node topology worker")
-	<-ctx.Done()
-	klog.Info("Shutting node topology worker")
+	defer klog.Info("Shutting node topology worker")
+
+	for nt.processNextWorkItem(ctx) {
+	}
 }
 
 func (nt *nodeTopology) HasSynced() bool {
@@ -218,11 +218,6 @@ func (nt *nodeTopology) HasSynced() bool {
 		return true
 	}
 	return false
-}
-
-func (nt *nodeTopology) runWorker(ctx context.Context) {
-	for nt.processNextWorkItem(ctx) {
-	}
 }
 
 func (nt *nodeTopology) processNextWorkItem(ctx context.Context) bool {
