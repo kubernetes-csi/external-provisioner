@@ -336,7 +336,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	extraCreateMetadata bool,
 	defaultFSType string,
 	nodeDeployment *NodeDeployment,
-) controller.Provisioner {
+) controller.BlockProvisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: client.CoreV1().Events(v1.NamespaceAll)})

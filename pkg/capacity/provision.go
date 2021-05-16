@@ -24,21 +24,21 @@ import (
 )
 
 type provisionWrapper struct {
-	controller.Provisioner
+	controller.BlockProvisioner
 	c *Controller
 }
 
 var _ controller.Provisioner = &provisionWrapper{}
 
-func NewProvisionWrapper(p controller.Provisioner, c *Controller) controller.Provisioner {
+func NewProvisionWrapper(p controller.BlockProvisioner, c *Controller) controller.BlockProvisioner {
 	return &provisionWrapper{
-		Provisioner: p,
-		c:           c,
+		BlockProvisioner: p,
+		c:                c,
 	}
 }
 
 func (p *provisionWrapper) Provision(ctx context.Context, options controller.ProvisionOptions) (pv *v1.PersistentVolume, state controller.ProvisioningState, err error) {
-	pv, state, err = p.Provisioner.Provision(ctx, options)
+	pv, state, err = p.BlockProvisioner.Provision(ctx, options)
 	if err == nil && pv != nil {
 		if pv.Spec.NodeAffinity != nil {
 			// If we know where the volume was
@@ -77,7 +77,7 @@ func (p *provisionWrapper) Provision(ctx context.Context, options controller.Pro
 }
 
 func (p *provisionWrapper) Delete(ctx context.Context, pv *v1.PersistentVolume) (err error) {
-	err = p.Provisioner.Delete(ctx, pv)
+	err = p.BlockProvisioner.Delete(ctx, pv)
 	if err == nil && pv.Spec.NodeAffinity != nil {
 		// We don't know the storage class, but the
 		// topology is even better.

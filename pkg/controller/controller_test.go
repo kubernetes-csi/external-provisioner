@@ -4608,6 +4608,29 @@ func TestMarkAsMigrated(t *testing.T) {
 	})
 }
 
+func TestSupportsBlock(t *testing.T) {
+	tmpdir := tempDir(t)
+	defer os.RemoveAll(tmpdir)
+	mockController, driver, _, _, csiConn, err := createMockServer(t, tmpdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+	var clientSetObjects []runtime.Object
+	clientSet := fakeclientset.NewSimpleClientset(clientSetObjects...)
+
+	pluginCaps, controllerCaps := provisionCapabilities()
+	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test",
+		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, false, defaultfsType, nil)
+
+	isSupport := csiProvisioner.SupportsBlock(context.Background())
+	if !isSupport {
+		t.Errorf("SupportsBlock does not support")
+		return
+	}
+}
+
 func createFakeCSIPV(volumeHandle string) *v1.PersistentVolume {
 	return &v1.PersistentVolume{
 		Spec: v1.PersistentVolumeSpec{
