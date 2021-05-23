@@ -30,6 +30,7 @@ type provisionWrapper struct {
 
 var _ controller.Provisioner = &provisionWrapper{}
 var _ controller.BlockProvisioner = &provisionWrapper{}
+var _ controller.Qualifier = &provisionWrapper{}
 
 func NewProvisionWrapper(p controller.Provisioner, c *Controller) controller.Provisioner {
 	return &provisionWrapper{
@@ -90,6 +91,13 @@ func (p *provisionWrapper) Delete(ctx context.Context, pv *v1.PersistentVolume) 
 func (p *provisionWrapper) SupportsBlock(ctx context.Context) bool {
 	if blockProvisioner, ok := p.Provisioner.(controller.BlockProvisioner); ok {
 		return blockProvisioner.SupportsBlock(ctx)
+	}
+	return false
+}
+
+func (p *provisionWrapper) ShouldProvision(ctx context.Context, claim *v1.PersistentVolumeClaim) bool {
+	if qualifier, ok := p.Provisioner.(controller.Qualifier); ok {
+		return qualifier.ShouldProvision(ctx, claim)
 	}
 	return false
 }
