@@ -20,6 +20,7 @@ import (
 	"context"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller"
 )
 
@@ -40,6 +41,8 @@ func NewProvisionWrapper(p controller.Provisioner, c *Controller) controller.Pro
 }
 
 func (p *provisionWrapper) Provision(ctx context.Context, options controller.ProvisionOptions) (pv *v1.PersistentVolume, state controller.ProvisioningState, err error) {
+	logger := klog.FromContext(ctx)
+
 	pv, state, err = p.Provisioner.Provision(ctx, options)
 	if err == nil && pv != nil {
 		if pv.Spec.NodeAffinity != nil {
@@ -54,7 +57,7 @@ func (p *provisionWrapper) Provision(ctx context.Context, options controller.Pro
 			// changed. We cannot be sure that other
 			// segments were not affected, but that will
 			// be covered by the periodic refresh.
-			p.c.refreshTopology(*pv.Spec.NodeAffinity)
+			p.c.refreshTopology(logger, *pv.Spec.NodeAffinity)
 		} else if options.StorageClass != nil {
 			// Fall back to refresh by storage class.
 			// This is useful for a driver with network
@@ -62,7 +65,7 @@ func (p *provisionWrapper) Provision(ctx context.Context, options controller.Pro
 			// storage class parameters select certain
 			// distinct storage pools ("fast" for SSD,
 			// "slow" for HD).
-			p.c.refreshSC(options.StorageClass.Name)
+			p.c.refreshSC(logger, options.StorageClass.Name)
 		}
 	} else if state != controller.ProvisioningNoChange {
 		// Unsuccessful provisioning might also be a reason why
@@ -72,18 +75,20 @@ func (p *provisionWrapper) Provision(ctx context.Context, options controller.Pro
 		// class. That will help choosing a node for the volume
 		// that couldn't be created.
 		if options.StorageClass != nil {
-			p.c.refreshSC(options.StorageClass.Name)
+			p.c.refreshSC(logger, options.StorageClass.Name)
 		}
 	}
 	return
 }
 
 func (p *provisionWrapper) Delete(ctx context.Context, pv *v1.PersistentVolume) (err error) {
+	logger := klog.FromContext(ctx)
+
 	err = p.Provisioner.Delete(ctx, pv)
 	if err == nil && pv.Spec.NodeAffinity != nil {
 		// We don't know the storage class, but the
 		// topology is even better.
-		p.c.refreshTopology(*pv.Spec.NodeAffinity)
+		p.c.refreshTopology(logger, *pv.Spec.NodeAffinity)
 	}
 	return
 }

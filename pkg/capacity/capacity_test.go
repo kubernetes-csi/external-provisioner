@@ -46,16 +46,13 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
-	ktesting "k8s.io/client-go/testing"
+	cgotesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/testutil"
 	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/ktesting"
 )
-
-func init() {
-	klog.InitFlags(nil)
-}
 
 const (
 	timeout        = 10 * time.Second
@@ -1095,18 +1092,16 @@ func TestCapacityController(t *testing.T) {
 			// Running in parallel is possible because only logging uses a global instance.
 			t.Parallel()
 
-			// There is no good way to shut down the controller. It spawns
-			// various goroutines and some of them (in particular shared informer)
-			// become very unhappy ("close on closed channel") when using a context
-			// that gets cancelled. Therefore we just keep everything running.
-			ctx := context.Background()
+			logger, ctx := ktesting.NewTestContext(t)
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
 
 			cscCreateReactor := createCSIStorageCapacityReactor()
 			var initialObjects []runtime.Object
 			initialObjects = append(initialObjects, makeSCs(tc.initialSCs)...)
 			for _, testCapacity := range tc.initialCapacities {
 				csc := makeCapacity(testCapacity)
-				cscCreateReactor(ktesting.CreateActionImpl{
+				cscCreateReactor(cgotesting.CreateActionImpl{
 					Object: csc,
 				})
 				initialObjects = append(initialObjects, csc)
@@ -1125,7 +1120,13 @@ func TestCapacityController(t *testing.T) {
 			case nil:
 				owner = &defaultOwner
 			}
-			c, registry := fakeController(ctx, clientSet, owner, &tc.storage, topo, tc.immediateBinding)
+			c, informerFactory, registry := fakeController(ctx, clientSet, owner, &tc.storage, topo, tc.immediateBinding)
+			defer func() {
+				// First cancel.
+				cancel()
+				// Then wait for informer factory goroutines.
+				informerFactory.Shutdown()
+			}()
 			c.prepare(ctx)
 			if err := tc.expectedObjectsPrepared.verify(registry); err != nil {
 				t.Fatalf("metrics after prepare: %v", err)
@@ -1143,7 +1144,7 @@ func TestCapacityController(t *testing.T) {
 			// catches up.
 			expectedCapacities := tc.expectedCapacities
 			if tc.modify != nil {
-				klog.Info("modifying objects")
+				logger.Info("modifying objects")
 				ec, err := tc.modify(ctx, clientSet, expectedCapacities)
 				if err != nil {
 					t.Fatalf("modify objects: %v", err)
@@ -1154,15 +1155,15 @@ func TestCapacityController(t *testing.T) {
 				}
 			}
 			if tc.capacityChange != nil {
-				klog.Info("modifying capacity")
+				logger.Info("modifying capacity")
 				expectedCapacities = tc.capacityChange(ctx, &tc.storage, expectedCapacities)
-				c.pollCapacities()
+				c.pollCapacities(logger)
 				if err := validateCapacitiesEventually(ctx, c, clientSet, expectedCapacities); err != nil {
 					t.Fatalf("modified capacity: %v", err)
 				}
 			}
 			if tc.topologyChange != nil {
-				klog.Info("modifying topology")
+				logger.Info("modifying topology")
 				expectedCapacities = tc.topologyChange(ctx, topo, expectedCapacities)
 				if err := validateCapacitiesEventually(ctx, c, clientSet, expectedCapacities); err != nil {
 					t.Fatalf("modified capacity: %v", err)
@@ -1254,6 +1255,7 @@ func validateCapacitiesEventually(ctx context.Context, c *Controller, clientSet 
 }
 
 func validateEventually(ctx context.Context, c *Controller, clientSet kubernetes.Interface, validate func(ctx context.Context) error) error {
+	logger := klog.FromContext(ctx)
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	// A single test completes quickly (a few seconds at most), but when
@@ -1263,7 +1265,7 @@ func validateEventually(ctx context.Context, c *Controller, clientSet kubernetes
 	deadline, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	var lastValidationError error
-	klog.Info("waiting for controller to catch up")
+	logger.Info("waiting for controller to catch up")
 	for {
 		select {
 		case <-ticker.C:
@@ -1302,11 +1304,11 @@ func validateConsistently(ctx context.Context, c *Controller, clientSet kubernet
 
 // createCSIStorageCapacityReactor implements the logic required for the GenerateName and UID fields to work when using
 // the fake client. Add it with client.PrependReactor to your fake client.
-func createCSIStorageCapacityReactor() func(action ktesting.Action) (handled bool, ret runtime.Object, err error) {
+func createCSIStorageCapacityReactor() func(action cgotesting.Action) (handled bool, ret runtime.Object, err error) {
 	var uidCounter int
 	var mutex sync.Mutex
-	return func(action ktesting.Action) (handled bool, ret runtime.Object, err error) {
-		s := action.(ktesting.CreateAction).GetObject().(*storagev1.CSIStorageCapacity)
+	return func(action cgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		s := action.(cgotesting.CreateAction).GetObject().(*storagev1.CSIStorageCapacity)
 		if s.Name == "" && s.GenerateName != "" {
 			s.Name = fmt.Sprintf("%s-%s", s.GenerateName, krand.String(16))
 		}
@@ -1323,9 +1325,9 @@ func createCSIStorageCapacityReactor() func(action ktesting.Action) (handled boo
 
 // updateCSIStorageCapacityReactor implements the logic required for the ResourceVersion field to work when using
 // the fake client. Add it with client.PrependReactor to your fake client.
-func updateCSIStorageCapacityReactor() func(action ktesting.Action) (handled bool, ret runtime.Object, err error) {
-	return func(action ktesting.Action) (handled bool, ret runtime.Object, err error) {
-		s := action.(ktesting.UpdateAction).GetObject().(*storagev1.CSIStorageCapacity)
+func updateCSIStorageCapacityReactor() func(action cgotesting.Action) (handled bool, ret runtime.Object, err error) {
+	return func(action cgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		s := action.(cgotesting.UpdateAction).GetObject().(*storagev1.CSIStorageCapacity)
 		if !strings.HasPrefix(s.ResourceVersion, csiscRev) {
 			return false, nil, fmt.Errorf("resource version %q should have prefix %s", s.ResourceVersion, csiscRev)
 		}
@@ -1338,7 +1340,7 @@ func updateCSIStorageCapacityReactor() func(action ktesting.Action) (handled boo
 	}
 }
 
-func fakeController(ctx context.Context, client *fakeclientset.Clientset, owner *metav1.OwnerReference, storage CSICapacityClient, topologyInformer topology.Informer, immediateBinding bool) (*Controller, metrics.KubeRegistry) {
+func fakeController(ctx context.Context, client *fakeclientset.Clientset, owner *metav1.OwnerReference, storage CSICapacityClient, topologyInformer topology.Informer, immediateBinding bool) (*Controller, informers.SharedInformerFactory, metrics.KubeRegistry) {
 	utilruntime.ReallyCrash = false // avoids os.Exit after "close of closed channel" in shared informer code
 
 	// We don't need resyncs, they just lead to confusing log output if they get triggered while already some
@@ -1350,6 +1352,7 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, owner 
 	queue := &rateLimitingQueue{}
 
 	c := NewCentralCapacityController(
+		klog.FromContext(ctx),
 		storage,
 		driverName,
 		NewV1ClientFactory(client),
@@ -1372,7 +1375,7 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, owner 
 	registry := metrics.NewKubeRegistry()
 	registry.CustomMustRegister(c)
 
-	return c, registry
+	return c, informerFactory, registry
 }
 
 // rateLimitingQueue is a stripped down implementation
@@ -1469,6 +1472,7 @@ func (r *rateLimitingQueue) clear() {
 
 // process handles work items until the queue is empty and the informers are synced.
 func process(ctx context.Context, c *Controller, clientSet kubernetes.Interface) error {
+	logger := klog.FromContext(ctx)
 	for {
 		if c.queue.Len() == 0 {
 			done, err := storageClassesSynced(ctx, c, clientSet)
@@ -1484,9 +1488,9 @@ func process(ctx context.Context, c *Controller, clientSet kubernetes.Interface)
 		// in c.queue.Get().
 		len := c.queue.Len()
 		if len > 0 {
-			klog.V(1).Infof("testing next work item, queue length %d", len)
+			logger.V(1).Info("testing next work item", "queue-length", len)
 			c.processNextWorkItem(ctx)
-			klog.V(5).Infof("done testing next work item")
+			logger.V(5).Info("done testing next work item")
 		}
 	}
 }
@@ -1935,11 +1939,9 @@ func TestRefresh(t *testing.T) {
 			// Running in parallel is possible because only logging uses a global instance.
 			t.Parallel()
 
-			// There is no good way to shut down the controller. It spawns
-			// various goroutines and some of them (in particular shared informer)
-			// become very unhappy ("close on closed channel") when using a context
-			// that gets cancelled. Therefore we just keep everything running.
-			ctx := context.Background()
+			logger, ctx := ktesting.NewTestContext(t)
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
 
 			var objects []runtime.Object
 			objects = append(objects, makeSCs(tc.initialSCs)...)
@@ -1950,7 +1952,13 @@ func TestRefresh(t *testing.T) {
 			if topo == nil {
 				topo = topology.NewMock()
 			}
-			c, _ := fakeController(ctx, clientSet, &defaultOwner, &mockCapacity{}, topo, false /* immediate binding */)
+			c, informerFactory, _ := fakeController(ctx, clientSet, &defaultOwner, &mockCapacity{}, topo, false /* immediate binding */)
+			defer func() {
+				// First cancel.
+				cancel()
+				// Then wait for informer factory goroutines.
+				informerFactory.Shutdown()
+			}()
 			c.prepare(ctx)
 
 			// Clear queue so that below we only get to see items scheduled for refresh.
@@ -1959,7 +1967,7 @@ func TestRefresh(t *testing.T) {
 
 			// Now refresh based on certain criteria.
 			if tc.refreshSC != "" {
-				c.refreshSC(tc.refreshSC)
+				c.refreshSC(logger, tc.refreshSC)
 			}
 			if tc.refreshTopology != nil {
 				var expressions []v1.NodeSelectorRequirement
@@ -1978,7 +1986,7 @@ func TestRefresh(t *testing.T) {
 						},
 					},
 				}
-				c.refreshTopology(selector)
+				c.refreshTopology(logger, selector)
 			}
 
 			// Validate the resulting work queue.

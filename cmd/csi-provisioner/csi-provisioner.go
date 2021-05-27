@@ -557,7 +557,9 @@ func main() {
 			klog.Fatalf("unexpected error when checking for the V1 CSIStorageCapacity API: %v", err)
 		}
 
+		logger := klog.Background().WithName("CapacityController")
 		capacityController = capacity.NewCentralCapacityController(
+			logger,
 			csi.NewControllerClient(grpcClient),
 			provisionerName,
 			clientFactory,
