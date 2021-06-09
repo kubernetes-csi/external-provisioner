@@ -1100,10 +1100,18 @@ func TestCapacityController(t *testing.T) {
 			// that gets cancelled. Therefore we just keep everything running.
 			ctx := context.Background()
 
+			cscCreateReactor := createCSIStorageCapacityReactor()
 			var initialObjects []runtime.Object
 			initialObjects = append(initialObjects, makeSCs(tc.initialSCs)...)
+			for _, testCapacity := range tc.initialCapacities {
+				csc := makeCapacity(testCapacity)
+				cscCreateReactor(ktesting.CreateActionImpl{
+					Object: csc,
+				})
+				initialObjects = append(initialObjects, csc)
+			}
 			clientSet := fakeclientset.NewSimpleClientset(initialObjects...)
-			clientSet.PrependReactor("create", "csistoragecapacities", createCSIStorageCapacityReactor())
+			clientSet.PrependReactor("create", "csistoragecapacities", cscCreateReactor)
 			clientSet.PrependReactor("update", "csistoragecapacities", updateCSIStorageCapacityReactor())
 			topo := tc.topology
 			if topo == nil {
@@ -1117,13 +1125,6 @@ func TestCapacityController(t *testing.T) {
 				owner = &defaultOwner
 			}
 			c, registry := fakeController(ctx, clientSet, owner, &tc.storage, topo, tc.immediateBinding)
-			for _, testCapacity := range tc.initialCapacities {
-				capacity := makeCapacity(testCapacity)
-				_, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-			}
 			c.prepare(ctx)
 			if err := tc.expectedObjectsPrepared.verify(registry); err != nil {
 				t.Fatalf("metrics after prepare: %v", err)
@@ -1632,6 +1633,7 @@ func makeCapacity(in testCapacity) *storagev1beta1.CSIStorageCapacity {
 			UID:             in.uid,
 			ResourceVersion: in.resourceVersion,
 			Name:            fmt.Sprintf("csisc-%d", capacityCounter),
+			Namespace:       ownerNamespace,
 			OwnerReferences: owners,
 			Labels:          labels,
 		},
