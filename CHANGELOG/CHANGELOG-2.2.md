@@ -1,6 +1,27 @@
-# Release notes for v2.2.1
+# Release notes for v2.2.2
 
 [Documentation](https://kubernetes-csi.github.io)
+
+# Changelog since v2.2.1
+
+## Changes by Kind
+
+### Bug or Regression
+ - Fix env name from POD_NAMESPACE to NAMESPACE for capacity-ownerref-level option. ([#636](https://github.com/kubernetes-csi/external-provisioner/pull/636), [@bells17](https://github.com/bells17))
+ - Fix a bug that not being able to use block device mode when enable a storage capacity tracking mode. ([#635](https://github.com/kubernetes-csi/external-provisioner/pull/635), [@bells17](https://github.com/bells17))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
+# Release notes for v2.2.1
 
 # Changelog since v2.2.0
 
