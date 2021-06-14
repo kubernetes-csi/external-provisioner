@@ -50,6 +50,12 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 * `--leader-election-namespace`: Namespace where leader election object will be created. It is recommended that this parameter is populated from Kubernetes DownwardAPI with the namespace where the external-provisioner runs in.
 
+* `--leader-election-lease-duration <duration>`: Duration, in seconds, that non-leader candidates will wait to force acquire leadership. Defaults to 15 seconds.
+
+* `--leader-election-renew-deadline <duration>`: Duration, in seconds, that the acting leader will retry refreshing leadership before giving up. Defaults to 10 seconds.
+
+* `--leader-election-retry-period <duration>`: Duration, in seconds, the LeaderElector clients should wait between tries of actions. Defaults to 5 seconds.
+
 * `--timeout <duration>`: Timeout of all calls to CSI driver. It should be set to value that accommodates majority of `ControllerCreateVolume` and `ControllerDeleteVolume` calls. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details. 15 seconds is used by default.
 
 * `--retry-interval-start <duration>`: Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to `--retry-interval-max` and then it stops increasing. Default value is 1 second. See [CSI error and timeout handling](#csi-error-and-timeout-handling) for details.
