@@ -41,7 +41,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20210305164622-f622666832c1 // indirect
 	k8s.io/utils v0.0.0-20210305010621-2afb4311ab10 // indirect
 	sigs.k8s.io/controller-runtime v0.8.3
-	sigs.k8s.io/sig-storage-lib-external-provisioner/v6 v6.3.0
+	sigs.k8s.io/sig-storage-lib-external-provisioner/v7 v7.0.1
 )
 
 replace k8s.io/api => k8s.io/api v0.21.0
