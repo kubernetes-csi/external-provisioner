@@ -50,7 +50,7 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/workqueue"               // register work queues in the default legacy registry
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v7/controller"
 
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
@@ -181,13 +181,6 @@ func main() {
 	snapClient, err := snapclientset.NewForConfig(config)
 	if err != nil {
 		klog.Fatalf("Failed to create snapshot client: %v", err)
-	}
-
-	// The controller needs to know what the server version is because out-of-tree
-	// provisioners aren't officially supported until 1.5
-	serverVersion, err := clientset.Discovery().ServerVersion()
-	if err != nil {
-		klog.Fatalf("Error getting server version: %v", err)
 	}
 
 	metricsManager := metrics.NewCSIMetricsManagerWithOptions("", /* driverName */
@@ -491,7 +484,6 @@ func main() {
 		clientset,
 		provisionerName,
 		csiProvisioner,
-		serverVersion.GitVersion,
 		provisionerOptions...,
 	)
 
@@ -554,7 +546,7 @@ func main() {
 	if !*enableLeaderElection {
 		run(context.TODO())
 	} else {
-		// this lock name pattern is also copied from sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller
+		// this lock name pattern is also copied from sigs.k8s.io/sig-storage-lib-external-provisioner/controller
 		// to preserve backwards compatibility
 		lockName := strings.Replace(provisionerName, "/", "-", -1)
 
