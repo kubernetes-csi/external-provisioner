@@ -109,11 +109,6 @@ var (
 	version             = "unknown"
 )
 
-type leaderElection interface {
-	Run() error
-	WithNamespace(namespace string)
-}
-
 func main() {
 	var config *rest.Config
 	var err error
