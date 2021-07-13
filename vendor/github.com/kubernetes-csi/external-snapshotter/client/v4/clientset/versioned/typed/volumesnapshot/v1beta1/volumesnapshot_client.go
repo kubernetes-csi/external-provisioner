@@ -19,8 +19,8 @@ limitations under the License.
 package v1beta1
 
 import (
-	v1beta1 "github.com/kubernetes-csi/external-snapshotter/client/v3/apis/volumesnapshot/v1beta1"
-	"github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned/scheme"
+	v1beta1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1beta1"
+	"github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
 )
 
