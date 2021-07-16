@@ -326,8 +326,8 @@ github.com/kubernetes-csi/csi-lib-utils v0.9.1 h1:sGq6ifVujfMSkfTsMZip44Ttv8SDXv
 github.com/kubernetes-csi/csi-lib-utils v0.9.1/go.mod h1:8E2jVUX9j3QgspwHXa6LwyN7IHQDjW9jX3kwoWnSC+M=
 github.com/kubernetes-csi/csi-test/v4 v4.0.2 h1:MNj94SFHOGK6lOy+yDgxI+zlFWaPcgByqBH3JZZGyZI=
 github.com/kubernetes-csi/csi-test/v4 v4.0.2/go.mod h1:z3FYigjLFAuzmFzKdHQr8gUPm5Xr4Du2twKcxfys0eI=
-github.com/kubernetes-csi/external-snapshotter/client/v3 v3.0.0 h1:OYDCOjVcx/5wNzlZ/At8otRibUlw0T6R0xOD31f32bw=
-github.com/kubernetes-csi/external-snapshotter/client/v3 v3.0.0/go.mod h1:Q7VUue/CIrKbtpBdF04a1yjGGgsMaDws1HUxtjzgnEY=
+github.com/kubernetes-csi/external-snapshotter/client/v4 v4.1.0 h1:DecASDOSUnp0ftwi4aU87joEpZfLv9iMPwNYzrGb9Lc=
+github.com/kubernetes-csi/external-snapshotter/client/v4 v4.1.0/go.mod h1:YBCo4DoEeDndqvAn6eeu0vWM7QdXmHEeI9cFWplmBys=
 github.com/lightstep/lightstep-tracer-common/golang/gogo v0.0.0-20190605223551-bc2310a04743/go.mod h1:qklhhLq1aX+mtWk9cPHPzaBjWImj5ULL6C7HFJtXQMM=
 github.com/lightstep/lightstep-tracer-go v0.18.1/go.mod h1:jlF1pusYV4pidLvZ+XD0UBX0ZE6WURAspgAczcDHrL4=
 github.com/lyft/protoc-gen-validate v0.0.13/go.mod h1:XbGvPuh87YZc5TdIa2/I4pLk0QoUACkjt2znoq26NVQ=
