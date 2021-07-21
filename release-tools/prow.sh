@@ -698,8 +698,17 @@ install_csi_driver () {
         # Ignore: Double quote to prevent globbing and word splitting.
         # Ignore: To read lines rather than words, pipe/redirect to a 'while read' loop.
         # shellcheck disable=SC2086 disable=SC2013
+        echo "Test CSI_PROW_KUBERNETES_VERSION: ${CSI_PROW_KUBERNETES_VERSION}"
         for i in $(grep '^\s*CMDS\s*=' Makefile | sed -e 's/\s*CMDS\s*=//'); do
-            kind load docker-image --name csi-prow $i:csiprow || die "could not load the $i:latest image into the kind cluster"
+
+            if [[ ${REPO_DIR} == *"external-provisioner"* ]] && [ ${CSI_PROW_KUBERNETES_VERSION} == "1.19.0" ]; then
+                echo "Test using image k8s.gcr.io/sig-storage/csi-provisioner:v2.2.1"
+                kind load docker-image --name csi-prow k8s.gcr.io/sig-storage/csi-provisioner:v2.2.1 || die "could not load the k8s.gcr.io/sig-storage/csi-provisioner:v2.2.1 image into the kind cluster"
+            else
+                echo "REPO_DIR: ${REPO_DIR}"
+                echo "Test loading image $i:csiprow"
+                kind load docker-image --name csi-prow $i:csiprow || die "could not load the $i:csiprow image into the kind cluster"
+            fi
         done
     fi
 
