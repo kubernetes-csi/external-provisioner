@@ -2,15 +2,16 @@
 
 . release-tools/prow.sh
 
-# This check assumes that the current configuration uses a driver deployment
-# which has been updated to use v1 APIs that aren't available in Kubernetes < 1.17.
-# TODO: The check can be removed when all Prow jobs for Kubernetes < 1.17 are removed.
-if ! (version_gt "${CSI_PROW_KUBERNETES_VERSION}" "1.16.255" || [ "${CSI_PROW_KUBERNETES_VERSION}" == "latest" ]); then
+# External-provisioner is updated to use VolumeSnapshot v1 APIs. As a result,
+# tesing on Kubernetes version < 1.20 are no longer supported because they use
+# v1beta1 or earlier VolumeSnapshot APIs.
+# TODO: The check can be removed when all Prow jobs for Kubernetes < 1.20 are removed.
+if ! (version_gt "${CSI_PROW_KUBERNETES_VERSION}" "1.19.255" || [ "${CSI_PROW_KUBERNETES_VERSION}" == "latest" ]); then
     filtered_tests=
     skipped_tests=
     for test in ${CSI_PROW_TESTS}; do
 	case "$test" in
-	    parallel | parallel | serial | parallel-alpha | serial-alpha)
+	    parallel | serial | parallel-alpha | serial-alpha)
 		skipped_tests="$skipped_tests $test"
 		;;
 	    *)
