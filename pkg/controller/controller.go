@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -36,8 +35,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	_ "k8s.io/apimachinery/pkg/util/json"
-	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/validation"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -54,61 +51,13 @@ import (
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
+	"github.com/kubernetes-csi/csi-lib-utils/params"
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	snapapi "github.com/kubernetes-csi/external-snapshotter/client/v3/apis/volumesnapshot/v1beta1"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned"
 )
 
-//secretParamsMap provides a mapping of current as well as deprecated secret keys
-type secretParamsMap struct {
-	name                         string
-	deprecatedSecretNameKey      string
-	deprecatedSecretNamespaceKey string
-	secretNameKey                string
-	secretNamespaceKey           string
-}
-
 const (
-	// CSI Parameters prefixed with csiParameterPrefix are not passed through
-	// to the driver on CreateVolumeRequest calls. Instead they are intended
-	// to used by the CSI external-provisioner and maybe used to populate
-	// fields in subsequent CSI calls or Kubernetes API objects.
-	csiParameterPrefix = "csi.storage.k8s.io/"
-
-	prefixedFsTypeKey = csiParameterPrefix + "fstype"
-
-	prefixedDefaultSecretNameKey      = csiParameterPrefix + "secret-name"
-	prefixedDefaultSecretNamespaceKey = csiParameterPrefix + "secret-namespace"
-
-	prefixedProvisionerSecretNameKey      = csiParameterPrefix + "provisioner-secret-name"
-	prefixedProvisionerSecretNamespaceKey = csiParameterPrefix + "provisioner-secret-namespace"
-
-	prefixedControllerPublishSecretNameKey      = csiParameterPrefix + "controller-publish-secret-name"
-	prefixedControllerPublishSecretNamespaceKey = csiParameterPrefix + "controller-publish-secret-namespace"
-
-	prefixedNodeStageSecretNameKey      = csiParameterPrefix + "node-stage-secret-name"
-	prefixedNodeStageSecretNamespaceKey = csiParameterPrefix + "node-stage-secret-namespace"
-
-	prefixedNodePublishSecretNameKey      = csiParameterPrefix + "node-publish-secret-name"
-	prefixedNodePublishSecretNamespaceKey = csiParameterPrefix + "node-publish-secret-namespace"
-
-	prefixedControllerExpandSecretNameKey      = csiParameterPrefix + "controller-expand-secret-name"
-	prefixedControllerExpandSecretNamespaceKey = csiParameterPrefix + "controller-expand-secret-namespace"
-
-	// [Deprecated] CSI Parameters that are put into fields but
-	// NOT stripped from the parameters passed to CreateVolume
-	provisionerSecretNameKey      = "csiProvisionerSecretName"
-	provisionerSecretNamespaceKey = "csiProvisionerSecretNamespace"
-
-	controllerPublishSecretNameKey      = "csiControllerPublishSecretName"
-	controllerPublishSecretNamespaceKey = "csiControllerPublishSecretNamespace"
-
-	nodeStageSecretNameKey      = "csiNodeStageSecretName"
-	nodeStageSecretNamespaceKey = "csiNodeStageSecretNamespace"
-
-	nodePublishSecretNameKey      = "csiNodePublishSecretName"
-	nodePublishSecretNamespaceKey = "csiNodePublishSecretNamespace"
-
 	// PV and PVC metadata, used for sending to drivers in the  create requests, added as parameters, optional.
 	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
 	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
@@ -125,10 +74,6 @@ const (
 	snapshotAPIGroup = snapapi.GroupName       // "snapshot.storage.k8s.io"
 	pvcKind          = "PersistentVolumeClaim" // Native types don't require an API group
 
-	tokenPVNameKey       = "pv.name"
-	tokenPVCNameKey      = "pvc.name"
-	tokenPVCNameSpaceKey = "pvc.namespace"
-
 	ResyncPeriodOfCsiNodeInformer = 1 * time.Hour
 
 	deleteVolumeRetryCount = 5
@@ -140,52 +85,6 @@ const (
 	snapshotNotBound = "snapshot %s not bound"
 
 	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
-)
-
-var (
-	defaultSecretParams = secretParamsMap{
-		name:               "Default",
-		secretNameKey:      prefixedDefaultSecretNameKey,
-		secretNamespaceKey: prefixedDefaultSecretNamespaceKey,
-	}
-
-	provisionerSecretParams = secretParamsMap{
-		name:                         "Provisioner",
-		deprecatedSecretNameKey:      provisionerSecretNameKey,
-		deprecatedSecretNamespaceKey: provisionerSecretNamespaceKey,
-		secretNameKey:                prefixedProvisionerSecretNameKey,
-		secretNamespaceKey:           prefixedProvisionerSecretNamespaceKey,
-	}
-
-	nodePublishSecretParams = secretParamsMap{
-		name:                         "NodePublish",
-		deprecatedSecretNameKey:      nodePublishSecretNameKey,
-		deprecatedSecretNamespaceKey: nodePublishSecretNamespaceKey,
-		secretNameKey:                prefixedNodePublishSecretNameKey,
-		secretNamespaceKey:           prefixedNodePublishSecretNamespaceKey,
-	}
-
-	controllerPublishSecretParams = secretParamsMap{
-		name:                         "ControllerPublish",
-		deprecatedSecretNameKey:      controllerPublishSecretNameKey,
-		deprecatedSecretNamespaceKey: controllerPublishSecretNamespaceKey,
-		secretNameKey:                prefixedControllerPublishSecretNameKey,
-		secretNamespaceKey:           prefixedControllerPublishSecretNamespaceKey,
-	}
-
-	nodeStageSecretParams = secretParamsMap{
-		name:                         "NodeStage",
-		deprecatedSecretNameKey:      nodeStageSecretNameKey,
-		deprecatedSecretNamespaceKey: nodeStageSecretNamespaceKey,
-		secretNameKey:                prefixedNodeStageSecretNameKey,
-		secretNamespaceKey:           prefixedNodeStageSecretNamespaceKey,
-	}
-
-	controllerExpandSecretParams = secretParamsMap{
-		name:               "ControllerExpand",
-		secretNameKey:      prefixedControllerExpandSecretNameKey,
-		secretNamespaceKey: prefixedControllerExpandSecretNamespaceKey,
-	}
 )
 
 // ProvisionerCSITranslator contains the set of CSI Translation functionality
@@ -563,16 +462,16 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	fsTypesFound := 0
 	fsType := ""
 	for k, v := range sc.Parameters {
-		if strings.ToLower(k) == "fstype" || k == prefixedFsTypeKey {
+		if strings.ToLower(k) == "fstype" || k == params.PrefixedFsTypeKey {
 			fsType = v
 			fsTypesFound++
 		}
 		if strings.ToLower(k) == "fstype" {
-			klog.Warningf(deprecationWarning("fstype", prefixedFsTypeKey, ""))
+			klog.Warningf(deprecationWarning("fstype", params.PrefixedFsTypeKey, ""))
 		}
 	}
 	if fsTypesFound > 1 {
-		return nil, controller.ProvisioningFinished, fmt.Errorf("fstype specified in parameters with both \"fstype\" and \"%s\" keys", prefixedFsTypeKey)
+		return nil, controller.ProvisioningFinished, fmt.Errorf("fstype specified in parameters with both \"fstype\" and \"%s\" keys", params.PrefixedFsTypeKey)
 	}
 	if fsType == "" && p.defaultFSType != "" {
 		fsType = p.defaultFSType
@@ -630,7 +529,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	}
 
 	// Resolve provision secret credentials.
-	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, sc.Parameters, pvName, &v1.PersistentVolumeClaim{
+	provisionerSecretRef, err := params.GetVolumeSecretReference(params.ProvisionerSecretParams, sc.Parameters, pvName, &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      claim.Name,
 			Namespace: claim.Namespace,
@@ -646,19 +545,19 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	req.Secrets = provisionerCredentials
 
 	// Resolve controller publish, node stage, node publish secret references
-	controllerPublishSecretRef, err := getSecretReference(controllerPublishSecretParams, sc.Parameters, pvName, claim)
+	controllerPublishSecretRef, err := params.GetVolumeSecretReference(params.ControllerPublishSecretParams, sc.Parameters, pvName, claim)
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
-	nodeStageSecretRef, err := getSecretReference(nodeStageSecretParams, sc.Parameters, pvName, claim)
+	nodeStageSecretRef, err := params.GetVolumeSecretReference(params.NodeStageSecretParams, sc.Parameters, pvName, claim)
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
-	nodePublishSecretRef, err := getSecretReference(nodePublishSecretParams, sc.Parameters, pvName, claim)
+	nodePublishSecretRef, err := params.GetVolumeSecretReference(params.NodePublishSecretParams, sc.Parameters, pvName, claim)
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
-	controllerExpandSecretRef, err := getSecretReference(controllerExpandSecretParams, sc.Parameters, pvName, claim)
+	controllerExpandSecretRef, err := params.GetVolumeSecretReference(params.ControllerExpandSecretParams, sc.Parameters, pvName, claim)
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
@@ -671,7 +570,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		ControllerExpandSecretRef:  controllerExpandSecretRef,
 	}
 
-	req.Parameters, err = removePrefixedParameters(sc.Parameters)
+	req.Parameters, err = params.RemovePrefixedVolumeParameters(sc.Parameters)
 	if err != nil {
 		return nil, controller.ProvisioningFinished, fmt.Errorf("failed to strip CSI Parameters of prefixed keys: %v", err)
 	}
@@ -873,37 +772,6 @@ func (p *csiProvisioner) setCloneFinalizer(ctx context.Context, pvc *v1.Persiste
 
 func (p *csiProvisioner) supportsTopology() bool {
 	return SupportsTopology(p.pluginCapabilities)
-}
-
-func removePrefixedParameters(param map[string]string) (map[string]string, error) {
-	newParam := map[string]string{}
-	for k, v := range param {
-		if strings.HasPrefix(k, csiParameterPrefix) {
-			// Check if its well known
-			switch k {
-			case prefixedFsTypeKey:
-			case prefixedProvisionerSecretNameKey:
-			case prefixedProvisionerSecretNamespaceKey:
-			case prefixedControllerPublishSecretNameKey:
-			case prefixedControllerPublishSecretNamespaceKey:
-			case prefixedNodeStageSecretNameKey:
-			case prefixedNodeStageSecretNamespaceKey:
-			case prefixedNodePublishSecretNameKey:
-			case prefixedNodePublishSecretNamespaceKey:
-			case prefixedControllerExpandSecretNameKey:
-			case prefixedControllerExpandSecretNamespaceKey:
-			case prefixedDefaultSecretNameKey:
-			case prefixedDefaultSecretNamespaceKey:
-			default:
-				return map[string]string{}, fmt.Errorf("found unknown parameter key \"%s\" with reserved namespace %s", k, csiParameterPrefix)
-			}
-		} else {
-			// Don't strip, add this key-value to new map
-			// Deprecated parameters prefixed with "csi" are not stripped to preserve backwards compatibility
-			newParam[k] = v
-		}
-	}
-	return newParam, nil
 }
 
 // getVolumeContentSource is a helper function to process provisioning requests that include a DataSource
@@ -1153,7 +1021,7 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 			}
 
 			// Resolve provision secret credentials.
-			provisionerSecretRef, err := getSecretReference(provisionerSecretParams, storageClass.Parameters, volume.Name, &v1.PersistentVolumeClaim{
+			provisionerSecretRef, err := params.GetVolumeSecretReference(params.ProvisionerSecretParams, storageClass.Parameters, volume.Name, &v1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      volume.Spec.ClaimRef.Name,
 					Namespace: volume.Spec.ClaimRef.Namespace,
@@ -1512,152 +1380,6 @@ loop:
 	nc.rateLimiter.Forget(claim.UID)
 	klog.V(5).Infof("became owner of PVC %s/%s with updated resource version %s", current.Namespace, current.Name, current.ResourceVersion)
 	return nil
-}
-
-// verifyAndGetSecretNameAndNamespaceTemplate gets the values (templates) associated
-// with the parameters specified in "secret" and verifies that they are specified correctly.
-func verifyAndGetSecretNameAndNamespaceTemplate(secret secretParamsMap, storageClassParams map[string]string) (nameTemplate, namespaceTemplate string, err error) {
-	numName := 0
-	numNamespace := 0
-
-	if t, ok := storageClassParams[secret.deprecatedSecretNameKey]; ok {
-		nameTemplate = t
-		numName++
-		klog.Warning(deprecationWarning(secret.deprecatedSecretNameKey, secret.secretNameKey, ""))
-	}
-	if t, ok := storageClassParams[secret.deprecatedSecretNamespaceKey]; ok {
-		namespaceTemplate = t
-		numNamespace++
-		klog.Warning(deprecationWarning(secret.deprecatedSecretNamespaceKey, secret.secretNamespaceKey, ""))
-	}
-	if t, ok := storageClassParams[secret.secretNameKey]; ok {
-		nameTemplate = t
-		numName++
-	}
-	if t, ok := storageClassParams[secret.secretNamespaceKey]; ok {
-		namespaceTemplate = t
-		numNamespace++
-	}
-
-	if numName > 1 || numNamespace > 1 {
-		// Double specified error
-		return "", "", fmt.Errorf("%s secrets specified in parameters with both \"csi\" and \"%s\" keys", secret.name, csiParameterPrefix)
-	} else if numName != numNamespace {
-		// Not both 0 or both 1
-		return "", "", fmt.Errorf("either name and namespace for %s secrets specified, Both must be specified", secret.name)
-	} else if numName == 1 {
-		// Case where we've found a name and a namespace template
-		if nameTemplate == "" || namespaceTemplate == "" {
-			return "", "", fmt.Errorf("%s secrets specified in parameters but value of either namespace or name is empty", secret.name)
-		}
-		return nameTemplate, namespaceTemplate, nil
-	} else if numName == 0 {
-		// No secrets specified
-		return "", "", nil
-	} else {
-		// THIS IS NOT A VALID CASE
-		return "", "", fmt.Errorf("unknown error with getting secret name and namespace templates")
-	}
-}
-
-// getSecretReference returns a reference to the secret specified in the given nameTemplate
-//  and namespaceTemplate, or an error if the templates are not specified correctly.
-// no lookup of the referenced secret is performed, and the secret may or may not exist.
-//
-// supported tokens for name resolution:
-// - ${pv.name}
-// - ${pvc.namespace}
-// - ${pvc.name}
-// - ${pvc.annotations['ANNOTATION_KEY']} (e.g. ${pvc.annotations['example.com/node-publish-secret-name']})
-//
-// supported tokens for namespace resolution:
-// - ${pv.name}
-// - ${pvc.namespace}
-//
-// an error is returned in the following situations:
-// - the nameTemplate or namespaceTemplate contains a token that cannot be resolved
-// - the resolved name is not a valid secret name
-// - the resolved namespace is not a valid namespace name
-func getSecretReference(secretParams secretParamsMap, storageClassParams map[string]string, pvName string, pvc *v1.PersistentVolumeClaim) (*v1.SecretReference, error) {
-	nameTemplate, namespaceTemplate, err := verifyAndGetSecretNameAndNamespaceTemplate(secretParams, storageClassParams)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get name and namespace template from params: %v", err)
-	}
-
-	// if didn't find secrets for specific call, try to check default values
-	if nameTemplate == "" && namespaceTemplate == "" {
-		nameTemplate, namespaceTemplate, err = verifyAndGetSecretNameAndNamespaceTemplate(defaultSecretParams, storageClassParams)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get default name and namespace template from params: %v", err)
-		}
-	}
-
-	if nameTemplate == "" && namespaceTemplate == "" {
-		return nil, nil
-	}
-
-	ref := &v1.SecretReference{}
-	{
-		// Secret namespace template can make use of the PV name or the PVC namespace.
-		// Note that neither of those things are under the control of the PVC user.
-		namespaceParams := map[string]string{tokenPVNameKey: pvName}
-		if pvc != nil {
-			namespaceParams[tokenPVCNameSpaceKey] = pvc.Namespace
-		}
-
-		resolvedNamespace, err := resolveTemplate(namespaceTemplate, namespaceParams)
-		if err != nil {
-			return nil, fmt.Errorf("error resolving value %q: %v", namespaceTemplate, err)
-		}
-		if len(validation.IsDNS1123Label(resolvedNamespace)) > 0 {
-			if namespaceTemplate != resolvedNamespace {
-				return nil, fmt.Errorf("%q resolved to %q which is not a valid namespace name", namespaceTemplate, resolvedNamespace)
-			}
-			return nil, fmt.Errorf("%q is not a valid namespace name", namespaceTemplate)
-		}
-		ref.Namespace = resolvedNamespace
-	}
-
-	{
-		// Secret name template can make use of the PV name, PVC name or namespace, or a PVC annotation.
-		// Note that PVC name and annotations are under the PVC user's control.
-		nameParams := map[string]string{tokenPVNameKey: pvName}
-		if pvc != nil {
-			nameParams[tokenPVCNameKey] = pvc.Name
-			nameParams[tokenPVCNameSpaceKey] = pvc.Namespace
-			for k, v := range pvc.Annotations {
-				nameParams["pvc.annotations['"+k+"']"] = v
-			}
-		}
-		resolvedName, err := resolveTemplate(nameTemplate, nameParams)
-		if err != nil {
-			return nil, fmt.Errorf("error resolving value %q: %v", nameTemplate, err)
-		}
-		if len(validation.IsDNS1123Subdomain(resolvedName)) > 0 {
-			if nameTemplate != resolvedName {
-				return nil, fmt.Errorf("%q resolved to %q which is not a valid secret name", nameTemplate, resolvedName)
-			}
-			return nil, fmt.Errorf("%q is not a valid secret name", nameTemplate)
-		}
-		ref.Name = resolvedName
-	}
-
-	return ref, nil
-}
-
-func resolveTemplate(template string, params map[string]string) (string, error) {
-	missingParams := sets.NewString()
-	resolved := os.Expand(template, func(k string) string {
-		v, ok := params[k]
-		if !ok {
-			missingParams.Insert(k)
-		}
-		return v
-	})
-	if missingParams.Len() > 0 {
-		return "", fmt.Errorf("invalid tokens: %q", missingParams.List())
-	}
-	return resolved, nil
 }
 
 func getCredentials(ctx context.Context, k8s kubernetes.Interface, ref *v1.SecretReference) (map[string]string, error) {

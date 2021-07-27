@@ -50,6 +50,7 @@ import (
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
+	"github.com/kubernetes-csi/csi-lib-utils/params"
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	"github.com/kubernetes-csi/csi-test/v4/driver"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
@@ -183,108 +184,6 @@ func TestGetPluginName(t *testing.T) {
 
 	if oldName == newName {
 		t.Errorf("test: %s failed, driver's names should not match", test.name)
-	}
-}
-
-func TestStripPrefixedCSIParams(t *testing.T) {
-	testcases := []struct {
-		name           string
-		params         map[string]string
-		expectedParams map[string]string
-		expectErr      bool
-	}{
-		{
-			name:           "no prefix",
-			params:         map[string]string{"csiFoo": "bar", "bim": "baz"},
-			expectedParams: map[string]string{"csiFoo": "bar", "bim": "baz"},
-		},
-		{
-			name:           "one prefixed",
-			params:         map[string]string{prefixedControllerPublishSecretNameKey: "bar", "bim": "baz"},
-			expectedParams: map[string]string{"bim": "baz"},
-		},
-		{
-			name:           "prefix in value",
-			params:         map[string]string{"foo": prefixedFsTypeKey, "bim": "baz"},
-			expectedParams: map[string]string{"foo": prefixedFsTypeKey, "bim": "baz"},
-		},
-		{
-			name: "all known prefixed",
-			params: map[string]string{
-				prefixedFsTypeKey:                           "csiBar",
-				prefixedProvisionerSecretNameKey:            "csiBar",
-				prefixedProvisionerSecretNamespaceKey:       "csiBar",
-				prefixedControllerPublishSecretNameKey:      "csiBar",
-				prefixedControllerPublishSecretNamespaceKey: "csiBar",
-				prefixedNodeStageSecretNameKey:              "csiBar",
-				prefixedNodeStageSecretNamespaceKey:         "csiBar",
-				prefixedNodePublishSecretNameKey:            "csiBar",
-				prefixedNodePublishSecretNamespaceKey:       "csiBar",
-				prefixedControllerExpandSecretNameKey:       "csiBar",
-				prefixedControllerExpandSecretNamespaceKey:  "csiBar",
-				prefixedDefaultSecretNameKey:                "csiBar",
-				prefixedDefaultSecretNamespaceKey:           "csiBar",
-			},
-			expectedParams: map[string]string{},
-		},
-		{
-			name: "all known deprecated params not stripped",
-			params: map[string]string{
-				"fstype":                            "csiBar",
-				provisionerSecretNameKey:            "csiBar",
-				provisionerSecretNamespaceKey:       "csiBar",
-				controllerPublishSecretNameKey:      "csiBar",
-				controllerPublishSecretNamespaceKey: "csiBar",
-				nodeStageSecretNameKey:              "csiBar",
-				nodeStageSecretNamespaceKey:         "csiBar",
-				nodePublishSecretNameKey:            "csiBar",
-				nodePublishSecretNamespaceKey:       "csiBar",
-			},
-			expectedParams: map[string]string{
-				"fstype":                            "csiBar",
-				provisionerSecretNameKey:            "csiBar",
-				provisionerSecretNamespaceKey:       "csiBar",
-				controllerPublishSecretNameKey:      "csiBar",
-				controllerPublishSecretNamespaceKey: "csiBar",
-				nodeStageSecretNameKey:              "csiBar",
-				nodeStageSecretNamespaceKey:         "csiBar",
-				nodePublishSecretNameKey:            "csiBar",
-				nodePublishSecretNamespaceKey:       "csiBar",
-			},
-		},
-
-		{
-			name:      "unknown prefixed var",
-			params:    map[string]string{csiParameterPrefix + "bim": "baz"},
-			expectErr: true,
-		},
-		{
-			name:           "empty",
-			params:         map[string]string{},
-			expectedParams: map[string]string{},
-		},
-	}
-
-	for _, tc := range testcases {
-		t.Logf("test: %v", tc.name)
-
-		newParams, err := removePrefixedParameters(tc.params)
-		if err != nil {
-			if tc.expectErr {
-				continue
-			} else {
-				t.Fatalf("Encountered unexpected error: %v", err)
-			}
-		} else {
-			if tc.expectErr {
-				t.Fatalf("Did not get error when one was expected")
-			}
-		}
-
-		eq := reflect.DeepEqual(newParams, tc.expectedParams)
-		if !eq {
-			t.Fatalf("Stripped parameters: %v not equal to expected parameters: %v", newParams, tc.expectedParams)
-		}
 	}
 }
 
@@ -569,240 +468,6 @@ func fakeClaim(name, namespace, claimUID string, capacity int64, boundToVolume s
 	return &claim
 
 }
-func TestGetSecretReference(t *testing.T) {
-	testcases := map[string]struct {
-		secretParams secretParamsMap
-		params       map[string]string
-		pvName       string
-		pvc          *v1.PersistentVolumeClaim
-
-		expectRef *v1.SecretReference
-		expectErr bool
-	}{
-		"no params": {
-			secretParams: nodePublishSecretParams,
-			params:       nil,
-			expectRef:    nil,
-		},
-		"empty err": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{nodePublishSecretNameKey: "", nodePublishSecretNamespaceKey: ""},
-			expectErr:    true,
-		},
-		"[deprecated] name, no namespace": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{nodePublishSecretNameKey: "foo"},
-			expectErr:    true,
-		},
-		"name, no namespace": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{prefixedNodePublishSecretNameKey: "foo"},
-			expectErr:    true,
-		},
-		"[deprecated] namespace, no name": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{nodePublishSecretNamespaceKey: "foo"},
-			expectErr:    true,
-		},
-		"namespace, no name": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{prefixedNodePublishSecretNamespaceKey: "foo"},
-			expectErr:    true,
-		},
-		"[deprecated] simple - valid": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "ns"},
-			pvc:          &v1.PersistentVolumeClaim{},
-			expectRef:    &v1.SecretReference{Name: "name", Namespace: "ns"},
-		},
-		"deprecated and new both": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "ns", prefixedNodePublishSecretNameKey: "name", prefixedNodePublishSecretNamespaceKey: "ns"},
-			expectErr:    true,
-		},
-		"deprecated and new names": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "ns", prefixedNodePublishSecretNameKey: "name"},
-			expectErr:    true,
-		},
-		"deprecated and new namespace": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "ns", prefixedNodePublishSecretNamespaceKey: "ns"},
-			expectErr:    true,
-		},
-		"deprecated and new mixed": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{nodePublishSecretNameKey: "name", prefixedNodePublishSecretNamespaceKey: "ns"},
-			pvc:          &v1.PersistentVolumeClaim{},
-			expectRef:    &v1.SecretReference{Name: "name", Namespace: "ns"},
-		},
-		"simple - valid": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{prefixedNodePublishSecretNameKey: "name", prefixedNodePublishSecretNamespaceKey: "ns"},
-			pvc:          &v1.PersistentVolumeClaim{},
-			expectRef:    &v1.SecretReference{Name: "name", Namespace: "ns"},
-		},
-		"simple - valid, no pvc": {
-			secretParams: provisionerSecretParams,
-			params:       map[string]string{provisionerSecretNameKey: "name", provisionerSecretNamespaceKey: "ns"},
-			pvc:          nil,
-			expectRef:    &v1.SecretReference{Name: "name", Namespace: "ns"},
-		},
-		"simple - valid, pvc name and namespace": {
-			secretParams: provisionerSecretParams,
-			params: map[string]string{
-				provisionerSecretNameKey:      "param-name",
-				provisionerSecretNamespaceKey: "param-ns",
-			},
-			pvc: &v1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "name",
-					Namespace: "ns",
-				},
-			},
-			expectRef: &v1.SecretReference{Name: "param-name", Namespace: "param-ns"},
-		},
-		"simple - invalid name": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{nodePublishSecretNameKey: "bad name", nodePublishSecretNamespaceKey: "ns"},
-			pvc:          &v1.PersistentVolumeClaim{},
-			expectRef:    nil,
-			expectErr:    true,
-		},
-		"simple - invalid namespace": {
-			secretParams: nodePublishSecretParams,
-			params:       map[string]string{nodePublishSecretNameKey: "name", nodePublishSecretNamespaceKey: "bad ns"},
-			pvc:          &v1.PersistentVolumeClaim{},
-			expectRef:    nil,
-			expectErr:    true,
-		},
-		"template - PVC name annotations not supported for Provision and Delete": {
-			secretParams: provisionerSecretParams,
-			params: map[string]string{
-				prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
-			},
-			pvc: &v1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "name",
-					Namespace: "ns",
-				},
-			},
-			expectErr: true,
-		},
-		"template - valid nodepublish secret ref": {
-			secretParams: nodePublishSecretParams,
-			params: map[string]string{
-				nodePublishSecretNameKey:      "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
-				nodePublishSecretNamespaceKey: "static-${pv.name}-${pvc.namespace}",
-			},
-			pvName: "pvname",
-			pvc: &v1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        "pvcname",
-					Namespace:   "pvcnamespace",
-					Annotations: map[string]string{"akey": "avalue"},
-				},
-			},
-			expectRef: &v1.SecretReference{Name: "static-pvname-pvcnamespace-pvcname-avalue", Namespace: "static-pvname-pvcnamespace"},
-		},
-		"template - valid provisioner secret ref": {
-			secretParams: provisionerSecretParams,
-			params: map[string]string{
-				provisionerSecretNameKey:      "static-provisioner-${pv.name}-${pvc.namespace}-${pvc.name}",
-				provisionerSecretNamespaceKey: "static-provisioner-${pv.name}-${pvc.namespace}",
-			},
-			pvName: "pvname",
-			pvc: &v1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pvcname",
-					Namespace: "pvcnamespace",
-				},
-			},
-			expectRef: &v1.SecretReference{Name: "static-provisioner-pvname-pvcnamespace-pvcname", Namespace: "static-provisioner-pvname-pvcnamespace"},
-		},
-		"template - valid, with pvc.name": {
-			secretParams: provisionerSecretParams,
-			params: map[string]string{
-				provisionerSecretNameKey:      "${pvc.name}",
-				provisionerSecretNamespaceKey: "ns",
-			},
-			pvc: &v1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pvcname",
-					Namespace: "pvcns",
-				},
-			},
-			expectRef: &v1.SecretReference{Name: "pvcname", Namespace: "ns"},
-		},
-		"template - valid, provisioner with pvc name and namepsace": {
-			secretParams: provisionerSecretParams,
-			params: map[string]string{
-				provisionerSecretNameKey:      "${pvc.name}",
-				provisionerSecretNamespaceKey: "${pvc.namespace}",
-			},
-			pvc: &v1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pvcname",
-					Namespace: "pvcns",
-				},
-			},
-			expectRef: &v1.SecretReference{Name: "pvcname", Namespace: "pvcns"},
-		},
-		"template - valid, static pvc name and templated namespace": {
-			secretParams: provisionerSecretParams,
-			params: map[string]string{
-				provisionerSecretNameKey:      "static-name-1",
-				provisionerSecretNamespaceKey: "${pvc.namespace}",
-			},
-			pvc: &v1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "name",
-					Namespace: "ns",
-				},
-			},
-			expectRef: &v1.SecretReference{Name: "static-name-1", Namespace: "ns"},
-		},
-		"template - invalid namespace tokens": {
-			secretParams: nodePublishSecretParams,
-			params: map[string]string{
-				nodePublishSecretNameKey:      "myname",
-				nodePublishSecretNamespaceKey: "mynamespace${bar}",
-			},
-			pvc:       &v1.PersistentVolumeClaim{},
-			expectRef: nil,
-			expectErr: true,
-		},
-		"template - invalid name tokens": {
-			secretParams: nodePublishSecretParams,
-			params: map[string]string{
-				nodePublishSecretNameKey:      "myname${foo}",
-				nodePublishSecretNamespaceKey: "mynamespace",
-			},
-			pvc:       &v1.PersistentVolumeClaim{},
-			expectRef: nil,
-			expectErr: true,
-		},
-	}
-
-	for k, tc := range testcases {
-		t.Run(k, func(t *testing.T) {
-			ref, err := getSecretReference(tc.secretParams, tc.params, tc.pvName, tc.pvc)
-			if err != nil {
-				if tc.expectErr {
-					return
-				}
-				t.Fatalf("Did not expect error but got: %v", err)
-			} else {
-				if tc.expectErr {
-					t.Fatalf("Expected error but got none")
-				}
-			}
-			if !reflect.DeepEqual(ref, tc.expectRef) {
-				t.Errorf("Expected %v, got %v", tc.expectRef, ref)
-			}
-		})
-	}
-}
 
 type provisioningTestcase struct {
 	capacity           int64 // if zero, default capacity, otherwise available bytes
@@ -853,14 +518,14 @@ const defaultSecretNsName = "default"
 
 func getDefaultStorageClassSecretParameters() map[string]string {
 	return map[string]string{
-		controllerPublishSecretNameKey:             "ctrlpublishsecret",
-		controllerPublishSecretNamespaceKey:        defaultSecretNsName,
-		nodeStageSecretNameKey:                     "nodestagesecret",
-		nodeStageSecretNamespaceKey:                defaultSecretNsName,
-		nodePublishSecretNameKey:                   "nodepublishsecret",
-		nodePublishSecretNamespaceKey:              defaultSecretNsName,
-		prefixedControllerExpandSecretNameKey:      "controllerexpandsecret",
-		prefixedControllerExpandSecretNamespaceKey: defaultSecretNsName,
+		params.ControllerPublishSecretParams.GetSecretNameKey():      "ctrlpublishsecret",
+		params.ControllerPublishSecretParams.GetSecretNamespaceKey(): defaultSecretNsName,
+		params.NodeStageSecretParams.GetSecretNameKey():              "nodestagesecret",
+		params.NodeStageSecretParams.GetSecretNamespaceKey():         defaultSecretNsName,
+		params.NodePublishSecretParams.GetSecretNameKey():            "nodepublishsecret",
+		params.NodePublishSecretParams.GetSecretNamespaceKey():       defaultSecretNsName,
+		params.ControllerExpandSecretParams.GetSecretNameKey():       "controllerexpandsecret",
+		params.ControllerExpandSecretParams.GetSecretNamespaceKey():  defaultSecretNsName,
 	}
 }
 
@@ -1111,8 +776,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
-						"fstype":          "ext3",
-						prefixedFsTypeKey: "ext4",
+						"fstype":                 "ext3",
+						params.PrefixedFsTypeKey: "ext4",
 					},
 				},
 				PVName: "test-name",
@@ -1126,7 +791,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
-						prefixedFsTypeKey: "ext3",
+						params.PrefixedFsTypeKey: "ext3",
 					},
 				},
 				PVName: "test-name",
@@ -1416,8 +1081,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
-						prefixedDefaultSecretNameKey:      "default-secret",
-						prefixedDefaultSecretNamespaceKey: "default-ns",
+						params.DefaultSecretParams.GetSecretNameKey():      "default-secret",
+						params.DefaultSecretParams.GetSecretNamespaceKey(): "default-ns",
 					},
 				},
 				PVName: "test-name",
@@ -1467,8 +1132,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
-						prefixedDefaultSecretNameKey:      "${pvc.name}",
-						prefixedDefaultSecretNamespaceKey: "default-ns",
+						params.DefaultSecretParams.GetSecretNameKey():      "${pvc.name}",
+						params.DefaultSecretParams.GetSecretNamespaceKey(): "default-ns",
 					},
 				},
 				PVName: "test-name",
@@ -1613,8 +1278,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
-						prefixedDefaultSecretNameKey:      "default-${pvc.annotations['team.example.com/key']}",
-						prefixedDefaultSecretNamespaceKey: "default-ns",
+						params.DefaultSecretParams.GetSecretNameKey():      "default-${pvc.annotations['team.example.com/key']}",
+						params.DefaultSecretParams.GetSecretNamespaceKey(): "default-ns",
 					},
 				},
 				PVName: "test-name",
@@ -2211,10 +1876,10 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 	} else if tc.makeVolumeNameErr {
 		tc.volOpts.PVC.ObjectMeta.UID = ""
 	} else if tc.getSecretRefErr {
-		tc.volOpts.StorageClass.Parameters[provisionerSecretNameKey] = ""
+		tc.volOpts.StorageClass.Parameters[params.ProvisionerSecretParams.GetSecretNameKey()] = ""
 	} else if tc.getCredentialsErr {
-		tc.volOpts.StorageClass.Parameters[provisionerSecretNameKey] = "secretx"
-		tc.volOpts.StorageClass.Parameters[provisionerSecretNamespaceKey] = "default"
+		tc.volOpts.StorageClass.Parameters[params.ProvisionerSecretParams.GetSecretNameKey()] = "secretx"
+		tc.volOpts.StorageClass.Parameters[params.ProvisionerSecretParams.GetSecretNamespaceKey()] = "default"
 	} else if !testProvision {
 		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(0)
 	} else if tc.volWithLessCap {
@@ -3445,7 +3110,7 @@ func TestDelete(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv",
 					Annotations: map[string]string{
-						prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
+						params.ProvisionerSecretParams.GetSecretNameKey(): "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
 					},
 				},
 				Spec: v1.PersistentVolumeSpec{
@@ -3476,7 +3141,7 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
+					params.ProvisionerSecretParams.GetSecretNameKey(): "static-${pv.name}-${pvc.namespace}-${pvc.name}-${pvc.annotations['akey']}",
 				},
 			},
 			expectErr: true,
@@ -3503,7 +3168,7 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					params.ProvisionerSecretParams.GetSecretNameKey(): "static-${pv.name}-${pvc.namespace}-${pvc.name}",
 				},
 			},
 			volumeAttachment: &storagev1.VolumeAttachment{
@@ -3544,7 +3209,7 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					params.ProvisionerSecretParams.GetSecretNameKey(): "static-${pv.name}-${pvc.namespace}-${pvc.name}",
 				},
 			},
 			volumeAttachment: &storagev1.VolumeAttachment{
@@ -3585,7 +3250,7 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					params.ProvisionerSecretParams.GetSecretNameKey(): "static-${pv.name}-${pvc.namespace}-${pvc.name}",
 				},
 			},
 			volumeAttachment: &storagev1.VolumeAttachment{
@@ -3620,7 +3285,7 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					params.ProvisionerSecretParams.GetSecretNameKey(): "static-${pv.name}-${pvc.namespace}-${pvc.name}",
 				},
 			},
 			expectErr:  false,
@@ -3647,7 +3312,7 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					params.ProvisionerSecretParams.GetSecretNameKey(): "static-${pv.name}-${pvc.namespace}-${pvc.name}",
 				},
 			},
 			volumeAttachment: &storagev1.VolumeAttachment{
@@ -3688,7 +3353,7 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					params.ProvisionerSecretParams.GetSecretNameKey(): "static-${pv.name}-${pvc.namespace}-${pvc.name}",
 				},
 			},
 			expectErr:  false,
@@ -3733,7 +3398,7 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					params.ProvisionerSecretParams.GetSecretNameKey(): "static-${pv.name}-${pvc.namespace}-${pvc.name}",
 				},
 			},
 			expectErr: true,
@@ -3777,7 +3442,7 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					params.ProvisionerSecretParams.GetSecretNameKey(): "static-${pv.name}-${pvc.namespace}-${pvc.name}",
 				},
 			},
 			expectErr:  false,
