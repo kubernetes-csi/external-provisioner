@@ -341,8 +341,8 @@ github.com/kubernetes-csi/csi-lib-utils v0.9.1 h1:sGq6ifVujfMSkfTsMZip44Ttv8SDXv
 github.com/kubernetes-csi/csi-lib-utils v0.9.1/go.mod h1:8E2jVUX9j3QgspwHXa6LwyN7IHQDjW9jX3kwoWnSC+M=
 github.com/kubernetes-csi/csi-test/v4 v4.0.2 h1:MNj94SFHOGK6lOy+yDgxI+zlFWaPcgByqBH3JZZGyZI=
 github.com/kubernetes-csi/csi-test/v4 v4.0.2/go.mod h1:z3FYigjLFAuzmFzKdHQr8gUPm5Xr4Du2twKcxfys0eI=
-github.com/kubernetes-csi/external-snapshotter/client/v3 v3.0.0 h1:OYDCOjVcx/5wNzlZ/At8otRibUlw0T6R0xOD31f32bw=
-github.com/kubernetes-csi/external-snapshotter/client/v3 v3.0.0/go.mod h1:Q7VUue/CIrKbtpBdF04a1yjGGgsMaDws1HUxtjzgnEY=
+github.com/kubernetes-csi/external-snapshotter/client/v4 v4.1.0 h1:DecASDOSUnp0ftwi4aU87joEpZfLv9iMPwNYzrGb9Lc=
+github.com/kubernetes-csi/external-snapshotter/client/v4 v4.1.0/go.mod h1:YBCo4DoEeDndqvAn6eeu0vWM7QdXmHEeI9cFWplmBys=
 github.com/magiconair/properties v1.8.1/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/mailru/easyjson v0.0.0-20160728113105-d5b7844b561a/go.mod h1:C1wdFJiN94OJF2b5HbByQZoLdCWB1Yqtg26g4irojpc=
 github.com/mailru/easyjson v0.0.0-20190614124828-94de47d64c63/go.mod h1:C1wdFJiN94OJF2b5HbByQZoLdCWB1Yqtg26g4irojpc=

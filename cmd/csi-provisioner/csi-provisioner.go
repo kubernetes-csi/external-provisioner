@@ -58,7 +58,7 @@ import (
 	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
 	"github.com/kubernetes-csi/external-provisioner/pkg/owner"
-	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v3/clientset/versioned"
+	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned"
 )
 
 var (
@@ -177,7 +177,7 @@ func main() {
 		klog.Fatalf("Failed to create client: %v", err)
 	}
 
-	// snapclientset.NewForConfig creates a new Clientset for VolumesnapshotV1beta1Client
+	// snapclientset.NewForConfig creates a new Clientset for  VolumesnapshotV1Client
 	snapClient, err := snapclientset.NewForConfig(config)
 	if err != nil {
 		klog.Fatalf("Failed to create snapshot client: %v", err)
