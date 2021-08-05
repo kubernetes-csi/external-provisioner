@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/kubernetes-csi/csi-lib-utils/accessmodes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -451,42 +452,53 @@ func getAccessTypeMount(fsType string, mountFlags []string) *csi.VolumeCapabilit
 	}
 }
 
-func getAccessMode(pvcAccessMode v1.PersistentVolumeAccessMode) *csi.VolumeCapability_AccessMode {
-	switch pvcAccessMode {
-	case v1.ReadWriteOnce:
-		return &csi.VolumeCapability_AccessMode{
-			Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
-		}
-	case v1.ReadWriteMany:
-		return &csi.VolumeCapability_AccessMode{
-			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
-		}
-	case v1.ReadOnlyMany:
-		return &csi.VolumeCapability_AccessMode{
-			Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
-		}
-	default:
-		return nil
-	}
-}
-
 func getVolumeCapability(
 	claim *v1.PersistentVolumeClaim,
 	sc *storagev1.StorageClass,
 	pvcAccessMode v1.PersistentVolumeAccessMode,
 	fsType string,
-) *csi.VolumeCapability {
+	supportsSingleNodeMultiWriter bool,
+) (*csi.VolumeCapability, error) {
+	accessMode, err := accessmodes.ToCSIAccessMode([]v1.PersistentVolumeAccessMode{pvcAccessMode}, supportsSingleNodeMultiWriter)
+	if err != nil {
+		return nil, err
+	}
+
 	if util.CheckPersistentVolumeClaimModeBlock(claim) {
 		return &csi.VolumeCapability{
 			AccessType: getAccessTypeBlock(),
-			AccessMode: getAccessMode(pvcAccessMode),
-		}
+			AccessMode: &csi.VolumeCapability_AccessMode{
+				Mode: accessMode,
+			},
+		}, nil
 	}
 	return &csi.VolumeCapability{
 		AccessType: getAccessTypeMount(fsType, sc.MountOptions),
-		AccessMode: getAccessMode(pvcAccessMode),
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: accessMode,
+		},
+	}, nil
+}
+
+func (p *csiProvisioner) getVolumeCapabilities(
+	claim *v1.PersistentVolumeClaim,
+	sc *storagev1.StorageClass,
+	fsType string,
+) ([]*csi.VolumeCapability, error) {
+	supportsSingleNodeMultiWriter := false
+	if p.controllerCapabilities[csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER] {
+		supportsSingleNodeMultiWriter = true
 	}
 
+	volumeCaps := make([]*csi.VolumeCapability, 0)
+	for _, pvcAccessMode := range claim.Spec.AccessModes {
+		volumeCap, err := getVolumeCapability(claim, sc, pvcAccessMode, fsType, supportsSingleNodeMultiWriter)
+		if err != nil {
+			return []*csi.VolumeCapability{}, err
+		}
+		volumeCaps = append(volumeCaps, volumeCap)
+	}
+	return volumeCaps, nil
 }
 
 type prepareProvisionResult struct {
@@ -581,10 +593,9 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	capacity := claim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	volSizeBytes := capacity.Value()
 
-	// Get access mode
-	volumeCaps := make([]*csi.VolumeCapability, 0)
-	for _, pvcAccessMode := range claim.Spec.AccessModes {
-		volumeCaps = append(volumeCaps, getVolumeCapability(claim, sc, pvcAccessMode, fsType))
+	volumeCaps, err := p.getVolumeCapabilities(claim, sc, fsType)
+	if err != nil {
+		return nil, controller.ProvisioningFinished, err
 	}
 
 	// Create a CSI CreateVolumeRequest and Response
