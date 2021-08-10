@@ -1,5 +1,3 @@
-[![Build Status](https://travis-ci.org/kubernetes-csi/external-provisioner.svg?branch=master)](https://travis-ci.org/kubernetes-csi/external-provisioner)
-
 # CSI provisioner
 
 The external-provisioner is a sidecar container that dynamically provisions volumes by calling `CreateVolume` and `DeleteVolume` functions of CSI drivers. It is necessary because internal persistent volume controller running in Kubernetes controller-manager does not have any direct interfaces to CSI drivers.
