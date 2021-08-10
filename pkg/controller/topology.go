@@ -211,7 +211,7 @@ func GenerateAccessibilityRequirements(
 			}
 
 			// Aggregate existing topologies in nodes across the entire cluster.
-			requisiteTerms, err = aggregateTopologies(kubeClient, driverName, selectedCSINode, csiNodeLister, nodeLister)
+			requisiteTerms, err = aggregateTopologies(driverName, selectedCSINode, csiNodeLister, nodeLister)
 			if err != nil {
 				return nil, err
 			}
@@ -286,7 +286,6 @@ func getSelectedCSINode(
 // aggregateTopologies returns all the supported topology values in the cluster that
 // match the driver's topology keys.
 func aggregateTopologies(
-	kubeClient kubernetes.Interface,
 	driverName string,
 	selectedCSINode *storagev1.CSINode,
 	csiNodeLister storagelistersv1.CSINodeLister,
