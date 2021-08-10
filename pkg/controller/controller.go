@@ -45,7 +45,6 @@ import (
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -114,13 +113,6 @@ const (
 	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
 	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
 	pvNameKey       = "csi.storage.k8s.io/pv/name"
-
-	// Defines parameters for ExponentialBackoff used for executing
-	// CSI CreateVolume API call, it gives approx 4 minutes for the CSI
-	// driver to complete a volume creation.
-	backoffDuration = time.Second * 5
-	backoffFactor   = 1.2
-	backoffSteps    = 10
 
 	snapshotKind     = "VolumeSnapshot"
 	snapshotAPIGroup = snapapi.GroupName       // "snapshot.storage.k8s.io"
@@ -243,7 +235,6 @@ type csiProvisioner struct {
 	volumeNamePrefix                      string
 	defaultFSType                         string
 	volumeNameUUIDLength                  int
-	config                                *rest.Config
 	driverName                            string
 	pluginCapabilities                    rpc.PluginCapabilitySet
 	controllerCapabilities                rpc.ControllerCapabilitySet
