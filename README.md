@@ -23,7 +23,7 @@ Following table reflects the head of this branch.
 
 | Feature        | Status  | Default | Description                                                                                   | Provisioner Feature Gate Required |
 | -------------- | ------- | ------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
-| Snapshots      | Beta    | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html). | No |
+| Snapshots      | GA      | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html). | No |
 | CSIMigration   | Beta    | On      | [Migrating in-tree volume plugins to CSI](https://kubernetes.io/docs/concepts/storage/volumes/#csi-migration). | No |
 | CSIStorageCapacity | Beta  | On  | Publish [capacity information](https://kubernetes.io/docs/concepts/storage/volumes/#storage-capacity) for the Kubernetes scheduler. | No |
 | ReadWriteOncePod   | Alpha | Off | [Single pod access mode for PersistentVolumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes). | No |
