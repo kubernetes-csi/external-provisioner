@@ -11,7 +11,7 @@ This information reflects the head of this branch.
 
 | Compatible with CSI Version | Container Image | [Min K8s Version](https://kubernetes-csi.github.io/docs/kubernetes-compatibility.html#minimum-version) | [Recommended K8s Version](https://kubernetes-csi.github.io/docs/kubernetes-compatibility.html#recommended-version) |
 | ------------------------------------------------------------------------------------------ | -------------------------------| --------------- | ------------- |
-| [CSI Spec v1.5.0](https://github.com/container-storage-interface/spec/releases/tag/v1.5.0) | k8s.gcr.io/sig-storage/csi-provisioner | 1.17 | 1.22 |
+| [CSI Spec v1.5.0](https://github.com/container-storage-interface/spec/releases/tag/v1.5.0) | k8s.gcr.io/sig-storage/csi-provisioner | 1.20 | 1.22 |
 
 ## Feature status
 
