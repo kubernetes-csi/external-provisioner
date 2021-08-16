@@ -45,7 +45,6 @@ import (
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -236,7 +235,6 @@ type csiProvisioner struct {
 	volumeNamePrefix                      string
 	defaultFSType                         string
 	volumeNameUUIDLength                  int
-	config                                *rest.Config
 	driverName                            string
 	pluginCapabilities                    rpc.PluginCapabilitySet
 	controllerCapabilities                rpc.ControllerCapabilitySet
