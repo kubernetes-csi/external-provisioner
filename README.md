@@ -126,7 +126,7 @@ See the [storage capacity section](#capacity-support) below for details.
 External-provisioner interacts with Kubernetes by watching PVCs and
 PVs and implementing the [external provisioner
 protocol](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/storage/container-storage-interface.md#provisioning-and-deleting).
-The [design document](./docs/design.md) explains this in more detail.
+The [design document](./doc/design.md) explains this in more detail.
 
 ### Topology support
 When `Topology` feature is enabled and the driver specifies `VOLUME_ACCESSIBILITY_CONSTRAINTS` in its plugin capabilities, external-provisioner prepares `CreateVolumeRequest.AccessibilityRequirements` while calling `Controller.CreateVolume`. The driver has to consider these topology constraints while creating the volume. Below table shows how these `AccessibilityRequirements` are prepared:
@@ -275,7 +275,7 @@ with some minor change:
   variables to make the DaemonSet that contains the external-provisioner
   the owner of CSIStorageCapacity objects for the node.
 
-Deployments of external-provisioner outside of the Kubernetes cluster
+Deployments of external-provisioner outside the Kubernetes cluster
 are also possible, albeit only without an owner for the objects.
 `NAMESPACE` still needs to be set to some existing namespace also
 in this case.

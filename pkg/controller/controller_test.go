@@ -106,8 +106,10 @@ func createMockServer(t *testing.T, tmpdir string) (*gomock.Controller,
 		Identity:   identityServer,
 		Controller: controllerServer,
 	})
-	drv.StartOnAddress("unix", filepath.Join(tmpdir, "csi.sock"))
-
+	err := drv.StartOnAddress("unix", filepath.Join(tmpdir, "csi.sock"))
+	if err != nil {
+		return nil, nil, nil, nil, csiConnection{}, err
+	}
 	// Create a client connection to it
 	addr := drv.Address()
 	csiConn, err := New(addr)

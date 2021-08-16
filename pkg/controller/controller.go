@@ -115,13 +115,6 @@ const (
 	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
 	pvNameKey       = "csi.storage.k8s.io/pv/name"
 
-	// Defines parameters for ExponentialBackoff used for executing
-	// CSI CreateVolume API call, it gives approx 4 minutes for the CSI
-	// driver to complete a volume creation.
-	backoffDuration = time.Second * 5
-	backoffFactor   = 1.2
-	backoffSteps    = 10
-
 	snapshotKind     = "VolumeSnapshot"
 	snapshotAPIGroup = snapapi.GroupName       // "snapshot.storage.k8s.io"
 	pvcKind          = "PersistentVolumeClaim" // Native types don't require an API group
@@ -268,7 +261,7 @@ var _ controller.Qualifier = &csiProvisioner{}
 
 var (
 	// Each provisioner have a identify string to distinguish with others. This
-	// identify string will be added in PV annoations under this key.
+	// identify string will be added in PV annotations under this key.
 	provisionerIDKey = "storage.kubernetes.io/csiProvisionerIdentity"
 )
 
