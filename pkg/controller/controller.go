@@ -126,9 +126,11 @@ const (
 
 	deleteVolumeRetryCount = 5
 
-	annMigratedTo         = "pv.kubernetes.io/migrated-to"
-	annStorageProvisioner = "volume.beta.kubernetes.io/storage-provisioner"
-	annSelectedNode       = "volume.kubernetes.io/selected-node"
+	annMigratedTo = "pv.kubernetes.io/migrated-to"
+	// TODO: Beta will be deprecated and removed in a later release
+	annBetaStorageProvisioner = "volume.beta.kubernetes.io/storage-provisioner"
+	annStorageProvisioner     = "volume.kubernetes.io/storage-provisioner"
+	annSelectedNode           = "volume.kubernetes.io/selected-node"
 
 	snapshotNotBound = "snapshot %s not bound"
 
@@ -698,13 +700,17 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 
 func (p *csiProvisioner) Provision(ctx context.Context, options controller.ProvisionOptions) (*v1.PersistentVolume, controller.ProvisioningState, error) {
 	claim := options.PVC
-	if claim.Annotations[annStorageProvisioner] != p.driverName && claim.Annotations[annMigratedTo] != p.driverName {
+	provisioner, ok := claim.Annotations[annStorageProvisioner]
+	if !ok {
+		provisioner = claim.Annotations[annBetaStorageProvisioner]
+	}
+	if provisioner != p.driverName && claim.Annotations[annMigratedTo] != p.driverName {
 		// The storage provisioner annotation may not equal driver name but the
 		// PVC could have annotation "migrated-to" which is the new way to
 		// signal a PVC is migrated (k8s v1.17+)
 		return nil, controller.ProvisioningFinished, &controller.IgnoredError{
 			Reason: fmt.Sprintf("PVC annotated with external-provisioner name %s does not match provisioner driver name %s. This could mean the PVC is not migrated",
-				claim.Annotations[annStorageProvisioner],
+				provisioner,
 				p.driverName),
 		}
 
@@ -1229,7 +1235,10 @@ func (p *csiProvisioner) SupportsBlock(ctx context.Context) bool {
 }
 
 func (p *csiProvisioner) ShouldProvision(ctx context.Context, claim *v1.PersistentVolumeClaim) bool {
-	provisioner := claim.Annotations[annStorageProvisioner]
+	provisioner, ok := claim.Annotations[annStorageProvisioner]
+	if !ok {
+		provisioner = claim.Annotations[annBetaStorageProvisioner]
+	}
 	migratedTo := claim.Annotations[annMigratedTo]
 	if provisioner != p.driverName && migratedTo != p.driverName {
 		// Non-migrated in-tree volume is requested.
