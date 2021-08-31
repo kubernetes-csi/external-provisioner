@@ -267,6 +267,7 @@ func main() {
 	// Listers
 	// Create informer to prevent hit the API server for all resource request
 	scLister := factory.Storage().V1().StorageClasses().Lister()
+	pvLister := factory.Core().V1().PersistentVolumes().Lister()
 	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
 
 	var vaLister storagelistersv1.VolumeAttachmentLister
@@ -486,6 +487,7 @@ func main() {
 
 	csiClaimController := ctrl.NewCloningProtectionController(
 		clientset,
+		pvLister,
 		claimLister,
 		claimInformer,
 		claimQueue,

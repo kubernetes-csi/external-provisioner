@@ -134,7 +134,8 @@ const (
 
 	snapshotNotBound = "snapshot %s not bound"
 
-	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
+	pvcCloneFinalizer        = "provisioner.storage.kubernetes.io/cloning-protection"
+	pvcProvisioningFinalizer = "provisioner.storage.kubernetes.io/provisioning-protection"
 )
 
 var (
@@ -612,6 +613,11 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		req.VolumeContentSource = volumeContentSource
 	}
 
+	err = p.setProvisioningFinalizer(ctx, claim, pvcProvisioningFinalizer)
+	if err != nil {
+		return nil, controller.ProvisioningNoChange, err
+	}
+
 	if claim.Spec.DataSource != nil && rc.clone {
 		err = p.setCloneFinalizer(ctx, claim)
 		if err != nil {
@@ -883,6 +889,21 @@ func (p *csiProvisioner) setCloneFinalizer(ctx context.Context, pvc *v1.Persiste
 
 	if !checkFinalizer(claim, pvcCloneFinalizer) {
 		claim.Finalizers = append(claim.Finalizers, pvcCloneFinalizer)
+		_, err := p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(ctx, claim, metav1.UpdateOptions{})
+		return err
+	}
+
+	return nil
+}
+
+func (p *csiProvisioner) setProvisioningFinalizer(ctx context.Context, pvc *v1.PersistentVolumeClaim, finalizer string) error {
+	claim, err := p.claimLister.PersistentVolumeClaims(pvc.Namespace).Get(pvc.Name)
+	if err != nil {
+		return err
+	}
+
+	if !checkFinalizer(claim, finalizer) {
+		claim.Finalizers = append(claim.Finalizers, finalizer)
 		_, err := p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(ctx, claim, metav1.UpdateOptions{})
 		return err
 	}
