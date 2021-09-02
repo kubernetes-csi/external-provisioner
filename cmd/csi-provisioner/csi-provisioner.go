@@ -110,6 +110,33 @@ var (
 	version             = "unknown"
 )
 
+type nodeDeploymentLister struct {
+	listersv1.NodeLister
+	localNodeName string
+}
+
+func (n nodeDeploymentLister) Get(name string) (*v1.Node, error) {
+	if name == n.localNodeName {
+		// A copy for the local was stored beforehand.
+		return n.NodeLister.Get(name)
+	}
+	// For every other node we return a minimal object to keep
+	// sig-storage-lib-external-provisioner happy:
+	// https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/blob/853cdd7cba6e20753071cdb3e07fe37a6f2fc5a3/controller/controller.go#L1326
+	//
+	// When it calls ShouldProvision, we return false and the
+	// fake node object never gets used.
+	//
+	// If we don't do this, sig-storage-lib-external-provisioner
+	// emits error events for PVCs that are getting provisioned
+	// on a foreign node instead of silently ignoring those.
+	return &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+	}, nil
+}
+
 func main() {
 	var config *rest.Config
 	var err error
@@ -333,8 +360,10 @@ func main() {
 			csiNodes.Informer().GetStore().Add(csiNode)
 			nodes.Informer().GetStore().Add(node)
 			csiNodeLister = csiNodes.Lister()
-			nodeLister = nodes.Lister()
-
+			nodeLister = nodeDeploymentLister{
+				NodeLister:    nodes.Lister(),
+				localNodeName: nodeDeployment.NodeName,
+			}
 		} else {
 			csiNodeLister = factory.Storage().V1().CSINodes().Lister()
 			nodeLister = factory.Core().V1().Nodes().Lister()
