@@ -79,8 +79,6 @@ func (p *CloningProtectionController) Run(ctx context.Context, threadiness int) 
 		}, time.Second, ctx.Done())
 	}
 
-	go p.claimInformer.Run(ctx.Done())
-
 	klog.Infof("Started CloningProtection controller")
 	<-ctx.Done()
 	klog.Info("Shutting down CloningProtection controller")
