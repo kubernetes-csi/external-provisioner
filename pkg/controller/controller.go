@@ -1738,8 +1738,9 @@ func checkError(err error, mayReschedule bool) controller.ProvisioningState {
 			// may succeed elsewhere -> give up for now
 			return controller.ProvisioningReschedule
 		}
-		// may still succeed at a later time -> continue
-		return controller.ProvisioningInBackground
+		// We still assume that gRPRC message size limits are large enough, see above.
+		// The CSI driver has run out of space, provisioning is not in progress.
+		return controller.ProvisioningFinished
 	case codes.Canceled, // gRPC: Client Application cancelled the request
 		codes.DeadlineExceeded, // gRPC: Timeout
 		codes.Unavailable,      // gRPC: Server shutting down, TCP connection broken - previous CreateVolume() may be still in progress.
