@@ -3438,12 +3438,12 @@ func TestProvisionErrorHandling(t *testing.T) {
 	const requestBytes = 100
 
 	testcases := map[codes.Code]controller.ProvisioningState{
-		codes.ResourceExhausted: controller.ProvisioningInBackground,
-		codes.Canceled:          controller.ProvisioningInBackground,
-		codes.DeadlineExceeded:  controller.ProvisioningInBackground,
-		codes.Unavailable:       controller.ProvisioningInBackground,
-		codes.Aborted:           controller.ProvisioningInBackground,
+		codes.Canceled:         controller.ProvisioningInBackground,
+		codes.DeadlineExceeded: controller.ProvisioningInBackground,
+		codes.Unavailable:      controller.ProvisioningInBackground,
+		codes.Aborted:          controller.ProvisioningInBackground,
 
+		codes.ResourceExhausted:  controller.ProvisioningFinished,
 		codes.Unknown:            controller.ProvisioningFinished,
 		codes.InvalidArgument:    controller.ProvisioningFinished,
 		codes.NotFound:           controller.ProvisioningFinished,
