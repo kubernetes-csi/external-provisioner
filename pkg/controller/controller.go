@@ -145,7 +145,7 @@ var (
 	}
 
 	provisionerSecretParams = secretParamsMap{
-		name: "Provisioner",
+		name:                         "Provisioner",
 		deprecatedSecretNameKey:      provisionerSecretNameKey,
 		deprecatedSecretNamespaceKey: provisionerSecretNamespaceKey,
 		secretNameKey:                prefixedProvisionerSecretNameKey,
@@ -153,7 +153,7 @@ var (
 	}
 
 	nodePublishSecretParams = secretParamsMap{
-		name: "NodePublish",
+		name:                         "NodePublish",
 		deprecatedSecretNameKey:      nodePublishSecretNameKey,
 		deprecatedSecretNamespaceKey: nodePublishSecretNamespaceKey,
 		secretNameKey:                prefixedNodePublishSecretNameKey,
@@ -161,7 +161,7 @@ var (
 	}
 
 	controllerPublishSecretParams = secretParamsMap{
-		name: "ControllerPublish",
+		name:                         "ControllerPublish",
 		deprecatedSecretNameKey:      controllerPublishSecretNameKey,
 		deprecatedSecretNamespaceKey: controllerPublishSecretNamespaceKey,
 		secretNameKey:                prefixedControllerPublishSecretNameKey,
@@ -169,7 +169,7 @@ var (
 	}
 
 	nodeStageSecretParams = secretParamsMap{
-		name: "NodeStage",
+		name:                         "NodeStage",
 		deprecatedSecretNameKey:      nodeStageSecretNameKey,
 		deprecatedSecretNamespaceKey: nodeStageSecretNamespaceKey,
 		secretNameKey:                prefixedNodeStageSecretNameKey,
