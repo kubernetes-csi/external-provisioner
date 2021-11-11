@@ -77,6 +77,9 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 * `--extra-create-metadata`: Enables the injection of extra PVC and PV metadata as parameters when calling `CreateVolume` on the driver (keys: "csi.storage.k8s.io/pvc/name", "csi.storage.k8s.io/pvc/namespace", "csi.storage.k8s.io/pv/name")
 
 * `controller-publish-readonly`: This option enables PV to be marked as readonly at controller publish volume call if PVC accessmode has been set to ROX. Defaults to `false`.
+
+* `--enable-pprof`: Enable pprof profiling on the TCP network address specified by `--http-endpoint`. The HTTP path is `/debug/pprof/`.
+
 ##### Storage capacity arguments
 
 See the [storage capacity section](#capacity-support) below for details.
