@@ -25,6 +25,7 @@ Following table reflects the head of this branch.
 | CSIMigration   | Beta    | On      | [Migrating in-tree volume plugins to CSI](https://kubernetes.io/docs/concepts/storage/volumes/#csi-migration). | No |
 | CSIStorageCapacity | Beta  | On  | Publish [capacity information](https://kubernetes.io/docs/concepts/storage/volumes/#storage-capacity) for the Kubernetes scheduler. | No |
 | ReadWriteOncePod   | Alpha | Off | [Single pod access mode for PersistentVolumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes). | No |
+| HonorPVReclaimPolicy| Alpha |Off | [Honor the PV reclaim policy](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/2644-honor-pv-reclaim-policy) | No
 
 All other external-provisioner features and the external-provisioner itself is considered GA and fully supported.
 

@@ -14,4 +14,4 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package util // import "sigs.k8s.io/sig-storage-lib-external-provisioner/v7/util"
+package metrics // import "sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller/metrics"

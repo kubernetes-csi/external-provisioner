@@ -20,6 +20,7 @@ import (
 	"context"
 	goflag "flag"
 	"fmt"
+	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	"math/rand"
 	"net/http"
 	"os"
@@ -50,7 +51,7 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/workqueue"               // register work queues in the default legacy registry
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v7/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller"
 
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
@@ -357,6 +358,10 @@ func main() {
 		controller.CreateProvisionedPVLimiter(workqueue.DefaultControllerRateLimiter()),
 		controller.ClaimsInformer(claimInformer),
 		controller.NodesLister(nodeLister),
+	}
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.HonorPVReclaimPolicy) {
+		provisionerOptions = append(provisionerOptions, controller.AddFinalizer(true))
 	}
 
 	if supportsMigrationFromInTreePluginName != "" {

@@ -20,7 +20,7 @@ import (
 	"context"
 
 	v1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v7/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller"
 )
 
 type provisionWrapper struct {

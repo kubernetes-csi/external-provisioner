@@ -30,5 +30,5 @@ require (
 	k8s.io/csi-translation-lib v0.22.0
 	k8s.io/klog/v2 v2.9.0
 	sigs.k8s.io/controller-runtime v0.8.3
-	sigs.k8s.io/sig-storage-lib-external-provisioner/v7 v7.0.1
+	sigs.k8s.io/sig-storage-lib-external-provisioner/v8 v8.0.0
 )
