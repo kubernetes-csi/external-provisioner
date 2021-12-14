@@ -91,6 +91,7 @@ type Controller struct {
 	cInformer        storageinformersv1beta1.CSIStorageCapacityInformer
 	pollPeriod       time.Duration
 	immediateBinding bool
+	timeout          time.Duration
 
 	// capacities contains one entry for each object that is
 	// supposed to exist. Entries that exist on the API server
@@ -164,6 +165,7 @@ func NewCentralCapacityController(
 	cInformer storageinformersv1beta1.CSIStorageCapacityInformer,
 	pollPeriod time.Duration,
 	immediateBinding bool,
+	timeout time.Duration,
 ) *Controller {
 	c := &Controller{
 		csiController:    csiController,
@@ -178,6 +180,7 @@ func NewCentralCapacityController(
 		cInformer:        cInformer,
 		pollPeriod:       pollPeriod,
 		immediateBinding: immediateBinding,
+		timeout:          timeout,
 		capacities:       map[workItem]*storagev1beta1.CSIStorageCapacity{},
 	}
 
@@ -596,7 +599,9 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 			Segments: item.segment.GetLabelMap(),
 		}
 	}
-	resp, err := c.csiController.GetCapacity(ctx, req)
+	syncCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	resp, err := c.csiController.GetCapacity(syncCtx, req)
 	if err != nil {
 		return fmt.Errorf("CSI GetCapacity for %+v: %v", item, err)
 	}
