@@ -1381,6 +1381,10 @@ type rateLimitingQueue struct {
 	shuttingDown bool
 }
 
+func (r *rateLimitingQueue) ShutDownWithDrain() {
+	klog.Error("ShutDownWithDrain is unimplemented")
+}
+
 var _ workqueue.RateLimitingInterface = &rateLimitingQueue{}
 
 func (r *rateLimitingQueue) Add(item interface{}) {
