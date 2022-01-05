@@ -20,9 +20,9 @@ import (
 	"context"
 	goflag "flag"
 	"fmt"
-	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	"math/rand"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"strconv"
 	"strings"
@@ -58,6 +58,7 @@ import (
 	"github.com/kubernetes-csi/external-provisioner/pkg/capacity"
 	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
 	ctrl "github.com/kubernetes-csi/external-provisioner/pkg/controller"
+	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	"github.com/kubernetes-csi/external-provisioner/pkg/owner"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned"
 )
@@ -83,8 +84,9 @@ var (
 	immediateTopology       = flag.Bool("immediate-topology", true, "Immediate binding: pass aggregated cluster topologies for all nodes where the CSI driver is available (enabled, the default) or no topology requirements (if disabled).")
 	extraCreateMetadata     = flag.Bool("extra-create-metadata", false, "If set, add pv/pvc metadata to plugin create requests as parameters.")
 	metricsAddress          = flag.String("metrics-address", "", "(deprecated) The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled. Only one of `--metrics-address` and `--http-endpoint` can be set.")
-	httpEndpoint            = flag.String("http-endpoint", "", "The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled. Only one of `--metrics-address` and `--http-endpoint` can be set.")
+	httpEndpoint            = flag.String("http-endpoint", "", "The TCP network address where the HTTP server for diagnostics, including pprof, metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled. Only one of `--metrics-address` and `--http-endpoint` can be set.")
 	metricsPath             = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
+	enableProfile           = flag.Bool("enable-pprof", false, "Enable pprof profiling on the TCP network address specified by --http-endpoint. The HTTP path is `/debug/pprof/`.")
 
 	leaderElectionLeaseDuration = flag.Duration("leader-election-lease-duration", 15*time.Second, "Duration, in seconds, that non-leader candidates will wait to force acquire leadership. Defaults to 15 seconds.")
 	leaderElectionRenewDeadline = flag.Duration("leader-election-renew-deadline", 10*time.Second, "Duration, in seconds, that the acting leader will retry refreshing leadership before giving up. Defaults to 10 seconds.")
@@ -514,6 +516,16 @@ func main() {
 			promhttp.InstrumentMetricHandler(
 				reg,
 				promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})))
+
+		if *enableProfile {
+			klog.InfoS("Starting profiling", "endpoint", httpEndpoint)
+
+			mux.HandleFunc("/debug/pprof/", pprof.Index)
+			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+		}
 		go func() {
 			klog.Infof("ServeMux listening at %q", addr)
 			err := http.ListenAndServe(addr, mux)
