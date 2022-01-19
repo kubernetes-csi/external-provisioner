@@ -506,6 +506,7 @@ type prepareProvisionResult struct {
 
 // prepareProvision does non-destructive parameter checking and preparations for provisioning a volume.
 func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass, selectedNode *v1.Node) (*prepareProvisionResult, controller.ProvisioningState, error) {
+	klog.V(4).Infof("entered prepareProvision. ctx: %+v, claim: %+v, sc: %+v, selectedNode: %+v", ctx, claim, sc, selectedNode)
 	if sc == nil {
 		return nil, controller.ProvisioningFinished, errors.New("storage class was nil")
 	}
@@ -544,6 +545,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 			}
 			rc.snapshot = true
 		case pvcKind:
+			klog.V(4).Infof("rc.clone = true")
 			rc.clone = true
 		default:
 			// DataSource is not VolumeSnapshot and PVC
@@ -605,6 +607,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	}
 
 	if claim.Spec.DataSource != nil && (rc.clone || rc.snapshot) {
+		klog.V(4).Infof("entered first if")
 		volumeContentSource, err := p.getVolumeContentSource(ctx, claim, sc)
 		if err != nil {
 			return nil, controller.ProvisioningNoChange, fmt.Errorf("error getting handle for DataSource Type %s by Name %s: %v", claim.Spec.DataSource.Kind, claim.Spec.DataSource.Name, err)
@@ -613,6 +616,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	}
 
 	if claim.Spec.DataSource != nil && rc.clone {
+		klog.V(4).Infof("entered second if")
 		err = p.setCloneFinalizer(ctx, claim)
 		if err != nil {
 			return nil, controller.ProvisioningNoChange, err
@@ -699,7 +703,10 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 }
 
 func (p *csiProvisioner) Provision(ctx context.Context, options controller.ProvisionOptions) (*v1.PersistentVolume, controller.ProvisioningState, error) {
+	klog.V(5).Infof("entered Provision. ctx: %+v, options: %+v", ctx, options)
 	claim := options.PVC
+	klog.V(5).Infof("claim := options.PVC. claim: %+v", claim)
+
 	provisioner, ok := claim.Annotations[annStorageProvisioner]
 	if !ok {
 		provisioner = claim.Annotations[annBetaStorageProvisioner]
@@ -797,6 +804,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	}
 
 	if options.PVC.Spec.DataSource != nil {
+		klog.V(5).Infof("options.PVC.Spec.DataSource: %+v, claim.Spec.dataSource: %+v", options.PVC.Spec.DataSource, claim.Spec.DataSource)
 		contentSource := rep.GetVolume().ContentSource
 		if contentSource == nil {
 			sourceErr := fmt.Errorf("volume content source missing")
@@ -876,6 +884,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 }
 
 func (p *csiProvisioner) setCloneFinalizer(ctx context.Context, pvc *v1.PersistentVolumeClaim) error {
+	klog.V(5).Infof("entered setCloneFinalizer. ctx: %+v, pvc: %+v", ctx, pvc)
 	claim, err := p.claimLister.PersistentVolumeClaims(pvc.Namespace).Get(pvc.Spec.DataSource.Name)
 	if err != nil {
 		return err
@@ -930,6 +939,7 @@ func removePrefixedParameters(param map[string]string) (map[string]string, error
 // so that an external controller can act upon it.   Additional DataSource types can be added here with
 // an appropriate implementation function
 func (p *csiProvisioner) getVolumeContentSource(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass) (*csi.VolumeContentSource, error) {
+	klog.V(5).Infof("Entered getVolumeContentSource. ctx: %+v, claim: %+v, sc: %+v", ctx, claim, sc)
 	switch claim.Spec.DataSource.Kind {
 	case snapshotKind:
 		return p.getSnapshotSource(ctx, claim, sc)
@@ -944,6 +954,7 @@ func (p *csiProvisioner) getVolumeContentSource(ctx context.Context, claim *v1.P
 // getPVCSource verifies DataSource.Kind of type PersistentVolumeClaim, making sure that the requested PVC is available/ready
 // returns the VolumeContentSource for the requested PVC
 func (p *csiProvisioner) getPVCSource(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass) (*csi.VolumeContentSource, error) {
+	klog.V(5).Infof("entered getPVCSource. ctx: %+v, claim: %+v, sc: %+v", ctx, claim, sc)
 	sourcePVC, err := p.claimLister.PersistentVolumeClaims(claim.Namespace).Get(claim.Spec.DataSource.Name)
 	if err != nil {
 		return nil, fmt.Errorf("error getting PVC %s (namespace %q) from api server: %v", claim.Spec.DataSource.Name, claim.Namespace, err)
