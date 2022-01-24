@@ -4,6 +4,7 @@ go 1.15
 
 require (
 	github.com/container-storage-interface/spec v1.3.0
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/mock v1.4.4
 	github.com/google/go-cmp v0.5.4 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
@@ -21,6 +22,7 @@ require (
 	golang.org/x/oauth2 v0.0.0-20201208152858-08078c50e5b5 // indirect
 	golang.org/x/sys v0.0.0-20201214095126-aec9a390925b // indirect
 	golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf // indirect
+	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20201211151036-40ec1c210f7a // indirect

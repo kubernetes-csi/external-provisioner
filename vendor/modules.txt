@@ -13,7 +13,8 @@ github.com/davecgh/go-spew/spew
 github.com/evanphx/json-patch
 # github.com/go-logr/logr v0.4.0
 github.com/go-logr/logr
-# github.com/gogo/protobuf v1.3.1
+# github.com/gogo/protobuf v1.3.2
+## explicit
 github.com/gogo/protobuf/proto
 github.com/gogo/protobuf/sortkeys
 # github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e
@@ -139,7 +140,8 @@ golang.org/x/sys/windows
 # golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf
 ## explicit
 golang.org/x/term
-# golang.org/x/text v0.3.4
+# golang.org/x/text v0.3.7
+## explicit
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
