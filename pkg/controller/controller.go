@@ -974,11 +974,6 @@ func (p *csiProvisioner) getPVCSource(ctx context.Context, claim *v1.PersistentV
 		return nil, fmt.Errorf("the requested PVC (%s) storageclass cannot be empty", claim.Name)
 	}
 
-	if *sourcePVC.Spec.StorageClassName != *claim.Spec.StorageClassName {
-		return nil, fmt.Errorf("the source PVC and destination PVCs must be in the same storage class for cloning.  Source is in %v, but new PVC is in %v",
-			*sourcePVC.Spec.StorageClassName, *claim.Spec.StorageClassName)
-	}
-
 	capacity := claim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 	requestedSize := capacity.Value()
 	srcCapacity := sourcePVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
