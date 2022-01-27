@@ -642,8 +642,9 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		// scenario that we end up creating two objects for the same work item, the second
 		// one will be recognized as duplicate and get deleted again once we receive it.
 	} else if capacity.Capacity.Value() == quantity.Value() &&
+		sizesAreEqual(capacity.MaximumVolumeSize, maximumVolumeSize) &&
 		(c.owner == nil || c.isOwnedByUs(capacity)) {
-		klog.V(5).Infof("Capacity Controller: no need to update %s for %+v, same capacity %v and correct owner", capacity.Name, item, quantity)
+		klog.V(5).Infof("Capacity Controller: no need to update %s for %+v, same capacity %v, same maximumVolumeSize %v and correct owner", capacity.Name, item, quantity, maximumVolumeSize)
 		return nil
 	} else {
 		// Update existing object. Must not modify object in the informer cache.
@@ -654,7 +655,7 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 			capacity.OwnerReferences = append(capacity.OwnerReferences, *c.owner)
 		}
 		var err error
-		klog.V(5).Infof("Capacity Controller: updating %s for %+v, new capacity %v", capacity.Name, item, quantity)
+		klog.V(5).Infof("Capacity Controller: updating %s for %+v, new capacity %v, new maximumVolumeSize %v", capacity.Name, item, quantity, maximumVolumeSize)
 		capacity, err = c.client.StorageV1beta1().CSIStorageCapacities(capacity.Namespace).Update(ctx, capacity, metav1.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("update CSIStorageCapacity for %+v: %v", item, err)
@@ -830,4 +831,17 @@ func (c *Controller) isOwnedByUs(capacity *storagev1beta1.CSIStorageCapacity) bo
 func (c *Controller) isManaged(capacity *storagev1beta1.CSIStorageCapacity) bool {
 	return capacity.Labels[DriverNameLabel] == c.driverName &&
 		capacity.Labels[ManagedByLabel] == c.managedByID
+}
+
+func sizesAreEqual(expected, actual *resource.Quantity) bool {
+	if expected == actual {
+		// Both nil or pointer to same value.
+		return true
+	}
+	if expected == nil || actual == nil {
+		// can not compare nil with non-nil.
+		return false
+	}
+	// Both not nil, compare values.
+	return expected.Value() == actual.Value()
 }
