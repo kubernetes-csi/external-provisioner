@@ -4148,9 +4148,10 @@ func TestProvisionFromPVC(t *testing.T) {
 			expectErr:        true,
 		},
 		"provision with pvc data source different storage classes": {
-			clonePVName: pvName,
-			volOpts:     generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc2, requestedBytes, ""),
-			expectErr:   true,
+			clonePVName:      pvName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc2, requestedBytes, ""),
+			expectFinalizers: true,
+			expectErr:        false,
 		},
 		"provision with pvc data source destination too small": {
 			clonePVName:          pvName,
