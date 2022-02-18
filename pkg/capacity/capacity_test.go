@@ -37,16 +37,22 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	storagev1beta1 "k8s.io/api/storage/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	krand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
+	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	ktesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics"
 	"k8s.io/component-base/metrics/testutil"
@@ -2001,4 +2007,140 @@ func itemsAsSortedStringSlice(queue *rateLimitingQueue) []string {
 	}
 	sort.Strings(content)
 	return content
+}
+
+// BenchmarkCapacityUpdate measures how quickly syncCapacity can update the
+// capacity in the apiserver. A real apiserver is needed and found as in any
+// other Kubernetes client (KUBECONFIG, ~/.kube/config).
+func BenchmarkCapacityUpdate(b *testing.B) {
+	// Connect to cluster.
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	configOverrides := &clientcmd.ConfigOverrides{}
+	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+	config, err := kubeConfig.ClientConfig()
+	if err != nil {
+		b.Fatalf("create client config: %v", err)
+	}
+	config.QPS = 1000000
+	config.Burst = 1000000
+	client, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		b.Fatalf("create client: %v", err)
+	}
+
+	ctx := context.Background()
+	storageClassName := "benchmark-sc"
+	workitem := workItem{storageClassName: storageClassName}
+	csiController := &mockCSIController{}
+	scInformer := mockSCInformer{
+		storageClassName: &storagev1.StorageClass{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: storageClassName,
+			},
+		},
+	}
+	namespace := "default"
+
+	ns, err := client.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	if err != nil {
+		b.Fatalf("get default namespace: %v", err)
+	}
+	controller := true
+	owner := metav1.OwnerReference{
+		APIVersion: "core/v1",
+		Kind:       "namespace",
+		Name:       namespace,
+		UID:        ns.UID,
+		Controller: &controller,
+	}
+
+	// Ensure that the CSIStorageCapacity exists and gets deleted after the test.
+	capacity := &storagev1beta1.CSIStorageCapacity{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "benchmark-capacity",
+			Namespace: namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				owner,
+			},
+		},
+		NodeTopology: &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				"hostname": "benchmark-node",
+			},
+		},
+		StorageClassName: storageClassName,
+		Capacity:         resource.NewQuantity(0, resource.BinarySI),
+	}
+	capacity, err = client.StorageV1beta1().CSIStorageCapacities(namespace).Create(ctx, capacity, metav1.CreateOptions{})
+	if err != nil {
+		b.Fatalf("create capacity: %v", err)
+	}
+	defer func() {
+		client.StorageV1beta1().CSIStorageCapacities(namespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{})
+	}()
+
+	c := Controller{
+		scInformer:     scInformer,
+		csiController:  csiController,
+		client:         client,
+		ownerNamespace: namespace,
+		owner:          &owner,
+		capacities: map[workItem]*storagev1beta1.CSIStorageCapacity{
+			workitem: capacity,
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		csiController.Quantity = *resource.NewQuantity(int64(i), resource.BinarySI)
+		if err := c.syncCapacity(ctx, workitem); err != nil {
+			b.Fatalf("sync failed: %v", err)
+		}
+		capacity, err = client.StorageV1beta1().CSIStorageCapacities(namespace).Get(ctx, capacity.Name, metav1.GetOptions{})
+		if err != nil {
+			b.Fatalf("get updated capacity: %v", err)
+		}
+		c.capacities[workitem] = capacity
+	}
+}
+
+type mockSCInformer map[string]*storagev1.StorageClass
+
+func (m mockSCInformer) Informer() cache.SharedIndexInformer {
+	return nil
+}
+
+func (m mockSCInformer) Lister() storagelistersv1.StorageClassLister {
+	return m
+}
+
+func (m mockSCInformer) Get(name string) (*storagev1.StorageClass, error) {
+	if sc, ok := m[name]; ok {
+		return sc, nil
+	}
+	return nil, apierrors.NewNotFound(schema.GroupResource{
+		Group:    "storage/v1",
+		Resource: "storageclass",
+	}, name)
+}
+
+func (m mockSCInformer) List(selector labels.Selector) (ret []*storagev1.StorageClass, err error) {
+	for _, sc := range m {
+		ret = append(ret, sc)
+	}
+	return
+}
+
+type mockCSIController struct {
+	resource.Quantity
+}
+
+func (m *mockCSIController) GetCapacity(ctx context.Context, in *csi.GetCapacityRequest, opts ...grpc.CallOption) (*csi.GetCapacityResponse, error) {
+	size := m.Value()
+	return &csi.GetCapacityResponse{
+		AvailableCapacity: size,
+		MaximumVolumeSize: &wrapperspb.Int64Value{
+			Value: size,
+		},
+	}, nil
 }
