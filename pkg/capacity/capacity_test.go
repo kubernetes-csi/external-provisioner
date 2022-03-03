@@ -45,6 +45,7 @@ import (
 	krand "k8s.io/apimachinery/pkg/util/rand"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/workqueue"
@@ -1130,7 +1131,7 @@ func TestCapacityController(t *testing.T) {
 			if err := tc.expectedObjectsPrepared.verify(registry); err != nil {
 				t.Fatalf("metrics after prepare: %v", err)
 			}
-			if err := process(ctx, c); err != nil {
+			if err := process(ctx, c, clientSet); err != nil {
 				t.Fatalf("unexpected processing error: %v", err)
 			}
 			err := validateCapacities(ctx, clientSet, tc.expectedCapacities)
@@ -1176,10 +1177,10 @@ func TestCapacityController(t *testing.T) {
 					current: tc.expectedTotalProcessed,
 				}.verify(registry)
 			}
-			if err := validateEventually(ctx, c, validateMetrics); err != nil {
+			if err := validateEventually(ctx, c, clientSet, validateMetrics); err != nil {
 				t.Fatalf("metrics after processing: %v", err)
 			}
-			if err := validateConsistently(ctx, c, validateMetrics); err != nil {
+			if err := validateConsistently(ctx, c, clientSet, validateMetrics); err != nil {
 				t.Fatalf("metrics not stable after processing: %v", err)
 			}
 		})
@@ -1248,12 +1249,12 @@ func validateQuantity(what string, actual *resource.Quantity, expected string) [
 }
 
 func validateCapacitiesEventually(ctx context.Context, c *Controller, clientSet *fakeclientset.Clientset, expectedCapacities []testCapacity) error {
-	return validateEventually(ctx, c, func(ctx context.Context) error {
+	return validateEventually(ctx, c, clientSet, func(ctx context.Context) error {
 		return validateCapacities(ctx, clientSet, expectedCapacities)
 	})
 }
 
-func validateEventually(ctx context.Context, c *Controller, validate func(ctx context.Context) error) error {
+func validateEventually(ctx context.Context, c *Controller, clientSet kubernetes.Interface, validate func(ctx context.Context) error) error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	// A single test completes quickly (a few seconds at most), but when
@@ -1267,7 +1268,7 @@ func validateEventually(ctx context.Context, c *Controller, validate func(ctx co
 	for {
 		select {
 		case <-ticker.C:
-			if err := process(ctx, c); err != nil {
+			if err := process(ctx, c, clientSet); err != nil {
 				return fmt.Errorf("unexpected processing error: %v", err)
 			}
 			lastValidationError = validate(ctx)
@@ -1280,7 +1281,7 @@ func validateEventually(ctx context.Context, c *Controller, validate func(ctx co
 	}
 }
 
-func validateConsistently(ctx context.Context, c *Controller, validate func(ctx context.Context) error) error {
+func validateConsistently(ctx context.Context, c *Controller, clientSet kubernetes.Interface, validate func(ctx context.Context) error) error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	deadline, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -1290,7 +1291,7 @@ func validateConsistently(ctx context.Context, c *Controller, validate func(ctx 
 		case <-deadline.Done():
 			return nil
 		case <-ticker.C:
-			if err := process(ctx, c); err != nil {
+			if err := process(ctx, c, clientSet); err != nil {
 				return fmt.Errorf("unexpected processing error: %v", err)
 			}
 			if err := validate(ctx); err != nil {
@@ -1352,7 +1353,7 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, owner 
 	c := NewCentralCapacityController(
 		storage,
 		driverName,
-		client,
+		client.StorageV1beta1().CSIStorageCapacities,
 		queue,
 		owner,
 		managedByID,
@@ -1468,10 +1469,10 @@ func (r *rateLimitingQueue) clear() {
 }
 
 // process handles work items until the queue is empty and the informers are synced.
-func process(ctx context.Context, c *Controller) error {
+func process(ctx context.Context, c *Controller, clientSet kubernetes.Interface) error {
 	for {
 		if c.queue.Len() == 0 {
-			done, err := storageClassesSynced(ctx, c)
+			done, err := storageClassesSynced(ctx, c, clientSet)
 			if err != nil {
 				return fmt.Errorf("check storage classes: %v", err)
 			}
@@ -1491,8 +1492,8 @@ func process(ctx context.Context, c *Controller) error {
 	}
 }
 
-func storageClassesSynced(ctx context.Context, c *Controller) (bool, error) {
-	actualStorageClasses, err := c.client.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
+func storageClassesSynced(ctx context.Context, c *Controller, clientSet kubernetes.Interface) (bool, error) {
+	actualStorageClasses, err := clientSet.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return false, err
 	}

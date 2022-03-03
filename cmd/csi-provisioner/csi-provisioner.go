@@ -479,7 +479,7 @@ func main() {
 		capacityController = capacity.NewCentralCapacityController(
 			csi.NewControllerClient(grpcClient),
 			provisionerName,
-			clientset,
+			clientset.StorageV1beta1().CSIStorageCapacities,
 			// Metrics for the queue is available in the default registry.
 			workqueue.NewNamedRateLimitingQueue(rateLimiter, "csistoragecapacity"),
 			controller,

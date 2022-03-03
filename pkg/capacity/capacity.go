@@ -40,7 +40,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	storageinformersv1 "k8s.io/client-go/informers/storage/v1"
 	storageinformersv1beta1 "k8s.io/client-go/informers/storage/v1beta1"
-	"k8s.io/client-go/kubernetes"
+	storagev1beta1typed "k8s.io/client-go/kubernetes/typed/storage/v1beta1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics"
@@ -81,7 +81,7 @@ type Controller struct {
 
 	csiController    CSICapacityClient
 	driverName       string
-	client           kubernetes.Interface
+	clientFactory    func(namespace string) storagev1beta1typed.CSIStorageCapacityInterface
 	queue            workqueue.RateLimitingInterface
 	owner            *metav1.OwnerReference
 	managedByID      string
@@ -155,7 +155,7 @@ type CSICapacityClient interface {
 func NewCentralCapacityController(
 	csiController CSICapacityClient,
 	driverName string,
-	client kubernetes.Interface,
+	clientFactory func(namespace string) storagev1beta1typed.CSIStorageCapacityInterface,
 	queue workqueue.RateLimitingInterface,
 	owner *metav1.OwnerReference,
 	managedByID string,
@@ -170,7 +170,7 @@ func NewCentralCapacityController(
 	c := &Controller{
 		csiController:    csiController,
 		driverName:       driverName,
-		client:           client,
+		clientFactory:    clientFactory,
 		queue:            queue,
 		owner:            owner,
 		managedByID:      managedByID,
@@ -632,7 +632,7 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		}
 		var err error
 		klog.V(5).Infof("Capacity Controller: creating new object for %+v, new capacity %v", item, quantity)
-		capacity, err = c.client.StorageV1beta1().CSIStorageCapacities(c.ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
+		capacity, err = c.clientFactory(c.ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
 		if err != nil {
 			return fmt.Errorf("create CSIStorageCapacity for %+v: %v", item, err)
 		}
@@ -656,7 +656,7 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		}
 		var err error
 		klog.V(5).Infof("Capacity Controller: updating %s for %+v, new capacity %v, new maximumVolumeSize %v", capacity.Name, item, quantity, maximumVolumeSize)
-		capacity, err = c.client.StorageV1beta1().CSIStorageCapacities(capacity.Namespace).Update(ctx, capacity, metav1.UpdateOptions{})
+		capacity, err = c.clientFactory(capacity.Namespace).Update(ctx, capacity, metav1.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("update CSIStorageCapacity for %+v: %v", item, err)
 		}
@@ -671,7 +671,7 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 // deleteCapacity ensures that the object is gone when done.
 func (c *Controller) deleteCapacity(ctx context.Context, capacity *storagev1beta1.CSIStorageCapacity) error {
 	klog.V(5).Infof("Capacity Controller: removing CSIStorageCapacity %s", capacity.Name)
-	err := c.client.StorageV1beta1().CSIStorageCapacities(capacity.Namespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{})
+	err := c.clientFactory(capacity.Namespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{})
 	if err != nil && apierrs.IsNotFound(err) {
 		return nil
 	}
