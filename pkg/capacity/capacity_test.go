@@ -36,7 +36,6 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -770,12 +769,12 @@ func TestCapacityController(t *testing.T) {
 				},
 			},
 			modify: func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) ([]testCapacity, error) {
-				capacities, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
+				capacities, err := clientSet.StorageV1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
 				if err != nil {
 					return nil, err
 				}
 				capacity := capacities.Items[0]
-				if err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{}); err != nil {
+				if err := clientSet.StorageV1().CSIStorageCapacities(ownerNamespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{}); err != nil {
 					return nil, err
 				}
 				expected[0].uid = "CSISC-UID-2"
@@ -789,7 +788,7 @@ func TestCapacityController(t *testing.T) {
 		"delete redundant capacity": {
 			modify: func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) ([]testCapacity, error) {
 				capacity := makeCapacity(testCapacity{quantity: "1Gi"})
-				if _, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{}); err != nil {
+				if _, err := clientSet.StorageV1().CSIStorageCapacities(ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{}); err != nil {
 					return nil, err
 				}
 				return expected, nil
@@ -819,7 +818,7 @@ func TestCapacityController(t *testing.T) {
 				},
 			},
 			modify: func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) ([]testCapacity, error) {
-				capacities, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
+				capacities, err := clientSet.StorageV1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
 				if err != nil {
 					return nil, err
 				}
@@ -828,7 +827,7 @@ func TestCapacityController(t *testing.T) {
 				// - the now "foreign" object must be left alone
 				// - an entry must be created anew
 				capacity.Labels = nil
-				if _, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Update(ctx, &capacity, metav1.UpdateOptions{}); err != nil {
+				if _, err := clientSet.StorageV1().CSIStorageCapacities(ownerNamespace).Update(ctx, &capacity, metav1.UpdateOptions{}); err != nil {
 					return nil, err
 				}
 				expected[0].managedByID = noManager
@@ -871,19 +870,19 @@ func TestCapacityController(t *testing.T) {
 				},
 			},
 			modify: func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) ([]testCapacity, error) {
-				capacities, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
+				capacities, err := clientSet.StorageV1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
 				if err != nil {
 					return nil, err
 				}
 				capacity := capacities.Items[0]
 				// Delete and recreate with wrong capacity. This changes the UID while keeping the name
 				// the same. The capacity then must get corrected by the controller.
-				if err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{}); err != nil {
+				if err := clientSet.StorageV1().CSIStorageCapacities(ownerNamespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{}); err != nil {
 					return nil, err
 				}
 				capacity.UID = "CSISC-UID-2"
 				capacity.Capacity = &mb
-				if _, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).Create(ctx, &capacity, metav1.CreateOptions{}); err != nil {
+				if _, err := clientSet.StorageV1().CSIStorageCapacities(ownerNamespace).Create(ctx, &capacity, metav1.CreateOptions{}); err != nil {
 					return nil, err
 				}
 				expected[0].uid = capacity.UID
@@ -1188,7 +1187,7 @@ func TestCapacityController(t *testing.T) {
 }
 
 func validateCapacities(ctx context.Context, clientSet *fakeclientset.Clientset, expectedCapacities []testCapacity) error {
-	actualCapacities, err := clientSet.StorageV1beta1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
+	actualCapacities, err := clientSet.StorageV1().CSIStorageCapacities(ownerNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("unexpected error: %v", err)
 	}
@@ -1307,7 +1306,7 @@ func createCSIStorageCapacityReactor() func(action ktesting.Action) (handled boo
 	var uidCounter int
 	var mutex sync.Mutex
 	return func(action ktesting.Action) (handled bool, ret runtime.Object, err error) {
-		s := action.(ktesting.CreateAction).GetObject().(*storagev1beta1.CSIStorageCapacity)
+		s := action.(ktesting.CreateAction).GetObject().(*storagev1.CSIStorageCapacity)
 		if s.Name == "" && s.GenerateName != "" {
 			s.Name = fmt.Sprintf("%s-%s", s.GenerateName, krand.String(16))
 		}
@@ -1326,7 +1325,7 @@ func createCSIStorageCapacityReactor() func(action ktesting.Action) (handled boo
 // the fake client. Add it with client.PrependReactor to your fake client.
 func updateCSIStorageCapacityReactor() func(action ktesting.Action) (handled bool, ret runtime.Object, err error) {
 	return func(action ktesting.Action) (handled bool, ret runtime.Object, err error) {
-		s := action.(ktesting.UpdateAction).GetObject().(*storagev1beta1.CSIStorageCapacity)
+		s := action.(ktesting.UpdateAction).GetObject().(*storagev1.CSIStorageCapacity)
 		if !strings.HasPrefix(s.ResourceVersion, csiscRev) {
 			return false, nil, fmt.Errorf("resource version %q should have prefix %s", s.ResourceVersion, csiscRev)
 		}
@@ -1347,13 +1346,13 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, owner 
 	resyncPeriod := time.Hour
 	informerFactory := informers.NewSharedInformerFactory(client, resyncPeriod)
 	scInformer := informerFactory.Storage().V1().StorageClasses()
-	cInformer := informerFactory.Storage().V1beta1().CSIStorageCapacities()
+	cInformer := informerFactory.Storage().V1().CSIStorageCapacities()
 	queue := &rateLimitingQueue{}
 
 	c := NewCentralCapacityController(
 		storage,
 		driverName,
-		client.StorageV1beta1().CSIStorageCapacities,
+		client.StorageV1().CSIStorageCapacities,
 		queue,
 		owner,
 		managedByID,
@@ -1611,7 +1610,7 @@ func str2quantity(str string) *resource.Quantity {
 
 var capacityCounter int
 
-func makeCapacity(in testCapacity) *storagev1beta1.CSIStorageCapacity {
+func makeCapacity(in testCapacity) *storagev1.CSIStorageCapacity {
 	capacityCounter++
 	var owners []metav1.OwnerReference
 	switch in.owner {
@@ -1635,7 +1634,7 @@ func makeCapacity(in testCapacity) *storagev1beta1.CSIStorageCapacity {
 			ManagedByLabel: in.managedByID,
 		}
 	}
-	return &storagev1beta1.CSIStorageCapacity{
+	return &storagev1.CSIStorageCapacity{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:             in.uid,
 			ResourceVersion: in.resourceVersion,
@@ -1994,7 +1993,7 @@ func itemsAsSortedStringSlice(queue *rateLimitingQueue) []string {
 		switch item := item.(type) {
 		case workItem:
 			content = append(content, fmt.Sprintf("%s, %v", item.storageClassName, *item.segment))
-		case *storagev1beta1.CSIStorageCapacity:
+		case *storagev1.CSIStorageCapacity:
 			content = append(content, fmt.Sprintf("csc for %s, %v", item.StorageClassName, item.NodeTopology))
 		default:
 			content = append(content, fmt.Sprintf("%v", item))
