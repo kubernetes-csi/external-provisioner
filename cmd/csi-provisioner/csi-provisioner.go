@@ -34,6 +34,7 @@ import (
 	flag "github.com/spf13/pflag"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -128,6 +129,8 @@ func main() {
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Set("logtostderr", "true")
 	flag.Parse()
+
+	ctx := context.Background()
 
 	if err := utilfeature.DefaultMutableFeatureGate.SetFromMap(featureGates); err != nil {
 		klog.Fatal(err)
@@ -455,7 +458,7 @@ func main() {
 			klog.Infof("producing CSIStorageCapacity objects with fixed topology segment %s", segment)
 			topologyInformer = topology.NewFixedNodeTopology(&segment)
 		}
-		go topologyInformer.RunWorker(context.Background())
+		go topologyInformer.RunWorker(ctx)
 
 		managedByID := "external-provisioner"
 		if *enableNodeDeployment {
@@ -476,10 +479,37 @@ func main() {
 			}),
 		)
 
+		// We use the V1 CSIStorageCapacity API if available.
+		clientFactory := capacity.NewV1ClientFactory(clientset)
+		cInformer := factoryForNamespace.Storage().V1().CSIStorageCapacities()
+
+		// This invalid object is used in a v1 Create call to determine
+		// based on the resulting error whether the v1 API is supported.
+		invalidCapacity := &storagev1.CSIStorageCapacity{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "#%123-invalid-name",
+			},
+		}
+		createdCapacity, err := clientset.StorageV1().CSIStorageCapacities("default").Create(ctx, invalidCapacity, metav1.CreateOptions{})
+		switch {
+		case err == nil:
+			klog.Fatalf("creating an invalid v1.CSIStorageCapacity didn't fail as expected, got: %s", createdCapacity)
+		case apierrors.IsNotFound(err):
+			// We need to bridge between the v1beta1 API on the
+			// server and the v1 API expected by the capacity code.
+			klog.Info("using the CSIStorageCapacity v1beta1 API")
+			clientFactory = capacity.NewV1beta1ClientFactory(clientset)
+			cInformer = capacity.NewV1beta1InformerBridge(factoryForNamespace.Storage().V1beta1().CSIStorageCapacities())
+		case apierrors.IsInvalid(err):
+			klog.Info("using the CSIStorageCapacity v1 API")
+		default:
+			klog.Fatalf("unexpected error when checking for the V1 CSIStorageCapacity API: %v", err)
+		}
+
 		capacityController = capacity.NewCentralCapacityController(
 			csi.NewControllerClient(grpcClient),
 			provisionerName,
-			clientset.StorageV1().CSIStorageCapacities,
+			clientFactory,
 			// Metrics for the queue is available in the default registry.
 			workqueue.NewNamedRateLimitingQueue(rateLimiter, "csistoragecapacity"),
 			controller,
@@ -487,7 +517,7 @@ func main() {
 			namespace,
 			topologyInformer,
 			factory.Storage().V1().StorageClasses(),
-			factoryForNamespace.Storage().V1().CSIStorageCapacities(),
+			cInformer,
 			*capacityPollInterval,
 			*capacityImmediateBinding,
 			*operationTimeout,
@@ -572,7 +602,7 @@ func main() {
 	}
 
 	if !*enableLeaderElection {
-		run(context.TODO())
+		run(ctx)
 	} else {
 		// this lock name pattern is also copied from sigs.k8s.io/sig-storage-lib-external-provisioner/controller
 		// to preserve backwards compatibility

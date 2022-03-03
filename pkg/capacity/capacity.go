@@ -38,7 +38,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	storageinformersv1 "k8s.io/client-go/informers/storage/v1"
-	storagev1typed "k8s.io/client-go/kubernetes/typed/storage/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics"
@@ -79,7 +78,7 @@ type Controller struct {
 
 	csiController    CSICapacityClient
 	driverName       string
-	clientFactory    func(namespace string) storagev1typed.CSIStorageCapacityInterface
+	clientFactory    CSIStorageCapacityFactory
 	queue            workqueue.RateLimitingInterface
 	owner            *metav1.OwnerReference
 	managedByID      string
@@ -147,13 +146,25 @@ type CSICapacityClient interface {
 	GetCapacity(ctx context.Context, in *csi.GetCapacityRequest, opts ...grpc.CallOption) (*csi.GetCapacityResponse, error)
 }
 
+// CSIStorageCapacityInterface is a subset of the client-go interface for
+// v1.CSIStorageCapacity.
+type CSIStorageCapacityInterface interface {
+	Create(ctx context.Context, cSIStorageCapacity *storagev1.CSIStorageCapacity, opts metav1.CreateOptions) (*storagev1.CSIStorageCapacity, error)
+	Update(ctx context.Context, cSIStorageCapacity *storagev1.CSIStorageCapacity, opts metav1.UpdateOptions) (*storagev1.CSIStorageCapacity, error)
+	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
+}
+
+// CSIStorageCapacityFactory corresponds to StorageV1().CSIStorageCapacities but returns
+// just what we need.
+type CSIStorageCapacityFactory func(namespace string) CSIStorageCapacityInterface
+
 // NewController creates a new controller for CSIStorageCapacity objects.
 // It implements metrics.StableCollector and thus can be registered in
 // a registry.
 func NewCentralCapacityController(
 	csiController CSICapacityClient,
 	driverName string,
-	clientFactory func(namespace string) storagev1typed.CSIStorageCapacityInterface,
+	clientFactory CSIStorageCapacityFactory,
 	queue workqueue.RateLimitingInterface,
 	owner *metav1.OwnerReference,
 	managedByID string,
