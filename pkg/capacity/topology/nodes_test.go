@@ -31,7 +31,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
+	coreinformersv1 "k8s.io/client-go/informers/core/v1"
+	storageinformersv1 "k8s.io/client-go/informers/storage/v1"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
+	corelistersv1 "k8s.io/client-go/listers/core/v1"
+	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 )
@@ -41,9 +46,10 @@ func init() {
 }
 
 const (
-	driverName = "my-csi-driver"
-	node1      = "node1"
-	node2      = "node2"
+	driverName  = "my-csi-driver"
+	node1       = "node1"
+	node2       = "node2"
+	topologyKey = "csi.example.com/segment"
 )
 
 var (
@@ -630,4 +636,148 @@ func makeNodes(nodes []testNode) []runtime.Object {
 		}
 	}
 	return objects
+}
+
+// BenchmarkSync checks how quickly sync can process a set of CSINode
+// objects when the initial state is "no existing CSIStorageCapacity" or
+// "everything processed already once, no changes". The number of nodes and
+// nodes per topology segment gets varied.
+func BenchmarkSync(b *testing.B) {
+	// for a smooth graph: for numNodes := 0; numNodes <= 10000; numNodes += 100
+	for numNodes := 1; numNodes <= 10000; numNodes *= 100 {
+		b.Run(fmt.Sprintf("numNodes=%d", numNodes), func(b *testing.B) {
+			for segmentSize := 1; segmentSize <= numNodes; segmentSize *= 10 {
+				b.Logf("%d nodes, %d segment size -> %d segments", numNodes, segmentSize, (numNodes+segmentSize-1)/segmentSize)
+				b.Run(fmt.Sprintf("segmentSize=%d", segmentSize), func(b *testing.B) {
+					b.Run("initial", func(b *testing.B) {
+						benchmarkSyncInitial(b, numNodes, segmentSize)
+					})
+					b.Run("refresh", func(b *testing.B) {
+						benchmarkSyncRefresh(b, numNodes, segmentSize)
+					})
+				})
+			}
+		})
+	}
+}
+
+func benchmarkSyncInitial(b *testing.B, numNodes, segmentSize int) {
+	nodeInformer, csiNodeInformer := createTopology(numNodes, segmentSize)
+	ctx := context.Background()
+	expectedSize := (numNodes + segmentSize - 1) / segmentSize
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		nt := nodeTopology{
+			driverName:      driverName,
+			nodeInformer:    nodeInformer,
+			csiNodeInformer: csiNodeInformer,
+		}
+		nt.sync(ctx)
+
+		// Some sanity checking...
+		actualSize := len(nt.segments)
+		if actualSize != expectedSize {
+			b.Fatalf("expected %d segments, got %d: %+v", expectedSize, actualSize, nt.segments)
+		}
+	}
+}
+
+func benchmarkSyncRefresh(b *testing.B, numNodes, segmentSize int) {
+	nodeInformer, csiNodeInformer := createTopology(numNodes, segmentSize)
+	ctx := context.Background()
+	expectedSize := (numNodes + segmentSize - 1) / segmentSize
+
+	nt := nodeTopology{
+		driverName:      driverName,
+		nodeInformer:    nodeInformer,
+		csiNodeInformer: csiNodeInformer,
+	}
+	nt.sync(ctx)
+
+	// Some sanity checking...
+	actualSize := len(nt.segments)
+	if actualSize != expectedSize {
+		b.Fatalf("expected %d segments, got %d: %+v", expectedSize, actualSize, nt.segments)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		nt.sync(ctx)
+	}
+}
+
+// createTopology sets up Node and CSINode instances in some in-memory informer which
+// just provides enough functionality for sync to work.
+func createTopology(numNodes, segmentSize int) (coreinformersv1.NodeInformer, storageinformersv1.CSINodeInformer) {
+	nodeInformer := fakeNodeInformer{}
+	csiNodeInformer := fakeCSINodeInformer{}
+
+	for i := 0; i < numNodes; i++ {
+		nodeName := fmt.Sprintf("node-%d", i)
+		node := &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+				Labels: map[string]string{
+					topologyKey: fmt.Sprintf("segment-%d", i/segmentSize),
+				},
+			},
+		}
+		nodeInformer[nodeName] = node
+
+		csiNode := &storagev1.CSINode{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+			},
+			Spec: storagev1.CSINodeSpec{
+				Drivers: []storagev1.CSINodeDriver{
+					{
+						Name:         driverName,
+						TopologyKeys: []string{topologyKey},
+					},
+				},
+			},
+		}
+		csiNodeInformer = append(csiNodeInformer, csiNode)
+	}
+	return nodeInformer, csiNodeInformer
+}
+
+type fakeNodeInformer map[string]*v1.Node
+
+func (f fakeNodeInformer) Informer() cache.SharedIndexInformer {
+	return nil
+}
+
+func (f fakeNodeInformer) Lister() corelistersv1.NodeLister {
+	return f
+}
+
+func (f fakeNodeInformer) Get(name string) (*v1.Node, error) {
+	if node, ok := f[name]; ok {
+		return node, nil
+	}
+	panic(fmt.Sprintf("node %q should have been defined", name))
+}
+
+func (f fakeNodeInformer) List(selector labels.Selector) (ret []*v1.Node, err error) {
+	panic("not implemented")
+}
+
+type fakeCSINodeInformer []*storagev1.CSINode
+
+func (f fakeCSINodeInformer) Informer() cache.SharedIndexInformer {
+	return nil
+}
+
+func (f fakeCSINodeInformer) Lister() storagelistersv1.CSINodeLister {
+	return f
+}
+
+func (f fakeCSINodeInformer) Get(name string) (*storagev1.CSINode, error) {
+	panic("not implemented")
+}
+
+func (f fakeCSINodeInformer) List(selector labels.Selector) (ret []*storagev1.CSINode, err error) {
+	return []*storagev1.CSINode(f), nil
 }
