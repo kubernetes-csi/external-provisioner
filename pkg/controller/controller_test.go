@@ -854,6 +854,7 @@ type provisioningFSTypeTestcase struct {
 
 type pvSpec struct {
 	Name          string
+	Annotations   map[string]string
 	ReclaimPolicy v1.PersistentVolumeReclaimPolicy
 	AccessModes   []v1.PersistentVolumeAccessMode
 	MountOptions  []string
@@ -874,6 +875,8 @@ func getDefaultStorageClassSecretParameters() map[string]string {
 		nodePublishSecretNamespaceKey:              defaultSecretNsName,
 		prefixedControllerExpandSecretNameKey:      "controllerexpandsecret",
 		prefixedControllerExpandSecretNamespaceKey: defaultSecretNsName,
+		prefixedProvisionerSecretNameKey:           "provisionersecret",
+		prefixedProvisionerSecretNamespaceKey:      defaultSecretNsName,
 	}
 }
 
@@ -897,6 +900,11 @@ func getDefaultSecretObjects() []runtime.Object {
 		}, &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "controllerexpandsecret",
+				Namespace: defaultSecretNsName,
+			},
+		}, &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "provisionersecret",
 				Namespace: defaultSecretNsName,
 			},
 		},
@@ -1062,7 +1070,11 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVC:    createFakePVC(requestedBytes),
 			},
 			expectedPVSpec: &pvSpec{
-				Name:          "test-testi",
+				Name: "test-testi",
+				Annotations: map[string]string{
+					AnnDeletionProvisionerSecretRefName:      "",
+					AnnDeletionProvisionerSecretRefNamespace: "",
+				},
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
@@ -1555,6 +1567,10 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			clientSetObjects: getDefaultSecretObjects(),
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
+				Annotations: map[string]string{
+					AnnDeletionProvisionerSecretRefName:      "provisionersecret",
+					AnnDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
+				},
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
@@ -1606,6 +1622,10 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			}},
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
+				Annotations: map[string]string{
+					AnnDeletionProvisionerSecretRefName:      "default-secret",
+					AnnDeletionProvisionerSecretRefNamespace: "default-ns",
+				},
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
@@ -1657,6 +1677,10 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			}},
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
+				Annotations: map[string]string{
+					AnnDeletionProvisionerSecretRefName:      "my-pvc",
+					AnnDeletionProvisionerSecretRefNamespace: "default-ns",
+				},
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
 				},
@@ -2517,6 +2541,10 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 		if tc.expectedPVSpec != nil {
 			if pv.Name != tc.expectedPVSpec.Name {
 				t.Errorf("expected PV name: %q, got: %q", tc.expectedPVSpec.Name, pv.Name)
+			}
+
+			if tc.expectedPVSpec.Annotations != nil && !reflect.DeepEqual(pv.Annotations, tc.expectedPVSpec.Annotations) {
+				t.Errorf("expected PV annotations: %v, got: %v", tc.expectedPVSpec.Annotations, pv.Annotations)
 			}
 
 			if pv.Spec.PersistentVolumeReclaimPolicy != tc.expectedPVSpec.ReclaimPolicy {
@@ -3604,13 +3632,34 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 	}
 }
 
+type expectedSecret struct {
+	exist   bool
+	secrets map[string]string
+}
+
 type deleteTestcase struct {
-	persistentVolume *v1.PersistentVolume
-	storageClass     *storagev1.StorageClass
-	volumeAttachment *storagev1.VolumeAttachment
-	mockDelete       bool
-	deploymentNode   string // fake distributed provisioning with this node as host
-	expectErr        bool
+	persistentVolume          *v1.PersistentVolume
+	storageClass              *storagev1.StorageClass
+	secrets                   []runtime.Object
+	volumeAttachment          *storagev1.VolumeAttachment
+	mockDelete                bool
+	expectedProvisionerSecret *expectedSecret
+	deploymentNode            string // fake distributed provisioning with this node as host
+	expectErr                 bool
+}
+
+func getDefaultProvisinerSecrets() []runtime.Object {
+	return []runtime.Object{
+		&v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "provisionersecret",
+				Namespace: defaultSecretNsName,
+			},
+			Data: map[string][]byte{
+				"provisionersecret-key": []byte("provisionersecret-val"),
+			},
+		},
+	}
 }
 
 // TestDelete is a test of the delete operation
@@ -3876,6 +3925,206 @@ func TestDelete(t *testing.T) {
 			expectErr:  false,
 			mockDelete: true,
 		},
+		"Empty provisioner secret is set as PV annotation and StorageClass exists": {
+			persistentVolume: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "pv",
+					Annotations: map[string]string{
+						AnnDeletionProvisionerSecretRefName:      "",
+						AnnDeletionProvisionerSecretRefNamespace: "",
+					},
+				},
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							VolumeHandle: "vol-id-1",
+						},
+					},
+				},
+			},
+			storageClass: &storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "sc-name",
+				},
+				Parameters: map[string]string{},
+			},
+			expectErr:                 false,
+			mockDelete:                true,
+			expectedProvisionerSecret: &expectedSecret{exist: false},
+		},
+		"Empty provisioner secret is set as PV annotation and StorageClass doesn't exist on deletion": {
+			persistentVolume: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "pv",
+					Annotations: map[string]string{
+						AnnDeletionProvisionerSecretRefName:      "",
+						AnnDeletionProvisionerSecretRefNamespace: "",
+					},
+				},
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							VolumeHandle: "vol-id-1",
+						},
+					},
+				},
+			},
+			expectErr:                 false,
+			mockDelete:                true,
+			expectedProvisionerSecret: &expectedSecret{exist: false},
+		},
+		"Non-empty provisioner secret is set as PV annotation and StorageClass exists": {
+			persistentVolume: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "pv",
+					Annotations: map[string]string{
+						AnnDeletionProvisionerSecretRefName:      "provisionersecret",
+						AnnDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
+					},
+				},
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							VolumeHandle: "vol-id-1",
+						},
+					},
+				},
+			},
+			storageClass: &storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "sc-name",
+				},
+				Parameters: map[string]string{
+					prefixedProvisionerSecretNameKey:      "provisionersecret",
+					prefixedProvisionerSecretNamespaceKey: defaultSecretNsName,
+				},
+			},
+			secrets:    getDefaultProvisinerSecrets(),
+			expectErr:  false,
+			mockDelete: true,
+			expectedProvisionerSecret: &expectedSecret{
+				exist:   true,
+				secrets: map[string]string{"provisionersecret-key": "provisionersecret-val"},
+			},
+		},
+		"Non-empty provisioner secret is set as PV annotation and StorageClass doesn't exist": {
+			persistentVolume: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "pv",
+					Annotations: map[string]string{
+						AnnDeletionProvisionerSecretRefName:      "provisionersecret",
+						AnnDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
+					},
+				},
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							VolumeHandle: "vol-id-1",
+						},
+					},
+				},
+			},
+			secrets:    getDefaultProvisinerSecrets(),
+			expectErr:  false,
+			mockDelete: true,
+			expectedProvisionerSecret: &expectedSecret{
+				exist:   true,
+				secrets: map[string]string{"provisionersecret-key": "provisionersecret-val"},
+			},
+		},
+		"Non-empty provisioner secret is set as PV annotation and modified StorageClass exists": {
+			persistentVolume: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "pv",
+					Annotations: map[string]string{
+						AnnDeletionProvisionerSecretRefName:      "provisionersecret",
+						AnnDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
+					},
+				},
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							VolumeHandle: "vol-id-1",
+						},
+					},
+				},
+			},
+			storageClass: &storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "sc-name",
+				},
+				Parameters: map[string]string{
+					prefixedProvisionerSecretNameKey:      "modified-provisionersecret",
+					prefixedProvisionerSecretNamespaceKey: "modified-namespace",
+				},
+			},
+			secrets:    getDefaultProvisinerSecrets(),
+			expectErr:  false,
+			mockDelete: true,
+			expectedProvisionerSecret: &expectedSecret{
+				exist:   true,
+				secrets: map[string]string{"provisionersecret-key": "provisionersecret-val"},
+			},
+		},
+		"Non-existent provisioner secret is set as PV annotation": {
+			persistentVolume: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "pv",
+					Annotations: map[string]string{
+						AnnDeletionProvisionerSecretRefName:      "non-existent-provisionersecret",
+						AnnDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
+					},
+				},
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							VolumeHandle: "vol-id-1",
+						},
+					},
+				},
+			},
+			secrets:                   getDefaultProvisinerSecrets(),
+			expectErr:                 false, // Deletion doesn't fail even if the Secret is not found
+			mockDelete:                true,
+			expectedProvisionerSecret: &expectedSecret{exist: false}, // No secret is passed to csi DeleteVolume call
+		},
+		"Provisioner secret isn't set as PV annotation": {
+			persistentVolume: &v1.PersistentVolume{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "pv",
+					Annotations: map[string]string{
+						v1.BetaStorageClassAnnotation: "sc-name",
+					},
+				},
+				Spec: v1.PersistentVolumeSpec{
+					PersistentVolumeSource: v1.PersistentVolumeSource{
+						CSI: &v1.CSIPersistentVolumeSource{
+							VolumeHandle: "vol-id-1",
+						},
+					},
+					ClaimRef: &v1.ObjectReference{
+						Namespace: "pvc-namespace",
+						Name:      "pvc-name",
+					},
+				},
+			},
+			storageClass: &storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "sc-name",
+				},
+				Parameters: map[string]string{
+					prefixedProvisionerSecretNameKey:      "provisionersecret",
+					prefixedProvisionerSecretNamespaceKey: defaultSecretNsName,
+				},
+			},
+			secrets:    getDefaultProvisinerSecrets(),
+			expectErr:  false,
+			mockDelete: true,
+			expectedProvisionerSecret: &expectedSecret{
+				exist:   true,
+				secrets: map[string]string{"provisionersecret-key": "provisionersecret-val"},
+			},
+		},
 		"distributed, ignore PV from other host": {
 			deploymentNode: "foo",
 			persistentVolume: &v1.PersistentVolume{
@@ -3989,11 +4238,16 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 
 	var clientSet *fakeclientset.Clientset
 
+	var clientSetObjects []runtime.Object
 	if tc.storageClass != nil {
-		clientSet = fakeclientset.NewSimpleClientset(tc.storageClass)
-	} else {
-		clientSet = fakeclientset.NewSimpleClientset()
+		clientSetObjects = append(clientSetObjects, tc.storageClass)
 	}
+	if tc.secrets != nil {
+		for _, secret := range tc.secrets {
+			clientSetObjects = append(clientSetObjects, secret)
+		}
+	}
+	clientSet = fakeclientset.NewSimpleClientset(clientSetObjects...)
 
 	informerFactory := informers.NewSharedInformerFactory(clientSet, 0)
 	claimInformer := informerFactory.Core().V1().PersistentVolumeClaims()
@@ -4015,7 +4269,32 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 	}
 
 	if tc.mockDelete {
-		controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
+		if tc.expectedProvisionerSecret != nil {
+			if tc.expectedProvisionerSecret.exist {
+				controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).
+					Return(&csi.DeleteVolumeResponse{}, nil).
+					Do(func(ctx context.Context, req *csi.DeleteVolumeRequest) {
+						if len(req.Secrets) != len(tc.expectedProvisionerSecret.secrets) {
+							t.Errorf("expected DeleteVolumeRequest %#v, got: %#v", tc.expectedProvisionerSecret.secrets, req.Secrets)
+						}
+						for k, v := range tc.expectedProvisionerSecret.secrets {
+							if string(req.Secrets[k]) != v {
+								t.Errorf("expected DeleteVolumeRequest %#v, got: %#v", tc.expectedProvisionerSecret.secrets, req.Secrets)
+							}
+						}
+					}).Times(1)
+			} else {
+				controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).
+					Return(&csi.DeleteVolumeResponse{}, nil).
+					Do(func(ctx context.Context, req *csi.DeleteVolumeRequest) {
+						if len(req.Secrets) > 0 {
+							t.Errorf("expected empty DeleteVolumeRequest, got: %#v", req.Secrets)
+						}
+					}).Times(1)
+			}
+		} else {
+			controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, nil).Times(1)
+		}
 	}
 
 	pluginCaps, controllerCaps := provisionCapabilities()
