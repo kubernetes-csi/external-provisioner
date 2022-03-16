@@ -911,7 +911,7 @@ func TestFSTypeProvision(t *testing.T) {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{
+					Parameters: map[string]string{
 						// We deliberately skip fsType in sc param
 						//	"fstype": "",
 					},
@@ -969,7 +969,7 @@ func TestFSTypeProvision(t *testing.T) {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{
+					Parameters: map[string]string{
 						// We deliberately skip fsType in sc param
 						//	"fstype": "xfs",
 					},
@@ -4508,7 +4508,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			expectTranslation: true,
 		},
 		{
-			name:              "provision with migration on with GA annStorageProvisioner annontation",
+			name:              "provision with migration on with GA annStorageProvisioner annotation",
 			scProvisioner:     inTreePluginName,
 			annotation:        map[string]string{annStorageProvisioner: driverName},
 			expectTranslation: true,
@@ -4520,7 +4520,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			expectTranslation: false,
 		},
 		{
-			name:              "provision without migration for native CSI with GA annStorageProvisioner annontation",
+			name:              "provision without migration for native CSI with GA annStorageProvisioner annotation",
 			scProvisioner:     driverName,
 			annotation:        map[string]string{annStorageProvisioner: driverName},
 			expectTranslation: false,
