@@ -277,7 +277,7 @@ func TestNodeTopology(t *testing.T) {
 					name: node1,
 					driverKeys: map[string][]string{
 						// This node reports keys in reverse order, which must not make a difference.
-						driverName: []string{networkStorageKeys[2], networkStorageKeys[1], networkStorageKeys[0]},
+						driverName: {networkStorageKeys[2], networkStorageKeys[1], networkStorageKeys[0]},
 					},
 					labels: networkStorageLabels,
 				},

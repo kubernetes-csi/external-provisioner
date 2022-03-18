@@ -600,5 +600,4 @@ func main() {
 			klog.Fatalf("failed to initialize leader election: %v", err)
 		}
 	}
-
 }
