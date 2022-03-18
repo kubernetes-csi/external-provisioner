@@ -1072,8 +1072,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
-					AnnDeletionProvisionerSecretRefName:      "",
-					AnnDeletionProvisionerSecretRefNamespace: "",
+					annDeletionProvisionerSecretRefName:      "",
+					annDeletionProvisionerSecretRefNamespace: "",
 				},
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -1568,8 +1568,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
-					AnnDeletionProvisionerSecretRefName:      "provisionersecret",
-					AnnDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
+					annDeletionProvisionerSecretRefName:      "provisionersecret",
+					annDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
 				},
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
@@ -1623,8 +1623,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
-					AnnDeletionProvisionerSecretRefName:      "default-secret",
-					AnnDeletionProvisionerSecretRefNamespace: "default-ns",
+					annDeletionProvisionerSecretRefName:      "default-secret",
+					annDeletionProvisionerSecretRefNamespace: "default-ns",
 				},
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
@@ -1678,8 +1678,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
-					AnnDeletionProvisionerSecretRefName:      "my-pvc",
-					AnnDeletionProvisionerSecretRefNamespace: "default-ns",
+					annDeletionProvisionerSecretRefName:      "my-pvc",
+					annDeletionProvisionerSecretRefNamespace: "default-ns",
 				},
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
@@ -3930,8 +3930,8 @@ func TestDelete(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv",
 					Annotations: map[string]string{
-						AnnDeletionProvisionerSecretRefName:      "",
-						AnnDeletionProvisionerSecretRefNamespace: "",
+						annDeletionProvisionerSecretRefName:      "",
+						annDeletionProvisionerSecretRefNamespace: "",
 					},
 				},
 				Spec: v1.PersistentVolumeSpec{
@@ -3957,8 +3957,8 @@ func TestDelete(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv",
 					Annotations: map[string]string{
-						AnnDeletionProvisionerSecretRefName:      "",
-						AnnDeletionProvisionerSecretRefNamespace: "",
+						annDeletionProvisionerSecretRefName:      "",
+						annDeletionProvisionerSecretRefNamespace: "",
 					},
 				},
 				Spec: v1.PersistentVolumeSpec{
@@ -3978,8 +3978,8 @@ func TestDelete(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv",
 					Annotations: map[string]string{
-						AnnDeletionProvisionerSecretRefName:      "provisionersecret",
-						AnnDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
+						annDeletionProvisionerSecretRefName:      "provisionersecret",
+						annDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
 					},
 				},
 				Spec: v1.PersistentVolumeSpec{
@@ -4012,8 +4012,8 @@ func TestDelete(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv",
 					Annotations: map[string]string{
-						AnnDeletionProvisionerSecretRefName:      "provisionersecret",
-						AnnDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
+						annDeletionProvisionerSecretRefName:      "provisionersecret",
+						annDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
 					},
 				},
 				Spec: v1.PersistentVolumeSpec{
@@ -4037,8 +4037,8 @@ func TestDelete(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv",
 					Annotations: map[string]string{
-						AnnDeletionProvisionerSecretRefName:      "provisionersecret",
-						AnnDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
+						annDeletionProvisionerSecretRefName:      "provisionersecret",
+						annDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
 					},
 				},
 				Spec: v1.PersistentVolumeSpec{
@@ -4071,8 +4071,8 @@ func TestDelete(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "pv",
 					Annotations: map[string]string{
-						AnnDeletionProvisionerSecretRefName:      "non-existent-provisionersecret",
-						AnnDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
+						annDeletionProvisionerSecretRefName:      "non-existent-provisionersecret",
+						annDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
 					},
 				},
 				Spec: v1.PersistentVolumeSpec{

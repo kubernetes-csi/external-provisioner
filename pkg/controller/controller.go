@@ -1217,7 +1217,7 @@ func (p *csiProvisioner) handleSecretsForDeletion(ctx context.Context, volume *v
 			}
 			req.Secrets = credentials
 		} else if annDeletionSecretName == "" && annDeletionSecretNamespace == "" {
-			klog.V(2).Infof("volumes without secrets detected.. continue deleting the volumes")
+			klog.V(2).Infof("volume %s does not need any deletion secrets", volume.Name)
 		}
 	} else {
 		err := p.getSecretsFromSC(ctx, volume, migratedVolume, req)
