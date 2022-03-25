@@ -398,7 +398,6 @@ func TestBytesToQuantity(t *testing.T) {
 			t.Errorf("test: %s, expected: %v, got: %v", test.testName, test.quantString, q.String())
 		}
 	}
-
 }
 
 func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
@@ -578,8 +577,8 @@ func fakeClaim(name, namespace, claimUID string, capacity int64, boundToVolume s
 		// leave it undefined/nil to maintaint the current defaults for test cases
 	}
 	return &claim
-
 }
+
 func TestGetSecretReference(t *testing.T) {
 	testcases := map[string]struct {
 		secretParams secretParamsMap
@@ -2283,6 +2282,7 @@ func newSnapshot(name, className, boundToContent, snapshotUID, claimName string,
 
 	return &snapshot
 }
+
 func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcase, requestedBytes int64, provisionDriverName, supportsMigrationFromInTreePluginName string) {
 	t.Logf("Running test: %v", k)
 	myDefaultfsType := "ext4"
@@ -2610,13 +2610,13 @@ func newContent(name, className, snapshotHandle, volumeUID, volumeName, boundToS
 
 // TestProvisionFromSnapshot tests create volume from snapshot
 func TestProvisionFromSnapshot(t *testing.T) {
-	var apiGrp = "snapshot.storage.k8s.io"
-	var unsupportedAPIGrp = "unsupported.group.io"
+	apiGrp := "snapshot.storage.k8s.io"
+	unsupportedAPIGrp := "unsupported.group.io"
 	var requestedBytes int64 = 1000
-	var snapName = "test-snapshot"
-	var snapClassName = "test-snapclass"
-	var timeNow = time.Now().UnixNano()
-	var metaTimeNowUnix = &metav1.Time{
+	snapName := "test-snapshot"
+	snapClassName := "test-snapclass"
+	timeNow := time.Now().UnixNano()
+	metaTimeNowUnix := &metav1.Time{
 		Time: time.Unix(0, timeNow),
 	}
 	deletePolicy := v1.PersistentVolumeReclaimDelete
@@ -3594,7 +3594,6 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 			},
 		},
 	})
-
 	if err != nil {
 		t.Fatalf("got error from Provision call: %v", err)
 	}
@@ -4491,7 +4490,7 @@ func TestProvisionFromPVC(t *testing.T) {
 
 func TestProvisionWithMigration(t *testing.T) {
 	var requestBytes int64 = 100000
-	var inTreePluginName = "in-tree-plugin"
+	inTreePluginName := "in-tree-plugin"
 
 	deletePolicy := v1.PersistentVolumeReclaimDelete
 	testcases := []struct {
@@ -4508,7 +4507,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			expectTranslation: true,
 		},
 		{
-			name:              "provision with migration on with GA annStorageProvisioner annontation",
+			name:              "provision with migration on with GA annStorageProvisioner annotation",
 			scProvisioner:     inTreePluginName,
 			annotation:        map[string]string{annStorageProvisioner: driverName},
 			expectTranslation: true,
@@ -4520,7 +4519,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			expectTranslation: false,
 		},
 		{
-			name:              "provision without migration for native CSI with GA annStorageProvisioner annontation",
+			name:              "provision without migration for native CSI with GA annStorageProvisioner annotation",
 			scProvisioner:     driverName,
 			annotation:        map[string]string{annStorageProvisioner: driverName},
 			expectTranslation: false,
@@ -4661,7 +4660,6 @@ func TestProvisionWithMigration(t *testing.T) {
 				}
 			}
 		})
-
 	}
 }
 
@@ -4782,7 +4780,6 @@ func TestDeleteMigration(t *testing.T) {
 				t.Errorf("Got error: %v, expected none", err)
 			}
 		})
-
 	}
 }
 

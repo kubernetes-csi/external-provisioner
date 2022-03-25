@@ -59,7 +59,7 @@ import (
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v4/clientset/versioned"
 )
 
-//secretParamsMap provides a mapping of current as well as deprecated secret keys
+// secretParamsMap provides a mapping of current as well as deprecated secret keys
 type secretParamsMap struct {
 	name                         string
 	deprecatedSecretNameKey      string
@@ -255,15 +255,15 @@ type csiProvisioner struct {
 	controllerPublishReadOnly             bool
 }
 
-var _ controller.Provisioner = &csiProvisioner{}
-var _ controller.BlockProvisioner = &csiProvisioner{}
-var _ controller.Qualifier = &csiProvisioner{}
-
 var (
-	// Each provisioner have a identify string to distinguish with others. This
-	// identify string will be added in PV annotations under this key.
-	provisionerIDKey = "storage.kubernetes.io/csiProvisionerIdentity"
+	_ controller.Provisioner      = &csiProvisioner{}
+	_ controller.BlockProvisioner = &csiProvisioner{}
+	_ controller.Qualifier        = &csiProvisioner{}
 )
+
+// Each provisioner have a identify string to distinguish with others. This
+// identify string will be added in PV annotations under this key.
+var provisionerIDKey = "storage.kubernetes.io/csiProvisionerIdentity"
 
 func Connect(address string, metricsManager metrics.CSIMetricsManager) (*grpc.ClientConn, error) {
 	return connection.Connect(address, metricsManager, connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
@@ -430,7 +430,6 @@ func makeVolumeName(prefix, pvcUID string, volumeNameUUIDLength int) (string, er
 	}
 	// Else we remove all dashes from UUID and truncate to volumeNameUUIDLength
 	return fmt.Sprintf("%s-%s", prefix, strings.Replace(string(pvcUID), "-", "", -1)[0:volumeNameUUIDLength]), nil
-
 }
 
 func getAccessTypeBlock() *csi.VolumeCapability_Block {
@@ -713,7 +712,6 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 				provisioner,
 				p.driverName),
 		}
-
 	}
 
 	// The same check already ran in ShouldProvision, but perhaps
@@ -742,7 +740,6 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	createCtx, cancel := context.WithTimeout(createCtx, p.timeout)
 	defer cancel()
 	rep, err := p.csiClient.CreateVolume(createCtx, req)
-
 	if err != nil {
 		// Giving up after an error and telling the pod scheduler to retry with a different node
 		// only makes sense if:
@@ -779,7 +776,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	}
 	respCap := rep.GetVolume().GetCapacityBytes()
 
-	//According to CSI spec CreateVolume should be able to return capacity = 0, which means it is unknown. for example NFS/FTP
+	// According to CSI spec CreateVolume should be able to return capacity = 0, which means it is unknown. for example NFS/FTP
 	if respCap == 0 {
 		respCap = volSizeBytes
 		klog.V(3).Infof("csiClient response volume with size 0, which is not supported by apiServer, will use claim size:%d", respCap)
@@ -1049,7 +1046,6 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.Persis
 	}
 
 	snapContentObj, err := p.snapshotClient.SnapshotV1().VolumeSnapshotContents().Get(ctx, *snapshotObj.Status.BoundVolumeSnapshotContentName, metav1.GetOptions{})
-
 	if err != nil {
 		klog.Warningf("error getting snapshotcontent %s for snapshot %s/%s from api server: %s", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, err)
 		return nil, fmt.Errorf(snapshotNotBound, claim.Spec.DataSource.Name)
@@ -1265,7 +1261,7 @@ func (p *csiProvisioner) ShouldProvision(ctx context.Context, claim *v1.Persiste
 	return true
 }
 
-//TODO use a unique volume handle from and to Id
+// TODO use a unique volume handle from and to Id
 func (p *csiProvisioner) volumeIdToHandle(id string) string {
 	return id
 }
