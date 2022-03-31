@@ -132,6 +132,11 @@ const (
 	annStorageProvisioner     = "volume.kubernetes.io/storage-provisioner"
 	annSelectedNode           = "volume.kubernetes.io/selected-node"
 
+	// Annotation for secret name and namespace will be added to the pv object
+	// and used at pvc deletion time.
+	annDeletionProvisionerSecretRefName      = "volume.kubernetes.io/provisioner-deletion-secret-name"
+	annDeletionProvisionerSecretRefNamespace = "volume.kubernetes.io/provisioner-deletion-secret-namespace"
+
 	snapshotNotBound = "snapshot %s not bound"
 
 	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
@@ -496,11 +501,17 @@ func (p *csiProvisioner) getVolumeCapabilities(
 	return volumeCaps, nil
 }
 
+type deletionSecretParams struct {
+	name      string
+	namespace string
+}
+
 type prepareProvisionResult struct {
-	fsType         string
-	migratedVolume bool
-	req            *csi.CreateVolumeRequest
-	csiPVSource    *v1.CSIPersistentVolumeSource
+	fsType              string
+	migratedVolume      bool
+	req                 *csi.CreateVolumeRequest
+	csiPVSource         *v1.CSIPersistentVolumeSource
+	provDeletionSecrets *deletionSecretParams
 }
 
 // prepareProvision does non-destructive parameter checking and preparations for provisioning a volume.
@@ -688,13 +699,21 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		req.Parameters[pvcNamespaceKey] = claim.GetNamespace()
 		req.Parameters[pvNameKey] = pvName
 	}
+	deletionAnnSecrets := new(deletionSecretParams)
+
+	if provisionerSecretRef != nil {
+		deletionAnnSecrets.name = provisionerSecretRef.Name
+		deletionAnnSecrets.namespace = provisionerSecretRef.Namespace
+	}
 
 	return &prepareProvisionResult{
-		fsType:         fsType,
-		migratedVolume: migratedVolume,
-		req:            &req,
-		csiPVSource:    csiPVSource,
+		fsType:              fsType,
+		migratedVolume:      migratedVolume,
+		req:                 &req,
+		csiPVSource:         csiPVSource,
+		provDeletionSecrets: deletionAnnSecrets,
 	}, controller.ProvisioningNoChange, nil
+
 }
 
 func (p *csiProvisioner) Provision(ctx context.Context, options controller.ProvisionOptions) (*v1.PersistentVolume, controller.ProvisioningState, error) {
@@ -833,6 +852,16 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 				CSI: result.csiPVSource,
 			},
 		},
+	}
+
+	// Set annDeletionSecretRefName and namespace in PV object.
+	if result.provDeletionSecrets != nil {
+		klog.V(5).Infof("createVolumeOperation: set annotation [%s/%s] on pv [%s].", annDeletionProvisionerSecretRefNamespace, annDeletionProvisionerSecretRefName, pv.Name)
+		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annDeletionProvisionerSecretRefName, result.provDeletionSecrets.name)
+		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annDeletionProvisionerSecretRefNamespace, result.provDeletionSecrets.namespace)
+	} else {
+		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annDeletionProvisionerSecretRefName, "")
+		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annDeletionProvisionerSecretRefNamespace, "")
 	}
 
 	if options.StorageClass.ReclaimPolicy != nil {
@@ -1150,6 +1179,52 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 	req := csi.DeleteVolumeRequest{
 		VolumeId: volumeId,
 	}
+
+	err = p.handleSecretsForDeletion(ctx, volume, &req, migratedVolume)
+	if err != nil {
+		return err
+	}
+	deleteCtx := markAsMigrated(ctx, migratedVolume)
+	deleteCtx, cancel := context.WithTimeout(deleteCtx, p.timeout)
+	defer cancel()
+
+	if err := p.canDeleteVolume(volume); err != nil {
+		return err
+	}
+
+	_, err = p.csiClient.DeleteVolume(deleteCtx, &req)
+
+	return err
+}
+
+func (p *csiProvisioner) handleSecretsForDeletion(ctx context.Context, volume *v1.PersistentVolume, req *csi.DeleteVolumeRequest, migratedVolume bool) error {
+	var err error
+	if metav1.HasAnnotation(volume.ObjectMeta, annDeletionProvisionerSecretRefName) && metav1.HasAnnotation(volume.ObjectMeta, annDeletionProvisionerSecretRefNamespace) {
+		annDeletionSecretName := volume.Annotations[annDeletionProvisionerSecretRefName]
+		annDeletionSecretNamespace := volume.Annotations[annDeletionProvisionerSecretRefNamespace]
+		if annDeletionSecretName != "" && annDeletionSecretNamespace != "" {
+			provisionerSecretRef := &v1.SecretReference{}
+			provisionerSecretRef.Name = annDeletionSecretName
+			provisionerSecretRef.Namespace = annDeletionSecretNamespace
+			credentials, err := getCredentials(ctx, p.client, provisionerSecretRef)
+			if err != nil {
+				// Continue with deletion, as the secret may have already been deleted.
+				klog.Errorf("failed to get credentials for volume %s: %s", volume.Name, err.Error())
+			}
+			req.Secrets = credentials
+		} else if annDeletionSecretName == "" && annDeletionSecretNamespace == "" {
+			klog.V(2).Infof("volume %s does not need any deletion secrets", volume.Name)
+		}
+	} else {
+		err := p.getSecretsFromSC(ctx, volume, migratedVolume, req)
+		if err != nil {
+			return err
+		}
+	}
+	return err
+}
+
+func (p *csiProvisioner) getSecretsFromSC(ctx context.Context, volume *v1.PersistentVolume, migratedVolume bool, req *csi.DeleteVolumeRequest) error {
 	// get secrets if StorageClass specifies it
 	storageClassName := util.GetPersistentVolumeClass(volume)
 	if len(storageClassName) != 0 {
@@ -1183,17 +1258,7 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 			klog.Warningf("failed to get storageclass: %s, proceeding to delete without secrets. %v", storageClassName, err)
 		}
 	}
-	deleteCtx := markAsMigrated(ctx, migratedVolume)
-	deleteCtx, cancel := context.WithTimeout(deleteCtx, p.timeout)
-	defer cancel()
-
-	if err := p.canDeleteVolume(volume); err != nil {
-		return err
-	}
-
-	_, err = p.csiClient.DeleteVolume(deleteCtx, &req)
-
-	return err
+	return nil
 }
 
 func (p *csiProvisioner) canDeleteVolume(volume *v1.PersistentVolume) error {
