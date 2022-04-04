@@ -200,12 +200,12 @@ example):
    env:
    - name: NAMESPACE
      valueFrom:
-        fieldRef:
-        fieldPath: metadata.namespace
+       fieldRef:
+         fieldPath: metadata.namespace
    - name: POD_NAME
      valueFrom:
-        fieldRef:
-        fieldPath: metadata.name
+       fieldRef:
+         fieldPath: metadata.name
 ```
 - Add `--enable-capacity` to the command line flags.
 - Add `StorageCapacity: true` to the CSIDriver information object.
