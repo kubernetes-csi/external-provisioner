@@ -13,7 +13,7 @@ require (
 	github.com/kubernetes-csi/csi-test/v4 v4.0.2
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.0.0-rc1
 	github.com/miekg/dns v1.1.40 // indirect
-	github.com/prometheus/client_golang v1.11.0
+	github.com/prometheus/client_golang v1.11.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63 // indirect
