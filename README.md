@@ -19,13 +19,14 @@ Various external-provisioner releases come with different alpha / beta features.
 
 Following table reflects the head of this branch.
 
-| Feature        | Status  | Default | Description                                                                                   | Provisioner Feature Gate Required |
-| -------------- | ------- | ------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
-| Snapshots      | GA      | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html). | No |
-| CSIMigration   | Beta    | On      | [Migrating in-tree volume plugins to CSI](https://kubernetes.io/docs/concepts/storage/volumes/#csi-migration). | No |
-| CSIStorageCapacity | Beta  | On  | Publish [capacity information](https://kubernetes.io/docs/concepts/storage/volumes/#storage-capacity) for the Kubernetes scheduler. | No |
-| ReadWriteOncePod   | Alpha | Off | [Single pod access mode for PersistentVolumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes). | No |
-| HonorPVReclaimPolicy| Alpha |Off | [Honor the PV reclaim policy](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/2644-honor-pv-reclaim-policy) | No
+| Feature        | Status  | Default | Description                                                                                                                                                          | Provisioner Feature Gate Required |
+| -------------- | ------- | ------- |----------------------------------------------------------------------------------------------------------------------------------------------------------------------| --------------------------------- |
+| Snapshots      | GA      | On      | [Snapshots and Restore](https://kubernetes-csi.github.io/docs/snapshot-restore-feature.html).                                                                        | No |
+| CSIMigration   | Beta    | On      | [Migrating in-tree volume plugins to CSI](https://kubernetes.io/docs/concepts/storage/volumes/#csi-migration).                                                       | No |
+| CSIStorageCapacity | Beta  | On  | Publish [capacity information](https://kubernetes.io/docs/concepts/storage/volumes/#storage-capacity) for the Kubernetes scheduler.                                  | No |
+| ReadWriteOncePod   | Alpha | Off | [Single pod access mode for PersistentVolumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes).                                        | No |
+| HonorPVReclaimPolicy| Alpha |Off | [Honor the PV reclaim policy](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/2644-honor-pv-reclaim-policy)                                  | No
+| PreventVolumeModeConversion | Alpha |Off | [Prevent unauthorized conversion of source volume mode](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/3141-prevent-volume-mode-conversion) | `--prevent-volume-mode-conversion` (No in-tree feature gate)
 
 All other external-provisioner features and the external-provisioner itself is considered GA and fully supported.
 
@@ -122,6 +123,8 @@ See the [storage capacity section](#capacity-support) below for details.
 * `--volume-name-uuid-length`: Length of UUID to be added to `--volume-name-prefix`. Default behavior is to NOT truncate the UUID.
 
 * `--version`: Prints current external-provisioner version and quits.
+
+* `--prevent-volume-mode-conversion`: Prevents an unauthorized user from modifying the volume mode when creating a PVC from an existing VolumeSnapshot. Defaults to false.
 
 * All glog / klog arguments are supported, such as `-v <log level>` or `-alsologtostderr`.
 

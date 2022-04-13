@@ -113,6 +113,8 @@ var (
 	nodeDeploymentMaxDelay         = flag.Duration("node-deployment-max-delay", 60*time.Second, "Determines how long the external-provisioner sleeps at most before trying to own a PVC with immediate binding.")
 	controllerPublishReadOnly      = flag.Bool("controller-publish-readonly", false, "This option enables PV to be marked as readonly at controller publish volume call if PVC accessmode has been set to ROX.")
 
+	preventVolumeModeConversion = flag.Bool("prevent-volume-mode-conversion", false, "Prevents an unauthorised user from modifying the volume mode when creating a PVC from an existing VolumeSnapshot.")
+
 	featureGates        map[string]bool
 	provisionController *controller.ProvisionController
 	version             = "unknown"
@@ -403,6 +405,7 @@ func main() {
 		*defaultFSType,
 		nodeDeployment,
 		*controllerPublishReadOnly,
+		*preventVolumeModeConversion,
 	)
 
 	var capacityController *capacity.Controller
