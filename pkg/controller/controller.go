@@ -140,6 +140,10 @@ const (
 	snapshotNotBound = "snapshot %s not bound"
 
 	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
+
+	// The kv that needs to be automatically inserted into CreateVolumeRequest.Parameters
+	parameterPrefix = "X-K8S-PROVISIONER-"
+	ParameterScName = parameterPrefix + "SC-NAME"
 )
 
 var (
@@ -613,6 +617,10 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 			RequiredBytes: int64(volSizeBytes),
 		},
 	}
+	if req.Parameters == nil {
+		req.Parameters = make(map[string]string)
+	}
+	req.Parameters[ParameterScName] = sc.Name
 
 	if claim.Spec.DataSource != nil && (rc.clone || rc.snapshot) {
 		volumeContentSource, err := p.getVolumeContentSource(ctx, claim, sc)
