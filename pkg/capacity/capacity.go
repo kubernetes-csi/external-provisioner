@@ -31,7 +31,6 @@ import (
 	"google.golang.org/grpc"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,8 +38,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	storageinformersv1 "k8s.io/client-go/informers/storage/v1"
-	storageinformersv1beta1 "k8s.io/client-go/informers/storage/v1beta1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/component-base/metrics"
@@ -81,14 +78,14 @@ type Controller struct {
 
 	csiController    CSICapacityClient
 	driverName       string
-	client           kubernetes.Interface
+	clientFactory    CSIStorageCapacityFactory
 	queue            workqueue.RateLimitingInterface
 	owner            *metav1.OwnerReference
 	managedByID      string
 	ownerNamespace   string
 	topologyInformer topology.Informer
 	scInformer       storageinformersv1.StorageClassInformer
-	cInformer        storageinformersv1beta1.CSIStorageCapacityInformer
+	cInformer        storageinformersv1.CSIStorageCapacityInformer
 	pollPeriod       time.Duration
 	immediateBinding bool
 	timeout          time.Duration
@@ -98,7 +95,7 @@ type Controller struct {
 	// have a non-nil pointer. Those get added and updated
 	// exclusively through the informer event handler to avoid
 	// races.
-	capacities     map[workItem]*storagev1beta1.CSIStorageCapacity
+	capacities     map[workItem]*storagev1.CSIStorageCapacity
 	capacitiesLock sync.Mutex
 }
 
@@ -107,7 +104,7 @@ type workItem struct {
 	storageClassName string
 }
 
-func (w workItem) equals(capacity *storagev1beta1.CSIStorageCapacity) bool {
+func (w workItem) equals(capacity *storagev1.CSIStorageCapacity) bool {
 	return w.storageClassName == capacity.StorageClassName &&
 		reflect.DeepEqual(w.segment.GetLabelSelector(), capacity.NodeTopology)
 }
@@ -149,20 +146,32 @@ type CSICapacityClient interface {
 	GetCapacity(ctx context.Context, in *csi.GetCapacityRequest, opts ...grpc.CallOption) (*csi.GetCapacityResponse, error)
 }
 
+// CSIStorageCapacityInterface is a subset of the client-go interface for
+// v1.CSIStorageCapacity.
+type CSIStorageCapacityInterface interface {
+	Create(ctx context.Context, cSIStorageCapacity *storagev1.CSIStorageCapacity, opts metav1.CreateOptions) (*storagev1.CSIStorageCapacity, error)
+	Update(ctx context.Context, cSIStorageCapacity *storagev1.CSIStorageCapacity, opts metav1.UpdateOptions) (*storagev1.CSIStorageCapacity, error)
+	Delete(ctx context.Context, name string, opts metav1.DeleteOptions) error
+}
+
+// CSIStorageCapacityFactory corresponds to StorageV1().CSIStorageCapacities but returns
+// just what we need.
+type CSIStorageCapacityFactory func(namespace string) CSIStorageCapacityInterface
+
 // NewController creates a new controller for CSIStorageCapacity objects.
 // It implements metrics.StableCollector and thus can be registered in
 // a registry.
 func NewCentralCapacityController(
 	csiController CSICapacityClient,
 	driverName string,
-	client kubernetes.Interface,
+	clientFactory CSIStorageCapacityFactory,
 	queue workqueue.RateLimitingInterface,
 	owner *metav1.OwnerReference,
 	managedByID string,
 	ownerNamespace string,
 	topologyInformer topology.Informer,
 	scInformer storageinformersv1.StorageClassInformer,
-	cInformer storageinformersv1beta1.CSIStorageCapacityInformer,
+	cInformer storageinformersv1.CSIStorageCapacityInformer,
 	pollPeriod time.Duration,
 	immediateBinding bool,
 	timeout time.Duration,
@@ -170,7 +179,7 @@ func NewCentralCapacityController(
 	c := &Controller{
 		csiController:    csiController,
 		driverName:       driverName,
-		client:           client,
+		clientFactory:    clientFactory,
 		queue:            queue,
 		owner:            owner,
 		managedByID:      managedByID,
@@ -181,7 +190,7 @@ func NewCentralCapacityController(
 		pollPeriod:       pollPeriod,
 		immediateBinding: immediateBinding,
 		timeout:          timeout,
-		capacities:       map[workItem]*storagev1beta1.CSIStorageCapacity{},
+		capacities:       map[workItem]*storagev1.CSIStorageCapacity{},
 	}
 
 	// Now register for changes. Depending on the implementation of the informers,
@@ -281,7 +290,7 @@ func (c *Controller) prepare(ctx context.Context) {
 	klog.V(3).Info("Checking for existing CSIStorageCapacity objects")
 	handler := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			csc, ok := obj.(*storagev1beta1.CSIStorageCapacity)
+			csc, ok := obj.(*storagev1.CSIStorageCapacity)
 			if !ok {
 				klog.Errorf("added object: expected CSIStorageCapacity, got %T -> ignoring it", obj)
 				return
@@ -289,7 +298,7 @@ func (c *Controller) prepare(ctx context.Context) {
 			c.onCAddOrUpdate(ctx, csc)
 		},
 		UpdateFunc: func(_ interface{}, newObj interface{}) {
-			csc, ok := newObj.(*storagev1beta1.CSIStorageCapacity)
+			csc, ok := newObj.(*storagev1.CSIStorageCapacity)
 			if !ok {
 				klog.Errorf("updated object: expected CSIStorageCapacity, got %T -> ignoring it", newObj)
 				return
@@ -301,7 +310,7 @@ func (c *Controller) prepare(ctx context.Context) {
 			if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
 				obj = unknown.Obj
 			}
-			csc, ok := obj.(*storagev1beta1.CSIStorageCapacity)
+			csc, ok := obj.(*storagev1.CSIStorageCapacity)
 			if !ok {
 				klog.Errorf("deleted object: expected CSIStorageCapacity, got %T -> ignoring it", obj)
 				return
@@ -529,7 +538,7 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 		switch obj := obj.(type) {
 		case workItem:
 			return c.syncCapacity(ctx, obj)
-		case *storagev1beta1.CSIStorageCapacity:
+		case *storagev1.CSIStorageCapacity:
 			return c.deleteCapacity(ctx, obj)
 		default:
 			klog.Warningf("unexpected work item %#v", obj)
@@ -614,7 +623,7 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 
 	if capacity == nil {
 		// Create new object.
-		capacity = &storagev1beta1.CSIStorageCapacity{
+		capacity = &storagev1.CSIStorageCapacity{
 			ObjectMeta: metav1.ObjectMeta{
 				GenerateName: "csisc-",
 				Labels: map[string]string{
@@ -632,7 +641,7 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		}
 		var err error
 		klog.V(5).Infof("Capacity Controller: creating new object for %+v, new capacity %v", item, quantity)
-		capacity, err = c.client.StorageV1beta1().CSIStorageCapacities(c.ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
+		capacity, err = c.clientFactory(c.ownerNamespace).Create(ctx, capacity, metav1.CreateOptions{})
 		if err != nil {
 			return fmt.Errorf("create CSIStorageCapacity for %+v: %v", item, err)
 		}
@@ -656,7 +665,7 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 		}
 		var err error
 		klog.V(5).Infof("Capacity Controller: updating %s for %+v, new capacity %v, new maximumVolumeSize %v", capacity.Name, item, quantity, maximumVolumeSize)
-		capacity, err = c.client.StorageV1beta1().CSIStorageCapacities(capacity.Namespace).Update(ctx, capacity, metav1.UpdateOptions{})
+		capacity, err = c.clientFactory(capacity.Namespace).Update(ctx, capacity, metav1.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("update CSIStorageCapacity for %+v: %v", item, err)
 		}
@@ -669,9 +678,9 @@ func (c *Controller) syncCapacity(ctx context.Context, item workItem) error {
 }
 
 // deleteCapacity ensures that the object is gone when done.
-func (c *Controller) deleteCapacity(ctx context.Context, capacity *storagev1beta1.CSIStorageCapacity) error {
+func (c *Controller) deleteCapacity(ctx context.Context, capacity *storagev1.CSIStorageCapacity) error {
 	klog.V(5).Infof("Capacity Controller: removing CSIStorageCapacity %s", capacity.Name)
-	err := c.client.StorageV1beta1().CSIStorageCapacities(capacity.Namespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{})
+	err := c.clientFactory(capacity.Namespace).Delete(ctx, capacity.Name, metav1.DeleteOptions{})
 	if err != nil && apierrs.IsNotFound(err) {
 		return nil
 	}
@@ -682,7 +691,7 @@ func (c *Controller) deleteCapacity(ctx context.Context, capacity *storagev1beta
 // and either remembers the pointer to it for future updates or
 // ensures that it gets deleted if no longer needed. Foreign objects
 // are ignored.
-func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1beta1.CSIStorageCapacity) {
+func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1.CSIStorageCapacity) {
 	if !c.isManaged(capacity) {
 		// Not ours (anymore?). For the unlikely case that someone removed our owner reference,
 		// we also must remove our reference to the object.
@@ -723,7 +732,7 @@ func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1beta
 	c.queue.Add(capacity)
 }
 
-func (c *Controller) onCDelete(ctx context.Context, capacity *storagev1beta1.CSIStorageCapacity) {
+func (c *Controller) onCDelete(ctx context.Context, capacity *storagev1.CSIStorageCapacity) {
 	c.capacitiesLock.Lock()
 	defer c.capacitiesLock.Unlock()
 	for item, capacity2 := range c.capacities {
@@ -805,7 +814,7 @@ func (c *Controller) getObjectsObsolete() int64 {
 	return obsolete
 }
 
-func (c *Controller) isObsolete(capacity *storagev1beta1.CSIStorageCapacity) bool {
+func (c *Controller) isObsolete(capacity *storagev1.CSIStorageCapacity) bool {
 	for item, _ := range c.capacities {
 		if item.equals(capacity) {
 			return false
@@ -816,7 +825,7 @@ func (c *Controller) isObsolete(capacity *storagev1beta1.CSIStorageCapacity) boo
 
 // isOwnedByUs implements the same logic as https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1?tab=doc#IsControlledBy,
 // just with the expected owner identified directly with the UID.
-func (c *Controller) isOwnedByUs(capacity *storagev1beta1.CSIStorageCapacity) bool {
+func (c *Controller) isOwnedByUs(capacity *storagev1.CSIStorageCapacity) bool {
 	for _, owner := range capacity.OwnerReferences {
 		if owner.Controller != nil && *owner.Controller && owner.UID == c.owner.UID {
 			return true
@@ -828,7 +837,7 @@ func (c *Controller) isOwnedByUs(capacity *storagev1beta1.CSIStorageCapacity) bo
 // isManaged checks the labels to determine whether this capacity object is managed by
 // the controller instance. With server-side filtering via the informer, this
 // function becomes a simple safe-guard and should always return true.
-func (c *Controller) isManaged(capacity *storagev1beta1.CSIStorageCapacity) bool {
+func (c *Controller) isManaged(capacity *storagev1.CSIStorageCapacity) bool {
 	return capacity.Labels[DriverNameLabel] == c.driverName &&
 		capacity.Labels[ManagedByLabel] == c.managedByID
 }
