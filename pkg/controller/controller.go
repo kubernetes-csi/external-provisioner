@@ -1811,10 +1811,10 @@ func checkError(err error, mayReschedule bool) controller.ProvisioningState {
 func cleanupVolume(ctx context.Context, p *csiProvisioner, delReq *csi.DeleteVolumeRequest, provisionerCredentials map[string]string) error {
 	var err error
 	delReq.Secrets = provisionerCredentials
-	deleteCtx, cancel := context.WithTimeout(ctx, p.timeout)
-	defer cancel()
 	for i := 0; i < deleteVolumeRetryCount; i++ {
+		deleteCtx, cancel := context.WithTimeout(ctx, p.timeout)
 		_, err = p.csiClient.DeleteVolume(deleteCtx, delReq)
+		cancel()
 		if err == nil {
 			break
 		}
