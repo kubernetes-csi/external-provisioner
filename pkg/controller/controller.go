@@ -839,7 +839,8 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	result.csiPVSource.ReadOnly = pvReadOnly
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: pvName,
+			Name:   pvName,
+			Labels: claim.ObjectMeta.Labels,
 		},
 		Spec: v1.PersistentVolumeSpec{
 			AccessModes:  options.PVC.Spec.AccessModes,
