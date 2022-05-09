@@ -140,6 +140,8 @@ const (
 	snapshotNotBound = "snapshot %s not bound"
 
 	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
+
+	annAllowVolumeModeChange = "snapshot.storage.kubernetes.io/allowVolumeModeChange"
 )
 
 var (
@@ -258,6 +260,7 @@ type csiProvisioner struct {
 	eventRecorder                         record.EventRecorder
 	nodeDeployment                        *internalNodeDeployment
 	controllerPublishReadOnly             bool
+	preventVolumeModeConversion           bool
 }
 
 var (
@@ -337,6 +340,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	defaultFSType string,
 	nodeDeployment *NodeDeployment,
 	controllerPublishReadOnly bool,
+	preventVolumeModeConversion bool,
 ) controller.Provisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
@@ -370,6 +374,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		extraCreateMetadata:                   extraCreateMetadata,
 		eventRecorder:                         eventRecorder,
 		controllerPublishReadOnly:             controllerPublishReadOnly,
+		preventVolumeModeConversion:           preventVolumeModeConversion,
 	}
 	if nodeDeployment != nil {
 		provisioner.nodeDeployment = &internalNodeDeployment{
@@ -1121,6 +1126,27 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.Persis
 		}
 		if int64(volSizeBytes) > int64(snapshotObj.Status.RestoreSize.Value()) {
 			klog.Warningf("requested volume size %d is greater than the size %d for the source snapshot %s. Volume plugin needs to handle volume expansion.", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
+		}
+	}
+
+	if p.preventVolumeModeConversion {
+		if snapContentObj.Spec.SourceVolumeMode != nil && claim.Spec.VolumeMode != nil && snapContentObj.Spec.SourceVolumeMode != claim.Spec.VolumeMode {
+			// Attempt to modify volume mode during volume creation.
+			// Verify if this volume is allowed to alter its mode.
+			allowVolumeModeChange, ok := snapContentObj.Annotations[annAllowVolumeModeChange]
+			if !ok {
+				return nil, fmt.Errorf("requested volume %s/%s modifies the mode of the source volume but does not have permission to do so. "+
+					"%s annotation is not present on snapshotcontent %s", claim.Namespace, claim.Name, annAllowVolumeModeChange, snapContentObj.Name)
+			}
+			allowVolumeModeChangeBool, err := strconv.ParseBool(allowVolumeModeChange)
+			if err != nil {
+				return nil, fmt.Errorf("requested volume %s/%s modifies the mode of the source volume but does not have permission to do so. "+
+					"failed to convert %s annotation value to boolean with error: %v", claim.Namespace, claim.Name, annAllowVolumeModeChange, err)
+			}
+			if !allowVolumeModeChangeBool {
+				return nil, fmt.Errorf("requested volume %s/%s modifies the mode of the source volume but does not have permission to do so. "+
+					"%s is set to false on snapshotcontent %s", claim.Namespace, claim.Name, annAllowVolumeModeChange, snapContentObj.Name)
+			}
 		}
 	}
 
