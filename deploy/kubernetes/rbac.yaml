@@ -31,7 +31,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
-    verbs: ["get", "list", "watch", "update"]
+    verbs: ["get", "list", "watch", "patch"]
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
     verbs: ["get", "list", "watch"]
@@ -87,12 +87,12 @@ rules:
 # what is set for `--leader-election-type`. Endpoints are deprecated in favor of Leases.
 - apiGroups: ["coordination.k8s.io"]
   resources: ["leases"]
-  verbs: ["get", "watch", "list", "delete", "update", "create"]
+  verbs: ["get", "watch", "list", "delete", "patch", "create"]
 # Permissions for CSIStorageCapacity are only needed enabling the publishing
 # of storage capacity information.
 - apiGroups: ["storage.k8s.io"]
   resources: ["csistoragecapacities"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  verbs: ["get", "list", "watch", "create", "patch", "delete"]
 # The GET permissions below are needed for walking up the ownership chain
 # for CSIStorageCapacity. They are sufficient for deployment via
 # StatefulSet (only needs to get Pod) and Deployment (needs to get
