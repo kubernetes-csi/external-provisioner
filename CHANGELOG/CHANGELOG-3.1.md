@@ -1,6 +1,24 @@
-# Release notes for v3.1.0
+# Release notes for v3.1.1
 
 [Documentation](https://kubernetes-csi.github.io)
+
+# Changelog since v3.1.0
+
+## Changes by Kind
+
+### Bug or Regression
+ - Storage capacity: managed-by label potentially too long with a long node name and enableNodeDeployment set to true ([#739](https://github.com/kubernetes-csi/external-provisioner/pull/739), [@akalenyu](https://github.com/akalenyu))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
 
 # Changelog since v3.0.0
 
