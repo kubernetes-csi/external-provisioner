@@ -374,6 +374,9 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		// Remove deleted PVCs from rate limiter.
 		claimHandler := cache.ResourceEventHandlerFuncs{
 			DeleteFunc: func(obj interface{}) {
+				if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
+					obj = unknown.Obj
+				}
 				if claim, ok := obj.(*v1.PersistentVolumeClaim); ok {
 					provisioner.nodeDeployment.rateLimiter.Forget(claim.UID)
 				}
