@@ -1,6 +1,24 @@
-# Release notes for v3.2.0
+# Release notes for v3.2.1
 
 [Documentation](https://kubernetes-csi.github.io)
+
+# Changelog since v3.2.0
+
+## Changes by Kind
+
+### Bug or Regression
+ - The CSIStorageCapacity version check will now use the namespace specified in the NAMESPACE env variable. This avoids a fatal `unexpected error when checking for the V1 CSIStorageCapacity API` error during startup. ([#753](https://github.com/kubernetes-csi/external-provisioner/pull/753), [@nbalacha](https://github.com/nbalacha))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
 
 # Changelog since v3.1.0
 
