@@ -493,7 +493,7 @@ func main() {
 				Name: "#%123-invalid-name",
 			},
 		}
-		createdCapacity, err := clientset.StorageV1().CSIStorageCapacities("default").Create(ctx, invalidCapacity, metav1.CreateOptions{})
+		createdCapacity, err := clientset.StorageV1().CSIStorageCapacities(namespace).Create(ctx, invalidCapacity, metav1.CreateOptions{})
 		switch {
 		case err == nil:
 			klog.Fatalf("creating an invalid v1.CSIStorageCapacity didn't fail as expected, got: %s", createdCapacity)
