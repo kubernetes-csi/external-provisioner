@@ -2,7 +2,7 @@
 
 External-provisioner interacts with Kubernetes by watching PVCs and
 PVs and implementing the [external provisioner
-protocol](https://github.com/kubernetes/community/blob/master/contributors/design-proposals/storage/container-storage-interface.md#provisioning-and-deleting).
+protocol](https://github.com/kubernetes/design-proposals-archive/blob/main/storage/container-storage-interface.md#provisioning-and-deleting).
 The following diagram illustrates that, starting with the creation of
 a PVC by a user and ending with the removal of all resources.
 
