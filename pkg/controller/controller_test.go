@@ -226,6 +226,8 @@ func TestStripPrefixedCSIParams(t *testing.T) {
 				prefixedControllerExpandSecretNamespaceKey:  "csiBar",
 				prefixedDefaultSecretNameKey:                "csiBar",
 				prefixedDefaultSecretNamespaceKey:           "csiBar",
+				prefixedNodeExpandSecretNameKey:             "csiBar",
+				prefixedNodeExpandSecretNamespaceKey:        "csiBar",
 			},
 			expectedParams: map[string]string{},
 		},
@@ -876,6 +878,8 @@ func getDefaultStorageClassSecretParameters() map[string]string {
 		prefixedControllerExpandSecretNamespaceKey: defaultSecretNsName,
 		prefixedProvisionerSecretNameKey:           "provisionersecret",
 		prefixedProvisionerSecretNamespaceKey:      defaultSecretNsName,
+		prefixedNodeExpandSecretNameKey:            "nodeexpandsecret",
+		prefixedNodeExpandSecretNamespaceKey:       defaultSecretNsName,
 	}
 }
 
@@ -904,6 +908,11 @@ func getDefaultSecretObjects() []runtime.Object {
 		}, &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "provisionersecret",
+				Namespace: defaultSecretNsName,
+			},
+		}, &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nodeexpandsecret",
 				Namespace: defaultSecretNsName,
 			},
 		},
@@ -1597,6 +1606,10 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 						Name:      "controllerexpandsecret",
 						Namespace: "default",
 					},
+					NodeExpandSecretRef: &v1.SecretReference{
+						Name:      "nodeexpandsecret",
+						Namespace: "default",
+					},
 				},
 			},
 			expectState: controller.ProvisioningFinished,
@@ -1652,6 +1665,10 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 						Name:      "default-secret",
 						Namespace: "default-ns",
 					},
+					NodeExpandSecretRef: &v1.SecretReference{
+						Name:      "default-secret",
+						Namespace: "default-ns",
+					},
 				},
 			},
 			expectState: controller.ProvisioningFinished,
@@ -1704,6 +1721,10 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 						Namespace: "default-ns",
 					},
 					ControllerExpandSecretRef: &v1.SecretReference{
+						Name:      "my-pvc",
+						Namespace: "default-ns",
+					},
+					NodeExpandSecretRef: &v1.SecretReference{
 						Name:      "my-pvc",
 						Namespace: "default-ns",
 					},
