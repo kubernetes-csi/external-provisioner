@@ -78,7 +78,7 @@ version_to_git () {
 # the list of windows versions was matched from:
 # - https://hub.docker.com/_/microsoft-windows-nanoserver
 # - https://hub.docker.com/_/microsoft-windows-servercore
-configvar CSI_PROW_BUILD_PLATFORMS "linux amd64; linux ppc64le -ppc64le; linux s390x -s390x; linux arm -arm; linux arm64 -arm64; windows amd64 .exe nanoserver:1809 servercore:ltsc2019; windows amd64 .exe nanoserver:1909 servercore:1909; windows amd64 .exe nanoserver:2004 servercore:2004; windows amd64 .exe nanoserver:20H2 servercore:20H2; windows amd64 .exe nanoserver:ltsc2022 servercore:ltsc2022" "Go target platforms (= GOOS + GOARCH) and file suffix of the resulting binaries"
+configvar CSI_PROW_BUILD_PLATFORMS "linux amd64 amd64; linux ppc64le ppc64le -ppc64le; linux s390x s390x -s390x; linux arm arm -arm; linux arm64 arm64 -arm64; linux arm arm/v7 -armv7; windows amd64 amd64 .exe nanoserver:1809 servercore:ltsc2019; windows amd64 amd64 .exe nanoserver:20H2 servercore:20H2; windows amd64 amd64 .exe nanoserver:ltsc2022 servercore:ltsc2022" "Go target platforms (= GOOS + GOARCH) and file suffix of the resulting binaries"
 
 # If we have a vendor directory, then use it. We must be careful to only
 # use this for "make" invocations inside the project's repo itself because
@@ -86,14 +86,17 @@ configvar CSI_PROW_BUILD_PLATFORMS "linux amd64; linux ppc64le -ppc64le; linux s
 # which is disabled with GOFLAGS=-mod=vendor).
 configvar GOFLAGS_VENDOR "$( [ -d vendor ] && echo '-mod=vendor' )" "Go flags for using the vendor directory"
 
-configvar CSI_PROW_GO_VERSION_BUILD "1.17.3" "Go version for building the component" # depends on component's source code
+configvar CSI_PROW_GO_VERSION_BUILD "1.18" "Go version for building the component" # depends on component's source code
 configvar CSI_PROW_GO_VERSION_E2E "" "override Go version for building the Kubernetes E2E test suite" # normally doesn't need to be set, see install_e2e
 configvar CSI_PROW_GO_VERSION_SANITY "${CSI_PROW_GO_VERSION_BUILD}" "Go version for building the csi-sanity test suite" # depends on CSI_PROW_SANITY settings below
 configvar CSI_PROW_GO_VERSION_KIND "${CSI_PROW_GO_VERSION_BUILD}" "Go version for building 'kind'" # depends on CSI_PROW_KIND_VERSION below
 configvar CSI_PROW_GO_VERSION_GINKGO "${CSI_PROW_GO_VERSION_BUILD}" "Go version for building ginkgo" # depends on CSI_PROW_GINKGO_VERSION below
 
 # ginkgo test runner version to use. If the pre-installed version is
-# different, the desired version is built from source.
+# different, the desired version is built from source. For Kubernetes,
+# the version built via "make WHAT=vendor/github.com/onsi/ginkgo/ginkgo" is
+# used, which is guaranteed to match what the Kubernetes e2e.test binary
+# needs.
 configvar CSI_PROW_GINKGO_VERSION v1.7.0 "Ginkgo"
 
 # Ginkgo runs the E2E test in parallel. The default is based on the number
@@ -149,7 +152,8 @@ configvar CSI_PROW_KIND_VERSION "$(kind_version_default)" "kind"
 
 # kind images to use. Must match the kind version.
 # The release notes of each kind release list the supported images.
-configvar CSI_PROW_KIND_IMAGES "kindest/node:v1.22.0@sha256:b8bda84bb3a190e6e028b1760d277454a72267a5454b57db34437c34a588d047
+configvar CSI_PROW_KIND_IMAGES "kindest/node:v1.23.0@sha256:49824ab1727c04e56a21a5d8372a402fcd32ea51ac96a2706a12af38934f81ac
+kindest/node:v1.22.0@sha256:b8bda84bb3a190e6e028b1760d277454a72267a5454b57db34437c34a588d047
 kindest/node:v1.21.1@sha256:69860bda5563ac81e3c0057d654b5253219618a22ec3a346306239bba8cfa1a6
 kindest/node:v1.20.7@sha256:cbeaf907fc78ac97ce7b625e4bf0de16e3ea725daf6b04f930bd14c67c671ff9
 kindest/node:v1.19.11@sha256:07db187ae84b4b7de440a73886f008cf903fcf5764ba8106a9fd5243d6f32729
@@ -195,7 +199,7 @@ kindest/node:v1.14.10@sha256:f8a66ef82822ab4f7569e91a5bccaf27bceee135c1457c512e5
 # If the deployment script is called with CSI_PROW_TEST_DRIVER=<file name> as
 # environment variable, then it must write a suitable test driver configuration
 # into that file in addition to installing the driver.
-configvar CSI_PROW_DRIVER_VERSION "v1.3.0" "CSI driver version"
+configvar CSI_PROW_DRIVER_VERSION "v1.8.0" "CSI driver version"
 configvar CSI_PROW_DRIVER_REPO https://github.com/kubernetes-csi/csi-driver-host-path "CSI driver repo"
 configvar CSI_PROW_DEPLOYMENT "" "deployment"
 configvar CSI_PROW_DEPLOYMENT_SUFFIX "" "additional suffix in kubernetes-x.yy[suffix].yaml files"
@@ -233,7 +237,7 @@ configvar CSI_PROW_E2E_IMPORT_PATH "k8s.io/kubernetes" "E2E package"
 # of the cluster. The alternative would have been to (cross-)compile csi-sanity
 # and install it inside the cluster, which is not necessarily easier.
 configvar CSI_PROW_SANITY_REPO https://github.com/kubernetes-csi/csi-test "csi-test repo"
-configvar CSI_PROW_SANITY_VERSION v4.2.0 "csi-test version"
+configvar CSI_PROW_SANITY_VERSION v5.0.0 "csi-test version"
 configvar CSI_PROW_SANITY_PACKAGE_PATH github.com/kubernetes-csi/csi-test "csi-test package"
 configvar CSI_PROW_SANITY_SERVICE "hostpath-service" "Kubernetes TCP service name that exposes csi.sock"
 configvar CSI_PROW_SANITY_POD "csi-hostpathplugin-0" "Kubernetes pod with CSI driver"
@@ -345,8 +349,11 @@ configvar CSI_PROW_E2E_ALPHA "$(get_versioned_variable CSI_PROW_E2E_ALPHA "${csi
 # kubernetes-csi components must be updated, either by disabling
 # the failing test for "latest" or by updating the test and not running
 # it anymore for older releases.
-configvar CSI_PROW_E2E_ALPHA_GATES_LATEST 'GenericEphemeralVolume=true,CSIStorageCapacity=true' "alpha feature gates for latest Kubernetes"
+configvar CSI_PROW_E2E_ALPHA_GATES_LATEST '' "alpha feature gates for latest Kubernetes"
 configvar CSI_PROW_E2E_ALPHA_GATES "$(get_versioned_variable CSI_PROW_E2E_ALPHA_GATES "${csi_prow_kubernetes_version_suffix}")" "alpha E2E feature gates"
+
+configvar CSI_PROW_E2E_GATES_LATEST '' "non alpha feature gates for latest Kubernetes"
+configvar CSI_PROW_E2E_GATES "$(get_versioned_variable CSI_PROW_E2E_GATES "${csi_prow_kubernetes_version_suffix}")" "non alpha E2E feature gates"
 
 # Which external-snapshotter tag to use for the snapshotter CRD and snapshot-controller deployment
 default_csi_snapshotter_version () {
@@ -436,14 +443,15 @@ install_kind () {
 
 # Ensure that we have the desired version of the ginkgo test runner.
 install_ginkgo () {
+    if [ -e "${CSI_PROW_BIN}/ginkgo" ]; then
+        return
+    fi
+
     # CSI_PROW_GINKGO_VERSION contains the tag with v prefix, the command line output does not.
     if [ "v$(ginkgo version 2>/dev/null | sed -e 's/.* //')" = "${CSI_PROW_GINKGO_VERSION}" ]; then
         return
     fi
-    git_checkout https://github.com/onsi/ginkgo "$GOPATH/src/github.com/onsi/ginkgo" "${CSI_PROW_GINKGO_VERSION}" --depth=1 &&
-    # We have to get dependencies and hence can't call just "go build".
-    run_with_go "${CSI_PROW_GO_VERSION_GINKGO}" go get github.com/onsi/ginkgo/ginkgo || die "building ginkgo failed" &&
-    mv "$GOPATH/bin/ginkgo" "${CSI_PROW_BIN}"
+    run_with_go "${CSI_PROW_GO_VERSION_GINKGO}" env GOBIN="${CSI_PROW_BIN}" go install "github.com/onsi/ginkgo/ginkgo@${CSI_PROW_GINKGO_VERSION}" || die "building ginkgo failed"
 }
 
 # Ensure that we have the desired version of dep.
@@ -736,7 +744,7 @@ install_csi_driver () {
     fi
 }
 
-# Installs all nessesary snapshotter CRDs
+# Installs all necessary snapshotter CRDs
 install_snapshot_crds() {
   # Wait until volumesnapshot CRDs are in place.
   CRD_BASE_DIR="https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${CSI_SNAPSHOTTER_VERSION}/client/config/crd"
@@ -813,7 +821,7 @@ install_snapshot_controller() {
           modified="$(cat "$i" | while IFS= read -r line; do
               nocomments="$(echo "$line" | sed -e 's/ *#.*$//')"
               if echo "$nocomments" | grep -q '^[[:space:]]*image:[[:space:]]*'; then
-                  # Split 'image: k8s.gcr.io/sig-storage/snapshot-controller:v3.0.0'
+                  # Split 'image: registry.k8s.io/sig-storage/snapshot-controller:v3.0.0'
                   # into image (snapshot-controller:v3.0.0),
                   # name (snapshot-controller),
                   # tag (v3.0.0).
@@ -914,11 +922,11 @@ patch_kubernetes () {
     local source="$1" target="$2"
 
     if [ "${CSI_PROW_DRIVER_CANARY}" = "canary" ]; then
-        # We cannot replace k8s.gcr.io/sig-storage with gcr.io/k8s-staging-sig-storage because
+        # We cannot replace registry.k8s.io/sig-storage with gcr.io/k8s-staging-sig-storage because
         # e2e.test does not support it (see test/utils/image/manifest.go). Instead we
         # invoke the e2e.test binary with KUBE_TEST_REPO_LIST set to a file that
         # overrides that registry.
-        find "$source/test/e2e/testing-manifests/storage-csi/mock" -name '*.yaml' -print0 | xargs -0 sed -i -e 's;k8s.gcr.io/sig-storage/\(.*\):v.*;k8s.gcr.io/sig-storage/\1:canary;'
+        find "$source/test/e2e/testing-manifests/storage-csi/mock" -name '*.yaml' -print0 | xargs -0 sed -i -e 's;registry.k8s.io/sig-storage/\(.*\):v.*;registry.k8s.io/sig-storage/\1:canary;'
         cat >"$target/e2e-repo-list" <<EOF
 sigStorageRegistry: gcr.io/k8s-staging-sig-storage
 EOF
@@ -942,7 +950,9 @@ install_e2e () {
         patch_kubernetes "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_WORK}" &&
         go_version="${CSI_PROW_GO_VERSION_E2E:-$(go_version_for_kubernetes "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_E2E_VERSION}")}" &&
         run_with_go "$go_version" make WHAT=test/e2e/e2e.test "-C${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&
-        ln -s "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}/_output/bin/e2e.test" "${CSI_PROW_WORK}"
+        ln -s "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}/_output/bin/e2e.test" "${CSI_PROW_WORK}" &&
+        run_with_go "$go_version" make WHAT=vendor/github.com/onsi/ginkgo/ginkgo "-C${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&
+        ln -s "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}/_output/bin/ginkgo" "${CSI_PROW_BIN}"
     else
         run_with_go "${CSI_PROW_GO_VERSION_E2E}" go test -c -o "${CSI_PROW_WORK}/e2e.test" "${CSI_PROW_E2E_IMPORT_PATH}/test/e2e"
     fi
@@ -1256,7 +1266,8 @@ main () {
         fi
 
         if tests_need_non_alpha_cluster; then
-            start_cluster || die "starting the non-alpha cluster failed"
+            # Need to (re)create the cluster.
+            start_cluster "${CSI_PROW_E2E_GATES}" || die "starting the non-alpha cluster failed"
 
             # Install necessary snapshot CRDs and snapshot controller
             install_snapshot_crds
@@ -1306,7 +1317,11 @@ main () {
             delete_cluster_inside_prow_job non-alpha
         fi
 
-        if tests_need_alpha_cluster && [ "${CSI_PROW_E2E_ALPHA_GATES}" ]; then
+        # If the cluster for alpha tests doesn't need any feature gates, then we
+        # could reuse the same cluster as for the other tests. But that would make
+        # the flow in this script harder and wouldn't help in practice because
+        # we have separate Prow jobs for alpha and non-alpha tests.
+        if tests_need_alpha_cluster; then
             # Need to (re)create the cluster.
             start_cluster "${CSI_PROW_E2E_ALPHA_GATES}" || die "starting alpha cluster failed"
 
