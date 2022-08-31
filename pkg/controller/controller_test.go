@@ -744,7 +744,7 @@ func TestGetSecretReference(t *testing.T) {
 			},
 			expectRef: &v1.SecretReference{Name: "pvcname", Namespace: "ns"},
 		},
-		"template - valid, provisioner with pvc name and namepsace": {
+		"template - valid, provisioner with pvc name and namespace": {
 			secretParams: provisionerSecretParams,
 			params: map[string]string{
 				provisionerSecretNameKey:      "${pvc.name}",

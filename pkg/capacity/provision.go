@@ -65,7 +65,7 @@ func (p *provisionWrapper) Provision(ctx context.Context, options controller.Pro
 			p.c.refreshSC(options.StorageClass.Name)
 		}
 	} else if state != controller.ProvisioningNoChange {
-		// Unsuccesful provisioning might also be a reason why
+		// Unsuccessful provisioning might also be a reason why
 		// we have to refresh. We could try to identify the topology
 		// via the selected node (if there is any), but more important
 		// and easier is to refresh the objects for the storage

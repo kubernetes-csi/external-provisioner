@@ -287,7 +287,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 				},
 			},
 		},
-		"select index 1 among allowedTopologies with multiple terms/multiple requirments for pvc with statefulset name:testset and id:2; ignore claimname:testpvcB": {
+		"select index 1 among allowedTopologies with multiple terms/multiple requirements for pvc with statefulset name:testset and id:2; ignore claimname:testpvcB": {
 			pvcName: "testpvcB-testset-2",
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
