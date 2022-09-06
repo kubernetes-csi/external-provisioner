@@ -100,8 +100,8 @@ github.com/kubernetes-csi/csi-lib-utils/leaderelection
 github.com/kubernetes-csi/csi-lib-utils/metrics
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 github.com/kubernetes-csi/csi-lib-utils/rpc
-# github.com/kubernetes-csi/csi-test/v4 v4.0.2
-## explicit; go 1.15
+# github.com/kubernetes-csi/csi-test/v4 v4.4.0
+## explicit; go 1.16
 github.com/kubernetes-csi/csi-test/v4/driver
 github.com/kubernetes-csi/csi-test/v4/utils
 # github.com/kubernetes-csi/external-snapshotter/client/v6 v6.0.1
@@ -733,9 +733,6 @@ k8s.io/component-helpers/scheduling/corev1/nodeaffinity
 ## explicit; go 1.19
 k8s.io/csi-translation-lib
 k8s.io/csi-translation-lib/plugins
-# k8s.io/klog v1.0.0
-## explicit; go 1.12
-k8s.io/klog
 # k8s.io/klog/v2 v2.70.1
 ## explicit; go 1.13
 k8s.io/klog/v2
