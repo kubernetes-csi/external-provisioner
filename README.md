@@ -138,7 +138,7 @@ The [design document](./doc/design.md) explains this in more detail.
 ### Topology support
 When `Topology` feature is enabled and the driver specifies `VOLUME_ACCESSIBILITY_CONSTRAINTS` in its plugin capabilities, external-provisioner prepares `CreateVolumeRequest.AccessibilityRequirements` while calling `Controller.CreateVolume`. The driver has to consider these topology constraints while creating the volume. Below table shows how these `AccessibilityRequirements` are prepared:
 
-[Delayed binding](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode) | Strict topology | [Allowed topologies](https://kubernetes.io/docs/concepts/storage/storage-classes/#allowed-topologies) | Immediate Topology | [Resulting accessability requirements](https://github.com/container-storage-interface/spec/blob/master/spec.md#createvolume)
+[Delayed binding](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode) | Strict topology | [Allowed topologies](https://kubernetes.io/docs/concepts/storage/storage-classes/#allowed-topologies) | Immediate Topology | [Resulting accessibility requirements](https://github.com/container-storage-interface/spec/blob/master/spec.md#createvolume)
 :---: |:---:|:---:|:---:|:---|
 Yes | Yes | Irrelevant | Irrelevant | `Requisite` = `Preferred` = Selected node topology
 Yes | No  | No  | Irrelevant | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` with selected node topology as first element
