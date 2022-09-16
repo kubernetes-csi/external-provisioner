@@ -51,7 +51,7 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
-	"github.com/kubernetes-csi/csi-test/v4/driver"
+	"github.com/kubernetes-csi/csi-test/v5/driver"
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	"github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned/fake"
