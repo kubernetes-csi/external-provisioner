@@ -95,6 +95,9 @@ const (
 	prefixedControllerExpandSecretNameKey      = csiParameterPrefix + "controller-expand-secret-name"
 	prefixedControllerExpandSecretNamespaceKey = csiParameterPrefix + "controller-expand-secret-namespace"
 
+	prefixedNodeExpandSecretNameKey      = csiParameterPrefix + "node-expand-secret-name"
+	prefixedNodeExpandSecretNamespaceKey = csiParameterPrefix + "node-expand-secret-namespace"
+
 	// [Deprecated] CSI Parameters that are put into fields but
 	// NOT stripped from the parameters passed to CreateVolume
 	provisionerSecretNameKey      = "csiProvisionerSecretName"
@@ -187,6 +190,12 @@ var (
 		name:               "ControllerExpand",
 		secretNameKey:      prefixedControllerExpandSecretNameKey,
 		secretNamespaceKey: prefixedControllerExpandSecretNamespaceKey,
+	}
+
+	nodeExpandSecretParams = secretParamsMap{
+		name:               "NodeExpand",
+		secretNameKey:      prefixedNodeExpandSecretNameKey,
+		secretNamespaceKey: prefixedNodeExpandSecretNamespaceKey,
 	}
 )
 
@@ -687,6 +696,10 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
+	nodeExpandSecretRef, err := getSecretReference(nodeExpandSecretParams, sc.Parameters, pvName, claim)
+	if err != nil {
+		return nil, controller.ProvisioningNoChange, err
+	}
 	csiPVSource := &v1.CSIPersistentVolumeSource{
 		Driver: p.driverName,
 		// VolumeHandle and VolumeAttributes will be added after provisioning.
@@ -694,6 +707,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		NodeStageSecretRef:         nodeStageSecretRef,
 		NodePublishSecretRef:       nodePublishSecretRef,
 		ControllerExpandSecretRef:  controllerExpandSecretRef,
+		NodeExpandSecretRef:        nodeExpandSecretRef,
 	}
 
 	req.Parameters, err = removePrefixedParameters(sc.Parameters)
@@ -947,6 +961,8 @@ func removePrefixedParameters(param map[string]string) (map[string]string, error
 			case prefixedControllerExpandSecretNamespaceKey:
 			case prefixedDefaultSecretNameKey:
 			case prefixedDefaultSecretNamespaceKey:
+			case prefixedNodeExpandSecretNameKey:
+			case prefixedNodeExpandSecretNamespaceKey:
 			default:
 				return map[string]string{}, fmt.Errorf("found unknown parameter key \"%s\" with reserved namespace %s", k, csiParameterPrefix)
 			}
