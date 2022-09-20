@@ -2,14 +2,13 @@ package e2e
 
 import (
 	"flag"
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	"os"
 	"testing"
-
 	// test sources
 	_ "github.com/kubernetes-csi/external-provisioner/test/e2e/storage"
 )
@@ -28,7 +27,6 @@ func TestMain(m *testing.M) {
 
 	// Register framework flags, then handle flags.
 	framework.AfterReadingAllFlags(&framework.TestContext)
-
 	// Now run the test suite.
 	os.Exit(m.Run())
 }

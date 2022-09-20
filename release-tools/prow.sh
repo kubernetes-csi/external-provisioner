@@ -97,7 +97,7 @@ configvar CSI_PROW_GO_VERSION_GINKGO "${CSI_PROW_GO_VERSION_BUILD}" "Go version 
 # the version built via "make WHAT=vendor/github.com/onsi/ginkgo/ginkgo" is
 # used, which is guaranteed to match what the Kubernetes e2e.test binary
 # needs.
-configvar CSI_PROW_GINKGO_VERSION v1.7.0 "Ginkgo"
+configvar CSI_PROW_GINKGO_VERSION v1.16.5 "Ginkgo"
 
 # Ginkgo runs the E2E test in parallel. The default is based on the number
 # of CPUs, but typically this can be set to something higher in the job.
@@ -265,7 +265,7 @@ configvar CSI_PROW_DEP_VERSION v0.5.1 "golang dep version to be used for vendor 
 # driver. Repos can enable sanity testing by setting
 # CSI_PROW_TESTS_SANITY=sanity.
 #configvar CSI_PROW_TESTS "unit parallel serial $(if [ "${CSI_PROW_KUBERNETES_VERSION}" = "latest" ]; then echo parallel-alpha serial-alpha; fi) sanity" "tests to run"
-configvar CSI_PROW_TESTS "serial" "tests to run"
+configvar CSI_PROW_TESTS "local" "tests to run"
 tests_enabled () {
     local t1 t2
     # We want word-splitting here, so ignore: Quote to prevent word splitting, or split robustly with mapfile or read -a.
@@ -284,11 +284,11 @@ sanity_enabled () {
     [ "${CSI_PROW_TESTS_SANITY}" = "sanity" ] && tests_enabled "sanity"
 }
 tests_need_kind () {
-    tests_enabled "parallel" "serial" "serial-alpha" "parallel-alpha" ||
+    tests_enabled "local" "parallel" "serial" "serial-alpha" "parallel-alpha" ||
         sanity_enabled
 }
 tests_need_non_alpha_cluster () {
-    tests_enabled "parallel" "serial" ||
+    tests_enabled "local" "parallel" "serial" ||
         sanity_enabled
 }
 tests_need_alpha_cluster () {
@@ -940,6 +940,7 @@ EOF
 # Makes the E2E test suite binary available as "${CSI_PROW_WORK}/e2e.test".
 install_e2e () {
     if [ -e "${CSI_PROW_WORK}/e2e.test" ]; then
+        echo "Raunak DONE"
         return
     fi
 
@@ -979,6 +980,15 @@ run_with_loggers () (
 run_filter_junit () {
     run_with_go "${CSI_PROW_GO_VERSION_BUILD}" go run "${RELEASE_TOOLS_ROOT}/filter-junit.go" "$@"
 }
+
+run_e2e_internal () (
+    install_e2e || die "building e2e.test failed"
+    install_ginkgo || die "installing ginkgo failed"
+
+    cd "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&
+    run_with_loggers env KUBECONFIG="$KUBECONFIG" KUBE_TEST_REPO_LIST="$(if [ -e "${CSI_PROW_WORK}/e2e-repo-list" ]; then echo "${CSI_PROW_WORK}/e2e-repo-list"; fi)" ginkgo -v "$@" "${CSI_PROW_WORK}/e2e.test" -- -report-dir "${ARTIFACTS}"
+
+)
 
 # Runs the E2E test suite in a sub-shell.
 run_e2e () (
@@ -1308,6 +1318,16 @@ main () {
                          -focus="$focus.*($(regex_join "${CSI_PROW_E2E_SERIAL}"))" \
                          -skip="$(regex_join "${CSI_PROW_E2E_ALPHA}" "${CSI_PROW_E2E_SKIP}")"; then
                         warn "E2E serial failed"
+                        ret=1
+                    fi
+                fi
+                echo $focus
+                # if local tests are enabled:
+                # - run e2e test from local repo
+                if tests_enabled "local"; then
+                    if ! run_e2e_internal local \
+                         -focus="should test"; then
+                        warn "Raunak failed"
                         ret=1
                     fi
                 fi
