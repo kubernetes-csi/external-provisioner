@@ -224,9 +224,13 @@ configvar CSI_PROW_DRIVER_CANARY_REGISTRY "gcr.io/k8s-staging-sig-storage" "regi
 # all generated files are present.
 #
 # CSI_PROW_E2E_REPO=none disables E2E testing.
-configvar CSI_PROW_E2E_VERSION "master"  "E2E version"
-configvar CSI_PROW_E2E_REPO "https://github.com/kubernetes-csi/external-provisioner" "E2E repo"
-configvar CSI_PROW_E2E_IMPORT_PATH "github.com/kubernetes-csi/external-provisioner" "E2E package"
+configvar CSI_PROW_E2E_VERSION "$(version_to_git "${CSI_PROW_KUBERNETES_VERSION}")"  "E2E version"
+configvar CSI_PROW_E2E_REPO "https://github.com/kubernetes/kubernetes" "E2E repo"
+configvar CSI_PROW_E2E_IMPORT_PATH "k8s.io/kubernetes" "E2E package"
+
+configvar CSI_PROW_LOCAL_E2E_VERSION "master"  "E2E version"
+configvar CSI_PROW_LOCAL_E2E_REPO "https://github.com/kubernetes-csi/external-provisioner" "E2E repo"
+configvar CSI_PROW_LOCAL_E2E_IMPORT_PATH "github.com/kubernetes-csi/external-provisioner" "E2E package"
 
 # csi-sanity testing from the csi-test repo can be run against the installed
 # CSI driver. For this to work, deploying the driver must expose the Unix domain
@@ -940,20 +944,29 @@ EOF
 # Makes the E2E test suite binary available as "${CSI_PROW_WORK}/e2e.test".
 install_e2e () {
     if [ -e "${CSI_PROW_WORK}/e2e.test" ]; then
-        echo "Raunak DONE"
         return
     fi
 
-    #git_checkout "${CSI_PROW_E2E_REPO}" "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_E2E_VERSION}" --depth=1 &&
-    if [ "${CSI_PROW_E2E_IMPORT_PATH}" = "k8s.io/kubernetes" ]; then
-        patch_kubernetes "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_WORK}" &&
-        go_version="${CSI_PROW_GO_VERSION_E2E:-$(go_version_for_kubernetes "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_E2E_VERSION}")}" &&
-        run_with_go "$go_version" make WHAT=test/e2e/e2e.test "-C${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&
-        ln -s "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}/_output/bin/e2e.test" "${CSI_PROW_WORK}" &&
-        run_with_go "$go_version" make WHAT=vendor/github.com/onsi/ginkgo/ginkgo "-C${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&
-        ln -s "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}/_output/bin/ginkgo" "${CSI_PROW_BIN}"
+    name="$1"
+    echo "RAUNAK 11"
+    echo "${name}"
+    echo "RAUNAK 22"
+    if [ "${name}" != "local" ]; then
+        echo "RAUNAK 33"
+        git_checkout "${CSI_PROW_E2E_REPO}" "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_E2E_VERSION}" --depth=1 &&
+        if [ "${CSI_PROW_E2E_REPO}" = "k8s.io/kubernetes" ]; then
+            patch_kubernetes "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_WORK}" &&
+            go_version="${CSI_PROW_GO_VERSION_E2E:-$(go_version_for_kubernetes "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_E2E_VERSION}")}" &&
+            run_with_go "$go_version" make WHAT=test/e2e/e2e.test "-C${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&
+            ln -s "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}/_output/bin/e2e.test" "${CSI_PROW_WORK}" &&
+            run_with_go "$go_version" make WHAT=vendor/github.com/onsi/ginkgo/ginkgo "-C${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&
+            ln -s "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}/_output/bin/ginkgo" "${CSI_PROW_BIN}"
+        else
+            run_with_go "${CSI_PROW_GO_VERSION_E2E}" go test -c -o "${CSI_PROW_WORK}/e2e.test" "${CSI_PROW_E2E_IMPORT_PATH}/test/e2e"
+        fi
     else
-        run_with_go "${CSI_PROW_GO_VERSION_E2E}" go test -c -o "${CSI_PROW_WORK}/e2e.test" "${CSI_PROW_E2E_IMPORT_PATH}/test/e2e"
+        echo "RAUNAK 44"
+        run_with_go "${CSI_PROW_GO_VERSION_E2E}" go test -c -o "${CSI_PROW_WORK}/e2e.test" "${CSI_PROW_LOCAL_E2E_IMPORT_PATH}/test/e2e"
     fi
 }
 
@@ -981,21 +994,23 @@ run_filter_junit () {
     run_with_go "${CSI_PROW_GO_VERSION_BUILD}" go run "${RELEASE_TOOLS_ROOT}/filter-junit.go" "$@"
 }
 
-run_e2e_internal () (
-    install_e2e || die "building e2e.test failed"
-    install_ginkgo || die "installing ginkgo failed"
+#run_e2e_internal () (
+#    install_e2e || die "building e2e.test failed"
+#    install_ginkgo || die "installing ginkgo failed"
 
-    cd "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&
-    run_with_loggers env KUBECONFIG="$KUBECONFIG" KUBE_TEST_REPO_LIST="$(if [ -e "${CSI_PROW_WORK}/e2e-repo-list" ]; then echo "${CSI_PROW_WORK}/e2e-repo-list"; fi)" ginkgo -v "$@" "${CSI_PROW_WORK}/e2e.test" -- -report-dir "${ARTIFACTS}"
+#    cd "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&#
+#    run_with_loggers env KUBECONFIG="$KUBECONFIG" KUBE_TEST_REPO_LIST="$(if [ -e "${CSI_PROW_WORK}/e2e-repo-list" ]; then echo "${CSI_PROW_WORK}/e2e-repo-list"; fi)" ginkgo -v "$@" "${CSI_PROW_WORK}/e2e.test" -- -report-dir "${ARTIFACTS}"
 
-)
+#)
 
 # Runs the E2E test suite in a sub-shell.
 run_e2e () (
     name="$1"
     shift
-
-    install_e2e || die "building e2e.test failed"
+    echo "RAUNAK 1"
+    echo $name
+    echo "RAUNAK 2"
+    install_e2e $name || die "building e2e.test failed"
     install_ginkgo || die "installing ginkgo failed"
 
     # Rename, merge and filter JUnit files. Necessary in case that we run the E2E suite again
@@ -1008,8 +1023,15 @@ run_e2e () (
     }
     trap move_junit EXIT
 
-    cd "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&
-    run_with_loggers env KUBECONFIG="$KUBECONFIG" KUBE_TEST_REPO_LIST="$(if [ -e "${CSI_PROW_WORK}/e2e-repo-list" ]; then echo "${CSI_PROW_WORK}/e2e-repo-list"; fi)" ginkgo -v "$@" "${CSI_PROW_WORK}/e2e.test" -- -report-dir "${ARTIFACTS}"
+    echo "RAUNAK 111"
+    if [ "${name}" == "local" ]; then
+        echo "RAUNAK 222"
+        cd "${GOPATH}/src/${CSI_PROW_LOCAL_E2E_IMPORT_PATH}" &&
+        run_with_loggers env KUBECONFIG="$KUBECONFIG" KUBE_TEST_REPO_LIST="$(if [ -e "${CSI_PROW_WORK}/e2e-repo-list" ]; then echo "${CSI_PROW_WORK}/e2e-repo-list"; fi)" ginkgo -v "$@" "${CSI_PROW_WORK}/e2e.test" -- -report-dir "${ARTIFACTS}"
+    else
+        cd "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&
+        run_with_loggers env KUBECONFIG="$KUBECONFIG" KUBE_TEST_REPO_LIST="$(if [ -e "${CSI_PROW_WORK}/e2e-repo-list" ]; then echo "${CSI_PROW_WORK}/e2e-repo-list"; fi)" ginkgo -v "$@" "${CSI_PROW_WORK}/e2e.test" -- -report-dir "${ARTIFACTS}" -storage.testdriver="${CSI_PROW_WORK}/test-driver.yaml"
+    fi
 )
 
 # Run csi-sanity against installed CSI driver.
@@ -1325,8 +1347,8 @@ main () {
                 # if local tests are enabled:
                 # - run e2e test from local repo
                 if tests_enabled "local"; then
-                    if ! run_e2e_internal local \
-                         -focus="should test"; then
+                    if ! run_e2e local \
+                         -focus="Test1"; then
                         warn "Raunak failed"
                         ret=1
                     fi
