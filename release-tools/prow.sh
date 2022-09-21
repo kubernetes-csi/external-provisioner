@@ -228,8 +228,6 @@ configvar CSI_PROW_E2E_VERSION "$(version_to_git "${CSI_PROW_KUBERNETES_VERSION}
 configvar CSI_PROW_E2E_REPO "https://github.com/kubernetes/kubernetes" "E2E repo"
 configvar CSI_PROW_E2E_IMPORT_PATH "k8s.io/kubernetes" "E2E package"
 
-configvar CSI_PROW_LOCAL_E2E_VERSION "master"  "E2E version"
-configvar CSI_PROW_LOCAL_E2E_REPO "https://github.com/kubernetes-csi/external-provisioner" "E2E repo"
 configvar CSI_PROW_LOCAL_E2E_IMPORT_PATH "github.com/kubernetes-csi/external-provisioner" "E2E package"
 
 # csi-sanity testing from the csi-test repo can be run against the installed
@@ -287,13 +285,16 @@ tests_enabled () {
 sanity_enabled () {
     [ "${CSI_PROW_TESTS_SANITY}" = "sanity" ] && tests_enabled "sanity"
 }
+local_tests_enabled () {
+    [ "${CSI_PROW_LOCAL_E2E_IMPORT_PATH}" != "none" ]
+}
 tests_need_kind () {
     tests_enabled "local" "parallel" "serial" "serial-alpha" "parallel-alpha" ||
-        sanity_enabled
+        sanity_enabled || local_tests_enabled
 }
 tests_need_non_alpha_cluster () {
     tests_enabled "local" "parallel" "serial" ||
-        sanity_enabled
+        sanity_enabled || local_tests_enabled
 }
 tests_need_alpha_cluster () {
     tests_enabled "parallel-alpha" "serial-alpha"
@@ -947,13 +948,11 @@ install_e2e () {
         return
     fi
 
-    name="$1"
     echo "RAUNAK 11"
-    echo "${name}"
     echo "RAUNAK 22"
-    if [ "${name}" != "local" ]; then
-        echo "RAUNAK 33"
-        git_checkout "${CSI_PROW_E2E_REPO}" "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_E2E_VERSION}" --depth=1 &&
+    if [ "${CSI_PROW_LOCAL_E2E_IMPORT_PATH}" != "none" ]; then
+        run_with_go "${CSI_PROW_GO_VERSION_E2E}" go test -c -o "${CSI_PROW_WORK}/e2e.test" "${CSI_PROW_LOCAL_E2E_IMPORT_PATH}/test/e2e"
+    else
         if [ "${CSI_PROW_E2E_REPO}" = "k8s.io/kubernetes" ]; then
             patch_kubernetes "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_WORK}" &&
             go_version="${CSI_PROW_GO_VERSION_E2E:-$(go_version_for_kubernetes "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_E2E_VERSION}")}" &&
@@ -964,9 +963,6 @@ install_e2e () {
         else
             run_with_go "${CSI_PROW_GO_VERSION_E2E}" go test -c -o "${CSI_PROW_WORK}/e2e.test" "${CSI_PROW_E2E_IMPORT_PATH}/test/e2e"
         fi
-    else
-        echo "RAUNAK 44"
-        run_with_go "${CSI_PROW_GO_VERSION_E2E}" go test -c -o "${CSI_PROW_WORK}/e2e.test" "${CSI_PROW_LOCAL_E2E_IMPORT_PATH}/test/e2e"
     fi
 }
 
@@ -1004,13 +1000,13 @@ run_filter_junit () {
 #)
 
 # Runs the E2E test suite in a sub-shell.
-run_e2e () (
+  run_e2e () (
     name="$1"
     shift
     echo "RAUNAK 1"
     echo $name
     echo "RAUNAK 2"
-    install_e2e $name || die "building e2e.test failed"
+    install_e2e || die "building e2e.test failed"
     install_ginkgo || die "installing ginkgo failed"
 
     # Rename, merge and filter JUnit files. Necessary in case that we run the E2E suite again
@@ -1024,6 +1020,7 @@ run_e2e () (
     trap move_junit EXIT
 
     echo "RAUNAK 111"
+    echo "${name}"
     if [ "${name}" == "local" ]; then
         echo "RAUNAK 222"
         cd "${GOPATH}/src/${CSI_PROW_LOCAL_E2E_IMPORT_PATH}" &&
@@ -1346,7 +1343,7 @@ main () {
                 echo $focus
                 # if local tests are enabled:
                 # - run e2e test from local repo
-                if tests_enabled "local"; then
+                if local_tests_enabled; then
                     if ! run_e2e local \
                          -focus="Test1"; then
                         warn "Raunak failed"
