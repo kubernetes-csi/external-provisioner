@@ -54,6 +54,7 @@ import (
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller"
+	libmetrics "sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller/metrics"
 
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
@@ -551,6 +552,14 @@ func main() {
 		// To collect metrics data from the metric handler itself, we
 		// let it register itself and then collect from that registry.
 		reg := prometheus.NewRegistry()
+		reg.MustRegister([]prometheus.Collector{
+			libmetrics.PersistentVolumeClaimProvisionTotal,
+			libmetrics.PersistentVolumeClaimProvisionFailedTotal,
+			libmetrics.PersistentVolumeClaimProvisionDurationSeconds,
+			libmetrics.PersistentVolumeDeleteTotal,
+			libmetrics.PersistentVolumeDeleteFailedTotal,
+			libmetrics.PersistentVolumeDeleteDurationSeconds,
+		}...)
 		gatherers = append(gatherers, reg)
 
 		// This is similar to k8s.io/component-base/metrics HandlerWithReset
