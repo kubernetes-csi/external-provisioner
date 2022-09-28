@@ -144,7 +144,7 @@ const (
 
 	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
 
-	annAllowVolumeModeChange = "snapshot.storage.kubernetes.io/allowVolumeModeChange"
+	annAllowVolumeModeChange = "snapshot.storage.kubernetes.io/allow-volume-mode-change"
 )
 
 var (
