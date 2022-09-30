@@ -1149,7 +1149,7 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.Persis
 	}
 
 	if p.preventVolumeModeConversion {
-		if snapContentObj.Spec.SourceVolumeMode != nil && claim.Spec.VolumeMode != nil && snapContentObj.Spec.SourceVolumeMode != claim.Spec.VolumeMode {
+		if snapContentObj.Spec.SourceVolumeMode != nil && claim.Spec.VolumeMode != nil && *snapContentObj.Spec.SourceVolumeMode != *claim.Spec.VolumeMode {
 			// Attempt to modify volume mode during volume creation.
 			// Verify if this volume is allowed to alter its mode.
 			allowVolumeModeChange, ok := snapContentObj.Annotations[annAllowVolumeModeChange]
