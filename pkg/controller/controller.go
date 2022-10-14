@@ -1283,6 +1283,10 @@ func (p *csiProvisioner) getSecretsFromSC(ctx context.Context, volume *v1.Persis
 			}
 
 			// Resolve provision secret credentials.
+			if volume.Spec.ClaimRef == nil {
+				klog.Warningf("claim reference does not exists in volume: %s, proceeding to delete without secrets.", volume.Name)
+				return nil
+			}
 			provisionerSecretRef, err := getSecretReference(provisionerSecretParams, storageClass.Parameters, volume.Name, &v1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      volume.Spec.ClaimRef.Name,
