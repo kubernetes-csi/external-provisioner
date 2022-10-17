@@ -55,6 +55,10 @@ import (
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	"github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned/fake"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
+	fakegateway "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/fake"
+	gatewayInformers "sigs.k8s.io/gateway-api/pkg/client/informers/externalversions"
+	referenceGrantv1beta1 "sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1beta1"
 )
 
 func init() {
@@ -420,7 +424,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test",
-		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false)
+		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false)
 
 	// Requested PVC with requestedBytes storage
 	deletePolicy := v1.PersistentVolumeReclaimDelete
@@ -2301,11 +2305,11 @@ func TestShouldProvision(t *testing.T) {
 }
 
 // newSnapshot returns a new snapshot object
-func newSnapshot(name, className, boundToContent, snapshotUID, claimName string, ready bool, err *crdv1.VolumeSnapshotError, creationTime *metav1.Time, size *resource.Quantity) *crdv1.VolumeSnapshot {
+func newSnapshot(name, namespace, className, boundToContent, snapshotUID, claimName string, ready bool, err *crdv1.VolumeSnapshotError, creationTime *metav1.Time, size *resource.Quantity) *crdv1.VolumeSnapshot {
 	snapshot := crdv1.VolumeSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
-			Namespace:       "default",
+			Namespace:       namespace,
 			UID:             types.UID(snapshotUID),
 			ResourceVersion: "1",
 			SelfLink:        "/apis/snapshot.storage.k8s.io/v1beta1/namespaces/" + "default" + "/volumesnapshots/" + name,
@@ -2348,7 +2352,7 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 		myDefaultfsType = ""
 	}
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), nil, nil, nil, nil, nil, false, myDefaultfsType, nil, false, false)
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, myDefaultfsType, nil, false, false)
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: requestedBytes,
@@ -2528,7 +2532,7 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 	}
 	mycontrollerPublishReadOnly := tc.controllerPublishReadOnly
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(), nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment, mycontrollerPublishReadOnly, false)
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(), nil, nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment, mycontrollerPublishReadOnly, false)
 
 	// Adding objects to the informer ensures that they are consistent with
 	// the fake storage without having to start the informers.
@@ -2622,7 +2626,7 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 }
 
 // newContent returns a new content with given attributes
-func newContent(name, className, snapshotHandle, volumeUID, volumeName, boundToSnapshotUID, boundToSnapshotName string, size *int64, creationTime *int64) *crdv1.VolumeSnapshotContent {
+func newContent(name, namespace, className, snapshotHandle, volumeUID, volumeName, boundToSnapshotUID, boundToSnapshotName string, size *int64, creationTime *int64) *crdv1.VolumeSnapshotContent {
 	ready := true
 	content := crdv1.VolumeSnapshotContent{
 		ObjectMeta: metav1.ObjectMeta{
@@ -2644,7 +2648,7 @@ func newContent(name, className, snapshotHandle, volumeUID, volumeName, boundToS
 			Kind:       "VolumeSnapshot",
 			APIVersion: "snapshot.storage.k8s.io/v1beta1",
 			UID:        types.UID(boundToSnapshotUID),
-			Namespace:  "default",
+			Namespace:  namespace,
 			Name:       boundToSnapshotName,
 		}
 		content.Status = &crdv1.VolumeSnapshotContentStatus{
@@ -2670,7 +2674,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		Time: time.Unix(0, timeNow),
 	}
 	deletePolicy := v1.PersistentVolumeReclaimDelete
-
+	dataSourceNamespace := "ns1"
+	xnsNamespace := "ns2"
 	type pvSpec struct {
 		Name          string
 		ReclaimPolicy v1.PersistentVolumeReclaimPolicy
@@ -2697,6 +2702,12 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		nilContentStatus                  bool
 		nilSnapshotHandle                 bool
 		allowVolumeModeChange             bool
+		xnsEnabled                        bool // set to use CrossNamespaceVolumeDataSource feature, default false
+		snapNamespace                     string
+		withreferenceGrants               bool // set to use ReferenceGrant, default false
+		refGrantsrcNamespace              string
+		referenceGrantFrom                []gatewayv1beta1.ReferenceGrantFrom
+		referenceGrantTo                  []gatewayv1beta1.ReferenceGrantTo
 	}
 	testcases := map[string]testcase{
 		"provision with volume snapshot data source": {
@@ -3307,6 +3318,913 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			snapshotStatusReady:   true,
 			expectErr:             true,
 		},
+		"provision with volume snapshot data source when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady: true,
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCSICall: true,
+			xnsEnabled:    true,
+		},
+		"provision with xns volume snapshot data source with refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady: true,
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCSICall:        true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(""),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(apiGrp),
+					Kind:  gatewayv1beta1.Kind("VolumeSnapshot"),
+				},
+			},
+		},
+		"provision with xns volume snapshot data source with refgrant of specify toName when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady: true,
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCSICall:        true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(""),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(apiGrp),
+					Kind:  gatewayv1beta1.Kind("VolumeSnapshot"),
+					Name:  ObjectNamePtr(snapName),
+				},
+			},
+		},
+		"provision with xns volume snapshot data source with refgrant of specify nil when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady: true,
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCSICall:        true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(""),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(apiGrp),
+					Kind:  gatewayv1beta1.Kind("VolumeSnapshot"),
+					Name:  nil,
+				},
+			},
+		},
+		"provision with xns volume snapshot data source with refgrant of specify non when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady: true,
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCSICall:        true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(""),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(apiGrp),
+					Kind:  gatewayv1beta1.Kind("VolumeSnapshot"),
+					Name:  ObjectNamePtr(""),
+				},
+			},
+		},
+		"provision with same ns volume snapshot data source without refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   dataSourceNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							APIGroup:  &apiGrp,
+							Kind:      "VolumeSnapshot",
+							Name:      snapName,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady: true,
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCSICall: true,
+			xnsEnabled:    true,
+			snapNamespace: dataSourceNamespace,
+		},
+		"provision with non-ns volume snapshot data source without refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   dataSourceNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							APIGroup: &apiGrp,
+							Kind:     "VolumeSnapshot",
+							Name:     snapName,
+						},
+					},
+				},
+			},
+			snapshotStatusReady: true,
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCSICall: true,
+			xnsEnabled:    true,
+			snapNamespace: dataSourceNamespace,
+		},
+		"fail provision with xns volume snapshot data source without refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady: true,
+			expectErr:           true,
+			xnsEnabled:          true,
+			snapNamespace:       dataSourceNamespace,
+		},
+		"fail provision with xns volume snapshot data source with refgrant when CrossNamespaceVolumeDataSource feature disabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:  true,
+			expectErr:            true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(""),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(apiGrp),
+					Kind:  gatewayv1beta1.Kind("VolumeSnapshot"),
+				},
+			},
+		},
+		"fail provision with xns volume snapshot data source with refgrant of wrong create namespace when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:  true,
+			expectErr:            true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: "wrong-reference-namespace",
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(""),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(apiGrp),
+					Kind:  gatewayv1beta1.Kind("VolumeSnapshot"),
+				},
+			},
+		},
+		"fail provision with xns volume snapshot data source with refgrant of wrong fromaGroup when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:  true,
+			expectErr:            true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group("wrong.apiGroup"),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(apiGrp),
+					Kind:  gatewayv1beta1.Kind("VolumeSnapshot"),
+				},
+			},
+		},
+		"fail provision with xns volume snapshot data source with refgrant of wrong fromKind when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:  true,
+			expectErr:            true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(""),
+					Kind:      gatewayv1beta1.Kind("WrongKind"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(apiGrp),
+					Kind:  gatewayv1beta1.Kind("VolumeSnapshot"),
+				},
+			},
+		},
+		"fail provision with xns volume snapshot data source with refgrant of wrong fromNamespace when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:  true,
+			expectErr:            true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(""),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace("wrong-namespace"),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(apiGrp),
+					Kind:  gatewayv1beta1.Kind("VolumeSnapshot"),
+				},
+			},
+		},
+		"fail provision with xns volume snapshot data source with refgrant of wrong toKind when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:  true,
+			expectErr:            true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(""),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(apiGrp),
+					Kind:  gatewayv1beta1.Kind("WrongKind"),
+				},
+			},
+		},
+		"fail provision with xns volume snapshot data source with refgrant of wrong toGroup when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:  true,
+			expectErr:            true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(""),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group("wrong.toGroup"),
+					Kind:  gatewayv1beta1.Kind("VolumeSnapshot"),
+				},
+			},
+		},
+		"fail provision with xns volume snapshot data source with refgrant of wrong toName when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:  true,
+			expectErr:            true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(""),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(apiGrp),
+					Kind:  gatewayv1beta1.Kind("VolumeSnapshot"),
+					Name:  ObjectNamePtr("wrong-dataSourceName"),
+				},
+			},
+		},
+		"fail provision with xns volume snapshot data source with refgrant of referenceGrantFrom and referenceGrantTo empty when CrossNamespaceVolumeDataSource feature enabled": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+						Namespace:   xnsNamespace,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSourceRef: &v1.TypedObjectReference{
+							Name:      snapName,
+							Kind:      "VolumeSnapshot",
+							APIGroup:  &apiGrp,
+							Namespace: &dataSourceNamespace,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:  true,
+			expectErr:            true,
+			xnsEnabled:           true,
+			snapNamespace:        dataSourceNamespace,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom:   []gatewayv1beta1.ReferenceGrantFrom{},
+			referenceGrantTo:     []gatewayv1beta1.ReferenceGrantTo{},
+		},
 	}
 
 	tmpdir := tempDir(t)
@@ -3324,7 +4242,11 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		client := &fake.Clientset{}
 
 		client.AddReactor("get", "volumesnapshots", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-			snap := newSnapshot(snapName, snapClassName, "snapcontent-snapuid", "snapuid", "claim", tc.snapshotStatusReady, nil, metaTimeNowUnix, resource.NewQuantity(requestedBytes, resource.BinarySI))
+			namespace := "default"
+			if tc.snapNamespace != "" {
+				namespace = tc.snapNamespace
+			}
+			snap := newSnapshot(snapName, namespace, snapClassName, "snapcontent-snapuid", "snapuid", "claim", tc.snapshotStatusReady, nil, metaTimeNowUnix, resource.NewQuantity(requestedBytes, resource.BinarySI))
 			if tc.nilSnapshotStatus {
 				snap.Status = nil
 			}
@@ -3338,7 +4260,11 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		})
 
 		client.AddReactor("get", "volumesnapshotcontents", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
-			content := newContent("snapcontent-snapuid", snapClassName, "sid", "pv-uid", "volume", "snapuid", snapName, &requestedBytes, &timeNow)
+			namespace := "default"
+			if tc.snapNamespace != "" {
+				namespace = tc.snapNamespace
+			}
+			content := newContent("snapcontent-snapuid", namespace, snapClassName, "sid", "pv-uid", "volume", "snapuid", snapName, &requestedBytes, &timeNow)
 			if tc.misBoundSnapshotContentUID {
 				content.Spec.VolumeSnapshotRef.UID = "another-snapshot-uid"
 			}
@@ -3362,9 +4288,36 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			return true, content, nil
 		})
 
+		var refGrantLister referenceGrantv1beta1.ReferenceGrantLister
+		var stopChan chan struct{}
+		var gatewayClient *fakegateway.Clientset
+		if tc.withreferenceGrants {
+			referenceGrant := generateReferenceGrant(tc.refGrantsrcNamespace, tc.referenceGrantFrom, tc.referenceGrantTo)
+			gatewayClient = fakegateway.NewSimpleClientset(referenceGrant)
+		} else {
+			gatewayClient = fakegateway.NewSimpleClientset()
+		}
+
+		if tc.xnsEnabled {
+			gatewayFactory := gatewayInformers.NewSharedInformerFactory(gatewayClient, ResyncPeriodOfReferenceGrantInformer)
+			referenceGrants := gatewayFactory.Gateway().V1beta1().ReferenceGrants()
+			refGrantLister = referenceGrants.Lister()
+
+			stopChan := make(chan struct{})
+			gatewayFactory.Start(stopChan)
+			gatewayFactory.WaitForCacheSync(stopChan)
+		}
+		defer func() {
+			if stopChan != nil {
+				close(stopChan)
+			}
+		}()
+
+		defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CrossNamespaceVolumeDataSource, tc.xnsEnabled)()
+
 		pluginCaps, controllerCaps := provisionFromSnapshotCapabilities()
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-			client, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, false, defaultfsType, nil, true, true)
+			client, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, refGrantLister, false, defaultfsType, nil, true, true)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -3544,7 +4497,7 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 			defer close(stopChan)
 
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, false, defaultfsType, nil, true, false)
+				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, nil, false, defaultfsType, nil, true, false)
 
 			pv, _, err := csiProvisioner.Provision(context.Background(), controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{},
@@ -3638,7 +4591,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 					defer close(stopChan)
 
 					csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-						csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, false, defaultfsType, nil, true, false)
+						csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, nil, false, defaultfsType, nil, true, false)
 
 					options := controller.ProvisionOptions{
 						StorageClass: &storagev1.StorageClass{},
@@ -3711,7 +4664,7 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 	clientSet := fakeclientset.NewSimpleClientset()
 	pluginCaps, controllerCaps := provisionWithTopologyCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false)
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -4409,7 +5362,7 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 	pluginCaps, controllerCaps := provisionCapabilities()
 	scLister, _, _, _, vaLister, _ := listers(clientSet)
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, nil, nil, nil, vaLister, false, defaultfsType, nodeDeployment, true, false)
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, nil, nil, nil, vaLister, nil, false, defaultfsType, nodeDeployment, true, false)
 
 	err = csiProvisioner.Delete(context.Background(), tc.persistentVolume)
 	if tc.expectErr && err == nil {
@@ -4470,6 +5423,53 @@ func generatePVCForProvisionFromPVC(srcNamespace, srcName, scName string, reques
 	return provisionRequest
 }
 
+// generatePVCForProvisionFromXnsdataSource returns a ProvisionOptions with the requested settings
+func generatePVCForProvisionFromXnsdataSource(scName, namespace string, dataSourceRef *v1.TypedObjectReference, requestedBytes int64, volumeMode string) controller.ProvisionOptions {
+	deletePolicy := v1.PersistentVolumeReclaimDelete
+
+	provisionRequest := controller.ProvisionOptions{
+		StorageClass: &storagev1.StorageClass{
+			ReclaimPolicy: &deletePolicy,
+			Parameters:    map[string]string{"csi.storage.k8s.io/fstype": "ext4"},
+			Provisioner:   driverName,
+		},
+		PVName: "new-pv-name",
+		PVC: &v1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "my-pvc",
+				Namespace:   namespace,
+				UID:         "testid",
+				Annotations: driverNameAnnotation,
+			},
+			Spec: v1.PersistentVolumeClaimSpec{
+				Selector: nil,
+				Resources: v1.ResourceRequirements{
+					Requests: v1.ResourceList{
+						v1.ResourceName(v1.ResourceStorage): *resource.NewQuantity(requestedBytes, resource.BinarySI),
+					},
+				},
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				DataSourceRef: dataSourceRef,
+			},
+		},
+	}
+
+	if scName != "" {
+		provisionRequest.PVC.Spec.StorageClassName = &scName
+	}
+
+	switch volumeMode {
+	case "block":
+		provisionRequest.PVC.Spec.VolumeMode = &volumeModeBlock
+	case "filesystem":
+		provisionRequest.PVC.Spec.VolumeMode = &volumeModeFileSystem
+	default:
+		// leave it undefined/nil to maintaint the current defaults for test cases
+	}
+
+	return provisionRequest
+}
+
 // TestProvisionFromPVC tests create volume clone
 func TestProvisionFromPVC(t *testing.T) {
 	var requestedBytes int64 = 1000
@@ -4488,6 +5488,10 @@ func TestProvisionFromPVC(t *testing.T) {
 	wrongPVCName := "pv-bound-to-another-pvc-by-name"
 	wrongPVCNamespace := "pv-bound-to-another-pvc-by-namespace"
 	wrongPVCUID := "pv-bound-to-another-pvc-by-UID"
+	coreapiGrp := ""
+	xnsNamespace := "ns2"
+	dataSourceName := srcName
+	dataSourceNamespace := srcNamespace
 
 	type pvSpec struct {
 		Name          string
@@ -4507,6 +5511,11 @@ func TestProvisionFromPVC(t *testing.T) {
 		expectFinalizers     bool                     // while set, expects clone protection finalizers to be set on a PVC
 		sourcePVStatusPhase  v1.PersistentVolumePhase // set to change source PV Status.Phase, default "Bound"
 		expectErr            bool                     // set to state, test is expected to return errors, default false
+		xnsEnabled           bool                     // set to use CrossNamespaceVolumeDataSource feature, default false
+		withreferenceGrants  bool                     // set to use ReferenceGrant, default false
+		refGrantsrcNamespace string
+		referenceGrantFrom   []gatewayv1beta1.ReferenceGrantFrom
+		referenceGrantTo     []gatewayv1beta1.ReferenceGrantTo
 	}{
 		"provision with pvc data source": {
 			clonePVName:      pvName,
@@ -4671,12 +5680,590 @@ func TestProvisionFromPVC(t *testing.T) {
 			expectFinalizers: true,
 			expectErr:        false,
 		},
+		"provision with pvc data source when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName:      pvName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
+			expectFinalizers: true,
+			xnsEnabled:       true,
+			expectedPVSpec: &pvSpec{
+				Name:          pvName,
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"provision with pvc data source different storage classes when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName:      pvName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc2, requestedBytes, ""),
+			expectFinalizers: true,
+			expectErr:        false,
+		},
+		"provision filesystem data source is filesystem when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName:      filesystemPVName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, filesystemPVName, fakeSc1, requestedBytes, "filesystem"),
+			expectFinalizers: true,
+			expectErr:        false,
+		},
+		"provision nil mode data source is nil when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName:      pvName,
+			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
+			expectFinalizers: true,
+			expectErr:        false,
+		},
+		"provision with xns PersitentVolumeClaim data source with refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectFinalizers:     true,
+			xnsEnabled:           true,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+				},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          pvName,
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"provision with xns PersitentVolumeClaim data source with refgrant of specify toName when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectFinalizers:     true,
+			xnsEnabled:           true,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Name:  ObjectNamePtr(dataSourceName),
+				},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          pvName,
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"provision with same ns PersitentVolumeClaim data source without refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, dataSourceNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectFinalizers: true,
+			xnsEnabled:       true,
+			expectedPVSpec: &pvSpec{
+				Name:          pvName,
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"provision with PersitentVolumeClaim data source without ns without refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, dataSourceNamespace,
+				&v1.TypedObjectReference{
+					APIGroup: &coreapiGrp,
+					Kind:     "PersistentVolumeClaim",
+					Name:     dataSourceName,
+				},
+				requestedBytes, ""),
+			expectFinalizers: true,
+			xnsEnabled:       true,
+			expectedPVSpec: &pvSpec{
+				Name:          pvName,
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"provision PersitentVolumeClaim data source of nil ns without refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, dataSourceNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: nil,
+				},
+				requestedBytes, ""),
+			expectFinalizers: true,
+			xnsEnabled:       true,
+			expectedPVSpec: &pvSpec{
+				Name:          pvName,
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"provision with xns PersitentVolumeClaim data source of nil apiGroup with refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  nil,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectFinalizers:     true,
+			xnsEnabled:           true,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+				},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          pvName,
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"provision with xns PersitentVolumeClaim data source witout apiGroup with refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectFinalizers:     true,
+			xnsEnabled:           true,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+				},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          pvName,
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+		},
+		"fail provision xns PersistentVolumeClaim data source of nil apiGroup and wrong Kind with refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  nil,
+					Kind:      "WrongKind",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectErr:            true,
+			xnsEnabled:           true,
+			withreferenceGrants:  true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+				},
+			},
+		},
+		"fail provision with xns PersistentVolumeClaim data source with refgrant of wrong create namespace when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectErr:            true,
+			xnsEnabled:           true,
+			refGrantsrcNamespace: "wrong-reference-namespace",
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+				},
+			},
+		},
+		"fail provision with xns PersistentVolumeClaim data source with refgrant of wrong fromGroup when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectErr:            true,
+			xnsEnabled:           true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group("wrong.fromGroup"),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+				},
+			},
+		},
+		"fail provision with xns PersistentVolumeClaim data source with refgrant of wrong fromKind when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectErr:            true,
+			xnsEnabled:           true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("WrongfromKind"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+				},
+			},
+		},
+		"fail provision with xns PersistentVolumeClaim data source with refgrant of wrong fromNamespace when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectErr:            true,
+			xnsEnabled:           true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace("wrong-namespace"),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+				},
+			},
+		},
+		"fail provision with xns PersistentVolumeClaim data source with refgrant of wrong toGroup when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectErr:            true,
+			xnsEnabled:           true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group("wrong.toGroup"),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+				},
+			},
+		},
+		"fail provision with xns PersistentVolumeClaim data source with refgrant of wrong toKind when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectErr:            true,
+			xnsEnabled:           true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("WrongtoKind"),
+				},
+			},
+		},
+		"fail provision with xns PersistentVolumeClaim data source with refgrant of wrong toName when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectErr:            true,
+			xnsEnabled:           true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Name:  ObjectNamePtr("wrong-toName"),
+				},
+			},
+		},
+		"fail provision with xns PersistentVolumeClaim data source with refgrant referenceGrantFrom and referenceGrantTo empty when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectErr:            true,
+			xnsEnabled:           true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom:   []gatewayv1beta1.ReferenceGrantFrom{},
+			referenceGrantTo:     []gatewayv1beta1.ReferenceGrantTo{},
+		},
+		"fail provision with xns PersistentVolumeClaim PersitentVolumeClaim data source without refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      srcName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectErr:  true,
+			xnsEnabled: true,
+		},
+		"fail provision with xns PersistentVolumeClaim data source with refgrant when CrossNamespaceVolumeDataSource feature disabled": {
+			clonePVName: pvName,
+			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
+				&v1.TypedObjectReference{
+					APIGroup:  &coreapiGrp,
+					Kind:      "PersistentVolumeClaim",
+					Name:      dataSourceName,
+					Namespace: &dataSourceNamespace,
+				},
+				requestedBytes, ""),
+			expectErr:            true,
+			refGrantsrcNamespace: dataSourceNamespace,
+			referenceGrantFrom: []gatewayv1beta1.ReferenceGrantFrom{
+				{
+					Group:     gatewayv1beta1.Group(coreapiGrp),
+					Kind:      gatewayv1beta1.Kind("PersistentVolumeClaim"),
+					Namespace: gatewayv1beta1.Namespace(xnsNamespace),
+				},
+			},
+			referenceGrantTo: []gatewayv1beta1.ReferenceGrantTo{
+				{
+					Group: gatewayv1beta1.Group(coreapiGrp),
+					Kind:  gatewayv1beta1.Kind("PersistentVolumeClaim"),
+				},
+			},
+		},
 	}
 
 	for k, tc := range testcases {
 		tc := tc
 		t.Run(k, func(t *testing.T) {
-			t.Parallel()
+			// TODO: https://github.com/kubernetes-csi/external-provisioner/issues/833
+			if !tc.xnsEnabled {
+				t.Parallel()
+			}
 			var clientSet *fakeclientset.Clientset
 
 			// Phase: setup mock server
@@ -4791,6 +6378,31 @@ func TestProvisionFromPVC(t *testing.T) {
 
 			clientSet = fakeclientset.NewSimpleClientset(claim, scNilClaim, pv, invalidClaim, filesystemClaim, blockClaim, unboundPV, anotherDriverPV, pvBoundToAnotherPVCUID, pvBoundToAnotherPVCNamespace, pvBoundToAnotherPVCName, lostClaim, pendingClaim, pvUsingFilesystemMode, blkModePV)
 
+			var refGrantLister referenceGrantv1beta1.ReferenceGrantLister
+			var stopChan chan struct{}
+			var gatewayClient *fakegateway.Clientset
+			if tc.withreferenceGrants {
+				referenceGrant := generateReferenceGrant(tc.refGrantsrcNamespace, tc.referenceGrantFrom, tc.referenceGrantTo)
+				gatewayClient = fakegateway.NewSimpleClientset(referenceGrant)
+			} else {
+				gatewayClient = fakegateway.NewSimpleClientset()
+			}
+			if tc.xnsEnabled {
+				gatewayFactory := gatewayInformers.NewSharedInformerFactory(gatewayClient, ResyncPeriodOfReferenceGrantInformer)
+				referenceGrants := gatewayFactory.Gateway().V1beta1().ReferenceGrants()
+				refGrantLister = referenceGrants.Lister()
+
+				stopChan := make(chan struct{})
+				gatewayFactory.Start(stopChan)
+				gatewayFactory.WaitForCacheSync(stopChan)
+			}
+			defer func() {
+				if stopChan != nil {
+					close(stopChan)
+				}
+			}()
+			defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CrossNamespaceVolumeDataSource, tc.xnsEnabled)()
+
 			// Phase: setup responses based on test case parameters
 			out := &csi.CreateVolumeResponse{
 				Volume: &csi.Volume{
@@ -4803,11 +6415,20 @@ func TestProvisionFromPVC(t *testing.T) {
 			if tc.cloneUnsupported {
 				pluginCaps, controllerCaps = provisionCapabilities()
 			}
+			var volumeSource csi.VolumeContentSource_Volume
 			if !tc.expectErr {
-				volumeSource := csi.VolumeContentSource_Volume{
-					Volume: &csi.VolumeContentSource_VolumeSource{
-						VolumeId: tc.volOpts.PVC.Spec.DataSource.Name,
-					},
+				if tc.xnsEnabled && tc.volOpts.PVC.Spec.DataSourceRef != nil {
+					volumeSource = csi.VolumeContentSource_Volume{
+						Volume: &csi.VolumeContentSource_VolumeSource{
+							VolumeId: tc.volOpts.PVC.Spec.DataSourceRef.Name,
+						},
+					}
+				} else if tc.volOpts.PVC.Spec.DataSource != nil {
+					volumeSource = csi.VolumeContentSource_Volume{
+						Volume: &csi.VolumeContentSource_VolumeSource{
+							VolumeId: tc.volOpts.PVC.Spec.DataSource.Name,
+						},
+					}
 				}
 				out.Volume.ContentSource = &csi.VolumeContentSource{
 					Type: &volumeSource,
@@ -4831,15 +6452,20 @@ func TestProvisionFromPVC(t *testing.T) {
 
 			// Phase: execute the test
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-				nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, claimLister, nil, false, defaultfsType, nil, true, false)
+				nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, claimLister, nil, refGrantLister, false, defaultfsType, nil, true, false)
 
 			pv, _, err = csiProvisioner.Provision(context.Background(), tc.volOpts)
 			if tc.expectErr && err == nil {
 				t.Errorf("test %q: Expected error, got none", k)
 			}
 
-			if tc.volOpts.PVC.Spec.DataSource != nil {
-				claim, _ := claimLister.PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(tc.volOpts.PVC.Spec.DataSource.Name)
+			if tc.volOpts.PVC.Spec.DataSourceRef != nil || tc.volOpts.PVC.Spec.DataSource != nil {
+				var claim *v1.PersistentVolumeClaim
+				if tc.volOpts.PVC.Spec.DataSourceRef != nil {
+					claim, _ = claimLister.PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(tc.volOpts.PVC.Spec.DataSourceRef.Name)
+				} else if tc.volOpts.PVC.Spec.DataSource != nil {
+					claim, _ = claimLister.PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(tc.volOpts.PVC.Spec.DataSource.Name)
+				}
 				if claim != nil {
 					set := checkFinalizer(claim, pvcCloneFinalizer)
 					if tc.expectFinalizers && !set {
@@ -4849,7 +6475,6 @@ func TestProvisionFromPVC(t *testing.T) {
 					}
 				}
 			}
-
 			// Phase: process test responses
 			// process responses
 			if !tc.expectErr && err != nil {
@@ -4961,7 +6586,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			pluginCaps, controllerCaps := provisionCapabilities()
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps,
-				inTreePluginName, false, true, mockTranslator, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false)
+				inTreePluginName, false, true, mockTranslator, nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false)
 
 			// Set up return values (AnyTimes to avoid overfitting on implementation)
 
@@ -5137,7 +6762,7 @@ func TestDeleteMigration(t *testing.T) {
 			defer close(stopCh)
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, inTreePluginName,
-				false, true, mockTranslator, scLister, nil, nil, nil, vaLister, false, defaultfsType, nil, true, false)
+				false, true, mockTranslator, scLister, nil, nil, nil, vaLister, nil, false, defaultfsType, nil, true, false)
 
 			// Set mock return values (AnyTimes to avoid overfitting on implementation details)
 			mockTranslator.EXPECT().IsPVMigratable(gomock.Any()).Return(tc.expectTranslation).AnyTimes()
