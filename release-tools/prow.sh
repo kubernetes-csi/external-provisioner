@@ -433,7 +433,7 @@ run_with_go () {
         run "$@"
     else
         if ! [ -d "${CSI_PROW_WORK}/go-$version" ];  then
-            run curl --fail --location "https://dl.google.com/go/go$version.darwin-arm64.tar.gz" | tar -C "${CSI_PROW_WORK}" -zxf - || die "installation of Go $version failed"
+            run curl --fail --location "https://dl.google.com/go/go$version.linux-amd64.tar.gz" | tar -C "${CSI_PROW_WORK}" -zxf - || die "installation of Go $version failed"
             mv "${CSI_PROW_WORK}/go" "${CSI_PROW_WORK}/go-$version"
         fi
         PATH="${CSI_PROW_WORK}/go-$version/bin:$PATH" run "$@"
@@ -445,7 +445,7 @@ install_kind () {
     if kind --version 2>/dev/null | grep -q " ${CSI_PROW_KIND_VERSION}$"; then
         return
     fi
-    if run curl --fail --location -o "${CSI_PROW_WORK}/bin/kind" "https://github.com/kubernetes-sigs/kind/releases/download/${CSI_PROW_KIND_VERSION}/kind-darwin-arm64"; then
+    if run curl --fail --location -o "${CSI_PROW_WORK}/bin/kind" "https://github.com/kubernetes-sigs/kind/releases/download/${CSI_PROW_KIND_VERSION}/kind-linux-amd64"; then
         chmod u+x "${CSI_PROW_WORK}/bin/kind"
     else
         git_checkout https://github.com/kubernetes-sigs/kind "${GOPATH}/src/sigs.k8s.io/kind" "${CSI_PROW_KIND_VERSION}" --depth=1 &&
@@ -471,7 +471,7 @@ install_dep () {
     if dep version 2>/dev/null | grep -q "version:.*${CSI_PROW_DEP_VERSION}$"; then
         return
     fi
-    run curl --fail --location -o "${CSI_PROW_WORK}/bin/dep" "https://github.com/golang/dep/releases/download/v0.5.4/dep-darwin-arm64" &&
+    run curl --fail --location -o "${CSI_PROW_WORK}/bin/dep" "https://github.com/golang/dep/releases/download/v0.5.4/dep-linux-amd64" &&
         chmod u+x "${CSI_PROW_WORK}/bin/dep"
 }
 
