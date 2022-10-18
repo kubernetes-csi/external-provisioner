@@ -97,7 +97,7 @@ configvar CSI_PROW_GO_VERSION_GINKGO "${CSI_PROW_GO_VERSION_BUILD}" "Go version 
 # the version built via "make WHAT=vendor/github.com/onsi/ginkgo/ginkgo" is
 # used, which is guaranteed to match what the Kubernetes e2e.test binary
 # needs.
-configvar CSI_PROW_GINKGO_VERSION v1.16.5 "Ginkgo"
+configvar CSI_PROW_GINKGO_VERSION v1.7.0 "Ginkgo"
 
 # Ginkgo runs the E2E test in parallel. The default is based on the number
 # of CPUs, but typically this can be set to something higher in the job.
@@ -121,7 +121,7 @@ configvar CSI_PROW_BUILD_JOB true "building code in repo enabled"
 # use the same settings as for "latest" Kubernetes. This works
 # as long as there are no breaking changes in Kubernetes, like
 # deprecating or changing the implementation of an alpha feature.
-configvar CSI_PROW_KUBERNETES_VERSION 1.23.0 "Kubernetes"
+configvar CSI_PROW_KUBERNETES_VERSION 1.22.0 "Kubernetes"
 
 # CSI_PROW_KUBERNETES_VERSION reduced to first two version numbers and
 # with underscore (1_13 instead of 1.13.3) and in uppercase (LATEST
@@ -228,7 +228,9 @@ configvar CSI_PROW_E2E_VERSION "$(version_to_git "${CSI_PROW_KUBERNETES_VERSION}
 configvar CSI_PROW_E2E_REPO "https://github.com/kubernetes/kubernetes" "E2E repo"
 configvar CSI_PROW_E2E_IMPORT_PATH "k8s.io/kubernetes" "E2E package"
 
-configvar CSI_PROW_LOCAL_E2E_IMPORT_PATH "github.com/kubernetes-csi/external-provisioner" "E2E package"
+# Local path for e2e tests. Set to "none" to disable.
+# For example, github.com/kubernetes-csi/external-provisioner/test/e2e
+configvar CSI_PROW_SIDECAR_E2E_IMPORT_PATH "github.com/kubernetes-csi/external-provisioner/test/e2e" "CSI Sidecar E2E package"
 
 # csi-sanity testing from the csi-test repo can be run against the installed
 # CSI driver. For this to work, deploying the driver must expose the Unix domain
@@ -266,8 +268,8 @@ configvar CSI_PROW_DEP_VERSION v0.5.1 "golang dep version to be used for vendor 
 # thus only makes sense in repos which provide their own CSI
 # driver. Repos can enable sanity testing by setting
 # CSI_PROW_TESTS_SANITY=sanity.
-#configvar CSI_PROW_TESTS "unit parallel serial $(if [ "${CSI_PROW_KUBERNETES_VERSION}" = "latest" ]; then echo parallel-alpha serial-alpha; fi) sanity" "tests to run"
-configvar CSI_PROW_TESTS "local serial" "tests to run"
+#configvar CSI_PROW_TESTS "local unit parallel serial $(if [ "${CSI_PROW_KUBERNETES_VERSION}" = "latest" ]; then echo parallel-alpha serial-alpha; fi) sanity" "tests to run"
+configvar CSI_PROW_TESTS "local" "tests to run"
 tests_enabled () {
     local t1 t2
     # We want word-splitting here, so ignore: Quote to prevent word splitting, or split robustly with mapfile or read -a.
@@ -285,16 +287,18 @@ tests_enabled () {
 sanity_enabled () {
     [ "${CSI_PROW_TESTS_SANITY}" = "sanity" ] && tests_enabled "sanity"
 }
-local_tests_enabled () {
-    [ "${CSI_PROW_LOCAL_E2E_IMPORT_PATH}" != "none" ]
+
+sidecar_tests_enabled () {
+  [ "${CSI_PROW_SIDECAR_E2E_IMPORT_PATH}" != "none" ]
 }
+
 tests_need_kind () {
-    tests_enabled "local" "parallel" "serial" "serial-alpha" "parallel-alpha" ||
-        sanity_enabled || local_tests_enabled
+    tests_enabled "parallel" "serial" "serial-alpha" "parallel-alpha" ||
+        sanity_enabled || sidecar_tests_enabled
 }
 tests_need_non_alpha_cluster () {
-    tests_enabled "local" "parallel" "serial" ||
-        sanity_enabled || local_tests_enabled
+    tests_enabled "parallel" "serial" ||
+        sanity_enabled || sidecar_tests_enabled
 }
 tests_need_alpha_cluster () {
     tests_enabled "parallel-alpha" "serial-alpha"
@@ -358,12 +362,17 @@ configvar CSI_PROW_E2E_ALPHA_GATES "$(get_versioned_variable CSI_PROW_E2E_ALPHA_
 configvar CSI_PROW_E2E_GATES_LATEST '' "non alpha feature gates for latest Kubernetes"
 configvar CSI_PROW_E2E_GATES "$(get_versioned_variable CSI_PROW_E2E_GATES "${csi_prow_kubernetes_version_suffix}")" "non alpha E2E feature gates"
 
+# Focus for local tests run in the sidecar E2E repo. Only used if CSI_PROW_SIDECAR_E2E_IMPORT_PATH
+# is not set to "none". If empty, all tests in the sidecar repo will be run.
+configvar CSI_PROW_SIDECAR_E2E_FOCUS '' "tags for local E2E tests"
+configvar CSI_PROW_SIDECAR_E2E_SKIP '' "local tests that need to be skipped"
+
 # Which external-snapshotter tag to use for the snapshotter CRD and snapshot-controller deployment
 default_csi_snapshotter_version () {
 	if [ "${CSI_PROW_KUBERNETES_VERSION}" = "latest" ] || [ "${CSI_PROW_DRIVER_CANARY}" = "canary" ]; then
 		echo "master"
 	else
-		echo "v6.0.1"
+		echo "v4.0.0"
 	fi
 }
 configvar CSI_SNAPSHOTTER_VERSION "$(default_csi_snapshotter_version)" "external-snapshotter version tag"
@@ -948,12 +957,9 @@ install_e2e () {
         return
     fi
 
-    echo "RAUNAK 11"
-    echo "RAUNAK 22"
-    if [ "${CSI_PROW_LOCAL_E2E_IMPORT_PATH}" != "none" ]; then
-        run_with_go "${CSI_PROW_GO_VERSION_E2E}" go test -c -o "${CSI_PROW_WORK}/e2e-local.test" "${CSI_PROW_LOCAL_E2E_IMPORT_PATH}/test/e2e"
+    if sidecar_tests_enabled; then
+        run_with_go "${CSI_PROW_GO_VERSION_BUILD}" go test -c -o "${CSI_PROW_WORK}/e2e-local.test" "${CSI_PROW_SIDECAR_E2E_IMPORT_PATH}"
     fi
-
     git_checkout "${CSI_PROW_E2E_REPO}" "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_E2E_VERSION}" --depth=1 &&
     if [ "${CSI_PROW_E2E_IMPORT_PATH}" = "k8s.io/kubernetes" ]; then
         patch_kubernetes "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" "${CSI_PROW_WORK}" &&
@@ -965,7 +971,6 @@ install_e2e () {
     else
         run_with_go "${CSI_PROW_GO_VERSION_E2E}" go test -c -o "${CSI_PROW_WORK}/e2e.test" "${CSI_PROW_E2E_IMPORT_PATH}/test/e2e"
     fi
-
 }
 
 # Makes the csi-sanity test suite binary available as
@@ -992,22 +997,11 @@ run_filter_junit () {
     run_with_go "${CSI_PROW_GO_VERSION_BUILD}" go run "${RELEASE_TOOLS_ROOT}/filter-junit.go" "$@"
 }
 
-#run_e2e_internal () (
-#    install_e2e || die "building e2e.test failed"
-#    install_ginkgo || die "installing ginkgo failed"
-
-#    cd "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&#
-#    run_with_loggers env KUBECONFIG="$KUBECONFIG" KUBE_TEST_REPO_LIST="$(if [ -e "${CSI_PROW_WORK}/e2e-repo-list" ]; then echo "${CSI_PROW_WORK}/e2e-repo-list"; fi)" ginkgo -v "$@" "${CSI_PROW_WORK}/e2e.test" -- -report-dir "${ARTIFACTS}"
-
-#)
-
 # Runs the E2E test suite in a sub-shell.
-  run_e2e () (
+run_e2e () (
     name="$1"
     shift
-    echo "RAUNAK 1"
-    echo $name
-    echo "RAUNAK 2"
+
     install_e2e || die "building e2e.test failed"
     install_ginkgo || die "installing ginkgo failed"
 
@@ -1021,12 +1015,9 @@ run_filter_junit () {
     }
     trap move_junit EXIT
 
-    echo "RAUNAK 111"
-    echo "${name}"
     if [ "${name}" == "local" ]; then
-        echo "RAUNAK 222"
-        cd "${GOPATH}/src/${CSI_PROW_LOCAL_E2E_IMPORT_PATH}" &&
-        run_with_loggers env KUBECONFIG="$KUBECONFIG" KUBE_TEST_REPO_LIST="$(if [ -e "${CSI_PROW_WORK}/e2e-repo-list" ]; then echo "${CSI_PROW_WORK}/e2e-repo-list"; fi)" ginkgo -v "$@" "${CSI_PROW_WORK}/e2e-local.test" -- -report-dir "${ARTIFACTS}"
+        cd "${GOPATH}/src/${CSI_PROW_SIDECAR_E2E_IMPORT_PATH}" &&
+        run_with_loggers env KUBECONFIG="$KUBECONFIG" KUBE_TEST_REPO_LIST="$(if [ -e "${CSI_PROW_WORK}/e2e-repo-list" ]; then echo "${CSI_PROW_WORK}/e2e-repo-list"; fi)" ginkgo -v "$@" "${CSI_PROW_WORK}/e2e-local.test" -- -report-dir "${ARTIFACTS}" -report-prefix local
     else
         cd "${GOPATH}/src/${CSI_PROW_E2E_IMPORT_PATH}" &&
         run_with_loggers env KUBECONFIG="$KUBECONFIG" KUBE_TEST_REPO_LIST="$(if [ -e "${CSI_PROW_WORK}/e2e-repo-list" ]; then echo "${CSI_PROW_WORK}/e2e-repo-list"; fi)" ginkgo -v "$@" "${CSI_PROW_WORK}/e2e.test" -- -report-dir "${ARTIFACTS}" -storage.testdriver="${CSI_PROW_WORK}/test-driver.yaml"
@@ -1342,13 +1333,12 @@ main () {
                         ret=1
                     fi
                 fi
-                echo $focus
-                # if local tests are enabled:
-                # - run e2e test from local repo
-                if local_tests_enabled; then
+
+                if sidecar_tests_enabled; then
                     if ! run_e2e local \
-                         -focus="Test1"; then
-                        warn "Raunak failed"
+                         -focus="${CSI_PROW_SIDECAR_E2E_FOCUS}" \
+                         -skip="$(regex_join "${CSI_PROW_E2E_SERIAL}")"; then
+                        warn "E2E sidecar failed"
                         ret=1
                     fi
                 fi
@@ -1426,4 +1416,3 @@ gcr_cloud_build () {
 
     run_with_go "${CSI_PROW_GO_VERSION_BUILD}" make push-multiarch REV="${REV}" REGISTRY_NAME="${REGISTRY_NAME}" BUILD_PLATFORMS="${CSI_PROW_BUILD_PLATFORMS}"
 }
-
