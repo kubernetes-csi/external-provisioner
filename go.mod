@@ -9,6 +9,7 @@ require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.11.0
+	github.com/kubernetes-csi/csi-test/v5 v5.0.0
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.1.0
 	github.com/miekg/dns v1.1.48 // indirect
 	github.com/prometheus/client_golang v1.13.0
@@ -29,7 +30,6 @@ require (
 )
 
 require (
-	github.com/kubernetes-csi/csi-test/v4 v4.4.0
 	github.com/onsi/ginkgo/v2 v2.1.6
 	github.com/onsi/gomega v1.20.1
 	k8s.io/kubernetes v1.25.3
