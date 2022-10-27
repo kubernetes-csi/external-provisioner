@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -113,9 +114,10 @@ const (
 	nodePublishSecretNamespaceKey = "csiNodePublishSecretNamespace"
 
 	// PV and PVC metadata, used for sending to drivers in the  create requests, added as parameters, optional.
-	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
-	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
-	pvNameKey       = "csi.storage.k8s.io/pv/name"
+	pvcNameKey                 = "csi.storage.k8s.io/pvc/name"
+	pvcNamespaceKey            = "csi.storage.k8s.io/pvc/namespace"
+	pvcNamespaceAnnotationsKey = "csi.storage.k8s.io/pvc/namespace/annotations"
+	pvNameKey                  = "csi.storage.k8s.io/pv/name"
 
 	snapshotKind     = "VolumeSnapshot"
 	snapshotAPIGroup = snapapi.GroupName       // "snapshot.storage.k8s.io"
@@ -716,9 +718,19 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	}
 
 	if p.extraCreateMetadata {
+		pvcAnnotationMap := claim.GetAnnotations()
+
+		pvcAnnotationPairs := []string{}
+		for k, v := range pvcAnnotationMap {
+			pvcAnnotationPairs = append(pvcAnnotationPairs, fmt.Sprintf("%s=%s", k, v))
+		}
+		sort.Strings(pvcAnnotationPairs)
+		pvcAnnotation := strings.Join(pvcAnnotationPairs, ",")
+
 		// add pvc and pv metadata to request for use by the plugin
 		req.Parameters[pvcNameKey] = claim.GetName()
 		req.Parameters[pvcNamespaceKey] = claim.GetNamespace()
+		req.Parameters[pvcNamespaceAnnotationsKey] = pvcAnnotation
 		req.Parameters[pvNameKey] = pvName
 	}
 	deletionAnnSecrets := new(deletionSecretParams)
