@@ -1107,7 +1107,14 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
+				PVC: createFakeNamedPVC(
+					requestedBytes,
+					"fake-pvc",
+					map[string]string{
+						"userAnnotation1": "value1",
+						"userAnnotation2": "value2",
+					},
+				),
 			},
 			withExtraMetadata: true,
 			expectedPVSpec: &pvSpec{
@@ -1128,10 +1135,11 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
 				pvc := createFakePVC(requestedBytes)
 				expectedParams := map[string]string{
-					pvcNameKey:      pvc.GetName(),
-					pvcNamespaceKey: pvc.GetNamespace(),
-					pvNameKey:       "test-testi",
-					"fstype":        "ext3",
+					pvcNameKey:                 pvc.GetName(),
+					pvcNamespaceKey:            pvc.GetNamespace(),
+					pvNameKey:                  "test-testi",
+					"fstype":                   "ext3",
+					pvcNamespaceAnnotationsKey: "userAnnotation1=value1,userAnnotation2=value2,volume.beta.kubernetes.io/storage-provisioner=test-driver",
 				}
 				if fmt.Sprintf("%v", req.Parameters) != fmt.Sprintf("%v", expectedParams) { // only pvc name/namespace left
 					t.Errorf("Unexpected parameters: %v", req.Parameters)
