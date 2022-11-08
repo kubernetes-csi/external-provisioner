@@ -595,9 +595,24 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		return nil, controller.ProvisioningFinished, err
 	}
 
+	pvcAnnotationsForSCParam := map[string]string{}
+	for k, v := range claim.GetAnnotations() {
+		pvcAnnotationsForSCParam["pvc.annotations['"+k+"']"] = v
+	}
+
 	fsTypesFound := 0
 	fsType := ""
 	for k, v := range sc.Parameters {
+		// Replace SC parameters with PVC annoations
+		if strings.Contains(v, "pvc.annotations") {
+			resolvedName, err := resolveTemplate(v, pvcAnnotationsForSCParam)
+
+			if err != nil {
+				return nil, controller.ProvisioningFinished, fmt.Errorf("error resolving value %q: %v", v, err)
+			}
+
+			sc.Parameters[k] = resolvedName
+		}
 		if strings.ToLower(k) == "fstype" || k == prefixedFsTypeKey {
 			fsType = v
 			fsTypesFound++
