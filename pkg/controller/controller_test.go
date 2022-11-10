@@ -800,10 +800,9 @@ func TestGetSecretReference(t *testing.T) {
 		t.Run(k, func(t *testing.T) {
 			ref, err := getSecretReference(tc.secretParams, tc.params, tc.pvName, tc.pvc)
 			if err != nil {
-				if tc.expectErr {
-					return
+				if !tc.expectErr {
+					t.Fatalf("Did not expect error but got: %v", err)
 				}
-				t.Fatalf("Did not expect error but got: %v", err)
 			} else {
 				if tc.expectErr {
 					t.Fatalf("Expected error but got none")
@@ -811,6 +810,69 @@ func TestGetSecretReference(t *testing.T) {
 			}
 			if !reflect.DeepEqual(ref, tc.expectRef) {
 				t.Errorf("Expected %v, got %v", tc.expectRef, ref)
+			}
+		})
+	}
+}
+
+func TestResolveTemplate(t *testing.T) {
+	testcases := map[string]struct {
+		template string
+		params   map[string]string
+
+		expectedResolved string
+		expectErr        bool
+	}{
+		"no params": {
+			expectedResolved: "",
+			expectErr:        false,
+		},
+		"nil template": {
+			template:         "",
+			params:           map[string]string{tokenPVCAnnoationTemplatePrefix + "['subDir']": "dir1", nodePublishSecretNamespaceKey: "value1"},
+			expectedResolved: "",
+			expectErr:        false,
+		},
+		"nil params": {
+			template:         tokenPVCAnnoationTemplatePrefix + "['subDir']",
+			params:           nil,
+			expectedResolved: tokenPVCAnnoationTemplatePrefix + "['subDir']",
+			expectErr:        false,
+		},
+		"not a template": {
+			template:         nodePublishSecretNamespaceKey,
+			params:           map[string]string{tokenPVCAnnoationTemplatePrefix + "['subDir']": "dir1", nodePublishSecretNamespaceKey: "value1"},
+			expectedResolved: nodePublishSecretNamespaceKey,
+			expectErr:        false,
+		},
+		"template not exist": {
+			template:         "${" + tokenPVCAnnoationTemplatePrefix + "['KeyNotExists']}",
+			params:           map[string]string{tokenPVCAnnoationTemplatePrefix + "['subDir']": "dir1", nodePublishSecretNamespaceKey: "value1"},
+			expectedResolved: "",
+			expectErr:        true,
+		},
+		"matched case": {
+			template:         "${" + tokenPVCAnnoationTemplatePrefix + "['subDir']}",
+			params:           map[string]string{tokenPVCAnnoationTemplatePrefix + "['subDir']": "dir1", tokenPVCAnnoationTemplatePrefix + "['subDir2']": "dir2", nodePublishSecretNamespaceKey: "value1"},
+			expectedResolved: "dir1",
+			expectErr:        false,
+		},
+	}
+
+	for k, tc := range testcases {
+		t.Run(k, func(t *testing.T) {
+			actualResolved, err := resolveTemplate(tc.template, tc.params)
+			if err != nil {
+				if !tc.expectErr {
+					t.Fatalf("Did not expect error but got: %v", err)
+				}
+			} else {
+				if tc.expectErr {
+					t.Fatalf("Expected error but got none")
+				}
+			}
+			if actualResolved != tc.expectedResolved {
+				t.Errorf("Expected %s, got %s", tc.expectedResolved, actualResolved)
 			}
 		})
 	}
