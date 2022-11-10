@@ -121,10 +121,10 @@ const (
 	snapshotAPIGroup = snapapi.GroupName       // "snapshot.storage.k8s.io"
 	pvcKind          = "PersistentVolumeClaim" // Native types don't require an API group
 
-	tokenPVNameKey                 = "pv.name"
-	tokenPVCNameKey                = "pvc.name"
-	tokenPVCNameSpaceKey           = "pvc.namespace"
-	tokenPVAnnoationTemplatePrefix = "pvc.annotations"
+	tokenPVNameKey                  = "pv.name"
+	tokenPVCNameKey                 = "pvc.name"
+	tokenPVCNameSpaceKey            = "pvc.namespace"
+	tokenPVCAnnoationTemplatePrefix = "pvc.annotations"
 
 	ResyncPeriodOfCsiNodeInformer = 1 * time.Hour
 
@@ -598,14 +598,14 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 
 	pvcAnnotationsForSCParam := map[string]string{}
 	for k, v := range claim.GetAnnotations() {
-		pvcAnnotationsForSCParam[tokenPVAnnoationTemplatePrefix+"['"+k+"']"] = v
+		pvcAnnotationsForSCParam[tokenPVCAnnoationTemplatePrefix+"['"+k+"']"] = v
 	}
 
 	fsTypesFound := 0
 	fsType := ""
 	for k, v := range sc.Parameters {
 		// Replace SC parameters with PVC annoations
-		if strings.Contains(v, tokenPVAnnoationTemplatePrefix) {
+		if strings.Contains(v, tokenPVCAnnoationTemplatePrefix) {
 			resolvedName, err := resolveTemplate(v, pvcAnnotationsForSCParam)
 
 			if err != nil {
@@ -1765,7 +1765,7 @@ func getSecretReference(secretParams secretParamsMap, storageClassParams map[str
 			nameParams[tokenPVCNameKey] = pvc.Name
 			nameParams[tokenPVCNameSpaceKey] = pvc.Namespace
 			for k, v := range pvc.Annotations {
-				nameParams[tokenPVAnnoationTemplatePrefix+"['"+k+"']"] = v
+				nameParams[tokenPVCAnnoationTemplatePrefix+"['"+k+"']"] = v
 			}
 		}
 		resolvedName, err := resolveTemplate(nameTemplate, nameParams)
