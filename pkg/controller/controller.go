@@ -1668,7 +1668,9 @@ func verifyAndGetSecretNameAndNamespaceTemplate(secret secretParamsMap, storageC
 }
 
 // getSecretReference returns a reference to the secret specified in the given nameTemplate
-//  and namespaceTemplate, or an error if the templates are not specified correctly.
+//
+//	and namespaceTemplate, or an error if the templates are not specified correctly.
+//
 // no lookup of the referenced secret is performed, and the secret may or may not exist.
 //
 // supported tokens for name resolution:
