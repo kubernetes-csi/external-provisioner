@@ -115,24 +115,23 @@ func SupportsTopology(pluginCapabilities rpc.PluginCapabilitySet) bool {
 //
 // 1) selectedNode is not set (immediate binding):
 //
-//    In this case, we list all CSINode objects to find a Node that
-//    the driver has registered topology keys with.
+//	In this case, we list all CSINode objects to find a Node that
+//	the driver has registered topology keys with.
 //
-//    Once we get the list of CSINode objects, we find one that has
-//    topology keys registered. If none are found, then we assume
-//    that the driver has not started on any node yet, and we error
-//    and retry.
+//	Once we get the list of CSINode objects, we find one that has
+//	topology keys registered. If none are found, then we assume
+//	that the driver has not started on any node yet, and we error
+//	and retry.
 //
-//    If at least one CSINode object is found with topology keys,
-//    then we continue and use that for assembling the topology
-//    requirement. The available topologies will be limited to the
-//    Nodes that the driver has registered with.
+//	If at least one CSINode object is found with topology keys,
+//	then we continue and use that for assembling the topology
+//	requirement. The available topologies will be limited to the
+//	Nodes that the driver has registered with.
 //
 // 2) selectedNode is set (delayed binding):
 //
-//    We will get the topology from the CSINode object for the selectedNode
-//    and error if we can't (and retry).
-//
+//	We will get the topology from the CSINode object for the selectedNode
+//	and error if we can't (and retry).
 func GenerateAccessibilityRequirements(
 	kubeClient kubernetes.Interface,
 	driverName string,
@@ -381,21 +380,28 @@ func aggregateTopologies(
 // This function eliminates the OR of topology values by distributing the OR over the AND a level
 // higher.
 // For example, given a TopologySelectorTerm of this form:
-//    {
-//      "zone": { "zone1", "zone2" },
-//      "rack": { "rackA", "rackB" },
-//    }
+//
+//	{
+//	  "zone": { "zone1", "zone2" },
+//	  "rack": { "rackA", "rackB" },
+//	}
+//
 // Abstractly it could be viewed as:
-//    (zone1 OR zone2) AND (rackA OR rackB)
+//
+//	(zone1 OR zone2) AND (rackA OR rackB)
+//
 // Distributing the OR over the AND, we get:
-//    (zone1 AND rackA) OR (zone2 AND rackA) OR (zone1 AND rackB) OR (zone2 AND rackB)
+//
+//	(zone1 AND rackA) OR (zone2 AND rackA) OR (zone1 AND rackB) OR (zone2 AND rackB)
+//
 // which in the intermediate representation returned by this function becomes:
-//    [
-//      { "zone": "zone1", "rack": "rackA" },
-//      { "zone": "zone2", "rack": "rackA" },
-//      { "zone": "zone1", "rack": "rackB" },
-//      { "zone": "zone2", "rack": "rackB" },
-//    ]
+//
+//	[
+//	  { "zone": "zone1", "rack": "rackA" },
+//	  { "zone": "zone2", "rack": "rackA" },
+//	  { "zone": "zone1", "rack": "rackB" },
+//	  { "zone": "zone2", "rack": "rackB" },
+//	]
 //
 // This flattening is then applied to all TopologySelectorTerms in AllowedTopologies, and
 // the resulting terms are OR'd together.
@@ -525,7 +531,7 @@ func (t topologyTerm) clone() topologyTerm {
 //   - com.example.csi/rack#zz    < com.example.csi/zone#zone1
 //   - com.example.csi/z#z1       < com.example.csi/zone#zone1
 //   - com.example.csi/rack#rackA,com.example.csi/zone#zone2  <  com.example.csi/rackB,com.example.csi/zone#zone1
-//   Note that both '#' and ',' are less than '/', '-', '_', '.', [A-Z0-9a-z]
+//     Note that both '#' and ',' are less than '/', '-', '_', '.', [A-Z0-9a-z]
 func (t topologyTerm) hash() string {
 	var segments []string
 	for k, v := range t {
