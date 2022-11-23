@@ -40,7 +40,7 @@ kube::util::array_contains() {
 }
 
 # Example:  kube::util::trap_add 'echo "in trap DEBUG"' DEBUG
-# See: http://stackoverflow.com/questions/3338030/multiple-bash-traps-for-the-same-signal
+# See: https://stackoverflow.com/questions/3338030/multiple-bash-traps-for-the-same-signal
 kube::util::trap_add() {
   local trap_add_cmd
   trap_add_cmd=$1

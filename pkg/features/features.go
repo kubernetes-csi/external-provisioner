@@ -28,7 +28,7 @@ const (
 	Topology featuregate.Feature = "Topology"
 
 	// owner: @deepakkinni @xing-yang
-	// kep: http://kep.k8s.io/2680
+	// kep: https://kep.k8s.io/2680
 	// alpha: v1.23
 	//
 	// Honor Persistent Volume Reclaim Policy when it is "Delete" irrespective of PV-PVC
