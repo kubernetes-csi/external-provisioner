@@ -115,7 +115,7 @@ type csiStorageCapacityIndexInformerBridge struct {
 
 var _ cache.SharedIndexInformer = csiStorageCapacityIndexInformerBridge{}
 
-func (iib csiStorageCapacityIndexInformerBridge) AddEventHandler(handlerv1 cache.ResourceEventHandler) {
+func (iib csiStorageCapacityIndexInformerBridge) AddEventHandler(handlerv1 cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
 	handlerv1beta1 := cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			csc, ok := obj.(*storagev1beta1.CSIStorageCapacity)
@@ -151,7 +151,7 @@ func (iib csiStorageCapacityIndexInformerBridge) AddEventHandler(handlerv1 cache
 			handlerv1.OnDelete(v1beta1Tov1(csc))
 		},
 	}
-	iib.SharedIndexInformer.AddEventHandler(handlerv1beta1)
+	return iib.SharedIndexInformer.AddEventHandler(handlerv1beta1)
 }
 
 // Shallow copies are good enough for our purpose.
