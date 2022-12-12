@@ -1,6 +1,6 @@
 module github.com/kubernetes-csi/external-provisioner
 
-go 1.18
+go 1.19
 
 require (
 	github.com/container-storage-interface/spec v1.7.0
@@ -19,11 +19,11 @@ require (
 	google.golang.org/protobuf v1.28.1
 	k8s.io/api v0.26.0
 	k8s.io/apimachinery v0.26.0
-	k8s.io/apiserver v0.26.0-rc.0
+	k8s.io/apiserver v0.26.0
 	k8s.io/client-go v0.26.0
 	k8s.io/component-base v0.26.0
-	k8s.io/component-helpers v0.26.0-rc.0
-	k8s.io/csi-translation-lib v0.26.0-rc.0
+	k8s.io/component-helpers v0.26.0
+	k8s.io/csi-translation-lib v0.26.0
 	k8s.io/klog/v2 v2.80.1
 	sigs.k8s.io/controller-runtime v0.13.1
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v8 v8.0.0
