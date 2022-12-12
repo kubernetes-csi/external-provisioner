@@ -64,6 +64,9 @@ import (
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	"github.com/kubernetes-csi/external-provisioner/pkg/owner"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned"
+	gatewayclientset "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned"
+	gatewayInformers "sigs.k8s.io/gateway-api/pkg/client/informers/externalversions"
+	referenceGrantv1beta1 "sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1beta1"
 )
 
 var (
@@ -190,6 +193,15 @@ func main() {
 	snapClient, err := snapclientset.NewForConfig(config)
 	if err != nil {
 		klog.Fatalf("Failed to create snapshot client: %v", err)
+	}
+
+	var gatewayClient gatewayclientset.Interface
+	if utilfeature.DefaultFeatureGate.Enabled(features.CrossNamespaceVolumeDataSource) {
+		// gatewayclientset.NewForConfig creates a new Clientset for GatewayClient
+		gatewayClient, err = gatewayclientset.NewForConfig(config)
+		if err != nil {
+			klog.Fatalf("Failed to create gateway client: %v", err)
+		}
 	}
 
 	metricsManager := metrics.NewCSIMetricsManagerWithOptions("", /* driverName */
@@ -354,6 +366,14 @@ func main() {
 		}
 	}
 
+	var referenceGrantLister referenceGrantv1beta1.ReferenceGrantLister
+	var gatewayFactory gatewayInformers.SharedInformerFactory
+	if utilfeature.DefaultFeatureGate.Enabled(features.CrossNamespaceVolumeDataSource) {
+		gatewayFactory = gatewayInformers.NewSharedInformerFactory(gatewayClient, ctrl.ResyncPeriodOfReferenceGrantInformer)
+		referenceGrants := gatewayFactory.Gateway().V1beta1().ReferenceGrants()
+		referenceGrantLister = referenceGrants.Lister()
+	}
+
 	// -------------------------------
 	// PersistentVolumeClaims informer
 	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)
@@ -402,6 +422,7 @@ func main() {
 		nodeLister,
 		claimLister,
 		vaLister,
+		referenceGrantLister,
 		*extraCreateMetadata,
 		*defaultFSType,
 		nodeDeployment,
@@ -601,6 +622,18 @@ func main() {
 		for _, v := range cacheSyncResult {
 			if !v {
 				klog.Fatalf("Failed to sync Informers!")
+			}
+		}
+
+		if utilfeature.DefaultFeatureGate.Enabled(features.CrossNamespaceVolumeDataSource) {
+			if gatewayFactory != nil {
+				gatewayFactory.Start(ctx.Done())
+			}
+			gatewayCacheSyncResult := gatewayFactory.WaitForCacheSync(ctx.Done())
+			for _, v := range gatewayCacheSyncResult {
+				if !v {
+					klog.Fatalf("Failed to sync Informers for gateway!")
+				}
 			}
 		}
 
