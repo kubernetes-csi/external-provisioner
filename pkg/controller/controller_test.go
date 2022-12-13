@@ -5939,7 +5939,7 @@ func TestProvisionFromPVC(t *testing.T) {
 				},
 			},
 		},
-		"provision with xns PersitentVolumeClaim data source witout apiGroup with refgrant when CrossNamespaceVolumeDataSource feature enabled": {
+		"provision with xns PersitentVolumeClaim data source without apiGroup with refgrant when CrossNamespaceVolumeDataSource feature enabled": {
 			clonePVName: pvName,
 			volOpts: generatePVCForProvisionFromXnsdataSource(fakeSc1, xnsNamespace,
 				&v1.TypedObjectReference{
