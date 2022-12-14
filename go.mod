@@ -1,6 +1,6 @@
 module github.com/kubernetes-csi/external-provisioner
 
-go 1.18
+go 1.19
 
 require (
 	github.com/container-storage-interface/spec v1.7.0
@@ -17,13 +17,13 @@ require (
 	github.com/stretchr/testify v1.8.1
 	google.golang.org/grpc v1.51.0
 	google.golang.org/protobuf v1.28.1
-	k8s.io/api v0.26.0-rc.0
-	k8s.io/apimachinery v0.26.0-rc.0
-	k8s.io/apiserver v0.26.0-rc.0
-	k8s.io/client-go v0.26.0-rc.0
-	k8s.io/component-base v0.26.0-rc.0
-	k8s.io/component-helpers v0.26.0-rc.0
-	k8s.io/csi-translation-lib v0.26.0-rc.0
+	k8s.io/api v0.26.0
+	k8s.io/apimachinery v0.26.0
+	k8s.io/apiserver v0.26.0
+	k8s.io/client-go v0.26.0
+	k8s.io/component-base v0.26.0
+	k8s.io/component-helpers v0.26.0
+	k8s.io/csi-translation-lib v0.26.0
 	k8s.io/klog/v2 v2.80.1
 	sigs.k8s.io/controller-runtime v0.13.1
 	sigs.k8s.io/gateway-api v0.6.0-rc1
@@ -62,11 +62,11 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/spf13/cobra v1.6.0 // indirect
 	golang.org/x/mod v0.6.0 // indirect
-	golang.org/x/net v0.1.1-0.20221027164007-c63010009c80 // indirect
+	golang.org/x/net v0.3.1-0.20221206200815-1e63c2f08a10 // indirect
 	golang.org/x/oauth2 v0.0.0-20220309155454-6242fa91716a // indirect
-	golang.org/x/sys v0.1.0 // indirect
-	golang.org/x/term v0.1.0 // indirect
-	golang.org/x/text v0.4.0 // indirect
+	golang.org/x/sys v0.3.0 // indirect
+	golang.org/x/term v0.3.0 // indirect
+	golang.org/x/text v0.5.0 // indirect
 	golang.org/x/time v0.0.0-20220609170525-579cf78fd858 // indirect
 	golang.org/x/tools v0.2.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
