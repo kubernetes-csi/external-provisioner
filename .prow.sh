@@ -1,5 +1,7 @@
 #! /bin/bash
 
+CSI_PROW_SIDECAR_E2E_IMPORT_PATH="github.com/kubernetes-csi/external-provisioner/test/e2e"
+
 . release-tools/prow.sh
 
 volume_mode_conversion () {
@@ -8,7 +10,7 @@ volume_mode_conversion () {
 
 if volume_mode_conversion; then
   install_snapshot_controller() {
-      CONTROLLER_DIR="https://raw.githubusercontent.com/RaunakShah/external-snapshotter/${CSI_SNAPSHOTTER_VERSION}"
+      CONTROLLER_DIR="https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${CSI_SNAPSHOTTER_VERSION}"
       if [[ ${REPO_DIR} == *"external-snapshotter"* ]]; then
           CONTROLLER_DIR="${REPO_DIR}"
       fi
