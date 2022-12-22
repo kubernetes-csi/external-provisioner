@@ -52,6 +52,12 @@ type ParentReference struct {
 	// Namespace is the namespace of the referent. When unspecified, this refers
 	// to the local namespace of the Route.
 	//
+	// Note that there are specific rules for ParentRefs which cross namespace
+	// boundaries. Cross-namespace references are only valid if they are explicitly
+	// allowed by something in the namespace they are referring to. For example:
+	// Gateway has the AllowedRoutes field, and ReferenceGrant provides a
+	// generic way to enable any other kind of cross-namespace reference.
+	//
 	// Support: Core
 	//
 	// +optional
@@ -139,6 +145,12 @@ type CommonRouteSpec struct {
 	// choose to merge compatible Gateway Listeners together. If that is the
 	// case, the list of routes attached to those resources should also be
 	// merged.
+	//
+	// Note that for ParentRefs that cross namespace boundaries, there are specific
+	// rules. Cross-namespace references are only valid if they are explicitly
+	// allowed by something in the namespace they are referring to. For example,
+	// Gateway has the AllowedRoutes field, and ReferenceGrant provides a
+	// generic way to enable any other kind of cross-namespace reference.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=32
@@ -351,9 +363,9 @@ type RouteStatus struct {
 // Hostname is the fully qualified domain name of a network host. This matches
 // the RFC 1123 definition of a hostname with 2 notable exceptions:
 //
-// 1. IPs are not allowed.
-// 2. A hostname may be prefixed with a wildcard label (`*.`). The wildcard
-//    label must appear by itself as the first label.
+//  1. IPs are not allowed.
+//  2. A hostname may be prefixed with a wildcard label (`*.`). The wildcard
+//     label must appear by itself as the first label.
 //
 // Hostname can be "precise" which is a domain name without the terminating
 // dot of a network host (e.g. "foo.example.com") or "wildcard", which is a
