@@ -48,6 +48,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
 	utilflag "k8s.io/component-base/cli/flag"
+	"k8s.io/component-base/featuregate"
 	"k8s.io/component-base/metrics/legacyregistry"
 	_ "k8s.io/component-base/metrics/prometheus/clientgo/leaderelection" // register leader election in the default legacy registry
 	_ "k8s.io/component-base/metrics/prometheus/workqueue"               // register work queues in the default legacy registry
@@ -64,6 +65,8 @@ import (
 	"github.com/kubernetes-csi/external-provisioner/pkg/features"
 	"github.com/kubernetes-csi/external-provisioner/pkg/owner"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned"
+	logsapi "k8s.io/component-base/logs/api/v1"
+	_ "k8s.io/component-base/logs/json/register" // Enable JSON output format.
 	gatewayclientset "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned"
 	gatewayInformers "sigs.k8s.io/gateway-api/pkg/client/informers/externalversions"
 	referenceGrantv1beta1 "sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1beta1"
@@ -128,14 +131,37 @@ func main() {
 	var config *rest.Config
 	var err error
 
+	// Feature gates must be registered before defining the flag, otherwise
+	// the help text is inaccurate.
+	//
+	// Contextual logging gets enabled by default to ensure that WithValue
+	// really has an effect. Without that feature gate, log messages will
+	// only include the parameters in the log call. Overriding this default
+	// can be removed once https://github.com/kubernetes/enhancements/issues/3077
+	// is beta.
+	fg := featuregate.NewFeatureGate()
+	logsapi.AddFeatureGates(fg)
+	fs := map[featuregate.Feature]featuregate.FeatureSpec{}
+	for feature, spec := range fg.GetAll() {
+		if feature == logsapi.ContextualLogging {
+			spec.Default = true
+		}
+		fs[feature] = spec
+	}
+	utilfeature.DefaultMutableFeatureGate.Add(fs)
+
 	flag.Var(utilflag.NewMapStringBool(&featureGates), "feature-gates", "A set of key=value pairs that describe feature gates for alpha/experimental features. "+
 		"Options are:\n"+strings.Join(utilfeature.DefaultFeatureGate.KnownFeatures(), "\n"))
 
 	klog.InitFlags(nil)
+	c := logsapi.NewLoggingConfiguration()
+	logsapi.AddFlags(c, flag.CommandLine)
 	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
-	flag.Set("logtostderr", "true")
 	flag.Parse()
 
+	if err := logsapi.ValidateAndApply(c, utilfeature.DefaultFeatureGate); err != nil {
+		klog.Fatal(err)
+	}
 	ctx := context.Background()
 
 	if err := utilfeature.DefaultMutableFeatureGate.SetFromMap(featureGates); err != nil {
