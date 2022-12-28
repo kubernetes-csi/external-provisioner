@@ -280,6 +280,7 @@ func main() {
 
 	// Generate a unique ID for this provisioner
 	timeStamp := time.Now().UnixNano() / int64(time.Millisecond)
+	rand.Seed(timeStamp)
 	identity := strconv.FormatInt(timeStamp, 10) + "-" + strconv.Itoa(rand.Intn(10000)) + "-" + provisionerName
 	if *enableNodeDeployment {
 		identity = identity + "-" + node
