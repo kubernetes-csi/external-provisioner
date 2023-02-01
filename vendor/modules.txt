@@ -751,7 +751,7 @@ k8s.io/component-base/version
 ## explicit; go 1.19
 k8s.io/component-helpers/scheduling/corev1
 k8s.io/component-helpers/scheduling/corev1/nodeaffinity
-# k8s.io/csi-translation-lib v0.26.0
+# k8s.io/csi-translation-lib v0.26.1
 ## explicit; go 1.19
 k8s.io/csi-translation-lib
 k8s.io/csi-translation-lib/plugins
