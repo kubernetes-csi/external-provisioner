@@ -10,7 +10,7 @@ require (
 	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.12.0
 	github.com/kubernetes-csi/csi-test/v5 v5.0.0
-	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.1.0
+	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.2.0
 	github.com/miekg/dns v1.1.48 // indirect
 	github.com/prometheus/client_golang v1.14.0
 	github.com/spf13/pflag v1.0.5
