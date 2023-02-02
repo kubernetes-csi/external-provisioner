@@ -19,9 +19,9 @@ require (
 	google.golang.org/protobuf v1.28.1
 	k8s.io/api v0.26.1
 	k8s.io/apimachinery v0.26.1
-	k8s.io/apiserver v0.26.0
+	k8s.io/apiserver v0.26.1
 	k8s.io/client-go v0.26.1
-	k8s.io/component-base v0.26.0
+	k8s.io/component-base v0.26.1
 	k8s.io/component-helpers v0.26.0
 	k8s.io/csi-translation-lib v0.26.1
 	k8s.io/klog/v2 v2.90.0
