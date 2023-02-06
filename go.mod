@@ -25,7 +25,7 @@ require (
 	k8s.io/component-helpers v0.26.1
 	k8s.io/csi-translation-lib v0.26.1
 	k8s.io/klog/v2 v2.90.0
-	sigs.k8s.io/controller-runtime v0.14.2
+	sigs.k8s.io/controller-runtime v0.14.4
 	sigs.k8s.io/gateway-api v0.6.0
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v8 v8.0.0
 )
