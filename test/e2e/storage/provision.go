@@ -22,6 +22,8 @@ import (
 	"k8s.io/kubernetes/test/e2e/storage/utils"
 )
 
+const annAllowVolumeModeChange = "snapshot.storage.kubernetes.io/allow-volume-mode-change"
+
 var _ = ginkgo.Describe("provision volumes with different volume modes from volume snapshot dataSource", func() {
 	var local struct {
 		snapshotClient  *snapshotclientset.Clientset
@@ -144,5 +146,118 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 		if !isFailureFound {
 			framework.Failf("expected failure message [%s] not parsed in event list for PVC %s/%s", volumeModeConversionFailureMessage, pvc2.Namespace, pvc2.Name)
 		}
+	})
+
+	// Attempt to create a PVC that alters the volume mode of the source volume snapshot.
+	// "snapshot.storage.kubernetes.io/allow-volume-mode-change" annotation is applied to the
+	// VolumeSnapshotContent. The PVC is expected to be created successfully.
+	ginkgo.It("when the source volume mode is altered with permissions", func() {
+		fs := v1.PersistentVolumeFilesystem
+		pvcConfig := e2epv.PersistentVolumeClaimConfig{
+			ClaimSize:        "1Mi",
+			StorageClassName: &local.sc.Name,
+			VolumeMode:       &fs,
+		}
+		pvc, err := e2epv.CreatePVC(f.ClientSet, f.Namespace.Name, e2epv.MakePersistentVolumeClaim(pvcConfig, f.Namespace.Name))
+		framework.ExpectNoError(err)
+		_, err = e2epv.WaitForPVClaimBoundPhase(f.ClientSet, []*v1.PersistentVolumeClaim{pvc}, framework.ClaimProvisionShortTimeout)
+		framework.ExpectNoError(err)
+
+		local.pvcs = append(local.pvcs, pvc)
+
+		vs, err := local.snapshotClient.SnapshotV1().VolumeSnapshots(f.Namespace.Name).Create(context.TODO(), getVolumeSnapshotSpec(f.Namespace.Name, local.vsc.Name, pvc.Name), metav1.CreateOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		err = utils.WaitForSnapshotReady(f.DynamicClient, vs.Namespace, vs.Name, time.Second, time.Minute)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		local.volumesnapshots = append(local.volumesnapshots, vs)
+
+		// Add annotation to VolumeSnapshotContent
+		vs, err = local.snapshotClient.SnapshotV1().VolumeSnapshots(vs.Namespace).Get(context.TODO(), vs.Name, metav1.GetOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		vscName := vs.Status.BoundVolumeSnapshotContentName
+		vsc, err := local.snapshotClient.SnapshotV1().VolumeSnapshotContents().Get(context.TODO(), *vscName, metav1.GetOptions{})
+		if vsc.Annotations == nil {
+			vsc.Annotations = make(map[string]string)
+		}
+		vsc.Annotations[annAllowVolumeModeChange] = "true"
+		vsc, err = local.snapshotClient.SnapshotV1().VolumeSnapshotContents().Update(context.TODO(), vsc, metav1.UpdateOptions{})
+
+		block := v1.PersistentVolumeBlock
+		pvcConfig = e2epv.PersistentVolumeClaimConfig{
+			ClaimSize:        "1Mi",
+			StorageClassName: &local.sc.Name,
+			VolumeMode:       &block,
+		}
+
+		pvc2 := e2epv.MakePersistentVolumeClaim(pvcConfig, f.Namespace.Name)
+		snapshotGroup := "snapshot.storage.k8s.io"
+		pvc2.Spec.DataSource = &v1.TypedLocalObjectReference{
+			APIGroup: &snapshotGroup,
+			Kind:     "VolumeSnapshot",
+			Name:     vs.Name,
+		}
+		pvc2, err = e2epv.CreatePVC(f.ClientSet, f.Namespace.Name, pvc2)
+		framework.ExpectNoError(err)
+		_, err = e2epv.WaitForPVClaimBoundPhase(f.ClientSet, []*v1.PersistentVolumeClaim{pvc2}, framework.ClaimProvisionShortTimeout)
+		framework.ExpectNoError(err)
+
+		local.pvcs = append(local.pvcs, pvc2)
+	})
+
+	// Attempt to create a PVC that alters the volume mode of the source volume snapshot.
+	// Spec.SourceVolumeMode of the VolumeSnapshotContent is explicitly set to nil.
+	// The PVC is expected to be created successfully.
+	ginkgo.It("when the source volume mode is nil", func() {
+		fs := v1.PersistentVolumeFilesystem
+		pvcConfig := e2epv.PersistentVolumeClaimConfig{
+			ClaimSize:        "1Mi",
+			StorageClassName: &local.sc.Name,
+			VolumeMode:       &fs,
+		}
+		pvc, err := e2epv.CreatePVC(f.ClientSet, f.Namespace.Name, e2epv.MakePersistentVolumeClaim(pvcConfig, f.Namespace.Name))
+		framework.ExpectNoError(err)
+		_, err = e2epv.WaitForPVClaimBoundPhase(f.ClientSet, []*v1.PersistentVolumeClaim{pvc}, framework.ClaimProvisionShortTimeout)
+		framework.ExpectNoError(err)
+
+		local.pvcs = append(local.pvcs, pvc)
+
+		vs, err := local.snapshotClient.SnapshotV1().VolumeSnapshots(f.Namespace.Name).Create(context.TODO(), getVolumeSnapshotSpec(f.Namespace.Name, local.vsc.Name, pvc.Name), metav1.CreateOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		err = utils.WaitForSnapshotReady(f.DynamicClient, vs.Namespace, vs.Name, time.Second, time.Minute)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		local.volumesnapshots = append(local.volumesnapshots, vs)
+
+		// Remove SourceVolumeMode from VolumeSnapshotContent
+		vs, err = local.snapshotClient.SnapshotV1().VolumeSnapshots(vs.Namespace).Get(context.TODO(), vs.Name, metav1.GetOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		vscName := vs.Status.BoundVolumeSnapshotContentName
+		vsc, err := local.snapshotClient.SnapshotV1().VolumeSnapshotContents().Get(context.TODO(), *vscName, metav1.GetOptions{})
+		vsc.Spec.SourceVolumeMode = nil
+		vsc, err = local.snapshotClient.SnapshotV1().VolumeSnapshotContents().Update(context.TODO(), vsc, metav1.UpdateOptions{})
+
+		block := v1.PersistentVolumeBlock
+		pvcConfig = e2epv.PersistentVolumeClaimConfig{
+			ClaimSize:        "1Mi",
+			StorageClassName: &local.sc.Name,
+			VolumeMode:       &block,
+		}
+
+		pvc2 := e2epv.MakePersistentVolumeClaim(pvcConfig, f.Namespace.Name)
+		snapshotGroup := "snapshot.storage.k8s.io"
+		pvc2.Spec.DataSource = &v1.TypedLocalObjectReference{
+			APIGroup: &snapshotGroup,
+			Kind:     "VolumeSnapshot",
+			Name:     vs.Name,
+		}
+		pvc2, err = e2epv.CreatePVC(f.ClientSet, f.Namespace.Name, pvc2)
+		framework.ExpectNoError(err)
+		_, err = e2epv.WaitForPVClaimBoundPhase(f.ClientSet, []*v1.PersistentVolumeClaim{pvc2}, framework.ClaimProvisionShortTimeout)
+		framework.ExpectNoError(err)
+
+		local.pvcs = append(local.pvcs, pvc2)
 	})
 })
