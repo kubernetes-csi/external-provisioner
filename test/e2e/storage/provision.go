@@ -63,16 +63,6 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 			ginkgo.By("Deleting CSI Hostpath driver Storage Class")
 			errs = append(errs, f.ClientSet.StorageV1().StorageClasses().Delete(context.TODO(), local.sc.Name, metav1.DeleteOptions{}))
 		}
-		for _, claim := range local.pvcs {
-			ginkgo.By(fmt.Sprintf("Deleting PersistentVolumeClaim %s/%s", claim.Namespace, claim.Name))
-			claim, err := f.ClientSet.CoreV1().PersistentVolumeClaims(claim.Namespace).Get(context.TODO(), claim.Name, metav1.GetOptions{})
-			if err == nil {
-				errs = append(errs, e2epv.DeletePersistentVolumeClaim(f.ClientSet, claim.Name, claim.Namespace))
-				if claim.Spec.VolumeName != "" {
-					errs = append(errs, e2epv.WaitForPersistentVolumeDeleted(f.ClientSet, claim.Spec.VolumeName, framework.Poll, 2*time.Minute))
-				}
-			}
-		}
 		for _, volumeSnapshot := range local.volumesnapshots {
 			ginkgo.By(fmt.Sprintf("Deleting VolumeSnapshot %s/%s", volumeSnapshot.Namespace, volumeSnapshot.Name))
 			vs, err := local.snapshotClient.SnapshotV1().VolumeSnapshots(volumeSnapshot.Namespace).Get(context.TODO(), volumeSnapshot.Name, metav1.GetOptions{})
@@ -85,6 +75,17 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 				}
 			}
 		}
+		for _, claim := range local.pvcs {
+			ginkgo.By(fmt.Sprintf("Deleting PersistentVolumeClaim %s/%s", claim.Namespace, claim.Name))
+			claim, err := f.ClientSet.CoreV1().PersistentVolumeClaims(claim.Namespace).Get(context.TODO(), claim.Name, metav1.GetOptions{})
+			if err == nil {
+				errs = append(errs, e2epv.DeletePersistentVolumeClaim(f.ClientSet, claim.Name, claim.Namespace))
+				if claim.Spec.VolumeName != "" {
+					errs = append(errs, e2epv.WaitForPersistentVolumeDeleted(f.ClientSet, claim.Spec.VolumeName, framework.Poll, 2*time.Minute))
+				}
+			}
+		}
+
 		err := utilerrors.NewAggregate(errs)
 		framework.ExpectNoError(err, "while cleaning up after test")
 
