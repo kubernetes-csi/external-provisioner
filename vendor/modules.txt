@@ -149,8 +149,8 @@ github.com/kubernetes-csi/csi-lib-utils/rpc
 ## explicit; go 1.16
 github.com/kubernetes-csi/csi-test/v5/driver
 github.com/kubernetes-csi/csi-test/v5/utils
-# github.com/kubernetes-csi/external-snapshotter/client/v6 v6.1.0
-## explicit; go 1.18
+# github.com/kubernetes-csi/external-snapshotter/client/v6 v6.2.0
+## explicit; go 1.19
 github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1
 github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned
 github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned/fake
