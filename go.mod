@@ -15,7 +15,7 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.2
-	google.golang.org/grpc v1.53.0
+	google.golang.org/grpc v1.54.0
 	google.golang.org/protobuf v1.28.1
 	k8s.io/api v0.26.2
 	k8s.io/apimachinery v0.26.2
@@ -33,7 +33,7 @@ require (
 require (
 	github.com/onsi/ginkgo/v2 v2.9.1
 	github.com/onsi/gomega v1.27.4
-	k8s.io/kubernetes v1.26.2
+	k8s.io/kubernetes v1.26.3
 )
 
 require (
@@ -110,7 +110,7 @@ require (
 	k8s.io/mount-utils v0.26.1 // indirect
 	k8s.io/pod-security-admission v0.26.1 // indirect
 	k8s.io/utils v0.0.0-20230115233650-391b47cb4029 // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.35 // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.36 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
