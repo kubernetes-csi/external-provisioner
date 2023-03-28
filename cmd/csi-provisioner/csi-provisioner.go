@@ -162,12 +162,14 @@ func main() {
 		addr = *httpEndpoint
 	}
 
-	// get the KUBECONFIG from env if specified (useful for local/debug cluster)
-	kubeconfigEnv := os.Getenv("KUBECONFIG")
+	if len(*kubeconfig) == 0 {
+		// get the KUBECONFIG from env if specified (useful for local/debug cluster)
+		kubeconfigEnv := os.Getenv("KUBECONFIG")
 
-	if kubeconfigEnv != "" {
-		klog.Infof("Found KUBECONFIG environment variable set, using that..")
-		kubeconfig = &kubeconfigEnv
+		if kubeconfigEnv != "" {
+			klog.Infof("Found KUBECONFIG environment variable set, using that..")
+			kubeconfig = &kubeconfigEnv
+		}
 	}
 
 	if *master != "" || *kubeconfig != "" {
