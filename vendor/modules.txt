@@ -768,7 +768,7 @@ sigs.k8s.io/controller-runtime/pkg/log
 ## explicit; go 1.17
 sigs.k8s.io/json
 sigs.k8s.io/json/internal/golang/encoding/json
-# sigs.k8s.io/sig-storage-lib-external-provisioner/v8 v8.0.0
+# sigs.k8s.io/sig-storage-lib-external-provisioner/v8 v8.0.1
 ## explicit; go 1.16
 sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller
 sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller/metrics
