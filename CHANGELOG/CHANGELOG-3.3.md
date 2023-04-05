@@ -1,3 +1,11 @@
+# Release notes for v3.3.1
+
+# Changelog since v3.3.0
+
+### Bug or Regression
+
+- Update sig-storage-lib-external-provisioner to v8.0.1 to fix stuck pod scheduled to a non exist node([#906](https://github.com/kubernetes-csi/external-provisioner/pull/906), [@sunnylovestiramisu])
+
 # Release notes for v3.3.0
 
 [Documentation](https://kubernetes-csi.github.io)
