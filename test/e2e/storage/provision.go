@@ -32,6 +32,7 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 		volumesnapshots []*snapshotv1.VolumeSnapshot
 		pvcs            []*v1.PersistentVolumeClaim
 	}
+	ctx := context.Background()
 	f := framework.NewDefaultFramework("pvcs-from-volume-snapshots")
 	ginkgo.BeforeEach(func() {
 		var err error
@@ -67,9 +68,9 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 			ginkgo.By(fmt.Sprintf("Deleting PersistentVolumeClaim %s/%s", claim.Namespace, claim.Name))
 			claim, err := f.ClientSet.CoreV1().PersistentVolumeClaims(claim.Namespace).Get(context.TODO(), claim.Name, metav1.GetOptions{})
 			if err == nil {
-				errs = append(errs, e2epv.DeletePersistentVolumeClaim(f.ClientSet, claim.Name, claim.Namespace))
+				errs = append(errs, e2epv.DeletePersistentVolumeClaim(ctx, f.ClientSet, claim.Name, claim.Namespace))
 				if claim.Spec.VolumeName != "" {
-					errs = append(errs, e2epv.WaitForPersistentVolumeDeleted(f.ClientSet, claim.Spec.VolumeName, framework.Poll, 2*time.Minute))
+					errs = append(errs, e2epv.WaitForPersistentVolumeDeleted(ctx, f.ClientSet, claim.Spec.VolumeName, framework.Poll, 2*time.Minute))
 				}
 			}
 		}
@@ -77,11 +78,11 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 			ginkgo.By(fmt.Sprintf("Deleting VolumeSnapshot %s/%s", volumeSnapshot.Namespace, volumeSnapshot.Name))
 			vs, err := local.snapshotClient.SnapshotV1().VolumeSnapshots(volumeSnapshot.Namespace).Get(context.TODO(), volumeSnapshot.Name, metav1.GetOptions{})
 			if err == nil {
-				errs = append(errs, utils.DeleteAndWaitSnapshot(f.DynamicClient, vs.Namespace, vs.Name, framework.Poll, framework.SnapshotDeleteTimeout))
+				errs = append(errs, utils.DeleteAndWaitSnapshot(ctx, f.DynamicClient, vs.Namespace, vs.Name, framework.Poll, framework.SnapshotDeleteTimeout))
 				if vs.Status != nil && vs.Status.BoundVolumeSnapshotContentName != nil {
 					volumeSnapshotContentName := vs.Status.BoundVolumeSnapshotContentName
 					ginkgo.By(fmt.Sprintf("Wait for VolumeSnapshotContent %s to be deleted", *volumeSnapshotContentName))
-					errs = append(errs, utils.WaitForGVRDeletion(f.DynamicClient, utils.SnapshotContentGVR, *volumeSnapshotContentName, framework.Poll, framework.SnapshotDeleteTimeout))
+					errs = append(errs, utils.WaitForGVRDeletion(ctx, f.DynamicClient, utils.SnapshotContentGVR, *volumeSnapshotContentName, framework.Poll, framework.SnapshotDeleteTimeout))
 				}
 			}
 		}
@@ -99,9 +100,9 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 			StorageClassName: &local.sc.Name,
 			VolumeMode:       &fs,
 		}
-		pvc, err := e2epv.CreatePVC(f.ClientSet, f.Namespace.Name, e2epv.MakePersistentVolumeClaim(pvcConfig, f.Namespace.Name))
+		pvc, err := e2epv.CreatePVC(ctx, f.ClientSet, f.Namespace.Name, e2epv.MakePersistentVolumeClaim(pvcConfig, f.Namespace.Name))
 		framework.ExpectNoError(err)
-		_, err = e2epv.WaitForPVClaimBoundPhase(f.ClientSet, []*v1.PersistentVolumeClaim{pvc}, framework.ClaimProvisionShortTimeout)
+		_, err = e2epv.WaitForPVClaimBoundPhase(ctx, f.ClientSet, []*v1.PersistentVolumeClaim{pvc}, framework.ClaimProvisionShortTimeout)
 		framework.ExpectNoError(err)
 
 		local.pvcs = append(local.pvcs, pvc)
@@ -109,7 +110,7 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 		vs, err := local.snapshotClient.SnapshotV1().VolumeSnapshots(f.Namespace.Name).Create(context.TODO(), getVolumeSnapshotSpec(f.Namespace.Name, local.vsc.Name, pvc.Name), metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		err = utils.WaitForSnapshotReady(f.DynamicClient, vs.Namespace, vs.Name, time.Second, time.Minute)
+		err = utils.WaitForSnapshotReady(ctx, f.DynamicClient, vs.Namespace, vs.Name, time.Second, time.Minute)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		local.volumesnapshots = append(local.volumesnapshots, vs)
@@ -128,9 +129,9 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 			Kind:     "VolumeSnapshot",
 			Name:     vs.Name,
 		}
-		pvc2, err = e2epv.CreatePVC(f.ClientSet, f.Namespace.Name, pvc2)
+		pvc2, err = e2epv.CreatePVC(ctx, f.ClientSet, f.Namespace.Name, pvc2)
 		framework.ExpectNoError(err)
-		_, err = e2epv.WaitForPVClaimBoundPhase(f.ClientSet, []*v1.PersistentVolumeClaim{pvc2}, framework.ClaimProvisionShortTimeout)
+		_, err = e2epv.WaitForPVClaimBoundPhase(ctx, f.ClientSet, []*v1.PersistentVolumeClaim{pvc2}, framework.ClaimProvisionShortTimeout)
 		framework.ExpectError(err)
 
 		local.pvcs = append(local.pvcs, pvc2)
@@ -158,9 +159,9 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 			StorageClassName: &local.sc.Name,
 			VolumeMode:       &fs,
 		}
-		pvc, err := e2epv.CreatePVC(f.ClientSet, f.Namespace.Name, e2epv.MakePersistentVolumeClaim(pvcConfig, f.Namespace.Name))
+		pvc, err := e2epv.CreatePVC(ctx, f.ClientSet, f.Namespace.Name, e2epv.MakePersistentVolumeClaim(pvcConfig, f.Namespace.Name))
 		framework.ExpectNoError(err)
-		_, err = e2epv.WaitForPVClaimBoundPhase(f.ClientSet, []*v1.PersistentVolumeClaim{pvc}, framework.ClaimProvisionShortTimeout)
+		_, err = e2epv.WaitForPVClaimBoundPhase(ctx, f.ClientSet, []*v1.PersistentVolumeClaim{pvc}, framework.ClaimProvisionShortTimeout)
 		framework.ExpectNoError(err)
 
 		local.pvcs = append(local.pvcs, pvc)
@@ -168,7 +169,7 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 		vs, err := local.snapshotClient.SnapshotV1().VolumeSnapshots(f.Namespace.Name).Create(context.TODO(), getVolumeSnapshotSpec(f.Namespace.Name, local.vsc.Name, pvc.Name), metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		err = utils.WaitForSnapshotReady(f.DynamicClient, vs.Namespace, vs.Name, time.Second, time.Minute)
+		err = utils.WaitForSnapshotReady(ctx, f.DynamicClient, vs.Namespace, vs.Name, time.Second, time.Minute)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		local.volumesnapshots = append(local.volumesnapshots, vs)
@@ -198,9 +199,9 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 			Kind:     "VolumeSnapshot",
 			Name:     vs.Name,
 		}
-		pvc2, err = e2epv.CreatePVC(f.ClientSet, f.Namespace.Name, pvc2)
+		pvc2, err = e2epv.CreatePVC(ctx, f.ClientSet, f.Namespace.Name, pvc2)
 		framework.ExpectNoError(err)
-		_, err = e2epv.WaitForPVClaimBoundPhase(f.ClientSet, []*v1.PersistentVolumeClaim{pvc2}, framework.ClaimProvisionShortTimeout)
+		_, err = e2epv.WaitForPVClaimBoundPhase(ctx, f.ClientSet, []*v1.PersistentVolumeClaim{pvc2}, framework.ClaimProvisionShortTimeout)
 		framework.ExpectNoError(err)
 
 		local.pvcs = append(local.pvcs, pvc2)
@@ -216,9 +217,9 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 			StorageClassName: &local.sc.Name,
 			VolumeMode:       &fs,
 		}
-		pvc, err := e2epv.CreatePVC(f.ClientSet, f.Namespace.Name, e2epv.MakePersistentVolumeClaim(pvcConfig, f.Namespace.Name))
+		pvc, err := e2epv.CreatePVC(ctx, f.ClientSet, f.Namespace.Name, e2epv.MakePersistentVolumeClaim(pvcConfig, f.Namespace.Name))
 		framework.ExpectNoError(err)
-		_, err = e2epv.WaitForPVClaimBoundPhase(f.ClientSet, []*v1.PersistentVolumeClaim{pvc}, framework.ClaimProvisionShortTimeout)
+		_, err = e2epv.WaitForPVClaimBoundPhase(ctx, f.ClientSet, []*v1.PersistentVolumeClaim{pvc}, framework.ClaimProvisionShortTimeout)
 		framework.ExpectNoError(err)
 
 		local.pvcs = append(local.pvcs, pvc)
@@ -226,7 +227,7 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 		vs, err := local.snapshotClient.SnapshotV1().VolumeSnapshots(f.Namespace.Name).Create(context.TODO(), getVolumeSnapshotSpec(f.Namespace.Name, local.vsc.Name, pvc.Name), metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		err = utils.WaitForSnapshotReady(f.DynamicClient, vs.Namespace, vs.Name, time.Second, time.Minute)
+		err = utils.WaitForSnapshotReady(ctx, f.DynamicClient, vs.Namespace, vs.Name, time.Second, time.Minute)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		local.volumesnapshots = append(local.volumesnapshots, vs)
@@ -253,9 +254,9 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 			Kind:     "VolumeSnapshot",
 			Name:     vs.Name,
 		}
-		pvc2, err = e2epv.CreatePVC(f.ClientSet, f.Namespace.Name, pvc2)
+		pvc2, err = e2epv.CreatePVC(ctx, f.ClientSet, f.Namespace.Name, pvc2)
 		framework.ExpectNoError(err)
-		_, err = e2epv.WaitForPVClaimBoundPhase(f.ClientSet, []*v1.PersistentVolumeClaim{pvc2}, framework.ClaimProvisionShortTimeout)
+		_, err = e2epv.WaitForPVClaimBoundPhase(ctx, f.ClientSet, []*v1.PersistentVolumeClaim{pvc2}, framework.ClaimProvisionShortTimeout)
 		framework.ExpectNoError(err)
 
 		local.pvcs = append(local.pvcs, pvc2)
