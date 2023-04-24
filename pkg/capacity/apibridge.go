@@ -123,7 +123,7 @@ func (iib csiStorageCapacityIndexInformerBridge) AddEventHandler(handlerv1 cache
 				klog.Errorf("added object: expected v1beta1.CSIStorageCapacity, got %T -> ignoring it", obj)
 				return
 			}
-			handlerv1.OnAdd(v1beta1Tov1(csc))
+			handlerv1.OnAdd(v1beta1Tov1(csc), iib.HasSynced())
 		},
 		UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 			oldCsc, ok := oldObj.(*storagev1beta1.CSIStorageCapacity)
