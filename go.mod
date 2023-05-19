@@ -14,7 +14,7 @@ require (
 	github.com/miekg/dns v1.1.48 // indirect
 	github.com/prometheus/client_golang v1.15.0
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.8.3
 	google.golang.org/grpc v1.54.0
 	google.golang.org/protobuf v1.30.0
 	k8s.io/api v0.27.0
