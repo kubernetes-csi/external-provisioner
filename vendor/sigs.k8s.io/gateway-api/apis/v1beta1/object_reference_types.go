@@ -53,7 +53,7 @@ type SecretObjectReference struct {
 	// +kubebuilder:default=""
 	Group *Group `json:"group"`
 
-	// Kind is kind of the referent. For example "HTTPRoute" or "Service".
+	// Kind is kind of the referent. For example "Secret".
 	//
 	// +optional
 	// +kubebuilder:default=Secret
@@ -65,10 +65,10 @@ type SecretObjectReference struct {
 	// Namespace is the namespace of the backend. When unspecified, the local
 	// namespace is inferred.
 	//
-	// Note that when a namespace is specified, a ReferenceGrant object
-	// is required in the referent namespace to allow that namespace's
-	// owner to accept the reference. See the ReferenceGrant documentation
-	// for details.
+	// Note that when a namespace different than the local namespace is specified,
+	// a ReferenceGrant object is required in the referent namespace to allow that
+	// namespace's owner to accept the reference. See the ReferenceGrant
+	// documentation for details.
 	//
 	// Support: Core
 	//
@@ -80,10 +80,10 @@ type SecretObjectReference struct {
 // specific to BackendRef. It includes a few additional fields and features
 // than a regular ObjectReference.
 //
-// Note that when a namespace is specified, a ReferenceGrant object
-// is required in the referent namespace to allow that namespace's
-// owner to accept the reference. See the ReferenceGrant documentation
-// for details.
+// Note that when a namespace different than the local namespace is specified, a
+// ReferenceGrant object is required in the referent namespace to allow that
+// namespace's owner to accept the reference. See the ReferenceGrant
+// documentation for details.
 //
 // The API object must be valid in the cluster; the Group and Kind must
 // be registered in the cluster for this reference to be valid.
@@ -99,8 +99,20 @@ type BackendObjectReference struct {
 	// +kubebuilder:default=""
 	Group *Group `json:"group,omitempty"`
 
-	// Kind is kind of the referent. For example "HTTPRoute" or "Service".
+	// Kind is the Kubernetes resource kind of the referent. For example
+	// "Service".
+	//
 	// Defaults to "Service" when not specified.
+	//
+	// ExternalName services can refer to CNAME DNS records that may live
+	// outside of the cluster and as such are difficult to reason about in
+	// terms of conformance. They also may not be safe to forward to (see
+	// CVE-2021-25740 for more information). Implementations SHOULD NOT
+	// support ExternalName Services.
+	//
+	// Support: Core (Services with a type other than ExternalName)
+	//
+	// Support: Implementation-specific (Services with type ExternalName)
 	//
 	// +optional
 	// +kubebuilder:default=Service
@@ -112,10 +124,10 @@ type BackendObjectReference struct {
 	// Namespace is the namespace of the backend. When unspecified, the local
 	// namespace is inferred.
 	//
-	// Note that when a namespace is specified, a ReferenceGrant object
-	// is required in the referent namespace to allow that namespace's
-	// owner to accept the reference. See the ReferenceGrant documentation
-	// for details.
+	// Note that when a namespace different than the local namespace is specified,
+	// a ReferenceGrant object is required in the referent namespace to allow that
+	// namespace's owner to accept the reference. See the ReferenceGrant
+	// documentation for details.
 	//
 	// Support: Core
 	//
