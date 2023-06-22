@@ -32,7 +32,7 @@ require (
 
 require (
 	github.com/onsi/ginkgo/v2 v2.10.0
-	github.com/onsi/gomega v1.27.7
+	github.com/onsi/gomega v1.27.8
 	k8s.io/kubernetes v1.27.0
 )
 
