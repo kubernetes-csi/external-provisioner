@@ -355,6 +355,142 @@ func TestNodeTopology(t *testing.T) {
 				}
 			},
 		},
+		"add-driver": {
+			initialNodes: []testNode{
+				{
+					name: node1,
+				},
+			},
+			expectedSegments: nil,
+			update: func(t *testing.T, client *fakeclientset.Clientset) {
+				csiNode, err := client.StorageV1().CSINodes().Get(context.Background(), node1, metav1.GetOptions{})
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				csiNode.Spec.Drivers = append(csiNode.Spec.Drivers, storagev1.CSINodeDriver{
+					Name:         driverName,
+					TopologyKeys: localStorageKeys,
+				})
+				if _, err := client.StorageV1().CSINodes().Update(context.Background(), csiNode, metav1.UpdateOptions{}); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				node, err := client.CoreV1().Nodes().Get(context.Background(), node1, metav1.GetOptions{})
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if node.Labels == nil {
+					node.Labels = make(map[string]string)
+				}
+				for key, value := range localStorageLabelsNode1 {
+					node.Labels[key] = value
+				}
+				if _, err := client.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{}); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			},
+			expectedUpdatedSegments: []*Segment{localStorageNode1},
+		},
+		"update-node": {
+			initialNodes: []testNode{
+				{
+					name: node1,
+				},
+			},
+			expectedSegments: nil,
+			update: func(t *testing.T, client *fakeclientset.Clientset) {
+				node, err := client.CoreV1().Nodes().Get(context.Background(), node1, metav1.GetOptions{})
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if node.Labels == nil {
+					node.Labels = make(map[string]string)
+				}
+				for key, value := range localStorageLabelsNode1 {
+					node.Labels[key] = value
+				}
+				if _, err := client.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{}); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			},
+		},
+		"update-csi-node": {
+			initialNodes: []testNode{
+				{
+					name: node1,
+				},
+			},
+			expectedSegments: nil,
+			update: func(t *testing.T, client *fakeclientset.Clientset) {
+				csiNode, err := client.StorageV1().CSINodes().Get(context.Background(), node1, metav1.GetOptions{})
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				csiNode.Spec.Drivers = append(csiNode.Spec.Drivers, storagev1.CSINodeDriver{
+					Name:         driverName,
+					TopologyKeys: localStorageKeys,
+				})
+				if _, err := client.StorageV1().CSINodes().Update(context.Background(), csiNode, metav1.UpdateOptions{}); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			},
+		},
+		"add-node": {
+			initialNodes: []testNode{
+				{
+					name: node1,
+					driverKeys: map[string][]string{
+						driverName: localStorageKeys,
+					},
+					labels:           localStorageLabelsNode1,
+					skipNodeCreation: true,
+				},
+			},
+			expectedSegments: nil,
+			update: func(t *testing.T, client *fakeclientset.Clientset) {
+				node := &v1.Node{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   node1,
+						Labels: localStorageLabelsNode1,
+					},
+				}
+				if _, err := client.CoreV1().Nodes().Create(context.Background(), node, metav1.CreateOptions{}); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			},
+			expectedUpdatedSegments: []*Segment{localStorageNode1},
+		},
+		"add-csi-node": {
+			initialNodes: []testNode{
+				{
+					name: node1,
+					driverKeys: map[string][]string{
+						driverName: localStorageKeys,
+					},
+					labels:              localStorageLabelsNode1,
+					skipCSINodeCreation: true,
+				},
+			},
+			expectedSegments: nil,
+			update: func(t *testing.T, client *fakeclientset.Clientset) {
+				csiNode := &storagev1.CSINode{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: node1,
+					},
+					Spec: storagev1.CSINodeSpec{
+						Drivers: []storagev1.CSINodeDriver{
+							{
+								Name:         driverName,
+								TopologyKeys: localStorageKeys,
+							},
+						},
+					},
+				}
+				if _, err := client.StorageV1().CSINodes().Create(context.Background(), csiNode, metav1.CreateOptions{}); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			},
+			expectedUpdatedSegments: []*Segment{localStorageNode1},
+		},
 		"change-labels": {
 			initialNodes: []testNode{
 				{
