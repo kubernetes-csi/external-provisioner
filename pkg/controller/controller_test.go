@@ -5305,9 +5305,7 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 		clientSetObjects = append(clientSetObjects, tc.storageClass)
 	}
 	if tc.secrets != nil {
-		for _, secret := range tc.secrets {
-			clientSetObjects = append(clientSetObjects, secret)
-		}
+		clientSetObjects = append(clientSetObjects, tc.secrets...)
 	}
 	clientSet = fakeclientset.NewSimpleClientset(clientSetObjects...)
 
