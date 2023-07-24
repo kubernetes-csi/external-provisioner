@@ -360,7 +360,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: client.CoreV1().Events(v1.NamespaceAll)})
-	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf("external-provisioner")})
+	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "external-provisioner"})
 
 	csiClient := csi.NewControllerClient(grpcClient)
 
@@ -588,7 +588,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		default:
 			// DataSource is not VolumeSnapshot and PVC
 			// Assume external data populator to create the volume, and there is no more work for us to do
-			p.eventRecorder.Event(claim, v1.EventTypeNormal, "Provisioning", fmt.Sprintf("Assuming an external populator will provision the volume"))
+			p.eventRecorder.Event(claim, v1.EventTypeNormal, "Provisioning", "Assuming an external populator will provision the volume")
 			return nil, controller.ProvisioningFinished, &controller.IgnoredError{
 				Reason: fmt.Sprintf("data source (%s) is not handled by the provisioner, assuming an external populator will provision it",
 					dataSource.Kind),
@@ -604,7 +604,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		return nil, controller.ProvisioningFinished, fmt.Errorf("claim Selector is not supported")
 	}
 
-	pvName, err := makeVolumeName(p.volumeNamePrefix, fmt.Sprintf("%s", claim.ObjectMeta.UID), p.volumeNameUUIDLength)
+	pvName, err := makeVolumeName(p.volumeNamePrefix, string(claim.ObjectMeta.UID), p.volumeNameUUIDLength)
 	if err != nil {
 		return nil, controller.ProvisioningFinished, err
 	}
