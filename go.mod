@@ -17,15 +17,15 @@ require (
 	github.com/stretchr/testify v1.8.4
 	google.golang.org/grpc v1.56.2
 	google.golang.org/protobuf v1.31.0
-	k8s.io/api v0.27.0
-	k8s.io/apimachinery v0.27.0
+	k8s.io/api v0.27.2
+	k8s.io/apimachinery v0.27.2
 	k8s.io/apiserver v0.27.0
-	k8s.io/client-go v0.27.0
-	k8s.io/component-base v0.27.0
+	k8s.io/client-go v0.27.2
+	k8s.io/component-base v0.27.2
 	k8s.io/component-helpers v0.27.0
 	k8s.io/csi-translation-lib v0.27.0
 	k8s.io/klog/v2 v2.100.1
-	sigs.k8s.io/controller-runtime v0.14.6
+	sigs.k8s.io/controller-runtime v0.15.0
 	sigs.k8s.io/gateway-api v0.7.1
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v9 v9.0.3
 )
@@ -83,7 +83,7 @@ require (
 	github.com/opencontainers/selinux v1.10.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/client_model v0.3.0 // indirect
+	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
 	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/spf13/cobra v1.6.1 // indirect
@@ -120,7 +120,7 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.27.0 // indirect
+	k8s.io/apiextensions-apiserver v0.27.2 // indirect
 	k8s.io/cloud-provider v0.27.0 // indirect
 	k8s.io/controller-manager v0.27.0 // indirect
 	k8s.io/kms v0.27.0 // indirect
