@@ -132,7 +132,7 @@ require (
 	k8s.io/mount-utils v0.27.0 // indirect
 	k8s.io/pod-security-admission v0.27.0 // indirect
 	k8s.io/utils v0.0.0-20230209194617-a36077c30491 // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.2 // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.3 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
