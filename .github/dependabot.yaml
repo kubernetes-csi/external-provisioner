@@ -6,6 +6,19 @@ updates:
   - dependency-type: "all"
   schedule:
     interval: daily
+  groups:
+    golang-dependencies:
+      patterns:
+        - "github.com/golang*"
+    k8s-dependencies:
+      patterns:
+        - "k8s.io*"
+        - "sigs.k8s.io*"
+    github-dependencies:
+      patterns:
+        - "github.com*"
+      exclude-patterns:
+        - "github.com/golang*"
   labels:
     - "area/dependency"
     - "release-note-none"
