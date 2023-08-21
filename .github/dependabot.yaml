@@ -5,7 +5,7 @@ updates:
   allow:
   - dependency-type: "all"
   schedule:
-    interval: daily
+    interval: weekly
   groups:
     golang-dependencies:
       patterns:
