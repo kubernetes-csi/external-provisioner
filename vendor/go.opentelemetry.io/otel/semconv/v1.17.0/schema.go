@@ -12,19 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package instrument // import "go.opentelemetry.io/otel/metric/instrument"
+package semconv // import "go.opentelemetry.io/otel/semconv/v1.17.0"
 
-// Asynchronous instruments are instruments that are updated within a Callback.
-// If an instrument is observed outside of it's callback it should be an error.
-//
-// This interface is used as a grouping mechanism.
-type Asynchronous interface {
-	asynchronous()
-}
-
-// Synchronous instruments are updated in line with application code.
-//
-// This interface is used as a grouping mechanism.
-type Synchronous interface {
-	synchronous()
-}
+// SchemaURL is the schema URL that matches the version of the semantic conventions
+// that this package defines. Semconv packages starting from v1.4.0 must declare
+// non-empty schema URL in the form https://opentelemetry.io/schemas/<version>
+const SchemaURL = "https://opentelemetry.io/schemas/1.17.0"
