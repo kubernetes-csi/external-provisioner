@@ -17,9 +17,11 @@ updates:
         - "sigs.k8s.io*"
     github-dependencies:
       patterns:
-        - "github.com*"
+        - "*"
       exclude-patterns:
         - "github.com/golang*"
+        - "k8s.io*"
+        - "sigs.k8s.io*"
   labels:
     - "area/dependency"
     - "release-note-none"
