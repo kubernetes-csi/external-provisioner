@@ -25,15 +25,15 @@ require (
 	k8s.io/component-helpers v0.28.2
 	k8s.io/csi-translation-lib v0.28.2
 	k8s.io/klog/v2 v2.100.1
-	sigs.k8s.io/controller-runtime v0.15.1
-	sigs.k8s.io/gateway-api v0.7.1
+	sigs.k8s.io/controller-runtime v0.16.2
+	sigs.k8s.io/gateway-api v0.8.1
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v9 v9.1.0-rc.0
 )
 
 require (
 	github.com/onsi/ginkgo/v2 v2.12.0
 	github.com/onsi/gomega v1.27.10
-	k8s.io/kubernetes v1.28.0
+	k8s.io/kubernetes v1.28.2
 )
 
 require (
