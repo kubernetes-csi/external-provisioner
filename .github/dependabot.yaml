@@ -15,13 +15,7 @@ updates:
       patterns:
         - "k8s.io*"
         - "sigs.k8s.io*"
-    github-dependencies:
-      patterns:
-        - "*"
-      exclude-patterns:
-        - "github.com/golang*"
-        - "k8s.io*"
-        - "sigs.k8s.io*"
+        - "github.com/kubernetes-csi*"
   labels:
     - "area/dependency"
     - "release-note-none"
