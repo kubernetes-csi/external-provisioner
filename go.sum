@@ -129,8 +129,8 @@ github.com/kubernetes-csi/csi-lib-utils v0.15.0 h1:YTMO6WilRUmjGh5/73kF4KjNcXev+
 github.com/kubernetes-csi/csi-lib-utils v0.15.0/go.mod h1:fsoR7g1fOfl1z0WDpA1WvWPtt4oVvgzChgSUgR3JWDw=
 github.com/kubernetes-csi/csi-test/v5 v5.1.0 h1:8UxFRH0W8C4RbppKYYJeOJ506C7ybngKZA5GabGgJec=
 github.com/kubernetes-csi/csi-test/v5 v5.1.0/go.mod h1:LoAh2XHbXcKnCoM1WgEyviUXiLmTeCmFTsjzaNloL3k=
-github.com/kubernetes-csi/external-snapshotter/client/v6 v6.2.0 h1:cMM5AB37e9aRGjErygVT6EuBPB6s5a+l95OPERmSlVM=
-github.com/kubernetes-csi/external-snapshotter/client/v6 v6.2.0/go.mod h1:VQVLCPGDX5l6V5PezjlDXLa+SpCbWSVU7B16cFWVVeE=
+github.com/kubernetes-csi/external-snapshotter/client/v6 v6.3.0 h1:qS4r4ljINLWKJ9m9Ge3Q3sGZ/eIoDVDT2RhAdQFHb1k=
+github.com/kubernetes-csi/external-snapshotter/client/v6 v6.3.0/go.mod h1:oGXx2XTEzs9ikW2V6IC1dD8trgjRsS/Mvc2JRiC618Y=
 github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=
 github.com/mailru/easyjson v0.7.7/go.mod h1:xzfreul335JAWq5oZzymOObrkdz5UnU4kGfJJLY9Nlc=
 github.com/matttproud/golang_protobuf_extensions v1.0.4 h1:mmDVorXM7PCGKw94cs5zkfA9PSy5pEvNWRP0ET0TIVo=
@@ -365,8 +365,8 @@ k8s.io/pod-security-admission v0.28.2 h1:3kiOL+gc6auNTGHuQ0hVsGxYu2YO/7DZb0xYR84
 k8s.io/pod-security-admission v0.28.2/go.mod h1:gReea39xbhIzf4Ry0FDuiTi8uj1N5R9YXOh8zQSuTxs=
 k8s.io/utils v0.0.0-20230726121419-3b25d923346b h1:sgn3ZU783SCgtaSJjpcVVlRqd6GSnlTLKgpAAttJvpI=
 k8s.io/utils v0.0.0-20230726121419-3b25d923346b/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
-sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.4 h1:1RSHUg/47zxbcYkN4r+zMS8ZObRFpyDDBkcmWjTD5vM=
-sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.4/go.mod h1:e7I0gvW7fYKOqZDDsvaETBEyfM4dXh6DQ/SsqNInVC0=
+sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.28.0 h1:TgtAeesdhpm2SGwkQasmbeqDo8th5wOBA5h/AjTKA4I=
+sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.28.0/go.mod h1:VHVDI/KrK4fjnV61bE2g3sA7tiETLn8sooImelsCx3Y=
 sigs.k8s.io/controller-runtime v0.16.2 h1:mwXAVuEk3EQf478PQwQ48zGOXvW27UJc8NHktQVuIPU=
 sigs.k8s.io/controller-runtime v0.16.2/go.mod h1:vpMu3LpI5sYWtujJOa2uPK61nB5rbwlN7BAB8aSLvGU=
 sigs.k8s.io/gateway-api v0.8.1 h1:Bo4NMAQFYkQZnHXOfufbYwbPW7b3Ic5NjpbeW6EJxuU=
