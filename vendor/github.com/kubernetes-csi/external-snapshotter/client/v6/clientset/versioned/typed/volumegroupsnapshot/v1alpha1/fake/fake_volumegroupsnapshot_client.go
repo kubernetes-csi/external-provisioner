@@ -19,30 +19,30 @@ limitations under the License.
 package fake
 
 import (
-	v1 "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned/typed/volumesnapshot/v1"
+	v1alpha1 "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned/typed/volumegroupsnapshot/v1alpha1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )
 
-type FakeSnapshotV1 struct {
+type FakeGroupsnapshotV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeSnapshotV1) VolumeSnapshots(namespace string) v1.VolumeSnapshotInterface {
-	return &FakeVolumeSnapshots{c, namespace}
+func (c *FakeGroupsnapshotV1alpha1) VolumeGroupSnapshots(namespace string) v1alpha1.VolumeGroupSnapshotInterface {
+	return &FakeVolumeGroupSnapshots{c, namespace}
 }
 
-func (c *FakeSnapshotV1) VolumeSnapshotClasses() v1.VolumeSnapshotClassInterface {
-	return &FakeVolumeSnapshotClasses{c}
+func (c *FakeGroupsnapshotV1alpha1) VolumeGroupSnapshotClasses() v1alpha1.VolumeGroupSnapshotClassInterface {
+	return &FakeVolumeGroupSnapshotClasses{c}
 }
 
-func (c *FakeSnapshotV1) VolumeSnapshotContents() v1.VolumeSnapshotContentInterface {
-	return &FakeVolumeSnapshotContents{c}
+func (c *FakeGroupsnapshotV1alpha1) VolumeGroupSnapshotContents() v1alpha1.VolumeGroupSnapshotContentInterface {
+	return &FakeVolumeGroupSnapshotContents{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *FakeSnapshotV1) RESTClient() rest.Interface {
+func (c *FakeGroupsnapshotV1alpha1) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret
 }
