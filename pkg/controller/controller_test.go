@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -125,7 +124,7 @@ func createMockServer(t *testing.T, tmpdir string) (*gomock.Controller,
 }
 
 func tempDir(t *testing.T) string {
-	dir, err := ioutil.TempDir("", "external-provisioner-test-")
+	dir, err := os.MkdirTemp("", "external-provisioner-test-")
 	if err != nil {
 		t.Fatalf("Cannot create temporary directory: %s", err)
 	}
