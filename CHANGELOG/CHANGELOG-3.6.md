@@ -1,3 +1,28 @@
+# Release notes for v3.6.1
+
+[Documentation](https://kubernetes-csi.github.io)
+
+## Changes by Kind
+
+### Bug or Regression
+
+- CVE fixes: CVE-2023-44487, CVE-2023-39323, CVE-2023-3978 ([#1057](https://github.com/kubernetes-csi/external-provisioner/pull/1057), [@dannawang0221](https://github.com/dannawang0221))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+- golang.org/x/crypto: v0.12.0 → v0.14.0
+- golang.org/x/net: v0.14.0 → v0.17.0
+- golang.org/x/sys: v0.11.0 → v0.13.0
+- golang.org/x/term: v0.11.0 → v0.13.0
+- golang.org/x/text: v0.12.0 → v0.13.0
+
+### Removed
+_Nothing has changed._
+
 # Release notes for v3.6.0
 
 [Documentation](https://kubernetes-csi.github.io)
