@@ -2,6 +2,11 @@
 
 [Documentation](https://kubernetes-csi.github.io)
 
+
+# Release notes for v3.6.1
+
+[Documentation](https://kubernetes-csi.github.io)
+
 ## Changes by Kind
 
 ### Bug or Regression
