@@ -217,8 +217,9 @@ type ProvisionerCSITranslator interface {
 
 // requiredCapabilities provides a set of extra capabilities required for special/optional features provided by a plugin
 type requiredCapabilities struct {
-	snapshot bool
-	clone    bool
+	snapshot     bool
+	clone        bool
+	modifyVolume bool
 }
 
 // NodeDeployment contains additional parameters for running external-provisioner alongside a
@@ -440,6 +441,13 @@ func (p *csiProvisioner) checkDriverCapabilities(rc *requiredCapabilities) error
 			return fmt.Errorf("CSI driver does not support clone operations: controller CLONE_VOLUME capability is not reported")
 		}
 	}
+	if rc.modifyVolume {
+		// Check whether plugin supports modifying volumes
+		// If not, PVCs with an associated VolumeAttributesClass cannot be created
+		if !p.controllerCapabilities[csi.ControllerServiceCapability_RPC_MODIFY_VOLUME] {
+			return fmt.Errorf("CSI driver does not support VolumeAttributesClass: controller MODIFY_VOLUME capability is not reported")
+		}
+	}
 
 	return nil
 }
@@ -596,6 +604,17 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		}
 	}
 
+	var vacName string
+	if utilfeature.DefaultFeatureGate.Enabled(features.VolumeAttributesClass) {
+		if claim.Spec.VolumeAttributesClassName != nil {
+			vacName = *claim.Spec.VolumeAttributesClassName
+		}
+	}
+
+	if vacName != "" {
+		rc.modifyVolume = true
+	}
+
 	if err := p.checkDriverCapabilities(rc); err != nil {
 		return nil, controller.ProvisioningFinished, err
 	}
@@ -740,6 +759,19 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	if provisionerSecretRef != nil {
 		deletionAnnSecrets.name = provisionerSecretRef.Name
 		deletionAnnSecrets.namespace = provisionerSecretRef.Namespace
+	}
+
+	if vacName != "" {
+		vac, err := p.client.StorageV1alpha1().VolumeAttributesClasses().Get(ctx, vacName, metav1.GetOptions{})
+		if err != nil {
+			return nil, controller.ProvisioningNoChange, err
+		}
+
+		if vac.DriverName != p.driverName {
+			return nil, controller.ProvisioningFinished, fmt.Errorf("VAC %s referenced in PVC is for driver %s which does not match driver name %s", vacName, vac.DriverName, p.driverName)
+		}
+
+		req.MutableParameters = vac.Parameters
 	}
 
 	return &prepareProvisionResult{
@@ -918,6 +950,11 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	// Set FSType if PV is not Block Volume
 	if !util.CheckPersistentVolumeClaimModeBlock(options.PVC) {
 		pv.Spec.PersistentVolumeSource.CSI.FSType = result.fsType
+	}
+
+	vacName := claim.Spec.VolumeAttributesClassName
+	if utilfeature.DefaultFeatureGate.Enabled(features.VolumeAttributesClass) && vacName != nil && *vacName != "" {
+		pv.Spec.VolumeAttributesClassName = vacName
 	}
 
 	klog.V(2).Infof("successfully created PV %v for PVC %v and csi volume name %v", pv.Name, options.PVC.Name, pv.Spec.CSI.VolumeHandle)

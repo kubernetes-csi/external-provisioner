@@ -15,7 +15,5 @@
 CMDS=csi-provisioner
 all: build
 
-# TODO: Change in csi-release-tools before PR merge?
-export CSI_PROW_GO_VERSION_BUILD=1.21
 include release-tools/build.make
 include doc/doc.make
