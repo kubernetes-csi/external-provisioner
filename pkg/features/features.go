@@ -41,6 +41,13 @@ const (
 	//
 	// Enable usage of Provision of PVCs from snapshots in other namespaces
 	CrossNamespaceVolumeDataSource featuregate.Feature = "CrossNamespaceVolumeDataSource"
+
+	// owner: @sunnylovestiramisu @ConnorJC3
+	// kep: https://kep.k8s.io/3751
+	// alpha: v1.29
+	//
+	// Pass VolumeAttributesClass parameters to supporting CSI drivers during CreateVolume
+	VolumeAttributesClass featuregate.Feature = "VolumeAttributesClass"
 )
 
 func init() {
@@ -53,4 +60,5 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	Topology:                       {Default: false, PreRelease: featuregate.GA},
 	HonorPVReclaimPolicy:           {Default: false, PreRelease: featuregate.Alpha},
 	CrossNamespaceVolumeDataSource: {Default: false, PreRelease: featuregate.Alpha},
+	VolumeAttributesClass:          {Default: false, PreRelease: featuregate.Alpha},
 }
