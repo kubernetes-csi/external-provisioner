@@ -2691,6 +2691,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		expectedPVSpec                    *pvSpec
 		expectErr                         bool
 		expectCSICall                     bool
+		expectCreateVolDo                 func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest)
 		notPopulated                      bool
 		misBoundSnapshotContentUID        bool
 		misBoundSnapshotContentNamespace  bool
@@ -2704,6 +2705,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		xnsEnabled                        bool // set to use CrossNamespaceVolumeDataSource feature, default false
 		snapNamespace                     string
 		withreferenceGrants               bool // set to use ReferenceGrant, default false
+		withExtraMetadata                 bool
 		refGrantsrcNamespace              string
 		referenceGrantFrom                []gatewayv1beta1.ReferenceGrantFrom
 		referenceGrantTo                  []gatewayv1beta1.ReferenceGrantTo
@@ -2754,6 +2756,15 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
 					},
 				},
+			},
+			withExtraMetadata: true,
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
+				if req.Parameters[vcsNameKey] != snapName {
+					t.Errorf("Expected VolumeSnapshot name: %s, got: %s", snapName, req.Parameters[vcsNameKey])
+				}
+				if req.Parameters[vcsNamespaceKey] != "" {
+					t.Errorf("Expected cannot get VolumeSnapshot namespace, but got: %s", req.Parameters[vcsNameKey])
+				}
 			},
 			expectCSICall: true,
 		},
@@ -3413,6 +3424,15 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
 					},
 				},
+			},
+			withExtraMetadata: true,
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
+				if req.Parameters[vcsNameKey] != snapName {
+					t.Errorf("Expected VolumeSnapshot name: %s, got: %s", snapName, req.Parameters[vcsNameKey])
+				}
+				if req.Parameters[vcsNamespaceKey] != dataSourceNamespace {
+					t.Errorf("Expected VolumeSnapshot namespace: %s, got: %s", dataSourceNamespace, req.Parameters[vcsNamespaceKey])
+				}
 			},
 			expectCSICall:        true,
 			xnsEnabled:           true,
@@ -4316,7 +4336,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 
 		pluginCaps, controllerCaps := provisionFromSnapshotCapabilities()
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-			client, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, refGrantLister, false, defaultfsType, nil, true, true)
+			client, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, refGrantLister, tc.withExtraMetadata, defaultfsType, nil, true, true)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -4347,7 +4367,14 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				out.Volume.ContentSource = &csi.VolumeContentSource{
 					Type: &snapshotSource,
 				}
-				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+				if tc.expectCreateVolDo != nil {
+					controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+						func(ctx context.Context, req *csi.CreateVolumeRequest) {
+							tc.expectCreateVolDo(t, ctx, req)
+						}).Return(out, nil).Times(1)
+				} else {
+					controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+				}
 			}
 		}
 
@@ -5513,6 +5540,8 @@ func TestProvisionFromPVC(t *testing.T) {
 		refGrantsrcNamespace string
 		referenceGrantFrom   []gatewayv1beta1.ReferenceGrantFrom
 		referenceGrantTo     []gatewayv1beta1.ReferenceGrantTo
+		withExtraMetadata    bool
+		expectCreateVolDo    func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest)
 	}{
 		"provision with pvc data source": {
 			clonePVName:      pvName,
@@ -5533,6 +5562,15 @@ func TestProvisionFromPVC(t *testing.T) {
 						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
 					},
 				},
+			},
+			withExtraMetadata: true,
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
+				if req.Parameters[vcsNameKey] != srcName {
+					t.Errorf("Expected PersistentVolumeClain name: %s, got: %s", srcName, req.Parameters[vcsNameKey])
+				}
+				if req.Parameters[vcsNamespaceKey] != "" {
+					t.Errorf("Expcted cannot get PersistentVolumeClain namespace, got: %s", req.Parameters[vcsNamespaceKey])
+				}
 			},
 		},
 		"provision with pvc data source no clone capability": {
@@ -5678,10 +5716,19 @@ func TestProvisionFromPVC(t *testing.T) {
 			expectErr:        false,
 		},
 		"provision with pvc data source when CrossNamespaceVolumeDataSource feature enabled": {
-			clonePVName:      pvName,
-			volOpts:          generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
-			expectFinalizers: true,
-			xnsEnabled:       true,
+			clonePVName:       pvName,
+			volOpts:           generatePVCForProvisionFromPVC(srcNamespace, srcName, fakeSc1, requestedBytes, ""),
+			expectFinalizers:  true,
+			xnsEnabled:        true,
+			withExtraMetadata: true,
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
+				if req.Parameters[vcsNameKey] != srcName {
+					t.Errorf("Expected PersistentVolumeClaim name: %s, got: %s", srcName, req.Parameters[vcsNameKey])
+				}
+				if req.Parameters[vcsNamespaceKey] != srcNamespace {
+					t.Errorf("Expected PersistentVolumeClain namespace: %s, got:  %s", srcNamespace, req.Parameters[vcsNamespaceKey])
+				}
+			},
 			expectedPVSpec: &pvSpec{
 				Name:          pvName,
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
@@ -6430,14 +6477,28 @@ func TestProvisionFromPVC(t *testing.T) {
 				out.Volume.ContentSource = &csi.VolumeContentSource{
 					Type: &volumeSource,
 				}
-				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+				if tc.expectCreateVolDo != nil {
+					controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+						func(ctx context.Context, req *csi.CreateVolumeRequest) {
+							tc.expectCreateVolDo(t, ctx, req)
+						}).Return(out, nil).Times(1)
+				} else {
+					controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+				}
 			}
 
 			if tc.restoredVolSizeSmall && tc.restoredVolSizeBig {
 				t.Errorf("test %q: cannot contain requestVolSize to be both small and big", k)
 			}
 			if tc.restoredVolSizeSmall {
-				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+				if tc.expectCreateVolDo != nil {
+					controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+						func(ctx context.Context, req *csi.CreateVolumeRequest) {
+							tc.expectCreateVolDo(t, ctx, req)
+						}).Return(out, nil).Times(1)
+				} else {
+					controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
+				}
 				// if the volume created is less than the requested size,
 				// deletevolume will be called
 				controllerServer.EXPECT().DeleteVolume(gomock.Any(), &csi.DeleteVolumeRequest{
@@ -6449,7 +6510,7 @@ func TestProvisionFromPVC(t *testing.T) {
 
 			// Phase: execute the test
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-				nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, claimLister, nil, refGrantLister, false, defaultfsType, nil, true, false)
+				nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, claimLister, nil, refGrantLister, tc.withExtraMetadata, defaultfsType, nil, true, false)
 
 			pv, _, err = csiProvisioner.Provision(context.Background(), tc.volOpts)
 			if tc.expectErr && err == nil {

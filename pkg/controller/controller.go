@@ -119,6 +119,9 @@ const (
 	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
 	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
 	pvNameKey       = "csi.storage.k8s.io/pv/name"
+	// VolumeContentSource(VolumeSnatshot/PersistentVolumeClaim) metadata
+	vcsNameKey      = "csi.storage.k8s.io/vsc/name"
+	vcsNamespaceKey = "csi.storage.k8s.io/vsc/namespace"
 
 	snapshotKind     = "VolumeSnapshot"
 	snapshotAPIGroup = snapapi.GroupName       // "snapshot.storage.k8s.io"
@@ -734,6 +737,12 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		req.Parameters[pvcNameKey] = claim.GetName()
 		req.Parameters[pvcNamespaceKey] = claim.GetNamespace()
 		req.Parameters[pvNameKey] = pvName
+		if dataSource != nil {
+			req.Parameters[vcsNameKey] = dataSource.Name
+			if utilfeature.DefaultFeatureGate.Enabled(features.CrossNamespaceVolumeDataSource) {
+				req.Parameters[vcsNamespaceKey] = dataSource.Namespace
+			}
+		}
 	}
 	deletionAnnSecrets := new(deletionSecretParams)
 
