@@ -2759,11 +2759,12 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			},
 			withExtraMetadata: true,
 			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if req.Parameters[vcsNameKey] != snapName {
-					t.Errorf("Expected VolumeSnapshot name: %s, got: %s", snapName, req.Parameters[vcsNameKey])
+				if req.Parameters[sourceVsNameKey] != snapName {
+					t.Errorf("Expected VolumeSnapshot name: %s, got: %s", snapName, req.Parameters[sourceVsNameKey])
 				}
-				if req.Parameters[vcsNamespaceKey] != "" {
-					t.Errorf("Expected cannot get VolumeSnapshot namespace, but got: %s", req.Parameters[vcsNameKey])
+				// crossNamespace not enable, source VolumeSnapshot namespace not passed
+				if req.Parameters[sourceVsNamespaceKey] != "" {
+					t.Errorf("Expected cannot get VolumeSnapshot namespace, but got: %s", req.Parameters[sourceVsNamespaceKey])
 				}
 			},
 			expectCSICall: true,
@@ -3427,11 +3428,12 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			},
 			withExtraMetadata: true,
 			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if req.Parameters[vcsNameKey] != snapName {
-					t.Errorf("Expected VolumeSnapshot name: %s, got: %s", snapName, req.Parameters[vcsNameKey])
+				if req.Parameters[sourceVsNameKey] != snapName {
+					t.Errorf("Expected VolumeSnapshot name: %s, got: %s", snapName, req.Parameters[sourceVsNameKey])
 				}
-				if req.Parameters[vcsNamespaceKey] != dataSourceNamespace {
-					t.Errorf("Expected VolumeSnapshot namespace: %s, got: %s", dataSourceNamespace, req.Parameters[vcsNamespaceKey])
+				// crossNamespace enabled, expect source VolumeSnapshot namespace passed
+				if req.Parameters[sourceVsNamespaceKey] != dataSourceNamespace {
+					t.Errorf("Expected VolumeSnapshot namespace: %s, got: %s", dataSourceNamespace, req.Parameters[sourceVsNamespaceKey])
 				}
 			},
 			expectCSICall:        true,
@@ -5565,11 +5567,12 @@ func TestProvisionFromPVC(t *testing.T) {
 			},
 			withExtraMetadata: true,
 			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if req.Parameters[vcsNameKey] != srcName {
-					t.Errorf("Expected PersistentVolumeClain name: %s, got: %s", srcName, req.Parameters[vcsNameKey])
+				if req.Parameters[sourcePvcNameKey] != srcName {
+					t.Errorf("Expected PersistentVolumeClain name: %s, got: %s", srcName, req.Parameters[sourcePvcNameKey])
 				}
-				if req.Parameters[vcsNamespaceKey] != "" {
-					t.Errorf("Expcted cannot get PersistentVolumeClain namespace, got: %s", req.Parameters[vcsNamespaceKey])
+				// crossNamespace not enable, source PersistentVolumeClaim namespace not passed
+				if req.Parameters[sourcePvcNamespaceKey] != "" {
+					t.Errorf("Expcted cannot get PersistentVolumeClain namespace, got: %s", req.Parameters[sourcePvcNamespaceKey])
 				}
 			},
 		},
@@ -5722,11 +5725,12 @@ func TestProvisionFromPVC(t *testing.T) {
 			xnsEnabled:        true,
 			withExtraMetadata: true,
 			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if req.Parameters[vcsNameKey] != srcName {
-					t.Errorf("Expected PersistentVolumeClaim name: %s, got: %s", srcName, req.Parameters[vcsNameKey])
+				if req.Parameters[sourcePvcNameKey] != srcName {
+					t.Errorf("Expected PersistentVolumeClaim name: %s, got: %s", srcName, req.Parameters[sourcePvcNameKey])
 				}
-				if req.Parameters[vcsNamespaceKey] != srcNamespace {
-					t.Errorf("Expected PersistentVolumeClain namespace: %s, got:  %s", srcNamespace, req.Parameters[vcsNamespaceKey])
+				// crossNamespace enabled, expect source VolumeSnapshot namespace passed
+				if req.Parameters[sourcePvcNamespaceKey] != srcNamespace {
+					t.Errorf("Expected PersistentVolumeClain namespace: %s, got:  %s", srcNamespace, req.Parameters[sourcePvcNamespaceKey])
 				}
 			},
 			expectedPVSpec: &pvSpec{

@@ -115,13 +115,15 @@ const (
 	nodePublishSecretNameKey      = "csiNodePublishSecretName"
 	nodePublishSecretNamespaceKey = "csiNodePublishSecretNamespace"
 
-	// PV and PVC metadata, used for sending to drivers in the  create requests, added as parameters, optional.
+	// PV and PVC metadata, used for sending to drivers in the create requests, added as parameters, optional.
 	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
 	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
 	pvNameKey       = "csi.storage.k8s.io/pv/name"
-	// VolumeContentSource(VolumeSnatshot/PersistentVolumeClaim) metadata
-	vcsNameKey      = "csi.storage.k8s.io/vsc/name"
-	vcsNamespaceKey = "csi.storage.k8s.io/vsc/namespace"
+	// Source PVC(PersistentVolumeClaim) and VS(VolumeSnapshot) metadata
+	sourcePvcNameKey      = "csi.storage.k8s.io/source-pvc/name"
+	sourcePvcNamespaceKey = "csi.storage.k8s.io/source-pvc/namespace"
+	sourceVsNameKey       = "csi.storage.k8s.io/source-vs/name"
+	sourceVsNamespaceKey  = "csi.storage.k8s.io/source-vs/namespace"
 
 	snapshotKind     = "VolumeSnapshot"
 	snapshotAPIGroup = snapapi.GroupName       // "snapshot.storage.k8s.io"
@@ -737,10 +739,21 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		req.Parameters[pvcNameKey] = claim.GetName()
 		req.Parameters[pvcNamespaceKey] = claim.GetNamespace()
 		req.Parameters[pvNameKey] = pvName
+		// if dataSource not nil, also add source pvc or vs metadata to request for use by the plugin
 		if dataSource != nil {
-			req.Parameters[vcsNameKey] = dataSource.Name
-			if utilfeature.DefaultFeatureGate.Enabled(features.CrossNamespaceVolumeDataSource) {
-				req.Parameters[vcsNamespaceKey] = dataSource.Namespace
+			if dataSource.Kind == snapshotKind {
+				req.Parameters[sourceVsNameKey] = dataSource.Name
+				// if CrossNamespaceVolumeDataSource not enable, source vs's namespace same as current pvc
+				if utilfeature.DefaultFeatureGate.Enabled(features.CrossNamespaceVolumeDataSource) {
+					req.Parameters[sourceVsNamespaceKey] = dataSource.Namespace
+				}
+			}
+			if dataSource.Kind == pvcKind {
+				req.Parameters[sourcePvcNameKey] = dataSource.Name
+				// if CrossNamespaceVolumeDataSource not enable, source pvc's namespace same as current pvc
+				if utilfeature.DefaultFeatureGate.Enabled(features.CrossNamespaceVolumeDataSource) {
+					req.Parameters[sourcePvcNamespaceKey] = dataSource.Namespace
+				}
 			}
 		}
 	}
