@@ -1,3 +1,32 @@
+# Release notes for v3.6.2
+
+[Documentation](https://kubernetes-csi.github.io)
+
+# Changelog since v3.6.1
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Bump google.golang.org/grpc from v1.57.0 to v1.59.0 to fix CVE-2023-44487. ([#1096](https://github.com/kubernetes-csi/external-provisioner/pull/1096), [@songjiaxun](https://github.com/songjiaxun))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+- cloud.google.com/go/firestore: v1.11.0 → v1.12.0
+- cloud.google.com/go: v0.110.6 → v0.110.7
+- github.com/envoyproxy/go-control-plane: [9239064 → v0.11.1](https://github.com/envoyproxy/go-control-plane/compare/9239064...v0.11.1)
+- github.com/envoyproxy/protoc-gen-validate: [v0.10.1 → v1.0.2](https://github.com/envoyproxy/protoc-gen-validate/compare/v0.10.1...v1.0.2)
+- github.com/golang/glog: [v1.1.0 → v1.1.2](https://github.com/golang/glog/compare/v1.1.0...v1.1.2)
+- google.golang.org/genproto: f966b18 → b8732ec
+- google.golang.org/grpc: v1.57.0 → v1.59.0
+
+### Removed
+_Nothing has changed._
+
 # Release notes for v3.6.1
 
 [Documentation](https://kubernetes-csi.github.io)
