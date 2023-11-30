@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	storagev1alpha1 "k8s.io/api/storage/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -42,6 +43,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+	"k8s.io/component-base/featuregate"
 	utilfeaturetesting "k8s.io/component-base/featuregate/testing"
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog/v2"
@@ -504,6 +506,15 @@ func provisionFromPVCCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapa
 		}
 }
 
+func provisionWithVACCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
+	return rpc.PluginCapabilitySet{
+			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
+		}, rpc.ControllerCapabilitySet{
+			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
+			csi.ControllerServiceCapability_RPC_MODIFY_VOLUME:        true,
+		}
+}
+
 var fakeSCName = "fake-test-sc"
 
 func createFakeNamedPVC(requestBytes int64, name string, userAnnotations map[string]string) *v1.PersistentVolumeClaim {
@@ -521,7 +532,7 @@ func createFakeNamedPVC(requestBytes int64, name string, userAnnotations map[str
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
 			Selector: nil, // Provisioner doesn't support selector
-			Resources: v1.ResourceRequirements{
+			Resources: v1.VolumeResourceRequirements{
 				Requests: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestBytes, 10)),
 				},
@@ -543,6 +554,13 @@ func createFakePVCWithVolumeMode(requestBytes int64, volumeMode v1.PersistentVol
 	return claim
 }
 
+// createFakePVCWithVAC returns PVC with VolumeAttributesClassName
+func createFakePVCWithVAC(requestBytes int64, vacName string) *v1.PersistentVolumeClaim {
+	claim := createFakePVC(requestBytes)
+	claim.Spec.VolumeAttributesClassName = &vacName
+	return claim
+}
+
 // fakeClaim returns a valid PVC with the requested settings
 func fakeClaim(name, namespace, claimUID string, capacity int64, boundToVolume string, phase v1.PersistentVolumeClaimPhase, class *string, mode string) *v1.PersistentVolumeClaim {
 	claim := v1.PersistentVolumeClaim{
@@ -555,7 +573,7 @@ func fakeClaim(name, namespace, claimUID string, capacity int64, boundToVolume s
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
 			AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce, v1.ReadOnlyMany},
-			Resources: v1.ResourceRequirements{
+			Resources: v1.VolumeResourceRequirements{
 				Requests: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): *resource.NewQuantity(capacity, resource.BinarySI),
 				},
@@ -820,28 +838,29 @@ func TestGetSecretReference(t *testing.T) {
 }
 
 type provisioningTestcase struct {
-	capacity                      int64 // if zero, default capacity, otherwise available bytes
-	volOpts                       controller.ProvisionOptions
-	notNilSelector                bool
-	makeVolumeNameErr             bool
-	getSecretRefErr               bool
-	getCredentialsErr             bool
-	volWithLessCap                bool
-	volWithZeroCap                bool
-	expectedPVSpec                *pvSpec
-	clientSetObjects              []runtime.Object
-	createVolumeError             error
-	expectErr                     bool
-	expectState                   controller.ProvisioningState
-	expectCreateVolDo             func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest)
-	withExtraMetadata             bool
-	skipCreateVolume              bool
-	deploymentNode                string // fake distributed provisioning with this node as host
-	immediateBinding              bool   // enable immediate binding support for distributed provisioning
-	expectSelectedNode            string // a specific selected-node of the PVC in the apiserver after the test, same as before if empty
-	expectNoProvision             bool   // if true, then ShouldProvision should return false
-	supportsSingleNodeMultiWriter bool   // if true, then provision with single node multi writer capabilities
-	controllerPublishReadOnly     bool
+	capacity                  int64 // if zero, default capacity, otherwise available bytes
+	volOpts                   controller.ProvisionOptions
+	notNilSelector            bool
+	makeVolumeNameErr         bool
+	getSecretRefErr           bool
+	getCredentialsErr         bool
+	volWithLessCap            bool
+	volWithZeroCap            bool
+	expectedPVSpec            *pvSpec
+	clientSetObjects          []runtime.Object
+	createVolumeError         error
+	expectErr                 bool
+	expectState               controller.ProvisioningState
+	expectCreateVolDo         func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest)
+	withExtraMetadata         bool
+	skipCreateVolume          bool
+	deploymentNode            string // fake distributed provisioning with this node as host
+	immediateBinding          bool   // enable immediate binding support for distributed provisioning
+	expectSelectedNode        string // a specific selected-node of the PVC in the apiserver after the test, same as before if empty
+	expectNoProvision         bool   // if true, then ShouldProvision should return false
+	controllerPublishReadOnly bool
+	featureGates              map[featuregate.Feature]bool
+	pluginCapabilities        func() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet)
 }
 
 type provisioningFSTypeTestcase struct {
@@ -857,14 +876,15 @@ type provisioningFSTypeTestcase struct {
 }
 
 type pvSpec struct {
-	Name          string
-	Annotations   map[string]string
-	ReclaimPolicy v1.PersistentVolumeReclaimPolicy
-	AccessModes   []v1.PersistentVolumeAccessMode
-	MountOptions  []string
-	VolumeMode    *v1.PersistentVolumeMode
-	Capacity      v1.ResourceList
-	CSIPVS        *v1.CSIPersistentVolumeSource
+	Name                      string
+	Annotations               map[string]string
+	ReclaimPolicy             v1.PersistentVolumeReclaimPolicy
+	AccessModes               []v1.PersistentVolumeAccessMode
+	MountOptions              []string
+	VolumeMode                *v1.PersistentVolumeMode
+	Capacity                  v1.ResourceList
+	CSIPVS                    *v1.CSIPersistentVolumeSource
+	VolumeAttributesClassName *string
 }
 
 const defaultSecretNsName = "default"
@@ -1068,6 +1088,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			Name: "bar",
 		},
 	}
+	vacName := "test-vac"
 	return requestedBytes, map[string]provisioningTestcase{
 		"normal provision": {
 			volOpts: controller.ProvisionOptions{
@@ -1204,7 +1225,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -1256,7 +1277,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -1310,7 +1331,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -1364,7 +1385,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -1403,7 +1424,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectState: controller.ProvisioningFinished,
 		},
 		"provision with access mode single node writer and single node multi writer capability": {
-			supportsSingleNodeMultiWriter: true,
+			pluginCapabilities: provisionWithSingleNodeMultiWriterCapabilities,
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
@@ -1417,7 +1438,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -1456,7 +1477,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectState: controller.ProvisioningFinished,
 		},
 		"provision with access mode single node single writer and single node multi writer capability": {
-			supportsSingleNodeMultiWriter: true,
+			pluginCapabilities: provisionWithSingleNodeMultiWriterCapabilities,
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
@@ -1470,7 +1491,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -1522,7 +1543,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -1883,7 +1904,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -1943,7 +1964,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -1973,7 +1994,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						Selector: nil,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -2030,7 +2051,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 						Annotations: driverNameAnnotation,
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -2282,6 +2303,182 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectNoProvision:  true, // not owner and will not change that either
 			expectSelectedNode: "",   // not changed by ShouldProvision
 		},
+		"normal provision with VolumeAttributesClass": {
+			featureGates: map[featuregate.Feature]bool{
+				features.VolumeAttributesClass: true,
+			},
+			pluginCapabilities: provisionWithVACCapabilities,
+			clientSetObjects: []runtime.Object{&storagev1alpha1.VolumeAttributesClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: vacName,
+				},
+				DriverName: driverName,
+				Parameters: map[string]string{
+					"test-param": "from-vac",
+				},
+			}},
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
+				// TODO: define a constant for this? kind of ugly
+				if !reflect.DeepEqual(req.MutableParameters, map[string]string{"test-param": "from-vac"}) {
+					t.Errorf("Missing or incorrect VolumeAttributesClass (mutable) parameters")
+				}
+			},
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype":     "ext3",
+						"test-param": "from-sc",
+					},
+				},
+				PVName: "test-name",
+				PVC:    createFakePVCWithVAC(requestedBytes, vacName),
+			},
+			expectedPVSpec: &pvSpec{
+				Name: "test-testi",
+				Annotations: map[string]string{
+					annDeletionProvisionerSecretRefName:      "",
+					annDeletionProvisionerSecretRefNamespace: "",
+				},
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext3",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+				VolumeAttributesClassName: &vacName,
+			},
+			expectState: controller.ProvisioningFinished,
+		},
+		"normal provision with VolumeAttributesClass but feature gate is disabled": {
+			featureGates: map[featuregate.Feature]bool{
+				features.VolumeAttributesClass: false,
+			},
+			pluginCapabilities: provisionWithVACCapabilities,
+			clientSetObjects: []runtime.Object{&storagev1alpha1.VolumeAttributesClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: vacName,
+				},
+				DriverName: driverName,
+				Parameters: map[string]string{
+					"test-param": "from-vac",
+				},
+			}},
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
+				if req.MutableParameters != nil {
+					t.Errorf("VolumeAttributesClass (mutable) parameters present when they should not be")
+				}
+			},
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype":     "ext3",
+						"test-param": "from-sc",
+					},
+				},
+				PVName: "test-name",
+				PVC:    createFakePVCWithVAC(requestedBytes, vacName),
+			},
+			expectedPVSpec: &pvSpec{
+				Name: "test-testi",
+				Annotations: map[string]string{
+					annDeletionProvisionerSecretRefName:      "",
+					annDeletionProvisionerSecretRefNamespace: "",
+				},
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext3",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+				VolumeAttributesClassName: nil,
+			},
+			expectState: controller.ProvisioningFinished,
+		},
+		"fail with VolumeAttributesClass but driver does not support MODIFY_VOLUME": {
+			featureGates: map[featuregate.Feature]bool{
+				features.VolumeAttributesClass: true,
+			},
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+				},
+				PVName: "test-name",
+				PVC:    createFakePVCWithVAC(requestedBytes, vacName),
+			},
+			expectErr:   true,
+			expectState: controller.ProvisioningFinished,
+		},
+		"fail with VolumeAttributesClass but VAC does not exist": {
+			featureGates: map[featuregate.Feature]bool{
+				features.VolumeAttributesClass: true,
+			},
+			pluginCapabilities: provisionWithVACCapabilities,
+			clientSetObjects: []runtime.Object{&storagev1alpha1.VolumeAttributesClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: vacName,
+				},
+				DriverName: driverName,
+				Parameters: map[string]string{
+					"test-param": "from-vac",
+				},
+			}},
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+				},
+				PVName: "test-name",
+				PVC:    createFakePVCWithVAC(requestedBytes, "does-not-exist"),
+			},
+			expectErr:   true,
+			expectState: controller.ProvisioningNoChange,
+		},
+		"fail with VolumeAttributesClass but driver name does not match": {
+			featureGates: map[featuregate.Feature]bool{
+				features.VolumeAttributesClass: true,
+			},
+			pluginCapabilities: provisionWithVACCapabilities,
+			clientSetObjects: []runtime.Object{&storagev1alpha1.VolumeAttributesClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: vacName,
+				},
+				DriverName: "not-" + driverName,
+				Parameters: map[string]string{
+					"test-param": "from-vac",
+				},
+			}},
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+				},
+				PVName: "test-name",
+				PVC:    createFakePVCWithVAC(requestedBytes, vacName),
+			},
+			expectErr:   true,
+			expectState: controller.ProvisioningFinished,
+		},
 	}
 }
 
@@ -2414,6 +2611,10 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 }
 
 func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int64, provisionDriverName, supportsMigrationFromInTreePluginName string, testProvision bool) {
+	for featureName, featureValue := range tc.featureGates {
+		defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, featureName, featureValue)()
+	}
+
 	tmpdir := tempDir(t)
 	defer os.RemoveAll(tmpdir)
 	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
@@ -2524,8 +2725,8 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 
 	var pluginCaps rpc.PluginCapabilitySet
 	var controllerCaps rpc.ControllerCapabilitySet
-	if tc.supportsSingleNodeMultiWriter {
-		pluginCaps, controllerCaps = provisionWithSingleNodeMultiWriterCapabilities()
+	if tc.pluginCapabilities != nil {
+		pluginCaps, controllerCaps = tc.pluginCapabilities()
 	} else {
 		pluginCaps, controllerCaps = provisionCapabilities()
 	}
@@ -2595,6 +2796,10 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 				if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
 					t.Errorf("expected PV: %v, got: %v", tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
 				}
+			}
+
+			if !reflect.DeepEqual(pv.Spec.VolumeAttributesClassName, tc.expectedPVSpec.VolumeAttributesClassName) {
+				t.Errorf("expected VAC name: %v, got: %v", tc.expectedPVSpec.VolumeAttributesClassName, pv.Spec.VolumeAttributesClassName)
 			}
 		}
 	} else {
@@ -2724,7 +2929,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -2771,7 +2976,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(100, 10)),
 							},
@@ -2803,7 +3008,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -2834,7 +3039,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -2865,7 +3070,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -2896,7 +3101,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(100, 10)),
 							},
@@ -2927,7 +3132,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -2960,7 +3165,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -2992,7 +3197,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3024,7 +3229,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3056,7 +3261,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3088,7 +3293,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3121,7 +3326,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3154,7 +3359,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3186,7 +3391,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3218,7 +3423,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3249,7 +3454,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3298,7 +3503,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3332,7 +3537,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3382,7 +3587,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3449,7 +3654,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3517,7 +3722,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3585,7 +3790,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3653,7 +3858,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3705,7 +3910,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3756,7 +3961,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3792,7 +3997,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3842,7 +4047,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3893,7 +4098,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3944,7 +4149,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -3995,7 +4200,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -4046,7 +4251,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -4097,7 +4302,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -4148,7 +4353,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -4200,7 +4405,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 					Spec: v1.PersistentVolumeClaimSpec{
 						StorageClassName: &snapClassName,
-						Resources: v1.ResourceRequirements{
+						Resources: v1.VolumeResourceRequirements{
 							Requests: v1.ResourceList{
 								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
 							},
@@ -5390,7 +5595,7 @@ func generatePVCForProvisionFromPVC(srcNamespace, srcName, scName string, reques
 			},
 			Spec: v1.PersistentVolumeClaimSpec{
 				Selector: nil,
-				Resources: v1.ResourceRequirements{
+				Resources: v1.VolumeResourceRequirements{
 					Requests: v1.ResourceList{
 						v1.ResourceName(v1.ResourceStorage): *resource.NewQuantity(requestedBytes, resource.BinarySI),
 					},
@@ -5440,7 +5645,7 @@ func generatePVCForProvisionFromXnsdataSource(scName, namespace string, dataSour
 			},
 			Spec: v1.PersistentVolumeClaimSpec{
 				Selector: nil,
-				Resources: v1.ResourceRequirements{
+				Resources: v1.VolumeResourceRequirements{
 					Requests: v1.ResourceList{
 						v1.ResourceName(v1.ResourceStorage): *resource.NewQuantity(requestedBytes, resource.BinarySI),
 					},
@@ -6683,7 +6888,7 @@ func createPVCWithAnnotation(ann map[string]string, requestBytes int64) *v1.Pers
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
 			Selector: nil, // Provisioner doesn't support selector
-			Resources: v1.ResourceRequirements{
+			Resources: v1.VolumeResourceRequirements{
 				Requests: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestBytes, 10)),
 				},
