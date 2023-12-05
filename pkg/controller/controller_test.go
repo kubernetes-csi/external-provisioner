@@ -840,20 +840,13 @@ func TestGetSecretReference(t *testing.T) {
 type provisioningTestcase struct {
 	capacity                  int64 // if zero, default capacity, otherwise available bytes
 	volOpts                   controller.ProvisionOptions
-	notNilSelector            bool
-	makeVolumeNameErr         bool
-	getSecretRefErr           bool
-	getCredentialsErr         bool
-	volWithLessCap            bool
-	volWithZeroCap            bool
+	expectedMockReturn        func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error)
 	expectedPVSpec            *pvSpec
 	clientSetObjects          []runtime.Object
 	createVolumeError         error
 	expectErr                 bool
 	expectState               controller.ProvisioningState
-	expectCreateVolDo         func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest)
 	withExtraMetadata         bool
-	skipCreateVolume          bool
 	deploymentNode            string // fake distributed provisioning with this node as host
 	immediateBinding          bool   // enable immediate binding support for distributed provisioning
 	expectSelectedNode        string // a specific selected-node of the PVC in the apiserver after the test, same as before if empty
@@ -1073,6 +1066,121 @@ func TestFSTypeProvision(t *testing.T) {
 	}
 }
 
+type provisioningTestcaseOption struct {
+	tc *provisioningTestcase
+}
+
+func provisionTestcaseBuilder() *provisioningTestcaseOption {
+	return &provisioningTestcaseOption{
+		&provisioningTestcase{},
+	}
+}
+
+func (tco *provisioningTestcaseOption) build() *provisioningTestcase {
+	return tco.tc
+}
+
+func (tco *provisioningTestcaseOption) mockReturn(f func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error)) *provisioningTestcaseOption {
+	tco.tc.expectedMockReturn = f
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) volOpts(op controller.ProvisionOptions) *provisioningTestcaseOption {
+	tco.tc.volOpts = op
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) pvSpec(spec *pvSpec) *provisioningTestcaseOption {
+	tco.tc.expectedPVSpec = spec
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) volumeError(e error) *provisioningTestcaseOption {
+	tco.tc.createVolumeError = e
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) state(st controller.ProvisioningState) *provisioningTestcaseOption {
+	tco.tc.expectState = st
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) extraMetadata(b bool) *provisioningTestcaseOption {
+	tco.tc.withExtraMetadata = b
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) expectErr(e bool) *provisioningTestcaseOption {
+	tco.tc.expectErr = e
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) controllerPublishReadOnly(b bool) *provisioningTestcaseOption {
+	tco.tc.controllerPublishReadOnly = b
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) pluginCapabilities(f func() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet)) *provisioningTestcaseOption {
+	tco.tc.pluginCapabilities = f
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) clientSetObjects(o []runtime.Object) *provisioningTestcaseOption {
+	tco.tc.clientSetObjects = o
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) getSecretRefErr() *provisioningTestcaseOption {
+	tco.tc.volOpts.StorageClass.Parameters[provisionerSecretNameKey] = ""
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) notNilSelector() *provisioningTestcaseOption {
+	tco.tc.volOpts.PVC.Spec.Selector = &metav1.LabelSelector{}
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) makeVolumeNameErr() *provisioningTestcaseOption {
+	tco.tc.volOpts.PVC.ObjectMeta.UID = ""
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) getCredentialsErr() *provisioningTestcaseOption {
+	tco.tc.volOpts.StorageClass.Parameters[provisionerSecretNameKey] = "secretx"
+	tco.tc.volOpts.StorageClass.Parameters[provisionerSecretNamespaceKey] = "default"
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) deploymentNode(node string) *provisioningTestcaseOption {
+	tco.tc.deploymentNode = node
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) noProvision(b bool) *provisioningTestcaseOption {
+	tco.tc.expectNoProvision = b
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) immediateBinding(b bool) *provisioningTestcaseOption {
+	tco.tc.immediateBinding = b
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) selectedNode(node string) *provisioningTestcaseOption {
+	tco.tc.expectSelectedNode = node
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) capacity(cap int64) *provisioningTestcaseOption {
+	tco.tc.capacity = cap
+	return tco
+}
+
+func (tco *provisioningTestcaseOption) featureGates(featureGates map[featuregate.Feature]bool) *provisioningTestcaseOption {
+	tco.tc.featureGates = featureGates
+	return tco
+}
+
 func provisionTestcases() (int64, map[string]provisioningTestcase) {
 	var requestedBytes int64 = 100
 	deletePolicy := v1.PersistentVolumeReclaimDelete
@@ -1090,8 +1198,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 	}
 	vacName := "test-vac"
 	return requestedBytes, map[string]provisioningTestcase{
-		"normal provision": {
-			volOpts: controller.ProvisionOptions{
+		"normal provision": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -1101,7 +1209,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
 					annDeletionProvisionerSecretRefName:      "",
@@ -1120,10 +1229,13 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"normal provision with extra metadata": {
-			volOpts: controller.ProvisionOptions{
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
+			},
+		).state(controller.ProvisioningFinished).build(),
+		"normal provision with extra metadata": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -1133,8 +1245,10 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			withExtraMetadata: true,
-			expectedPVSpec: &pvSpec{
+		).extraMetadata(
+			true,
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -1149,22 +1263,26 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				pvc := createFakePVC(requestedBytes)
-				expectedParams := map[string]string{
-					pvcNameKey:      pvc.GetName(),
-					pvcNamespaceKey: pvc.GetNamespace(),
-					pvNameKey:       "test-testi",
-					"fstype":        "ext3",
-				}
-				if fmt.Sprintf("%v", req.Parameters) != fmt.Sprintf("%v", expectedParams) { // only pvc name/namespace left
-					t.Errorf("Unexpected parameters: %v", req.Parameters)
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						pvc := createFakePVC(requestedBytes)
+						expectedParams := map[string]string{
+							pvcNameKey:      pvc.GetName(),
+							pvcNamespaceKey: pvc.GetNamespace(),
+							pvNameKey:       "test-testi",
+							"fstype":        "ext3",
+						}
+						if fmt.Sprintf("%v", req.Parameters) != fmt.Sprintf("%v", expectedParams) { // only pvc name/namespace left
+							t.Errorf("Unexpected parameters: %v", req.Parameters)
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"multiple fsType provision": {
-			volOpts: controller.ProvisionOptions{
+		).state(controller.ProvisioningFinished).build(),
+		"multiple fsType provision": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -1175,11 +1293,9 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectErr:   true,
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with prefixed FS Type key": {
-			volOpts: controller.ProvisionOptions{
+		).expectErr(true).state(controller.ProvisioningFinished).build(),
+		"provision with prefixed FS Type key": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -1189,7 +1305,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -1204,15 +1321,19 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if len(req.Parameters) != 0 {
-					t.Errorf("Parameters should have been stripped")
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						if len(req.Parameters) != 0 {
+							t.Errorf("Parameters should have been stripped")
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with access mode multi node multi writer": {
-			volOpts: controller.ProvisionOptions{
+		).state(controller.ProvisioningFinished).build(),
+		"provision with access mode multi node multi writer": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
@@ -1234,7 +1355,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteMany},
@@ -1250,21 +1372,25 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if len(req.GetVolumeCapabilities()) != 1 {
-					t.Errorf("Incorrect length in volume capabilities")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
-					t.Errorf("Expected access mode to be set")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
-					t.Errorf("Expected multi_node_multi_writer")
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						if len(req.GetVolumeCapabilities()) != 1 {
+							t.Errorf("Incorrect length in volume capabilities")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+							t.Errorf("Expected access mode to be set")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER {
+							t.Errorf("Expected multi_node_multi_writer")
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with access mode multi node multi readonly with sidecar arg false": {
-			volOpts: controller.ProvisionOptions{
+		).state(controller.ProvisioningFinished).build(),
+		"provision with access mode multi node multi readonly with sidecar arg false": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
@@ -1286,8 +1412,10 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			controllerPublishReadOnly: false,
-			expectedPVSpec: &pvSpec{
+		).controllerPublishReadOnly(
+			false,
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany},
@@ -1304,21 +1432,25 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if len(req.GetVolumeCapabilities()) != 1 {
-					t.Errorf("Incorrect length in volume capabilities")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
-					t.Errorf("Expected access mode to be set")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
-					t.Errorf("Expected multi_node_reader_only")
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						if len(req.GetVolumeCapabilities()) != 1 {
+							t.Errorf("Incorrect length in volume capabilities")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+							t.Errorf("Expected access mode to be set")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
+							t.Errorf("Expected multi_node_reader_only")
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with access mode multi node multi readonly with sidecar arg true": {
-			volOpts: controller.ProvisionOptions{
+		).state(controller.ProvisioningFinished).build(),
+		"provision with access mode multi node multi readonly with sidecar arg true": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
@@ -1340,8 +1472,10 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			controllerPublishReadOnly: true,
-			expectedPVSpec: &pvSpec{
+		).controllerPublishReadOnly(
+			true,
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany},
@@ -1358,21 +1492,25 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if len(req.GetVolumeCapabilities()) != 1 {
-					t.Errorf("Incorrect length in volume capabilities")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
-					t.Errorf("Expected access mode to be set")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
-					t.Errorf("Expected multi_node_reader_only")
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						if len(req.GetVolumeCapabilities()) != 1 {
+							t.Errorf("Incorrect length in volume capabilities")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+							t.Errorf("Expected access mode to be set")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
+							t.Errorf("Expected multi_node_reader_only")
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with access mode single node writer": {
-			volOpts: controller.ProvisionOptions{
+		).state(controller.ProvisioningFinished).build(),
+		"provision with access mode single node writer": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
@@ -1394,7 +1532,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -1410,22 +1549,27 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if len(req.GetVolumeCapabilities()) != 1 {
-					t.Errorf("Incorrect length in volume capabilities")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
-					t.Errorf("Expected access mode to be set")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
-					t.Errorf("Expected single_node_writer")
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						if len(req.GetVolumeCapabilities()) != 1 {
+							t.Errorf("Incorrect length in volume capabilities")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+							t.Errorf("Expected access mode to be set")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
+							t.Errorf("Expected single_node_writer")
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with access mode single node writer and single node multi writer capability": {
-			pluginCapabilities: provisionWithSingleNodeMultiWriterCapabilities,
-			volOpts: controller.ProvisionOptions{
+		).state(controller.ProvisioningFinished).build(),
+		"provision with access mode single node writer and single node multi writer capability": *provisionTestcaseBuilder().pluginCapabilities(
+			provisionWithSingleNodeMultiWriterCapabilities,
+		).volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
@@ -1447,7 +1591,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -1463,22 +1608,27 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if len(req.GetVolumeCapabilities()) != 1 {
-					t.Errorf("Incorrect length in volume capabilities")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
-					t.Errorf("Expected access mode to be set")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER {
-					t.Errorf("Expected single_node_multi_writer")
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						if len(req.GetVolumeCapabilities()) != 1 {
+							t.Errorf("Incorrect length in volume capabilities")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+							t.Errorf("Expected access mode to be set")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER {
+							t.Errorf("Expected single_node_multi_writer")
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with access mode single node single writer and single node multi writer capability": {
-			pluginCapabilities: provisionWithSingleNodeMultiWriterCapabilities,
-			volOpts: controller.ProvisionOptions{
+		).state(controller.ProvisioningFinished).build(),
+		"provision with access mode single node single writer and single node multi writer capability": *provisionTestcaseBuilder().pluginCapabilities(
+			provisionWithSingleNodeMultiWriterCapabilities,
+		).volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
@@ -1500,7 +1650,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod},
@@ -1516,21 +1667,25 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if len(req.GetVolumeCapabilities()) != 1 {
-					t.Errorf("Incorrect length in volume capabilities")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
-					t.Errorf("Expected access mode to be set")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER {
-					t.Errorf("Expected single_node_multi_writer")
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						if len(req.GetVolumeCapabilities()) != 1 {
+							t.Errorf("Incorrect length in volume capabilities")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+							t.Errorf("Expected access mode to be set")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER {
+							t.Errorf("Expected single_node_multi_writer")
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with multiple access modes": {
-			volOpts: controller.ProvisionOptions{
+		).state(controller.ProvisioningFinished).build(),
+		"provision with multiple access modes": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
@@ -1552,7 +1707,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadOnlyMany, v1.ReadWriteOnce},
@@ -1568,27 +1724,31 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if len(req.GetVolumeCapabilities()) != 2 {
-					t.Errorf("Incorrect length in volume capabilities")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
-					t.Errorf("Expected access mode to be set")
-				}
-				if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
-					t.Errorf("Expected multi reade only")
-				}
-				if req.GetVolumeCapabilities()[1].GetAccessMode() == nil {
-					t.Errorf("Expected access mode to be set")
-				}
-				if req.GetVolumeCapabilities()[1].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
-					t.Errorf("Expected single_node_writer")
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						if len(req.GetVolumeCapabilities()) != 2 {
+							t.Errorf("Incorrect length in volume capabilities")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode() == nil {
+							t.Errorf("Expected access mode to be set")
+						}
+						if req.GetVolumeCapabilities()[0].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY {
+							t.Errorf("Expected multi reade only")
+						}
+						if req.GetVolumeCapabilities()[1].GetAccessMode() == nil {
+							t.Errorf("Expected access mode to be set")
+						}
+						if req.GetVolumeCapabilities()[1].GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
+							t.Errorf("Expected single_node_writer")
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with secrets": {
-			volOpts: controller.ProvisionOptions{
+		).state(controller.ProvisioningFinished).build(),
+		"provision with secrets": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    getDefaultStorageClassSecretParameters(),
@@ -1596,8 +1756,10 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			clientSetObjects: getDefaultSecretObjects(),
-			expectedPVSpec: &pvSpec{
+		).clientSetObjects(
+			getDefaultSecretObjects(),
+		).pvSpec(
+			&pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
 					annDeletionProvisionerSecretRefName:      "provisionersecret",
@@ -1636,10 +1798,13 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with default secrets": {
-			volOpts: controller.ProvisionOptions{
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
+			},
+		).state(controller.ProvisioningFinished).build(),
+		"provision with default secrets": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -1650,13 +1815,15 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			clientSetObjects: []runtime.Object{&v1.Secret{
+		).clientSetObjects(
+			[]runtime.Object{&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "default-secret",
 					Namespace: "default-ns",
 				},
 			}},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
 					annDeletionProvisionerSecretRefName:      "default-secret",
@@ -1695,10 +1862,13 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with default secrets with template": {
-			volOpts: controller.ProvisionOptions{
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
+			},
+		).state(controller.ProvisioningFinished).build(),
+		"provision with default secrets with template": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -1709,13 +1879,15 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakeNamedPVC(requestedBytes, "my-pvc", nil),
 			},
-			clientSetObjects: []runtime.Object{&v1.Secret{
+		).clientSetObjects(
+			[]runtime.Object{&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "my-pvc",
 					Namespace: "default-ns",
 				},
 			}},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
 					annDeletionProvisionerSecretRefName:      "my-pvc",
@@ -1754,10 +1926,13 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with volume mode(Filesystem)": {
-			volOpts: controller.ProvisionOptions{
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
+			},
+		).state(controller.ProvisioningFinished).build(),
+		"provision with volume mode(Filesystem)": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
@@ -1765,7 +1940,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVCWithVolumeMode(requestedBytes, volumeModeFileSystem),
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
@@ -1781,10 +1957,13 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with volume mode(Block)": {
-			volOpts: controller.ProvisionOptions{
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
+			},
+		).state(controller.ProvisioningFinished).build(),
+		"provision with volume mode(Block)": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
@@ -1792,7 +1971,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVCWithVolumeMode(requestedBytes, volumeModeBlock),
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name: "test-testi",
 				Capacity: v1.ResourceList{
 					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
@@ -1807,52 +1987,43 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"fail to get secret reference": {
-			volOpts: controller.ProvisionOptions{
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
+			},
+		).state(controller.ProvisioningFinished).build(),
+		"fail to get secret reference": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					Parameters: map[string]string{},
 				},
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			getSecretRefErr: true,
-			expectErr:       true,
-			expectState:     controller.ProvisioningNoChange,
-		},
-		"fail not nil selector": {
-			volOpts: controller.ProvisionOptions{
+		).getSecretRefErr().expectErr(true).state(controller.ProvisioningNoChange).build(),
+		"fail not nil selector": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			notNilSelector: true,
-			expectErr:      true,
-			expectState:    controller.ProvisioningFinished,
-		},
-		"fail to make volume name": {
-			volOpts: controller.ProvisionOptions{
+		).notNilSelector().expectErr(true).state(controller.ProvisioningFinished).build(),
+		"fail to make volume name": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			makeVolumeNameErr: true,
-			expectErr:         true,
-			expectState:       controller.ProvisioningFinished,
-		},
-		"fail to get credentials": {
-			volOpts: controller.ProvisionOptions{
+		).makeVolumeNameErr().expectErr(true).state(controller.ProvisioningFinished).build(),
+		"fail to get credentials": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					Parameters: map[string]string{},
 				},
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			getCredentialsErr: true,
-			expectErr:         true,
-			expectState:       controller.ProvisioningNoChange,
-		},
-		"fail to get secret reference for invalid default secret parameter template": {
-			volOpts: controller.ProvisionOptions{
+		).getCredentialsErr().expectErr(true).state(controller.ProvisioningNoChange).build(),
+		"fail to get secret reference for invalid default secret parameter template": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -1867,30 +2038,31 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					map[string]string{"team.example.com/key": "secret-from-annotation"},
 				),
 			},
-			clientSetObjects: []runtime.Object{&v1.Secret{
+		).clientSetObjects(
+			[]runtime.Object{&v1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "default-secret-from-annotation",
 					Namespace: "default-ns",
 				},
 			}},
-			getSecretRefErr: true,
-			expectErr:       true,
-			expectState:     controller.ProvisioningNoChange,
-		},
-		"fail vol with less capacity": {
-			volOpts: controller.ProvisionOptions{
+		).getSecretRefErr().expectErr(true).state(controller.ProvisioningNoChange).build(),
+		"fail vol with less capacity": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					Parameters: map[string]string{},
 				},
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			volWithLessCap: true,
-			expectErr:      true,
-			expectState:    controller.ProvisioningInBackground,
-		},
-		"provision with mount options": {
-			volOpts: controller.ProvisionOptions{
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				out.Volume.CapacityBytes = int64(80)
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
+				controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, createVolumeError).Times(1)
+			},
+		).expectErr(true).state(controller.ProvisioningInBackground).build(),
+		"provision with mount options": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					Parameters:    map[string]string{},
 					MountOptions:  []string{"foo=bar", "baz=qux"},
@@ -1913,7 +2085,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -1930,28 +2103,32 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if len(req.GetVolumeCapabilities()) != 1 {
-					t.Errorf("Incorrect length in volume capabilities")
-				}
-				cap := req.GetVolumeCapabilities()[0]
-				if cap.GetAccessMode() == nil {
-					t.Errorf("Expected access mode to be set")
-				}
-				if cap.GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
-					t.Errorf("Expected multi reade only")
-				}
-				if cap.GetMount() == nil {
-					t.Errorf("Expected access type to be mount")
-				}
-				if !reflect.DeepEqual(cap.GetMount().MountFlags, []string{"foo=bar", "baz=qux"}) {
-					t.Errorf("Expected 2 mount options")
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						if len(req.GetVolumeCapabilities()) != 1 {
+							t.Errorf("Incorrect length in volume capabilities")
+						}
+						cap := req.GetVolumeCapabilities()[0]
+						if cap.GetAccessMode() == nil {
+							t.Errorf("Expected access mode to be set")
+						}
+						if cap.GetAccessMode().GetMode() != csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER {
+							t.Errorf("Expected multi reade only")
+						}
+						if cap.GetMount() == nil {
+							t.Errorf("Expected access type to be mount")
+						}
+						if !reflect.DeepEqual(cap.GetMount().MountFlags, []string{"foo=bar", "baz=qux"}) {
+							t.Errorf("Expected 2 mount options")
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with final error": {
-			volOpts: controller.ProvisionOptions{
+		).state(controller.ProvisioningFinished).build(),
+		"provision with final error": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					Parameters:    map[string]string{},
 					ReclaimPolicy: &deletePolicy,
@@ -1973,15 +2150,19 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			createVolumeError: status.Error(codes.Unauthenticated, "Mock final error"),
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				// intentionally empty
+		).volumeError(
+			status.Error(codes.Unauthenticated, "Mock final error"),
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						// intentionally empty
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectErr:   true,
-			expectState: controller.ProvisioningFinished,
-		},
-		"provision with transient error": {
-			volOpts: controller.ProvisionOptions{
+		).expectErr(true).state(controller.ProvisioningFinished).build(),
+		"provision with transient error": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					Parameters:    map[string]string{},
 					ReclaimPolicy: &deletePolicy,
@@ -2003,15 +2184,19 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			createVolumeError: status.Error(codes.DeadlineExceeded, "Mock timeout"),
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				// intentionally empty
+		).volumeError(
+			status.Error(codes.DeadlineExceeded, "Mock timeout"),
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						// intentionally empty
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			expectErr:   true,
-			expectState: controller.ProvisioningInBackground,
-		},
-		"provision with size 0": {
-			volOpts: controller.ProvisionOptions{
+		).expectErr(true).state(controller.ProvisioningInBackground).build(),
+		"provision with size 0": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					Parameters: map[string]string{
 						"fstype": "ext3",
@@ -2021,8 +2206,13 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			volWithZeroCap: true,
-			expectedPVSpec: &pvSpec{
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				out.Volume.CapacityBytes = int64(0)
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
+			},
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -2037,9 +2227,9 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-		},
-		"provision with any volume data source": {
-			volOpts: controller.ProvisionOptions{
+		).build(),
+		"provision with any volume data source": *provisionTestcaseBuilder().volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters:    map[string]string{},
@@ -2065,13 +2255,9 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectState:      controller.ProvisioningFinished,
-			expectErr:        true,
-			skipCreateVolume: true,
-		},
-		"distributed, right node selected": {
-			deploymentNode: "foo",
-			volOpts: controller.ProvisionOptions{
+		).expectErr(true).state(controller.ProvisioningFinished).build(),
+		"distributed, right node selected": *provisionTestcaseBuilder().deploymentNode("foo").volOpts(
+			controller.ProvisionOptions{
 				SelectedNode: nodeFoo,
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
@@ -2089,7 +2275,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					return claim
 				}(),
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -2104,11 +2291,13 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"distributed, no node selected": {
-			deploymentNode: "foo",
-			volOpts: controller.ProvisionOptions{
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
+			},
+		).state(controller.ProvisioningFinished).build(),
+		"distributed, no node selected": *provisionTestcaseBuilder().deploymentNode("foo").volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: fakeSCName,
@@ -2121,13 +2310,9 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectErr:         true,
-			expectState:       controller.ProvisioningNoChange,
-			expectNoProvision: true, // not owner
-		},
-		"distributed, wrong node selected": {
-			deploymentNode: "foo",
-			volOpts: controller.ProvisionOptions{
+		).expectErr(true).state(controller.ProvisioningNoChange).noProvision(true).build(), // noProvision: true = not owner
+		"distributed, wrong node selected": *provisionTestcaseBuilder().deploymentNode("foo").volOpts(
+			controller.ProvisionOptions{
 				SelectedNode: nodeBar,
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
@@ -2145,14 +2330,9 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					return claim
 				}(),
 			},
-			expectErr:         true,
-			expectState:       controller.ProvisioningNoChange,
-			expectNoProvision: true, // not owner
-		},
-		"distributed immediate, right node selected": {
-			deploymentNode:   "foo",
-			immediateBinding: true,
-			volOpts: controller.ProvisionOptions{
+		).expectErr(true).state(controller.ProvisioningNoChange).noProvision(true).build(), // noProvision: true = not owner
+		"distributed immediate, right node selected": *provisionTestcaseBuilder().deploymentNode("foo").immediateBinding(true).volOpts(
+			controller.ProvisionOptions{
 				SelectedNode: nodeFoo,
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
@@ -2170,7 +2350,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					return claim
 				}(),
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name:          "test-testi",
 				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
 				Capacity: v1.ResourceList{
@@ -2185,12 +2366,13 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					},
 				},
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"distributed immediate, no node selected": {
-			deploymentNode:   "foo",
-			immediateBinding: true,
-			volOpts: controller.ProvisionOptions{
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
+			},
+		).state(controller.ProvisioningFinished).build(),
+		"distributed immediate, no node selected": *provisionTestcaseBuilder().deploymentNode("foo").immediateBinding(true).volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: fakeSCName,
@@ -2204,16 +2386,13 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectErr:          true,
-			expectState:        controller.ProvisioningNoChange,
-			expectNoProvision:  true,         // not owner yet
-			expectSelectedNode: nodeFoo.Name, // changed by ShouldProvision
-		},
-		"distributed immediate, no capacity ": {
-			deploymentNode:   "foo",
-			immediateBinding: true,
-			capacity:         requestedBytes - 1,
-			volOpts: controller.ProvisionOptions{
+		).expectErr(true).state(controller.ProvisioningNoChange).noProvision(
+			true, // not owner yet
+		).selectedNode(
+			nodeFoo.Name, // changed by ShouldProvision
+		).build(),
+		"distributed immediate, no capacity ": *provisionTestcaseBuilder().deploymentNode("foo").immediateBinding(true).capacity(requestedBytes - 1).volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: fakeSCName,
@@ -2227,15 +2406,13 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectErr:          true,
-			expectState:        controller.ProvisioningNoChange,
-			expectNoProvision:  true, // not owner yet and not becoming it
-			expectSelectedNode: "",   // not changed by ShouldProvision
-		},
-		"distributed immediate, allowed topologies okay": {
-			deploymentNode:   "foo",
-			immediateBinding: true,
-			volOpts: controller.ProvisionOptions{
+		).expectErr(true).state(controller.ProvisioningNoChange).noProvision(
+			true, // not owner yet and not becoming it
+		).selectedNode(
+			"", // not changed by ShouldProvision
+		).build(),
+		"distributed immediate, allowed topologies okay": *provisionTestcaseBuilder().deploymentNode("foo").immediateBinding(true).volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: fakeSCName,
@@ -2259,21 +2436,19 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectErr:          true,
-			expectState:        controller.ProvisioningNoChange,
-			expectNoProvision:  true,         // not owner yet
-			expectSelectedNode: nodeFoo.Name, // changed by ShouldProvision
-		},
-		"distributed immediate, allowed topologies not okay": {
+		).expectErr(true).state(controller.ProvisioningNoChange).noProvision(
+			true, // not owner yet
+		).selectedNode(
+			nodeFoo.Name, // changed by ShouldProvision
+		).build(),
+		"distributed immediate, allowed topologies not okay": *provisionTestcaseBuilder().deploymentNode("foo").immediateBinding(true).volOpts(
 			// This is the same as "distributed immediate, allowed topologies okay"
 			// except that the node names do now not match. The expected outcome
 			// then is that the controller does not attempt to become
 			// the owner (= leaves the selected node annotation unset) because
 			// it would not be able to provision the volume if it was
 			// the owner (generating accessibility requirements would fail).
-			deploymentNode:   "foo",
-			immediateBinding: true,
-			volOpts: controller.ProvisionOptions{
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: fakeSCName,
@@ -2297,18 +2472,19 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVC(requestedBytes),
 			},
-			expectErr:          true,
-			expectState:        controller.ProvisioningNoChange,
-			skipCreateVolume:   true,
-			expectNoProvision:  true, // not owner and will not change that either
-			expectSelectedNode: "",   // not changed by ShouldProvision
-		},
-		"normal provision with VolumeAttributesClass": {
-			featureGates: map[featuregate.Feature]bool{
+		).expectErr(true).state(controller.ProvisioningNoChange).noProvision(
+			true, // not owner and will not change that either
+		).selectedNode(
+			"", // not changed by ShouldProvision
+		).build(),
+		"normal provision with VolumeAttributesClass": *provisionTestcaseBuilder().featureGates(
+			map[featuregate.Feature]bool{
 				features.VolumeAttributesClass: true,
 			},
-			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1alpha1.VolumeAttributesClass{
+		).pluginCapabilities(
+			provisionWithVACCapabilities,
+		).clientSetObjects(
+			[]runtime.Object{&storagev1alpha1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
@@ -2317,13 +2493,19 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					"test-param": "from-vac",
 				},
 			}},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				// TODO: define a constant for this? kind of ugly
-				if !reflect.DeepEqual(req.MutableParameters, map[string]string{"test-param": "from-vac"}) {
-					t.Errorf("Missing or incorrect VolumeAttributesClass (mutable) parameters")
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						// TODO: define a constant for this? kind of ugly
+						if !reflect.DeepEqual(req.MutableParameters, map[string]string{"test-param": "from-vac"}) {
+							t.Errorf("Missing or incorrect VolumeAttributesClass (mutable) parameters")
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			volOpts: controller.ProvisionOptions{
+		).volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -2334,7 +2516,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVCWithVAC(requestedBytes, vacName),
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
 					annDeletionProvisionerSecretRefName:      "",
@@ -2354,14 +2537,15 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				},
 				VolumeAttributesClassName: &vacName,
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"normal provision with VolumeAttributesClass but feature gate is disabled": {
-			featureGates: map[featuregate.Feature]bool{
+		).state(controller.ProvisioningFinished).build(),
+		"normal provision with VolumeAttributesClass but feature gate is disabled": *provisionTestcaseBuilder().featureGates(
+			map[featuregate.Feature]bool{
 				features.VolumeAttributesClass: false,
 			},
-			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1alpha1.VolumeAttributesClass{
+		).pluginCapabilities(
+			provisionWithVACCapabilities,
+		).clientSetObjects(
+			[]runtime.Object{&storagev1alpha1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
@@ -2370,12 +2554,18 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					"test-param": "from-vac",
 				},
 			}},
-			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
-				if req.MutableParameters != nil {
-					t.Errorf("VolumeAttributesClass (mutable) parameters present when they should not be")
-				}
+		).mockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						if req.MutableParameters != nil {
+							t.Errorf("VolumeAttributesClass (mutable) parameters present when they should not be")
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
 			},
-			volOpts: controller.ProvisionOptions{
+		).volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -2386,7 +2576,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVCWithVAC(requestedBytes, vacName),
 			},
-			expectedPVSpec: &pvSpec{
+		).pvSpec(
+			&pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
 					annDeletionProvisionerSecretRefName:      "",
@@ -2406,13 +2597,13 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				},
 				VolumeAttributesClassName: nil,
 			},
-			expectState: controller.ProvisioningFinished,
-		},
-		"fail with VolumeAttributesClass but driver does not support MODIFY_VOLUME": {
-			featureGates: map[featuregate.Feature]bool{
+		).state(controller.ProvisioningFinished).build(),
+		"fail with VolumeAttributesClass but driver does not support MODIFY_VOLUME": *provisionTestcaseBuilder().featureGates(
+			map[featuregate.Feature]bool{
 				features.VolumeAttributesClass: true,
 			},
-			volOpts: controller.ProvisionOptions{
+		).volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -2422,15 +2613,15 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVCWithVAC(requestedBytes, vacName),
 			},
-			expectErr:   true,
-			expectState: controller.ProvisioningFinished,
-		},
-		"fail with VolumeAttributesClass but VAC does not exist": {
-			featureGates: map[featuregate.Feature]bool{
+		).expectErr(true).state(controller.ProvisioningFinished).build(),
+		"fail with VolumeAttributesClass but VAC does not exist": *provisionTestcaseBuilder().featureGates(
+			map[featuregate.Feature]bool{
 				features.VolumeAttributesClass: true,
 			},
-			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1alpha1.VolumeAttributesClass{
+		).pluginCapabilities(
+			provisionWithVACCapabilities,
+		).clientSetObjects(
+			[]runtime.Object{&storagev1alpha1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
@@ -2439,7 +2630,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					"test-param": "from-vac",
 				},
 			}},
-			volOpts: controller.ProvisionOptions{
+		).volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -2449,15 +2641,15 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVCWithVAC(requestedBytes, "does-not-exist"),
 			},
-			expectErr:   true,
-			expectState: controller.ProvisioningNoChange,
-		},
-		"fail with VolumeAttributesClass but driver name does not match": {
-			featureGates: map[featuregate.Feature]bool{
+		).expectErr(true).state(controller.ProvisioningNoChange).build(),
+		"fail with VolumeAttributesClass but driver name does not match": *provisionTestcaseBuilder().featureGates(
+			map[featuregate.Feature]bool{
 				features.VolumeAttributesClass: true,
 			},
-			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1alpha1.VolumeAttributesClass{
+		).pluginCapabilities(
+			provisionWithVACCapabilities,
+		).clientSetObjects(
+			[]runtime.Object{&storagev1alpha1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
@@ -2466,7 +2658,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 					"test-param": "from-vac",
 				},
 			}},
-			volOpts: controller.ProvisionOptions{
+		).volOpts(
+			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
 					Parameters: map[string]string{
@@ -2476,9 +2669,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				PVName: "test-name",
 				PVC:    createFakePVCWithVAC(requestedBytes, vacName),
 			},
-			expectErr:   true,
-			expectState: controller.ProvisioningFinished,
-		},
+		).expectErr(true).state(controller.ProvisioningFinished).build(),
 	}
 }
 
@@ -2486,7 +2677,29 @@ func TestProvision(t *testing.T) {
 	requestedBytes, testcases := provisionTestcases()
 	for k, tc := range testcases {
 		t.Run(k, func(t *testing.T) {
-			runProvisionTest(t, tc, requestedBytes, driverName, "" /* no migration */, true /* Provision() */)
+
+			tmpdir := tempDir(t)
+			defer os.RemoveAll(tmpdir)
+			mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mockController.Finish()
+			defer driver.Stop()
+
+			out := &csi.CreateVolumeResponse{
+				Volume: &csi.Volume{
+					CapacityBytes: requestedBytes,
+					VolumeId:      "test-volume-id",
+				},
+			}
+
+			if tc.expectedMockReturn != nil {
+				// Setup mock call expectations.
+				tc.expectedMockReturn(t, out, controllerServer, tc.createVolumeError)
+			}
+
+			runProvisionTest(t, tc, true /* Provision() */, mockController, driver, controllerServer, csiConn)
 		})
 	}
 }
@@ -2495,7 +2708,26 @@ func TestShouldProvision(t *testing.T) {
 	requestedBytes, testcases := provisionTestcases()
 	for k, tc := range testcases {
 		t.Run(k, func(t *testing.T) {
-			runProvisionTest(t, tc, requestedBytes, driverName, "" /* no migration */, false /* ShouldProvision() */)
+
+			tmpdir := tempDir(t)
+			defer os.RemoveAll(tmpdir)
+			mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mockController.Finish()
+			defer driver.Stop()
+
+			out := &csi.CreateVolumeResponse{
+				Volume: &csi.Volume{
+					CapacityBytes: requestedBytes,
+					VolumeId:      "test-volume-id",
+				},
+			}
+
+			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(0)
+
+			runProvisionTest(t, tc, false /* ShouldProvision() */, mockController, driver, controllerServer, csiConn)
 		})
 	}
 }
@@ -2610,53 +2842,18 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 	}
 }
 
-func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int64, provisionDriverName, supportsMigrationFromInTreePluginName string, testProvision bool) {
+func runProvisionTest(
+	t *testing.T,
+	tc provisioningTestcase,
+	testProvision bool,
+	mockController *gomock.Controller,
+	driver *driver.MockCSIDriver,
+	controllerServer *driver.MockControllerServer,
+	csiConn csiConnection,
+) {
+
 	for featureName, featureValue := range tc.featureGates {
 		defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, featureName, featureValue)()
-	}
-
-	tmpdir := tempDir(t)
-	defer os.RemoveAll(tmpdir)
-	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer mockController.Finish()
-	defer driver.Stop()
-
-	out := &csi.CreateVolumeResponse{
-		Volume: &csi.Volume{
-			CapacityBytes: requestedBytes,
-			VolumeId:      "test-volume-id",
-		},
-	}
-	if tc.notNilSelector {
-		tc.volOpts.PVC.Spec.Selector = &metav1.LabelSelector{}
-	} else if tc.makeVolumeNameErr {
-		tc.volOpts.PVC.ObjectMeta.UID = ""
-	} else if tc.getSecretRefErr {
-		tc.volOpts.StorageClass.Parameters[provisionerSecretNameKey] = ""
-	} else if tc.getCredentialsErr {
-		tc.volOpts.StorageClass.Parameters[provisionerSecretNameKey] = "secretx"
-		tc.volOpts.StorageClass.Parameters[provisionerSecretNamespaceKey] = "default"
-	} else if !testProvision {
-		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(0)
-	} else if tc.volWithLessCap {
-		out.Volume.CapacityBytes = int64(80)
-		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(1)
-		controllerServer.EXPECT().DeleteVolume(gomock.Any(), gomock.Any()).Return(&csi.DeleteVolumeResponse{}, tc.createVolumeError).Times(1)
-	} else if tc.volWithZeroCap {
-		out.Volume.CapacityBytes = int64(0)
-		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
-	} else if tc.expectCreateVolDo != nil {
-		controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(func(ctx context.Context, req *csi.CreateVolumeRequest) {
-			tc.expectCreateVolDo(t, ctx, req)
-		}).Return(out, tc.createVolumeError).Times(1)
-	} else {
-		// Setup regular mock call expectations.
-		if !tc.expectErr && !tc.skipCreateVolume {
-			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, tc.createVolumeError).Times(1)
-		}
 	}
 
 	getCapacityOut := &csi.GetCapacityResponse{
@@ -2732,7 +2929,9 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 	}
 	mycontrollerPublishReadOnly := tc.controllerPublishReadOnly
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(), nil, nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment, mycontrollerPublishReadOnly, false)
+		nil, driverName, pluginCaps, controllerCaps, "", false, true,
+		csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(),
+		nil, nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment, mycontrollerPublishReadOnly, false)
 
 	// Adding objects to the informer ensures that they are consistent with
 	// the fake storage without having to start the informers.
