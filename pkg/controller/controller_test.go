@@ -1066,6 +1066,7 @@ func TestFSTypeProvision(t *testing.T) {
 	}
 }
 
+// method chaining
 type provisioningTestcaseOption struct {
 	tc *provisioningTestcase
 }
@@ -1181,7 +1182,67 @@ func (tco *provisioningTestcaseOption) featureGates(featureGates map[featuregate
 	return tco
 }
 
-func provisionTestcases() (int64, map[string]provisioningTestcase) {
+// functional option pattern
+type provisionTestcaseOption func(*provisioningTestcase) *provisioningTestcase
+
+func makeProvisionTestaseBuilder(options ...provisionTestcaseOption) *provisioningTestcase {
+	tc := &provisioningTestcase{}
+	for _, option := range options {
+		tc = option(tc)
+	}
+	return tc
+}
+
+func makeProvisionTestcaseExpectationSetter(tc *provisioningTestcase, options ...provisionTestcaseOption) *provisioningTestcase {
+	for _, option := range options {
+		tc = option(tc)
+	}
+	return tc
+}
+
+func withVolOpts(op controller.ProvisionOptions) provisionTestcaseOption {
+	return func(tc *provisioningTestcase) *provisioningTestcase {
+		tc.volOpts = op
+		return tc
+	}
+}
+
+func setExpectedPvSpec(spec *pvSpec) provisionTestcaseOption {
+	return func(tc *provisioningTestcase) *provisioningTestcase {
+		tc.expectedPVSpec = spec
+		return tc
+	}
+}
+
+func setExpectedMockReturn(f func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error)) provisionTestcaseOption {
+	return func(tc *provisioningTestcase) *provisioningTestcase {
+		tc.expectedMockReturn = f
+		return tc
+	}
+}
+
+func setExpectState(s controller.ProvisioningState) provisionTestcaseOption {
+	return func(tc *provisioningTestcase) *provisioningTestcase {
+		tc.expectState = s
+		return tc
+	}
+}
+
+func withExtraMetadata(b bool) provisionTestcaseOption {
+	return func(tc *provisioningTestcase) *provisioningTestcase {
+		tc.withExtraMetadata = b
+		return tc
+	}
+}
+
+func setExpectErr(b bool) provisionTestcaseOption {
+	return func(tc *provisioningTestcase) *provisioningTestcase {
+		tc.expectErr = b
+		return tc
+	}
+}
+
+func buildProvisionTestcases() (int64, map[string]provisioningTestcase) {
 	var requestedBytes int64 = 100
 	deletePolicy := v1.PersistentVolumeReclaimDelete
 	immediateBinding := storagev1.VolumeBindingImmediate
@@ -1198,102 +1259,50 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 	}
 	vacName := "test-vac"
 	return requestedBytes, map[string]provisioningTestcase{
-		"normal provision": *provisionTestcaseBuilder().volOpts(
-			controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters: map[string]string{
-						"fstype": "ext3",
+		// functional option pattern
+		"normal provision": *makeProvisionTestaseBuilder(
+			withVolOpts(
+				controller.ProvisionOptions{
+					StorageClass: &storagev1.StorageClass{
+						ReclaimPolicy: &deletePolicy,
+						Parameters: map[string]string{
+							"fstype": "ext3",
+						},
 					},
-				},
-				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
-			},
-		).pvSpec(
-			&pvSpec{
-				Name: "test-testi",
-				Annotations: map[string]string{
-					annDeletionProvisionerSecretRefName:      "",
-					annDeletionProvisionerSecretRefNamespace: "",
-				},
-				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
-				},
-				CSIPVS: &v1.CSIPersistentVolumeSource{
-					Driver:       "test-driver",
-					VolumeHandle: "test-volume-id",
-					FSType:       "ext3",
-					VolumeAttributes: map[string]string{
-						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					PVName: "test-name",
+					PVC:    createFakePVC(requestedBytes),
+				}),
+		),
+		"normal provision with extra metadata": *makeProvisionTestaseBuilder(
+			withVolOpts(
+				controller.ProvisionOptions{
+					StorageClass: &storagev1.StorageClass{
+						ReclaimPolicy: &deletePolicy,
+						Parameters: map[string]string{
+							"fstype": "ext3",
+						},
 					},
-				},
-			},
-		).mockReturn(
-			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
-				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
-			},
-		).state(controller.ProvisioningFinished).build(),
-		"normal provision with extra metadata": *provisionTestcaseBuilder().volOpts(
-			controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters: map[string]string{
-						"fstype": "ext3",
+					PVName: "test-name",
+					PVC:    createFakePVC(requestedBytes),
+				}),
+			withExtraMetadata(true),
+		),
+		"multiple fsType provision": *makeProvisionTestaseBuilder(
+			withVolOpts(
+				controller.ProvisionOptions{
+					StorageClass: &storagev1.StorageClass{
+						ReclaimPolicy: &deletePolicy,
+						Parameters: map[string]string{
+							"fstype":          "ext3",
+							prefixedFsTypeKey: "ext4",
+						},
 					},
+					PVName: "test-name",
+					PVC:    createFakePVC(requestedBytes),
 				},
-				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
-			},
-		).extraMetadata(
-			true,
-		).pvSpec(
-			&pvSpec{
-				Name:          "test-testi",
-				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
-				Capacity: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
-				},
-				CSIPVS: &v1.CSIPersistentVolumeSource{
-					Driver:       "test-driver",
-					VolumeHandle: "test-volume-id",
-					FSType:       "ext3",
-					VolumeAttributes: map[string]string{
-						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
-					},
-				},
-			},
-		).mockReturn(
-			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
-				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
-					func(ctx context.Context, req *csi.CreateVolumeRequest) {
-						pvc := createFakePVC(requestedBytes)
-						expectedParams := map[string]string{
-							pvcNameKey:      pvc.GetName(),
-							pvcNamespaceKey: pvc.GetNamespace(),
-							pvNameKey:       "test-testi",
-							"fstype":        "ext3",
-						}
-						if fmt.Sprintf("%v", req.Parameters) != fmt.Sprintf("%v", expectedParams) { // only pvc name/namespace left
-							t.Errorf("Unexpected parameters: %v", req.Parameters)
-						}
-					},
-				).Return(out, createVolumeError).Times(1)
-			},
-		).state(controller.ProvisioningFinished).build(),
-		"multiple fsType provision": *provisionTestcaseBuilder().volOpts(
-			controller.ProvisionOptions{
-				StorageClass: &storagev1.StorageClass{
-					ReclaimPolicy: &deletePolicy,
-					Parameters: map[string]string{
-						"fstype":          "ext3",
-						prefixedFsTypeKey: "ext4",
-					},
-				},
-				PVName: "test-name",
-				PVC:    createFakePVC(requestedBytes),
-			},
-		).expectErr(true).state(controller.ProvisioningFinished).build(),
+			),
+		),
+		// method chaining
 		"provision with prefixed FS Type key": *provisionTestcaseBuilder().volOpts(
 			controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
@@ -2673,8 +2682,90 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 	}
 }
 
+func setProvisionTestcaseExpectation(testcases map[string]provisioningTestcase) map[string]provisioningTestcase {
+	var requestedBytes int64 = 100
+
+	tc := testcases["normal provision"]
+	testcases["normal provision"] = *makeProvisionTestcaseExpectationSetter(&tc,
+		setExpectedPvSpec(
+			&pvSpec{
+				Name: "test-testi",
+				Annotations: map[string]string{
+					annDeletionProvisionerSecretRefName:      "",
+					annDeletionProvisionerSecretRefNamespace: "",
+				},
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext3",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			}),
+		setExpectedMockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, createVolumeError).Times(1)
+			}),
+		setExpectState(controller.ProvisioningFinished),
+	)
+
+	tc = testcases["normal provision with extra metadata"]
+	testcases["normal provision with extra metadata"] = *makeProvisionTestcaseExpectationSetter(&tc,
+		setExpectedPvSpec(
+			&pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext3",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			}),
+		setExpectedMockReturn(
+			func(t *testing.T, out *csi.CreateVolumeResponse, controllerServer *driver.MockControllerServer, createVolumeError error) {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Do(
+					func(ctx context.Context, req *csi.CreateVolumeRequest) {
+						pvc := createFakePVC(requestedBytes)
+						expectedParams := map[string]string{
+							pvcNameKey:      pvc.GetName(),
+							pvcNamespaceKey: pvc.GetNamespace(),
+							pvNameKey:       "test-testi",
+							"fstype":        "ext3",
+						}
+						if fmt.Sprintf("%v", req.Parameters) != fmt.Sprintf("%v", expectedParams) { // only pvc name/namespace left
+							t.Errorf("Unexpected parameters: %v", req.Parameters)
+						}
+					},
+				).Return(out, createVolumeError).Times(1)
+			}),
+		setExpectState(controller.ProvisioningFinished),
+	)
+
+	tc = testcases["multiple fsType provision"]
+	testcases["multiple fsType provision"] = *makeProvisionTestcaseExpectationSetter(&tc,
+		setExpectErr(true),
+		setExpectState(controller.ProvisioningFinished),
+	)
+
+	return testcases
+}
+
 func TestProvision(t *testing.T) {
-	requestedBytes, testcases := provisionTestcases()
+	requestedBytes, testcases := buildProvisionTestcases()
+
+	testcases = setProvisionTestcaseExpectation(testcases)
+
 	for k, tc := range testcases {
 		t.Run(k, func(t *testing.T) {
 
@@ -2705,7 +2796,10 @@ func TestProvision(t *testing.T) {
 }
 
 func TestShouldProvision(t *testing.T) {
-	requestedBytes, testcases := provisionTestcases()
+	requestedBytes, testcases := buildProvisionTestcases()
+
+	testcases = setProvisionTestcaseExpectation(testcases)
+
 	for k, tc := range testcases {
 		t.Run(k, func(t *testing.T) {
 
