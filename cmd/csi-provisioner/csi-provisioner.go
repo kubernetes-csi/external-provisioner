@@ -26,6 +26,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -38,7 +39,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	validation "k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/apimachinery/pkg/util/validation"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -127,6 +128,7 @@ var (
 func main() {
 	var config *rest.Config
 	var err error
+	var controllerWg sync.WaitGroup
 
 	flag.Var(utilflag.NewMapStringBool(&featureGates), "feature-gates", "A set of key=value pairs that describe feature gates for alpha/experimental features. "+
 		"Options are:\n"+strings.Join(utilfeature.DefaultFeatureGate.KnownFeatures(), "\n"))
@@ -483,7 +485,13 @@ func main() {
 			klog.Infof("producing CSIStorageCapacity objects with fixed topology segment %s", segment)
 			topologyInformer = topology.NewFixedNodeTopology(&segment)
 		}
-		go topologyInformer.RunWorker(ctx)
+
+		controllerWg.Add(1)
+		go func() {
+			defer controllerWg.Done()
+			topologyInformer.RunWorker(ctx)
+			klog.Info("topology informer stopped")
+		}()
 
 		managedByID := "external-provisioner"
 		if *enableNodeDeployment {
@@ -638,12 +646,31 @@ func main() {
 		}
 
 		if capacityController != nil {
-			go capacityController.Run(ctx, int(*capacityThreads))
+			controllerWg.Add(1)
+			go func() {
+				defer controllerWg.Done()
+				capacityController.Run(ctx, int(*capacityThreads))
+				klog.Info("capacity controller finished shutdown")
+			}()
 		}
 		if csiClaimController != nil {
-			go csiClaimController.Run(ctx, int(*finalizerThreads))
+			controllerWg.Add(1)
+			go func() {
+				defer controllerWg.Done()
+				csiClaimController.Run(ctx, int(*finalizerThreads))
+				klog.Info("csi claim controller finished shutdown")
+			}()
 		}
-		provisionController.Run(ctx)
+
+		controllerWg.Add(1)
+		go func() {
+			defer controllerWg.Done()
+			provisionController.Run(ctx)
+			klog.Info("provisioning controller finished shutdown")
+		}()
+
+		controllerWg.Wait()
+		klog.Info("all controllers finished shutdown")
 	}
 
 	if !*enableLeaderElection {

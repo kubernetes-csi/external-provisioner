@@ -168,6 +168,10 @@ type nodeTopology struct {
 	callbacks []Callback
 }
 
+func (nt *nodeTopology) ShutDown() {
+	nt.queue.ShutDown()
+}
+
 // driverTopologyKeys returns nil if the driver is not running
 // on the node, otherwise at least an empty slice of topology keys.
 func (nt *nodeTopology) driverTopologyKeys(csiNode *storagev1.CSINode) []string {

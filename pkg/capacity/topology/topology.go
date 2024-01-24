@@ -132,6 +132,9 @@ type Informer interface {
 
 	// RunWorker starts a worker to process queue.
 	RunWorker(ctx context.Context)
+
+	// ShutDown stops all workers.
+	ShutDown()
 }
 
 type Callback func(added []*Segment, removed []*Segment)

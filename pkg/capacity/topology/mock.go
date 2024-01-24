@@ -42,6 +42,8 @@ type Mock struct {
 	callbacks []Callback
 }
 
+func (mt *Mock) ShutDown() {}
+
 func (mt *Mock) AddCallback(cb Callback) {
 	mt.callbacks = append(mt.callbacks, cb)
 	cb(mt.segments, nil)

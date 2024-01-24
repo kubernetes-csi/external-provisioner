@@ -242,6 +242,7 @@ var _ metrics.StableCollector = &Controller{}
 func (c *Controller) Run(ctx context.Context, threadiness int) {
 	klog.Info("Starting Capacity Controller")
 	defer c.queue.ShutDown()
+	defer c.topologyInformer.ShutDown()
 
 	c.prepare(ctx)
 	for i := 0; i < threadiness; i++ {
