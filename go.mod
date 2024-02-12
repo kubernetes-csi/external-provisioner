@@ -12,7 +12,7 @@ require (
 	github.com/kubernetes-csi/csi-test/v5 v5.2.0
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.3.0
 	github.com/miekg/dns v1.1.57 // indirect
-	github.com/prometheus/client_golang v1.17.0
+	github.com/prometheus/client_golang v1.18.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.8.4
 	google.golang.org/grpc v1.60.0
@@ -24,16 +24,16 @@ require (
 	k8s.io/component-base v0.29.0
 	k8s.io/component-helpers v0.29.0
 	k8s.io/csi-translation-lib v0.29.0
-	k8s.io/klog/v2 v2.110.1
-	sigs.k8s.io/controller-runtime v0.16.3
+	k8s.io/klog/v2 v2.120.1
+	sigs.k8s.io/controller-runtime v0.17.1
 	sigs.k8s.io/gateway-api v1.0.0
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v9 v9.1.0-rc.0
 )
 
 require (
-	github.com/onsi/ginkgo/v2 v2.13.2
+	github.com/onsi/ginkgo/v2 v2.14.0
 	github.com/onsi/gomega v1.30.0
-	k8s.io/kubernetes v1.29.0
+	k8s.io/kubernetes v1.29.1
 )
 
 require (
@@ -52,10 +52,10 @@ require (
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/evanphx/json-patch v5.7.0+incompatible // indirect
-	github.com/evanphx/json-patch/v5 v5.7.0 // indirect
+	github.com/evanphx/json-patch/v5 v5.8.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
-	github.com/go-logr/logr v1.3.0 // indirect
+	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.20.1 // indirect
 	github.com/go-openapi/jsonreference v0.20.3 // indirect
@@ -112,7 +112,7 @@ require (
 	golang.org/x/net v0.19.0 // indirect
 	golang.org/x/oauth2 v0.15.0 // indirect
 	golang.org/x/sync v0.5.0 // indirect
-	golang.org/x/sys v0.15.0 // indirect
+	golang.org/x/sys v0.16.0 // indirect
 	golang.org/x/term v0.15.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
@@ -125,7 +125,7 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.29.0-rc.1 // indirect
+	k8s.io/apiextensions-apiserver v0.29.0 // indirect
 	k8s.io/cloud-provider v0.29.0-rc.1 // indirect
 	k8s.io/controller-manager v0.29.0 // indirect
 	k8s.io/kms v0.29.0 // indirect
@@ -135,7 +135,7 @@ require (
 	k8s.io/mount-utils v0.27.0 // indirect
 	k8s.io/pod-security-admission v0.27.0 // indirect
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.28.3 // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.29.0 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
