@@ -24,8 +24,8 @@ require (
 	k8s.io/component-base v0.29.0
 	k8s.io/component-helpers v0.29.0
 	k8s.io/csi-translation-lib v0.29.0
-	k8s.io/klog/v2 v2.110.1
-	sigs.k8s.io/controller-runtime v0.16.3
+	k8s.io/klog/v2 v2.120.1
+	sigs.k8s.io/controller-runtime v0.17.2
 	sigs.k8s.io/gateway-api v1.0.0
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v9 v9.1.0-rc.0
 )
@@ -33,7 +33,7 @@ require (
 require (
 	github.com/onsi/ginkgo/v2 v2.15.0
 	github.com/onsi/gomega v1.31.1
-	k8s.io/kubernetes v1.29.0
+	k8s.io/kubernetes v1.29.2
 )
 
 require (
@@ -124,7 +124,7 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.29.0-rc.1 // indirect
+	k8s.io/apiextensions-apiserver v0.29.0 // indirect
 	k8s.io/cloud-provider v0.29.0-rc.1 // indirect
 	k8s.io/controller-manager v0.29.0 // indirect
 	k8s.io/kms v0.29.0 // indirect
@@ -134,7 +134,7 @@ require (
 	k8s.io/mount-utils v0.27.0 // indirect
 	k8s.io/pod-security-admission v0.27.0 // indirect
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.28.3 // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.29.0 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
