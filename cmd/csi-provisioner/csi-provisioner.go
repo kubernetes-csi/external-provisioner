@@ -83,6 +83,8 @@ var (
 	capacityThreads      = flag.Uint("capacity-threads", 1, "Number of simultaneously running threads, handling CSIStorageCapacity objects")
 	operationTimeout     = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for volume operation (creation, deletion, capacity queries)")
 
+	provisioningFinalizerThreads = flag.Uint("provisioning-protection-threads", 1, "Number of simultaneously running threads, handling provisioning finalizer removal")
+
 	enableLeaderElection = flag.Bool("leader-election", false, "Enables leader election. If leader election is enabled, additional RBAC rules are required. Please refer to the Kubernetes CSI documentation for instructions on setting up these RBAC rules.")
 
 	leaderElectionNamespace = flag.String("leader-election-namespace", "", "Namespace where the leader election resource lives. Defaults to the pod namespace if not set.")
@@ -378,6 +380,8 @@ func main() {
 	// PersistentVolumeClaims informer
 	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)
 	claimQueue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "claims")
+	provisoningRateLimiter := workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)
+	provisoningClaimQueue := workqueue.NewNamedRateLimitingQueue(provisoningRateLimiter, "provisoning-protection")
 	claimInformer := factory.Core().V1().PersistentVolumeClaims().Informer()
 
 	// Setup options
@@ -568,6 +572,13 @@ func main() {
 		controllerCapabilities,
 	)
 
+	provisioningProtectionController := ctrl.NewProvisioningProtectionController(
+		clientset,
+		claimLister,
+		claimInformer,
+		provisoningClaimQueue,
+	)
+
 	// Start HTTP server, regardless whether we are the leader or not.
 	if addr != "" {
 		// To collect metrics data from the metric handler itself, we
@@ -642,6 +653,9 @@ func main() {
 		}
 		if csiClaimController != nil {
 			go csiClaimController.Run(ctx, int(*finalizerThreads))
+		}
+		if provisioningProtectionController != nil {
+			go provisioningProtectionController.Run(ctx, int(*provisioningFinalizerThreads))
 		}
 		provisionController.Run(ctx)
 	}
