@@ -135,9 +135,10 @@ const (
 
 	annMigratedTo = "pv.kubernetes.io/migrated-to"
 	// TODO: Beta will be deprecated and removed in a later release
-	annBetaStorageProvisioner = "volume.beta.kubernetes.io/storage-provisioner"
-	annStorageProvisioner     = "volume.kubernetes.io/storage-provisioner"
-	annSelectedNode           = "volume.kubernetes.io/selected-node"
+	annBetaStorageProvisioner  = "volume.beta.kubernetes.io/storage-provisioner"
+	annStorageProvisioner      = "volume.kubernetes.io/storage-provisioner"
+	annSelectedNode            = "volume.kubernetes.io/selected-node"
+	annProvisioningConsistency = "volume.kubernetes.io/provisioning-consistency"
 
 	// Annotation for secret name and namespace will be added to the pv object
 	// and used at pvc deletion time.
@@ -146,7 +147,8 @@ const (
 
 	snapshotNotBound = "snapshot %s not bound"
 
-	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
+	pvcCloneFinalizer        = "provisioner.storage.kubernetes.io/cloning-protection"
+	pvcProvisioningFinalizer = "provisioner.storage.kubernetes.io/provisioning-protection"
 
 	annAllowVolumeModeChange = "snapshot.storage.kubernetes.io/allow-volume-mode-change"
 )
@@ -801,6 +803,16 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		}
 	}
 
+	// If provisioningconsistency disable and pvc is being deleted, remove finalizer and abandon provisioning process. A CSI driver may be provisioning the volume and this volume may leak.
+	if options.PVC.DeletionTimestamp != nil &&
+		options.PVC.Annotations != nil && options.PVC.Annotations[annProvisioningConsistency] == "disable" {
+		err := p.removeProvisioningFinalizer(ctx, options.PVC)
+		if err != nil {
+			return nil, controller.ProvisioningNoChange, err
+		}
+		return nil, controller.ProvisioningFinished, err
+	}
+
 	// The same check already ran in ShouldProvision, but perhaps
 	// it couldn't complete due to some unexpected error.
 	owned, err := p.checkNode(ctx, claim, options.StorageClass, "provision")
@@ -822,6 +834,14 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	volSizeBytes := req.CapacityRange.RequiredBytes
 	pvName := req.Name
 	provisionerCredentials := req.Secrets
+
+	// Add finalizer before createvolume
+	if options.PVC.Annotations != nil && options.PVC.Annotations[annProvisioningConsistency] == "enable" {
+		err = p.setProvisioningFinalizer(ctx, options.PVC)
+		if err != nil {
+			return nil, controller.ProvisioningNoChange, err
+		}
+	}
 
 	createCtx := markAsMigrated(ctx, result.migratedVolume)
 	createCtx, cancel := context.WithTimeout(createCtx, p.timeout)
@@ -990,6 +1010,38 @@ func (p *csiProvisioner) setCloneFinalizer(ctx context.Context, pvc *v1.Persiste
 	}
 
 	return nil
+}
+
+func (p *csiProvisioner) setProvisioningFinalizer(ctx context.Context, claim *v1.PersistentVolumeClaim) (err error) {
+	clone := claim.DeepCopy()
+	if !checkFinalizer(clone, pvcProvisioningFinalizer) {
+		clone.Finalizers = append(clone.Finalizers, pvcProvisioningFinalizer)
+		claim, err = p.client.CoreV1().PersistentVolumeClaims(clone.Namespace).Update(ctx, clone, metav1.UpdateOptions{})
+		klog.V(5).Infof("successfully set PVC ProvisioningFinalizer %v", claim.Name)
+		return err
+	}
+
+	return nil
+}
+
+func (p *csiProvisioner) removeProvisioningFinalizer(ctx context.Context, claim *v1.PersistentVolumeClaim) (err error) {
+	clone := claim.DeepCopy()
+	if !checkFinalizer(clone, pvcProvisioningFinalizer) {
+		return nil
+	}
+
+	newFinalizers := make([]string, 0)
+	for _, f := range clone.GetFinalizers() {
+		if f == pvcProvisioningFinalizer {
+			continue
+		}
+		newFinalizers = append(newFinalizers, f)
+	}
+
+	clone.Finalizers = newFinalizers
+	claim, err = p.client.CoreV1().PersistentVolumeClaims(clone.Namespace).Update(ctx, clone, metav1.UpdateOptions{})
+	klog.V(5).Infof("successfully remove PVC ProvisioningFinalizer %v", claim.Name)
+	return err
 }
 
 func (p *csiProvisioner) supportsTopology() bool {

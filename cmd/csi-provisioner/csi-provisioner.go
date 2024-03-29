@@ -70,18 +70,21 @@ import (
 )
 
 var (
-	master               = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
-	kubeconfig           = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
-	csiEndpoint          = flag.String("csi-address", "/run/csi/socket", "The gRPC endpoint for Target CSI Volume.")
-	volumeNamePrefix     = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume.")
-	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
-	showVersion          = flag.Bool("version", false, "Show version.")
-	retryIntervalStart   = flag.Duration("retry-interval-start", time.Second, "Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to retry-interval-max.")
-	retryIntervalMax     = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
-	workerThreads        = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
-	finalizerThreads     = flag.Uint("cloning-protection-threads", 1, "Number of simultaneously running threads, handling cloning finalizer removal")
-	capacityThreads      = flag.Uint("capacity-threads", 1, "Number of simultaneously running threads, handling CSIStorageCapacity objects")
-	operationTimeout     = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for volume operation (creation, deletion, capacity queries)")
+	master                       = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
+	kubeconfig                   = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Either this or master needs to be set if the provisioner is being run out of cluster.")
+	csiEndpoint                  = flag.String("csi-address", "/run/csi/socket", "The gRPC endpoint for Target CSI Volume.")
+	volumeNamePrefix             = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume.")
+	volumeNameUUIDLength         = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
+	showVersion                  = flag.Bool("version", false, "Show version.")
+	retryIntervalStart           = flag.Duration("retry-interval-start", time.Second, "Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to retry-interval-max.")
+	retryIntervalMax             = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
+	workerThreads                = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
+	finalizerThreads             = flag.Uint("cloning-protection-threads", 1, "Number of simultaneously running threads, handling cloning finalizer removal")
+	provisioningFinalizerThreads = flag.Uint("provisioning-protection-threads", 1, "Number of simultaneously running threads, handling provisioning finalizer removal")
+	capacityThreads              = flag.Uint("capacity-threads", 1, "Number of simultaneously running threads, handling CSIStorageCapacity objects")
+	operationTimeout             = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for volume operation (creation, deletion, capacity queries)")
+
+	provisioningFinalizerThreads = flag.Uint("provisioning-protection-threads", 1, "Number of simultaneously running threads, handling provisioning finalizer removal")
 
 	enableLeaderElection = flag.Bool("leader-election", false, "Enables leader election. If leader election is enabled, additional RBAC rules are required. Please refer to the Kubernetes CSI documentation for instructions on setting up these RBAC rules.")
 
@@ -378,6 +381,8 @@ func main() {
 	// PersistentVolumeClaims informer
 	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)
 	claimQueue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "claims")
+	provisoningRateLimiter := workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)
+	provisoningClaimQueue := workqueue.NewNamedRateLimitingQueue(provisoningRateLimiter, "provisoning-protection")
 	claimInformer := factory.Core().V1().PersistentVolumeClaims().Informer()
 
 	// Setup options
@@ -568,6 +573,13 @@ func main() {
 		controllerCapabilities,
 	)
 
+	provisioningProtectionController := ctrl.NewProvisioningProtectionController(
+		clientset,
+		claimLister,
+		claimInformer,
+		provisoningClaimQueue,
+	)
+
 	// Start HTTP server, regardless whether we are the leader or not.
 	if addr != "" {
 		// To collect metrics data from the metric handler itself, we
@@ -642,6 +654,9 @@ func main() {
 		}
 		if csiClaimController != nil {
 			go csiClaimController.Run(ctx, int(*finalizerThreads))
+		}
+		if provisioningProtectionController != nil {
+			go provisioningProtectionController.Run(ctx, int(*provisioningFinalizerThreads))
 		}
 		provisionController.Run(ctx)
 	}
