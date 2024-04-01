@@ -199,9 +199,10 @@ func (p *CloningProtectionController) syncClaim(ctx context.Context, claim *v1.P
 			finalizers = append(finalizers, finalizer)
 		}
 	}
-	claim.ObjectMeta.Finalizers = finalizers
 
-	if _, err = p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(ctx, claim, metav1.UpdateOptions{}); err != nil {
+	clone := claim.DeepCopy()
+	clone.Finalizers = finalizers
+	if _, err = p.client.CoreV1().PersistentVolumeClaims(clone.Namespace).Update(ctx, clone, metav1.UpdateOptions{}); err != nil {
 		if !apierrs.IsNotFound(err) {
 			// Couldn't remove finalizer and the object still exists, the controller may
 			// try to remove the finalizer again on the next update
