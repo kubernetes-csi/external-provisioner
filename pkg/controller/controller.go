@@ -983,9 +983,10 @@ func (p *csiProvisioner) setCloneFinalizer(ctx context.Context, pvc *v1.Persiste
 		return err
 	}
 
-	if !checkFinalizer(claim, pvcCloneFinalizer) {
-		claim.Finalizers = append(claim.Finalizers, pvcCloneFinalizer)
-		_, err := p.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Update(ctx, claim, metav1.UpdateOptions{})
+	clone := claim.DeepCopy()
+	if !checkFinalizer(clone, pvcCloneFinalizer) {
+		clone.Finalizers = append(clone.Finalizers, pvcCloneFinalizer)
+		_, err := p.client.CoreV1().PersistentVolumeClaims(clone.Namespace).Update(ctx, clone, metav1.UpdateOptions{})
 		return err
 	}
 
