@@ -722,6 +722,23 @@ func TestGetSecretReference(t *testing.T) {
 			},
 			expectErr: true,
 		},
+		"template - valid PVC annotations for Provision and Delete": {
+			secretParams: provisionerSecretParams,
+			params: map[string]string{
+				prefixedProvisionerSecretNamespaceKey: "static-${pvc.namespace}",
+				prefixedProvisionerSecretNameKey:      "static-${pvc.name}-${pvc.annotations['akey']}",
+			},
+			pvName: "pvname",
+			pvc: &v1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "name",
+					Namespace:   "pvcnamespace",
+					Annotations: map[string]string{"akey": "avalue"},
+				},
+			},
+			expectErr: false,
+			expectRef: &v1.SecretReference{Name: "static-name-avalue", Namespace: "static-pvcnamespace"},
+		},
 		"template - valid nodepublish secret ref": {
 			secretParams: nodePublishSecretParams,
 			params: map[string]string{
