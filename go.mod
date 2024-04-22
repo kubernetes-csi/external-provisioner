@@ -11,7 +11,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.17.0
 	github.com/kubernetes-csi/csi-test/v5 v5.2.0
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.3.0
-	github.com/miekg/dns v1.1.58 // indirect
+	github.com/miekg/dns v1.1.59 // indirect
 	github.com/prometheus/client_golang v1.18.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
@@ -32,7 +32,7 @@ require (
 
 require (
 	github.com/onsi/ginkgo/v2 v2.17.1
-	github.com/onsi/gomega v1.32.0
+	github.com/onsi/gomega v1.33.0
 	k8s.io/kubernetes v1.29.2
 )
 
@@ -88,7 +88,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.46.0 // indirect
-	github.com/prometheus/procfs v0.13.0 // indirect
+	github.com/prometheus/procfs v0.14.0 // indirect
 	github.com/spf13/cobra v1.8.0 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.13 // indirect
