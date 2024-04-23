@@ -3,7 +3,8 @@
 The external-provisioner is a sidecar container that dynamically provisions volumes by calling `CreateVolume` and `DeleteVolume` functions of CSI drivers. It is necessary because internal persistent volume controller running in Kubernetes controller-manager does not have any direct interfaces to CSI drivers.
 
 ## Overview
-The external-provisioner is an external controller that monitors `PersistentVolumeClaim` objects created by user and creates/deletes volumes for them. Full design can be found at Kubernetes proposal at [container-storage-interface.md](https://github.com/kubernetes/design-proposals-archive/blob/main/storage/container-storage-interface.md)
+The external-provisioner is an external controller that monitors `PersistentVolumeClaim` objects created by user and creates/deletes volumes for them.
+The [Kubernetes Container Storage Interface (CSI) Documentation](https://kubernetes-csi.github.io/docs/) explains how to develop, deploy, and test a Container Storage Interface (CSI) driver on Kubernetes.
 
 ## Compatibility
 
