@@ -697,12 +697,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	}
 
 	// Resolve provision secret credentials.
-	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, sc.Parameters, pvName, &v1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      claim.Name,
-			Namespace: claim.Namespace,
-		},
-	})
+	provisionerSecretRef, err := getSecretReference(provisionerSecretParams, sc.Parameters, pvName, claim)
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
