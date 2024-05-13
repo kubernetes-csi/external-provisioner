@@ -7,7 +7,6 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
@@ -17,10 +16,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	klog.InitFlags(nil)
-	utilruntime.Must(flag.Set("logtostderr", "false"))
-	utilruntime.Must(flag.Set("alsologtostderr", "false"))
-	utilruntime.Must(flag.Set("one_output", "true"))
 	klog.SetOutput(ginkgo.GinkgoWriter)
 
 	// Register framework flags, then handle flags.
