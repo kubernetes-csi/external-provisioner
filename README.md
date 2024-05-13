@@ -27,7 +27,7 @@ Following table reflects the head of this branch.
 | CSIStorageCapacity | GA  | On  | Publish [capacity information](https://kubernetes.io/docs/concepts/storage/volumes/#storage-capacity) for the Kubernetes scheduler.                                  | No |
 | ReadWriteOncePod   | Beta | On | [Single pod access mode for PersistentVolumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes).                                        | No |
 | CSINodeExpandSecret | Beta | On | [CSI Node expansion secret](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/3107-csi-nodeexpandsecret)                                  | No |
-| HonorPVReclaimPolicy| Alpha |Off | [Honor the PV reclaim policy](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/2644-honor-pv-reclaim-policy)                                  | No |
+| HonorPVReclaimPolicy| Beta | On | [Honor the PV reclaim policy](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/2644-honor-pv-reclaim-policy)                                  | No |
 | PreventVolumeModeConversion | Beta |On | [Prevent unauthorized conversion of source volume mode](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/3141-prevent-volume-mode-conversion) | `--prevent-volume-mode-conversion` (No in-tree feature gate) |
 | CrossNamespaceVolumeDataSource | Alpha |Off | [Cross-namespace volume data source](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/3294-provision-volumes-from-cross-namespace-snapshots) | `--feature-gates=CrossNamespaceVolumeDataSource=true` |
 
