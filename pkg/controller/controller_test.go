@@ -46,7 +46,7 @@ import (
 	"k8s.io/component-base/featuregate"
 	utilfeaturetesting "k8s.io/component-base/featuregate/testing"
 	csitrans "k8s.io/csi-translation-lib"
-	"k8s.io/klog/v2"
+	klog "k8s.io/klog/v2"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v9/controller"
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
@@ -89,7 +89,8 @@ type csiConnection struct {
 
 func New(address string) (csiConnection, error) {
 	metricsManager := metrics.NewCSIMetricsManager("fake.csi.driver.io" /* driverName */)
-	conn, err := connection.Connect(address, metricsManager)
+	ctx := context.Background()
+	conn, err := connection.Connect(ctx, address, metricsManager)
 	if err != nil {
 		return csiConnection{}, err
 	}
@@ -6479,10 +6480,6 @@ func TestProvisionFromPVC(t *testing.T) {
 	for k, tc := range testcases {
 		tc := tc
 		t.Run(k, func(t *testing.T) {
-			// TODO: https://github.com/kubernetes-csi/external-provisioner/issues/833
-			if !tc.xnsEnabled {
-				t.Parallel()
-			}
 			var clientSet *fakeclientset.Clientset
 
 			// Phase: setup mock server

@@ -52,7 +52,7 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/clientgo/leaderelection" // register leader election in the default legacy registry
 	_ "k8s.io/component-base/metrics/prometheus/workqueue"               // register work queues in the default legacy registry
 	csitrans "k8s.io/csi-translation-lib"
-	"k8s.io/klog/v2"
+	klog "k8s.io/klog/v2"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v9/controller"
 	libmetrics "sigs.k8s.io/sig-storage-lib-external-provisioner/v9/controller/metrics"
 
@@ -210,13 +210,13 @@ func main() {
 		metrics.WithSubsystem(metrics.SubsystemSidecar),
 	)
 
-	grpcClient, err := ctrl.Connect(*csiEndpoint, metricsManager)
+	grpcClient, err := ctrl.Connect(ctx, *csiEndpoint, metricsManager)
 	if err != nil {
 		klog.Error(err.Error())
 		os.Exit(1)
 	}
 
-	err = ctrl.Probe(grpcClient, *operationTimeout)
+	err = ctrl.Probe(ctx, grpcClient, *operationTimeout)
 	if err != nil {
 		klog.Error(err.Error())
 		os.Exit(1)
@@ -244,7 +244,7 @@ func main() {
 			// Will be provided via default gatherer.
 			metrics.WithProcessStartTime(false),
 			metrics.WithMigration())
-		migratedGrpcClient, err := ctrl.Connect(*csiEndpoint, metricsManager)
+		migratedGrpcClient, err := ctrl.Connect(ctx, *csiEndpoint, metricsManager)
 		if err != nil {
 			klog.Error(err.Error())
 			os.Exit(1)
@@ -252,7 +252,7 @@ func main() {
 		grpcClient.Close()
 		grpcClient = migratedGrpcClient
 
-		err = ctrl.Probe(grpcClient, *operationTimeout)
+		err = ctrl.Probe(ctx, grpcClient, *operationTimeout)
 		if err != nil {
 			klog.Error(err.Error())
 			os.Exit(1)
