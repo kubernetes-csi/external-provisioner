@@ -1,8 +1,6 @@
 module github.com/kubernetes-csi/external-provisioner
 
-go 1.22.0
-
-toolchain go1.22.3
+go 1.22.3
 
 require (
 	github.com/container-storage-interface/spec v1.9.0
@@ -29,7 +27,7 @@ require (
 	k8s.io/klog/v2 v2.120.1
 	sigs.k8s.io/controller-runtime v0.17.3
 	sigs.k8s.io/gateway-api v1.0.0
-	sigs.k8s.io/sig-storage-lib-external-provisioner/v9 v9.1.0-rc.0
+	sigs.k8s.io/sig-storage-lib-external-provisioner/v10 v10.0.0
 )
 
 require (
