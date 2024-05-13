@@ -50,9 +50,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v9/controller"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v9/util"
+	klog "k8s.io/klog/v2"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v10/util"
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
@@ -288,12 +288,12 @@ var (
 // identify string will be added in PV annotations under this key.
 var provisionerIDKey = "storage.kubernetes.io/csiProvisionerIdentity"
 
-func Connect(address string, metricsManager metrics.CSIMetricsManager) (*grpc.ClientConn, error) {
-	return connection.Connect(address, metricsManager, connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
+func Connect(ctx context.Context, address string, metricsManager metrics.CSIMetricsManager) (*grpc.ClientConn, error) {
+	return connection.Connect(ctx, address, metricsManager, connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
 }
 
-func Probe(conn *grpc.ClientConn, singleCallTimeout time.Duration) error {
-	return rpc.ProbeForever(conn, singleCallTimeout)
+func Probe(ctx context.Context, conn *grpc.ClientConn, singleCallTimeout time.Duration) error {
+	return rpc.ProbeForever(ctx, conn, singleCallTimeout)
 }
 
 func GetDriverName(conn *grpc.ClientConn, timeout time.Duration) (string, error) {
