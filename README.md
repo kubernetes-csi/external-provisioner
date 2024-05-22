@@ -139,7 +139,7 @@ protocol](https://github.com/kubernetes/design-proposals-archive/blob/main/stora
 The [design document](./doc/design.md) explains this in more detail.
 
 ### Topology support
-When `Topology` feature is enabled and the driver specifies `VOLUME_ACCESSIBILITY_CONSTRAINTS` in its plugin capabilities, external-provisioner prepares `CreateVolumeRequest.AccessibilityRequirements` while calling `Controller.CreateVolume`. The driver has to consider these topology constraints while creating the volume. Below table shows how these `AccessibilityRequirements` are prepared:
+When `Topology` feature is enabled* and the driver specifies `VOLUME_ACCESSIBILITY_CONSTRAINTS` in its plugin capabilities, external-provisioner prepares `CreateVolumeRequest.AccessibilityRequirements` while calling `Controller.CreateVolume`. The driver has to consider these topology constraints while creating the volume. Below table shows how these `AccessibilityRequirements` are prepared:
 
 [Delayed binding](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode) | Strict topology | [Allowed topologies](https://kubernetes.io/docs/concepts/storage/storage-classes/#allowed-topologies) | Immediate Topology | [Resulting accessibility requirements](https://github.com/container-storage-interface/spec/blob/master/spec.md#createvolume)
 :---: |:---:|:---:|:---:|:---|
@@ -149,6 +149,11 @@ Yes | No  | Yes | Irrelevant | `Requisite` = Allowed topologies<br>`Preferred` =
 No | Irrelevant | Yes | Irrelevant | `Requisite` = Allowed topologies<br>`Preferred` = `Requisite` with randomly selected node topology as first element
 No | Irrelevant | No  | Yes | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` with randomly selected node topology as first element
 No | Irrelevant | No  | No  | `Requisite` and `Preferred` both nil
+
+*) `Topology` feature gate is enabled by default since v5.0.
+<!-- TODO: remove the feature gate in the next release - remove the whole column in the table above. -->
+
+When enabling topology support in a CSI driver that had it disabled, please make sure the topology is first enabled in the driver's node DaemonSet and topology labels are populated on all nodes. The topology can be then updated in the driver's Deployment and its external-provisioner sidecar.
 
 ### Capacity support
 
