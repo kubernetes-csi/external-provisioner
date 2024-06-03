@@ -8,7 +8,7 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
-	github.com/kubernetes-csi/csi-lib-utils v0.18.0
+	github.com/kubernetes-csi/csi-lib-utils v0.18.1
 	github.com/kubernetes-csi/csi-test/v5 v5.2.0
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.3.0
 	github.com/miekg/dns v1.1.59 // indirect
