@@ -1,6 +1,6 @@
 #! /bin/bash
 
-CSI_PROW_SIDECAR_E2E_IMPORT_PATH="github.com/kubernetes-csi/external-provisioner/test/e2e"
+CSI_PROW_SIDECAR_E2E_IMPORT_PATH="github.com/kubernetes-csi/external-provisioner/v5/test/e2e"
 
 . release-tools/prow.sh
 

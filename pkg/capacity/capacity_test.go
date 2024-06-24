@@ -30,7 +30,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
+	"github.com/kubernetes-csi/external-provisioner/v5/pkg/capacity/topology"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/wrapperspb"

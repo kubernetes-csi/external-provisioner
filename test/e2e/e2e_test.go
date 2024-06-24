@@ -12,7 +12,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 
 	// test sources
-	_ "github.com/kubernetes-csi/external-provisioner/test/e2e/storage"
+	_ "github.com/kubernetes-csi/external-provisioner/v5/test/e2e/storage"
 )
 
 func TestMain(m *testing.M) {
