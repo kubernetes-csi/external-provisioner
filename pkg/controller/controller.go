@@ -272,6 +272,7 @@ type csiProvisioner struct {
 	vaLister                              storagelistersv1.VolumeAttachmentLister
 	referenceGrantLister                  referenceGrantv1beta1.ReferenceGrantLister
 	extraCreateMetadata                   bool
+	extraCreateMetadataPrefix             string
 	eventRecorder                         record.EventRecorder
 	nodeDeployment                        *internalNodeDeployment
 	controllerPublishReadOnly             bool
@@ -353,6 +354,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	vaLister storagelistersv1.VolumeAttachmentLister,
 	referenceGrantLister referenceGrantv1beta1.ReferenceGrantLister,
 	extraCreateMetadata bool,
+	extraCreateMetadataPrefix string,
 	defaultFSType string,
 	nodeDeployment *NodeDeployment,
 	controllerPublishReadOnly bool,
@@ -389,6 +391,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		vaLister:                              vaLister,
 		referenceGrantLister:                  referenceGrantLister,
 		extraCreateMetadata:                   extraCreateMetadata,
+		extraCreateMetadataPrefix:             extraCreateMetadataPrefix,
 		eventRecorder:                         eventRecorder,
 		controllerPublishReadOnly:             controllerPublishReadOnly,
 		preventVolumeModeConversion:           preventVolumeModeConversion,
@@ -748,6 +751,15 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		req.Parameters[pvcNameKey] = claim.GetName()
 		req.Parameters[pvcNamespaceKey] = claim.GetNamespace()
 		req.Parameters[pvNameKey] = pvName
+	}
+
+	if p.extraCreateMetadataPrefix != "" {
+		// add pvc annotations starting with this prefix as parameters to request for use by the plugin
+		for annotation, value := range claim.Annotations {
+			if strings.HasPrefix(annotation, p.extraCreateMetadataPrefix) {
+				req.Parameters[annotation] = value
+			}
+		}
 	}
 	deletionAnnSecrets := new(deletionSecretParams)
 
