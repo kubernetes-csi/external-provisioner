@@ -1495,7 +1495,7 @@ sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1beta1
 ## explicit; go 1.18
 sigs.k8s.io/json
 sigs.k8s.io/json/internal/golang/encoding/json
-# sigs.k8s.io/sig-storage-lib-external-provisioner/v10 v10.0.0
+# sigs.k8s.io/sig-storage-lib-external-provisioner/v10 v10.0.0 => github.com/jsafrane/sig-storage-lib-external-provisioner/v10 v10.0.0-20240729124546-527f63708d4d
 ## explicit; go 1.22.0
 sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller
 sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller/metrics
@@ -1539,3 +1539,4 @@ sigs.k8s.io/yaml/goyaml.v2
 # k8s.io/mount-utils => k8s.io/mount-utils v0.30.0
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.30.0
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.30.0
+# sigs.k8s.io/sig-storage-lib-external-provisioner/v10 => github.com/jsafrane/sig-storage-lib-external-provisioner/v10 v10.0.0-20240729124546-527f63708d4d

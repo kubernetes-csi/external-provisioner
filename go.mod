@@ -191,3 +191,5 @@ replace k8s.io/mount-utils => k8s.io/mount-utils v0.30.0
 replace k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.30.0
 
 replace k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.30.0
+
+replace sigs.k8s.io/sig-storage-lib-external-provisioner/v10 => github.com/jsafrane/sig-storage-lib-external-provisioner/v10 v10.0.0-20240729124546-527f63708d4d
