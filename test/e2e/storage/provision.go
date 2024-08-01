@@ -132,7 +132,7 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 		pvc2, err = e2epv.CreatePVC(ctx, f.ClientSet, f.Namespace.Name, pvc2)
 		framework.ExpectNoError(err)
 		_, err = e2epv.WaitForPVClaimBoundPhase(ctx, f.ClientSet, []*v1.PersistentVolumeClaim{pvc2}, framework.ClaimProvisionShortTimeout)
-		framework.ExpectError(err)
+		gomega.Expect(err).To(gomega.HaveOccurred())
 
 		local.pvcs = append(local.pvcs, pvc2)
 
