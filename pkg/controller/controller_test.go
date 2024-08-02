@@ -2630,7 +2630,7 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 
 func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int64, provisionDriverName, supportsMigrationFromInTreePluginName string, testProvision bool) {
 	for featureName, featureValue := range tc.featureGates {
-		defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, featureName, featureValue)()
+		utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, featureName, featureValue)
 	}
 
 	tmpdir := tempDir(t)
@@ -4535,7 +4535,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			}
 		}()
 
-		defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CrossNamespaceVolumeDataSource, tc.xnsEnabled)()
+		utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CrossNamespaceVolumeDataSource, tc.xnsEnabled)
 
 		pluginCaps, controllerCaps := provisionFromSnapshotCapabilities()
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
@@ -4611,7 +4611,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 
 // TestProvisionWithTopology is a basic test of provisioner integration with topology functions.
 func TestProvisionWithTopologyEnabled(t *testing.T) {
-	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, true)()
+	utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, true)
 
 	const requestBytes = 100
 
@@ -4787,7 +4787,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 						controllerCaps rpc.ControllerCapabilitySet
 					)
 					if driverSupportsTopology {
-						defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, true)()
+						utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, true)
 						pluginCaps, controllerCaps = provisionWithTopologyCapabilities()
 					} else {
 						pluginCaps, controllerCaps = provisionCapabilities()
@@ -4861,7 +4861,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 // TestProvisionWithTopologyDisabled checks that missing Node and CSINode objects, selectedNode
 // are ignored and topology is not set on the PV
 func TestProvisionWithTopologyDisabled(t *testing.T) {
-	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, false)()
+	utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, false)
 
 	accessibleTopology := []*csi.Topology{
 		{
@@ -6617,7 +6617,7 @@ func TestProvisionFromPVC(t *testing.T) {
 					close(stopChan)
 				}
 			}()
-			defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CrossNamespaceVolumeDataSource, tc.xnsEnabled)()
+			utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CrossNamespaceVolumeDataSource, tc.xnsEnabled)
 
 			// Phase: setup responses based on test case parameters
 			out := &csi.CreateVolumeResponse{
