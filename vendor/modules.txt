@@ -1533,7 +1533,7 @@ sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1beta1
 ## explicit; go 1.18
 sigs.k8s.io/json
 sigs.k8s.io/json/internal/golang/encoding/json
-# sigs.k8s.io/sig-storage-lib-external-provisioner/v10 v10.0.0
+# sigs.k8s.io/sig-storage-lib-external-provisioner/v10 v10.0.1
 ## explicit; go 1.22.0
 sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller
 sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller/metrics
