@@ -1,3 +1,26 @@
+# Release notes for v5.0.2
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Fixed removal of PV protection finalizer. PVs are no longer Terminating forever after PVC deletion. ([#1251](https://github.com/kubernetes-csi/external-provisioner/pull/1251), [@jsafrane](https://github.com/jsafrane))
+
+### Uncategorized
+
+- Updated go to 1.22.5 ([#1251](https://github.com/kubernetes-csi/external-provisioner/pull/1251), [@jsafrane](https://github.com/jsafrane))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+- sigs.k8s.io/sig-storage-lib-external-provisioner/v10: v10.0.0 → v10.0.1
+
+### Removed
+_Nothing has changed._
+
 # Release notes for v5.0.1
 
 [Documentation](https://kubernetes-csi.github.io)
