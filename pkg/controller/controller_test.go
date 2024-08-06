@@ -598,7 +598,7 @@ func fakeClaim(name, namespace, claimUID string, capacity int64, boundToVolume s
 	case "filesystem":
 		claim.Spec.VolumeMode = &volumeModeFileSystem
 	default:
-		// leave it undefined/nil to maintaint the current defaults for test cases
+		// leave it undefined/nil to maintain the current defaults for test cases
 	}
 	return &claim
 }
@@ -5637,7 +5637,7 @@ func generatePVCForProvisionFromPVC(srcNamespace, srcName, scName string, reques
 	case "filesystem":
 		provisionRequest.PVC.Spec.VolumeMode = &volumeModeFileSystem
 	default:
-		// leave it undefined/nil to maintaint the current defaults for test cases
+		// leave it undefined/nil to maintain the current defaults for test cases
 	}
 
 	return provisionRequest
@@ -5684,7 +5684,7 @@ func generatePVCForProvisionFromXnsdataSource(scName, namespace string, dataSour
 	case "filesystem":
 		provisionRequest.PVC.Spec.VolumeMode = &volumeModeFileSystem
 	default:
-		// leave it undefined/nil to maintaint the current defaults for test cases
+		// leave it undefined/nil to maintain the current defaults for test cases
 	}
 
 	return provisionRequest
