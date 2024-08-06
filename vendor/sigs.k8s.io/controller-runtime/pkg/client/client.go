@@ -124,15 +124,19 @@ func newClient(config *rest.Config, options Options) (*client, error) {
 		config.UserAgent = rest.DefaultKubernetesUserAgent()
 	}
 
-	// By default, we de-duplicate and surface warnings.
-	config.WarningHandler = log.NewKubeAPIWarningLogger(
-		log.Log.WithName("KubeAPIWarningLogger"),
-		log.KubeAPIWarningLoggerOptions{
-			Deduplicate: !options.WarningHandler.AllowDuplicateLogs,
-		},
-	)
-	if options.WarningHandler.SuppressWarnings {
-		config.WarningHandler = rest.NoWarnings{}
+	if !options.WarningHandler.SuppressWarnings {
+		// surface warnings
+		logger := log.Log.WithName("KubeAPIWarningLogger")
+		// Set a WarningHandler, the default WarningHandler
+		// is log.KubeAPIWarningLogger with deduplication enabled.
+		// See log.KubeAPIWarningLoggerOptions for considerations
+		// regarding deduplication.
+		config.WarningHandler = log.NewKubeAPIWarningLogger(
+			logger,
+			log.KubeAPIWarningLoggerOptions{
+				Deduplicate: !options.WarningHandler.AllowDuplicateLogs,
+			},
+		)
 	}
 
 	// Use the rest HTTP client for the provided config if unset
