@@ -757,7 +757,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	}
 
 	if vacName != "" {
-		vac, err := p.client.StorageV1alpha1().VolumeAttributesClasses().Get(ctx, vacName, metav1.GetOptions{})
+		vac, err := p.client.StorageV1beta1().VolumeAttributesClasses().Get(ctx, vacName, metav1.GetOptions{})
 		if err != nil {
 			return nil, controller.ProvisioningNoChange, err
 		}
