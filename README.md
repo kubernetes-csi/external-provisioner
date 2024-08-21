@@ -29,6 +29,7 @@ Following table reflects the head of this branch.
 | CSINodeExpandSecret | GA | On | [CSI Node expansion secret](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/3107-csi-nodeexpandsecret)                                  | No |
 | HonorPVReclaimPolicy| Beta | On | [Honor the PV reclaim policy](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/2644-honor-pv-reclaim-policy)                                  | No |
 | PreventVolumeModeConversion | Beta |On | [Prevent unauthorized conversion of source volume mode](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/3141-prevent-volume-mode-conversion) | `--prevent-volume-mode-conversion` (No in-tree feature gate) |
+| VolumeAttributesClass | Beta | Off | [Pass VolumeAttributesClass parameters during CreateVolume](https://github.com/kubernetes/enhancements/blob/master/keps/sig-storage/3751-volume-attributes-class/README.md) | `--feature-gates=VolumeAttributesClass=true` |
 | CrossNamespaceVolumeDataSource | Alpha |Off | [Cross-namespace volume data source](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/3294-provision-volumes-from-cross-namespace-snapshots) | `--feature-gates=CrossNamespaceVolumeDataSource=true` |
 
 All other external-provisioner features and the external-provisioner itself is considered GA and fully supported.
