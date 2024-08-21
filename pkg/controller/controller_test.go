@@ -5540,7 +5540,7 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 		nodeDeployment = &NodeDeployment{
 			NodeName:      tc.deploymentNode,
 			ClaimInformer: claimInformer,
-			NodeInfo: csi.NodeGetInfoResponse{
+			NodeInfo: &csi.NodeGetInfoResponse{
 				NodeId: tc.deploymentNode,
 				AccessibleTopology: &csi.Topology{
 					Segments: map[string]string{
