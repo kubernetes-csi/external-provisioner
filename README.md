@@ -10,9 +10,9 @@ The [Kubernetes Container Storage Interface (CSI) Documentation](https://kuberne
 
 This information reflects the head of this branch.
 
-| Compatible with CSI Version | Container Image | [Min K8s Version](https://kubernetes-csi.github.io/docs/kubernetes-compatibility.html#minimum-version) | [Recommended K8s Version](https://kubernetes-csi.github.io/docs/kubernetes-compatibility.html#recommended-version) |
-| ------------------------------------------------------------------------------------------ | -------------------------------| --------------- | ------------- |
-| [CSI Spec v1.7.0](https://github.com/container-storage-interface/spec/releases/tag/v1.7.0) | registry.k8s.io/sig-storage/csi-provisioner | 1.20 | 1.27 |
+| Compatible with CSI Version                                                                | Container Image | [Min K8s Version](https://kubernetes-csi.github.io/docs/kubernetes-compatibility.html#minimum-version) | [Recommended K8s Version](https://kubernetes-csi.github.io/docs/kubernetes-compatibility.html#recommended-version) |
+|--------------------------------------------------------------------------------------------| -------------------------------| --------------- |--------------------------------------------------------------------------------------------------------------------|
+| [CSI Spec v1.9.0](https://github.com/container-storage-interface/spec/releases/tag/v1.9.0) | registry.k8s.io/sig-storage/csi-provisioner | 1.20 | 1.31                                                                                                               |
 
 ## Feature status
 
