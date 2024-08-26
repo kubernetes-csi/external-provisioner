@@ -3,13 +3,13 @@ module github.com/kubernetes-csi/external-provisioner/v5
 go 1.22.5
 
 require (
-	github.com/container-storage-interface/spec v1.9.0
+	github.com/container-storage-interface/spec v1.10.0
 	github.com/golang/mock v1.6.0
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
-	github.com/kubernetes-csi/csi-test/v5 v5.2.0
+	github.com/kubernetes-csi/csi-test/v5 v5.3.0
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.3.0
 	github.com/miekg/dns v1.1.62 // indirect
 	github.com/prometheus/client_golang v1.19.1
@@ -199,3 +199,5 @@ replace k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.31.0
 replace k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.31.0
 
 replace k8s.io/cri-client => k8s.io/cri-client v0.31.0
+
+replace github.com/container-storage-interface/spec => ../../../github.com/container-storage-interface/spec
