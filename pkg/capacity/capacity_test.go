@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -132,6 +133,7 @@ csistoragecapacities_obsolete %d
 // TestCapacityController checks that the controller handles the initial state and
 // several different changes at runtime correctly.
 func TestCapacityController(t *testing.T) {
+	utilruntime.ReallyCrash = false // avoids os.Exit after "close of closed channel" in shared informer code
 	testcases := map[string]struct {
 		immediateBinding   bool
 		owner              *metav1.OwnerReference
@@ -1339,10 +1341,6 @@ func updateCSIStorageCapacityReactor() func(action ktesting.Action) (handled boo
 }
 
 func fakeController(ctx context.Context, client *fakeclientset.Clientset, owner *metav1.OwnerReference, storage CSICapacityClient, topologyInformer topology.Informer, immediateBinding bool) (*Controller, metrics.KubeRegistry) {
-	utilruntime.ReallyCrash = false // avoids os.Exit after "close of closed channel" in shared informer code
-
-	// We don't need resyncs, they just lead to confusing log output if they get triggered while already some
-	// new test is running.
 	resyncPeriod := time.Hour
 	informerFactory := informers.NewSharedInformerFactory(client, resyncPeriod)
 	scInformer := informerFactory.Storage().V1().StorageClasses()
@@ -1608,10 +1606,10 @@ func str2quantity(str string) *resource.Quantity {
 	return &quantity
 }
 
-var capacityCounter int
+var capacityCounter atomic.Int32
 
 func makeCapacity(in testCapacity) *storagev1.CSIStorageCapacity {
-	capacityCounter++
+	capacityCounter.Add(1)
 	var owners []metav1.OwnerReference
 	switch in.owner {
 	case nil:
@@ -1638,7 +1636,7 @@ func makeCapacity(in testCapacity) *storagev1.CSIStorageCapacity {
 		ObjectMeta: metav1.ObjectMeta{
 			UID:             in.uid,
 			ResourceVersion: in.resourceVersion,
-			Name:            fmt.Sprintf("csisc-%d", capacityCounter),
+			Name:            fmt.Sprintf("csisc-%d", capacityCounter.Load()),
 			Namespace:       ownerNamespace,
 			OwnerReferences: owners,
 			Labels:          labels,
