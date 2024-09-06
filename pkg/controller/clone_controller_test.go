@@ -144,6 +144,8 @@ func TestCloneFinalizerRemoval(t *testing.T) {
 
 // TestEnqueueClaimUpadate ensure that PVCs will be processed for finalizer removal only on deletionTimestamp being set on the resource
 func TestEnqueueClaimUpadate(t *testing.T) {
+	utilruntime.ReallyCrash = false
+
 	testcases := map[string]struct {
 		claim    *v1.PersistentVolumeClaim
 		queueLen int
@@ -179,7 +181,6 @@ func TestEnqueueClaimUpadate(t *testing.T) {
 }
 
 func fakeCloningProtector(client *fakeclientset.Clientset, objects ...runtime.Object) *CloningProtectionController {
-	utilruntime.ReallyCrash = false
 	controllerCapabilities := rpc.ControllerCapabilitySet{
 		csi.ControllerServiceCapability_RPC_CLONE_VOLUME: true,
 	}
