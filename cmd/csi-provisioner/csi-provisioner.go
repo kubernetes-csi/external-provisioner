@@ -37,6 +37,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -184,7 +185,9 @@ func main() {
 	config.QPS = *kubeAPIQPS
 	config.Burst = *kubeAPIBurst
 
-	clientset, err := kubernetes.NewForConfig(config)
+	coreConfig := rest.CopyConfig(config)
+	coreConfig.ContentType = runtime.ContentTypeProtobuf
+	clientset, err := kubernetes.NewForConfig(coreConfig)
 	if err != nil {
 		klog.Fatalf("Failed to create client: %v", err)
 	}
@@ -657,7 +660,7 @@ func main() {
 		lockName := strings.Replace(provisionerName, "/", "-", -1)
 
 		// create a new clientset for leader election
-		leClientset, err := kubernetes.NewForConfig(config)
+		leClientset, err := kubernetes.NewForConfig(coreConfig)
 		if err != nil {
 			klog.Fatalf("Failed to create leaderelection client: %v", err)
 		}
