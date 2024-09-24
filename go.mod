@@ -34,7 +34,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/onsi/ginkgo/v2 v2.20.0
 	github.com/onsi/gomega v1.34.1
-	k8s.io/kubernetes v1.31.0
+	k8s.io/kubernetes v1.31.1
 )
 
 require (
