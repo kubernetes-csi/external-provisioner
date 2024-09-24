@@ -233,7 +233,7 @@ type NodeDeployment struct {
 	ClaimInformer coreinformers.PersistentVolumeClaimInformer
 	// NodeInfo is the result of NodeGetInfo. It is need to determine which
 	// PVs were created for the node.
-	NodeInfo csi.NodeGetInfoResponse
+	NodeInfo *csi.NodeGetInfoResponse
 	// ImmediateBinding enables support for PVCs with immediate binding.
 	ImmediateBinding bool
 	// BaseDelay is the initial time that the external-provisioner waits
@@ -850,7 +850,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	}
 
 	if rep.Volume != nil {
-		klog.V(3).Infof("create volume rep: %+v", *rep.Volume)
+		klog.V(3).Infof("create volume rep: %+v", rep.Volume)
 	}
 	volumeAttributes := map[string]string{provisionerIDKey: p.identity}
 	for k, v := range rep.Volume.VolumeContext {

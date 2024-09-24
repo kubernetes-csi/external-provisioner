@@ -21,9 +21,10 @@ import (
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/google/go-cmp/cmp"
+	"google.golang.org/protobuf/testing/protocmp"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
@@ -434,7 +435,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 							if expected != nil && requirements.Preferred == nil {
 								t.Fatalf("expected preferred to be %v but requirements.Preferred is nil", expected)
 							}
-							if expected != nil && !equality.Semantic.DeepEqual(requirements.Preferred, expected) {
+							if expected != nil && !cmp.Equal(requirements.Preferred, expected, protocmp.Transform()) {
 								t.Errorf("expected preferred requisite %v; got: %v", expected, requirements.Preferred)
 							}
 						})
@@ -1441,7 +1442,7 @@ func TestPreferredTopologies(t *testing.T) {
 								if requirements == nil {
 									t.Fatalf("expected preferred to be %v but requirements is nil", expectedPreferred)
 								}
-								if !equality.Semantic.DeepEqual(requirements.Preferred, expectedPreferred) {
+								if !cmp.Equal(requirements.Preferred, expectedPreferred, protocmp.Transform()) {
 									t.Errorf("expected requisite %v; got: %v", tc.expectedPreferred, requirements.Preferred)
 								}
 							}
@@ -1603,7 +1604,7 @@ func requisiteEqual(t1, t2 []*csi.Topology) bool {
 	for _, topology := range t2 {
 		found := false
 		for i := range unchecked {
-			if equality.Semantic.DeepEqual(t1[i], topology) {
+			if cmp.Equal(t1[i], topology, protocmp.Transform()) {
 				found = true
 				unchecked.Delete(i)
 				break

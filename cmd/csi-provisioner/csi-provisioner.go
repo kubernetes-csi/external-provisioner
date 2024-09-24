@@ -318,7 +318,7 @@ func main() {
 		if err != nil {
 			klog.Fatalf("Failed to get node info from CSI driver: %v", err)
 		}
-		nodeDeployment.NodeInfo = *nodeInfo
+		nodeDeployment.NodeInfo = nodeInfo
 	}
 
 	var nodeLister listersv1.NodeLister
