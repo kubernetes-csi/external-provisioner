@@ -465,7 +465,7 @@ golang.org/x/oauth2/internal
 ## explicit; go 1.18
 golang.org/x/sync/errgroup
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.23.0
+# golang.org/x/sys v0.24.0
 ## explicit; go 1.18
 golang.org/x/sys/cpu
 golang.org/x/sys/plan9
@@ -541,7 +541,7 @@ google.golang.org/genproto/googleapis/api/httpbody
 ## explicit; go 1.21
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.65.0
+# google.golang.org/grpc v1.66.2
 ## explicit; go 1.21
 google.golang.org/grpc
 google.golang.org/grpc/attributes
@@ -560,7 +560,9 @@ google.golang.org/grpc/credentials/insecure
 google.golang.org/grpc/encoding
 google.golang.org/grpc/encoding/gzip
 google.golang.org/grpc/encoding/proto
+google.golang.org/grpc/experimental/stats
 google.golang.org/grpc/grpclog
+google.golang.org/grpc/grpclog/internal
 google.golang.org/grpc/health/grpc_health_v1
 google.golang.org/grpc/internal
 google.golang.org/grpc/internal/backoff
@@ -583,11 +585,13 @@ google.golang.org/grpc/internal/resolver/dns/internal
 google.golang.org/grpc/internal/resolver/passthrough
 google.golang.org/grpc/internal/resolver/unix
 google.golang.org/grpc/internal/serviceconfig
+google.golang.org/grpc/internal/stats
 google.golang.org/grpc/internal/status
 google.golang.org/grpc/internal/syscall
 google.golang.org/grpc/internal/transport
 google.golang.org/grpc/internal/transport/networktype
 google.golang.org/grpc/keepalive
+google.golang.org/grpc/mem
 google.golang.org/grpc/metadata
 google.golang.org/grpc/peer
 google.golang.org/grpc/reflection
@@ -662,7 +666,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# k8s.io/api v0.31.0 => k8s.io/api v0.31.0
+# k8s.io/api v0.31.1 => k8s.io/api v0.31.0
 ## explicit; go 1.22.0
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
@@ -722,12 +726,12 @@ k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
 k8s.io/api/storagemigration/v1alpha1
-# k8s.io/apiextensions-apiserver v0.31.0 => k8s.io/apiextensions-apiserver v0.31.0
+# k8s.io/apiextensions-apiserver v0.31.1 => k8s.io/apiextensions-apiserver v0.31.0
 ## explicit; go 1.22.0
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/features
-# k8s.io/apimachinery v0.31.0 => k8s.io/apimachinery v0.31.0
+# k8s.io/apimachinery v0.31.1 => k8s.io/apimachinery v0.31.0
 ## explicit; go 1.22.0
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -945,7 +949,7 @@ k8s.io/apiserver/plugin/pkg/audit/webhook
 k8s.io/apiserver/plugin/pkg/authenticator/token/webhook
 k8s.io/apiserver/plugin/pkg/authorizer/webhook
 k8s.io/apiserver/plugin/pkg/authorizer/webhook/metrics
-# k8s.io/client-go v0.31.0 => k8s.io/client-go v0.31.0
+# k8s.io/client-go v0.31.1 => k8s.io/client-go v0.31.0
 ## explicit; go 1.22.0
 k8s.io/client-go/applyconfigurations
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
@@ -1394,7 +1398,7 @@ k8s.io/kubectl/pkg/util/podutils
 # k8s.io/kubelet v0.31.0 => k8s.io/kubelet v0.31.0
 ## explicit; go 1.22.0
 k8s.io/kubelet/pkg/apis
-# k8s.io/kubernetes v1.31.0
+# k8s.io/kubernetes v1.31.2
 ## explicit; go 1.22.0
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
@@ -1483,13 +1487,13 @@ k8s.io/utils/ptr
 k8s.io/utils/strings
 k8s.io/utils/strings/slices
 k8s.io/utils/trace
-# sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.30.3
+# sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.0
 ## explicit; go 1.21
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/common/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/controller-runtime v0.19.0
+# sigs.k8s.io/controller-runtime v0.19.1
 ## explicit; go 1.22.0
 sigs.k8s.io/controller-runtime/pkg/client
 sigs.k8s.io/controller-runtime/pkg/client/apiutil
@@ -1498,8 +1502,9 @@ sigs.k8s.io/controller-runtime/pkg/client/interceptor
 sigs.k8s.io/controller-runtime/pkg/internal/field/selector
 sigs.k8s.io/controller-runtime/pkg/internal/objectutil
 sigs.k8s.io/controller-runtime/pkg/log
-# sigs.k8s.io/gateway-api v1.1.0
+# sigs.k8s.io/gateway-api v1.2.0
 ## explicit; go 1.22.0
+sigs.k8s.io/gateway-api/apis/applyconfiguration
 sigs.k8s.io/gateway-api/apis/applyconfiguration/apis/v1
 sigs.k8s.io/gateway-api/apis/applyconfiguration/apis/v1alpha2
 sigs.k8s.io/gateway-api/apis/applyconfiguration/apis/v1alpha3
