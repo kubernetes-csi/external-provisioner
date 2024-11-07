@@ -1,6 +1,6 @@
 module github.com/kubernetes-csi/external-provisioner/v5
 
-go 1.22.5
+go 1.22.7
 
 require (
 	github.com/container-storage-interface/spec v1.10.0
