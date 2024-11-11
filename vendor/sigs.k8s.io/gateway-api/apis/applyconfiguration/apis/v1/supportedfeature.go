@@ -22,22 +22,22 @@ import (
 	v1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// CookieConfigApplyConfiguration represents a declarative configuration of the CookieConfig type for use
+// SupportedFeatureApplyConfiguration represents a declarative configuration of the SupportedFeature type for use
 // with apply.
-type CookieConfigApplyConfiguration struct {
-	LifetimeType *v1.CookieLifetimeType `json:"lifetimeType,omitempty"`
+type SupportedFeatureApplyConfiguration struct {
+	Name *v1.FeatureName `json:"name,omitempty"`
 }
 
-// CookieConfigApplyConfiguration constructs a declarative configuration of the CookieConfig type for use with
+// SupportedFeatureApplyConfiguration constructs a declarative configuration of the SupportedFeature type for use with
 // apply.
-func CookieConfig() *CookieConfigApplyConfiguration {
-	return &CookieConfigApplyConfiguration{}
+func SupportedFeature() *SupportedFeatureApplyConfiguration {
+	return &SupportedFeatureApplyConfiguration{}
 }
 
-// WithLifetimeType sets the LifetimeType field in the declarative configuration to the given value
+// WithName sets the Name field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the LifetimeType field is set to the value of the last call.
-func (b *CookieConfigApplyConfiguration) WithLifetimeType(value v1.CookieLifetimeType) *CookieConfigApplyConfiguration {
-	b.LifetimeType = &value
+// If called multiple times, the Name field is set to the value of the last call.
+func (b *SupportedFeatureApplyConfiguration) WithName(value v1.FeatureName) *SupportedFeatureApplyConfiguration {
+	b.Name = &value
 	return b
 }
