@@ -86,7 +86,7 @@ configvar CSI_PROW_BUILD_PLATFORMS "linux amd64 amd64; linux ppc64le ppc64le -pp
 # which is disabled with GOFLAGS=-mod=vendor).
 configvar GOFLAGS_VENDOR "$( [ -d vendor ] && echo '-mod=vendor' )" "Go flags for using the vendor directory"
 
-configvar CSI_PROW_GO_VERSION_BUILD "1.22.5" "Go version for building the component" # depends on component's source code
+configvar CSI_PROW_GO_VERSION_BUILD "1.23.1" "Go version for building the component" # depends on component's source code
 configvar CSI_PROW_GO_VERSION_E2E "" "override Go version for building the Kubernetes E2E test suite" # normally doesn't need to be set, see install_e2e
 configvar CSI_PROW_GO_VERSION_SANITY "${CSI_PROW_GO_VERSION_BUILD}" "Go version for building the csi-sanity test suite" # depends on CSI_PROW_SANITY settings below
 configvar CSI_PROW_GO_VERSION_KIND "${CSI_PROW_GO_VERSION_BUILD}" "Go version for building 'kind'" # depends on CSI_PROW_KIND_VERSION below
@@ -425,7 +425,7 @@ die () {
     exit 1
 }
 
-# Ensure that PATH has the desired version of the Go tools, then run command given as argument.
+# Ensure we use the desired version of the Go tools, then run command given as argument.
 # Empty parameter uses the already installed Go. In Prow, that version is kept up-to-date by
 # bumping the container image regularly.
 run_with_go () {
@@ -433,15 +433,15 @@ run_with_go () {
     version="$1"
     shift
 
-    if ! [ "$version" ] || go version 2>/dev/null | grep -q "go$version"; then
-        run "$@"
-    else
-        if ! [ -d "${CSI_PROW_WORK}/go-$version" ];  then
-            run curl --fail --location "https://dl.google.com/go/go$version.linux-amd64.tar.gz" | tar -C "${CSI_PROW_WORK}" -zxf - || die "installation of Go $version failed"
-            mv "${CSI_PROW_WORK}/go" "${CSI_PROW_WORK}/go-$version"
+    if [ "$version" ]; then
+        version=go$version
+        if [ "$(GOTOOLCHAIN=$version go version | cut -d' ' -f3)" != "$version" ]; then
+            die "Please install Go 1.21+"
         fi
-        PATH="${CSI_PROW_WORK}/go-$version/bin:$PATH" run "$@"
+    else
+        version=local
     fi
+    GOTOOLCHAIN=$version run "$@"
 }
 
 # Ensure that we have the desired version of kind.
