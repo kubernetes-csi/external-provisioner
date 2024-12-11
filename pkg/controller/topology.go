@@ -235,7 +235,8 @@ func GenerateAccessibilityRequirements(
 		return nil, nil
 	}
 
-	requisiteTerms = deduplicate(requisiteTerms)
+	slices.SortFunc(requisiteTerms, topologyTerm.compare)
+	requisiteTerms = slices.CompactFunc(requisiteTerms, slices.Equal)
 	// TODO (verult) reduce subset duplicate terms (advanced reduction)
 
 	requirement.Requisite = toCSITopology(requisiteTerms)
@@ -249,14 +250,19 @@ func GenerateAccessibilityRequirements(
 		// requisiteTerms and shifting the sorted terms based on hash of pvcName and replica index suffix
 		hash, index := getPVCNameHashAndIndexOffset(pvcName)
 		i := (hash + index) % uint32(len(requisiteTerms))
-		preferredTerms = sortAndShift(requisiteTerms, nil, i)
+		preferredTerms = append(requisiteTerms[i:], requisiteTerms[:i]...)
 	} else {
 		// Delayed binding, use topology from that node to populate preferredTerms
 		if strictTopology {
 			// In case of strict topology, preferred = requisite
 			preferredTerms = requisiteTerms
 		} else {
-			preferredTerms = sortAndShift(requisiteTerms, selectedTopology, 0)
+			for i, t := range requisiteTerms {
+				if t.subset(selectedTopology) {
+					preferredTerms = append(requisiteTerms[i:], requisiteTerms[:i]...)
+					break
+				}
+			}
 			if preferredTerms == nil {
 				// Topology from selected node is not in requisite. This case should never be hit:
 				// - If AllowedTopologies is specified, the scheduler should choose a node satisfying the
@@ -447,38 +453,6 @@ func flatten(allowedTopologies []v1.TopologySelectorTerm) []topologyTerm {
 	return finalTerms
 }
 
-func deduplicate(terms []topologyTerm) []topologyTerm {
-	termMap := make(map[string]topologyTerm)
-	for _, term := range terms {
-		termMap[term.hash()] = term
-	}
-
-	var dedupedTerms []topologyTerm
-	for _, term := range termMap {
-		dedupedTerms = append(dedupedTerms, term)
-	}
-	return dedupedTerms
-}
-
-// Sort the given terms in place,
-// then return a new list of terms equivalent to the sorted terms, but shifted so that
-// either the primary term (if specified) or term at shiftIndex is the first in the list.
-func sortAndShift(terms []topologyTerm, primary topologyTerm, shiftIndex uint32) []topologyTerm {
-	var preferredTerms []topologyTerm
-	slices.SortFunc(terms, topologyTerm.compare)
-	if primary == nil {
-		preferredTerms = append(terms[shiftIndex:], terms[:shiftIndex]...)
-	} else {
-		for i, t := range terms {
-			if t.subset(primary) {
-				preferredTerms = append(terms[i:], terms[:i]...)
-				break
-			}
-		}
-	}
-	return preferredTerms
-}
-
 func getTopologyKeys(csiNode *storagev1.CSINode, driverName string) []string {
 	for _, driver := range csiNode.Spec.Drivers {
 		if driver.Name == driverName {
@@ -531,24 +505,6 @@ func (t topologyTerm) sort() {
 		// Should not happen currently. We may support multi-value in the future?
 		return strings.Compare(a.Value, b.Value)
 	})
-}
-
-// "<k1>#<v1>,<k2>#<v2>,..."
-// Hash properties:
-// - Two equivalent topologyTerms have the same hash
-// - Ordering of hashes correspond to a natural ordering of their topologyTerms. For example:
-//   - com.example.csi/zone#zone1 < com.example.csi/zone#zone2
-//   - com.example.csi/rack#zz    < com.example.csi/zone#zone1
-//   - com.example.csi/z#z1       < com.example.csi/zone#zone1
-//   - com.example.csi/rack#rackA,com.example.csi/zone#zone2  <  com.example.csi/rackB,com.example.csi/zone#zone1
-//     Note that both '#' and ',' are less than '/', '-', '_', '.', [A-Z0-9a-z]
-func (t topologyTerm) hash() string {
-	var segments []string
-	for _, k := range t {
-		segments = append(segments, k.Key+"#"+k.Value)
-	}
-
-	return strings.Join(segments, ",")
 }
 
 func (t topologyTerm) compare(other topologyTerm) int {

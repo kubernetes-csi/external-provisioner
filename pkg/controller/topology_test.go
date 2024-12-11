@@ -1484,22 +1484,12 @@ func BenchmarkDedupAndSortHost(b *testing.B) {
 }
 
 func benchmarkDedupAndSort(b *testing.B, terms []topologyTerm) {
-	b.Run("slices.Sort", func(b *testing.B) {
-		for range b.N {
-			terms := slices.Clone(terms)
-			terms = deduplicate(terms)
-			slices.SortFunc(terms, topologyTerm.compare)
-			toCSITopology(terms)
-		}
-	})
-	b.Run("slices.Compact", func(b *testing.B) {
-		for range b.N {
-			terms := slices.Clone(terms)
-			slices.SortFunc(terms, topologyTerm.compare)
-			terms = slices.CompactFunc(terms, slices.Equal)
-			toCSITopology(terms)
-		}
-	})
+	for range b.N {
+		terms := slices.Clone(terms)
+		slices.SortFunc(terms, topologyTerm.compare)
+		terms = slices.CompactFunc(terms, slices.Equal)
+		toCSITopology(terms)
+	}
 }
 
 func buildNodes(nodeLabels []map[string]string) *v1.NodeList {
