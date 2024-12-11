@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -39,8 +39,14 @@ import (
 	"k8s.io/klog/v2"
 )
 
+type topologySegment struct {
+	Key, Value string
+}
+
 // topologyTerm represents a single term where its topology key value pairs are AND'd together.
-type topologyTerm map[string]string
+//
+// Be sure to sort after construction for compare() and subset() to work properly.
+type topologyTerm []topologySegment
 
 func GenerateVolumeNodeAffinity(accessibleTopology []*csi.Topology) *v1.VolumeNodeAffinity {
 	if len(accessibleTopology) == 0 {
@@ -417,12 +423,12 @@ func flatten(allowedTopologies []v1.TopologySelectorTerm) []topologyTerm {
 
 				if len(oldTerms) == 0 {
 					// No previous terms to distribute over. Simply append the new term.
-					newTerms = append(newTerms, topologyTerm{selectorExpression.Key: v})
+					newTerms = append(newTerms, topologyTerm{{selectorExpression.Key, v}})
 				} else {
 					for _, oldTerm := range oldTerms {
 						// "Distribute" by adding an entry to the term
-						newTerm := oldTerm.clone()
-						newTerm[selectorExpression.Key] = v
+						newTerm := slices.Clone(oldTerm)
+						newTerm = append(newTerm, topologySegment{selectorExpression.Key, v})
 						newTerms = append(newTerms, newTerm)
 					}
 				}
@@ -435,6 +441,9 @@ func flatten(allowedTopologies []v1.TopologySelectorTerm) []topologyTerm {
 		finalTerms = append(finalTerms, oldTerms...)
 	}
 
+	for _, term := range finalTerms {
+		term.sort()
+	}
 	return finalTerms
 }
 
@@ -456,9 +465,7 @@ func deduplicate(terms []topologyTerm) []topologyTerm {
 // either the primary term (if specified) or term at shiftIndex is the first in the list.
 func sortAndShift(terms []topologyTerm, primary topologyTerm, shiftIndex uint32) []topologyTerm {
 	var preferredTerms []topologyTerm
-	sort.Slice(terms, func(i, j int) bool {
-		return terms[i].less(terms[j])
-	})
+	slices.SortFunc(terms, topologyTerm.compare)
 	if primary == nil {
 		preferredTerms = append(terms[shiftIndex:], terms[:shiftIndex]...)
 	} else {
@@ -482,14 +489,15 @@ func getTopologyKeys(csiNode *storagev1.CSINode, driverName string) []string {
 }
 
 func getTopologyFromNode(node *v1.Node, topologyKeys []string) (term topologyTerm, isMissingKey bool) {
-	term = make(topologyTerm)
+	term = make(topologyTerm, 0, len(topologyKeys))
 	for _, key := range topologyKeys {
 		v, ok := node.Labels[key]
 		if !ok {
 			return nil, true
 		}
-		term[key] = v
+		term = append(term, topologySegment{key, v})
 	}
+	term.sort()
 	return term, false
 }
 
@@ -514,12 +522,15 @@ func buildTopologyKeySelector(topologyKeys []string) (labels.Selector, error) {
 	return selector, nil
 }
 
-func (t topologyTerm) clone() topologyTerm {
-	ret := make(topologyTerm)
-	for k, v := range t {
-		ret[k] = v
-	}
-	return ret
+func (t topologyTerm) sort() {
+	slices.SortFunc(t, func(a, b topologySegment) int {
+		r := strings.Compare(a.Key, b.Key)
+		if r != 0 {
+			return r
+		}
+		// Should not happen currently. We may support multi-value in the future?
+		return strings.Compare(a.Value, b.Value)
+	})
 }
 
 // "<k1>#<v1>,<k2>#<v2>,..."
@@ -533,37 +544,61 @@ func (t topologyTerm) clone() topologyTerm {
 //     Note that both '#' and ',' are less than '/', '-', '_', '.', [A-Z0-9a-z]
 func (t topologyTerm) hash() string {
 	var segments []string
-	for k, v := range t {
-		segments = append(segments, k+"#"+v)
+	for _, k := range t {
+		segments = append(segments, k.Key+"#"+k.Value)
 	}
 
-	sort.Strings(segments)
 	return strings.Join(segments, ",")
 }
 
-func (t topologyTerm) less(other topologyTerm) bool {
-	return t.hash() < other.hash()
+func (t topologyTerm) compare(other topologyTerm) int {
+	if len(t) != len(other) {
+		return len(t) - len(other)
+	}
+	for i, k1 := range t {
+		k2 := other[i]
+		r := strings.Compare(k1.Key, k2.Key)
+		if r != 0 {
+			return r
+		}
+		r = strings.Compare(k1.Value, k2.Value)
+		if r != 0 {
+			return r
+		}
+	}
+	return 0
 }
 
 func (t topologyTerm) subset(other topologyTerm) bool {
-	for key, tv := range t {
-		v, ok := other[key]
-		if !ok || v != tv {
+	if len(t) == 0 {
+		return true
+	}
+	j := 0
+	for _, k2 := range other {
+		k1 := t[j]
+		if k1.Key != k2.Key {
+			continue
+		}
+		if k1.Value != k2.Value {
 			return false
 		}
+		j++
+		if j == len(t) {
+			// All segments in t have been checked and is present in other.
+			return true
+		}
 	}
-
-	return true
-}
-
-func (t topologyTerm) equal(other topologyTerm) bool {
-	return t.hash() == other.hash()
+	return false
 }
 
 func toCSITopology(terms []topologyTerm) []*csi.Topology {
-	var out []*csi.Topology
+	out := make([]*csi.Topology, 0, len(terms))
 	for _, term := range terms {
-		out = append(out, &csi.Topology{Segments: term})
+		segs := make(map[string]string, len(term))
+		for _, k := range term {
+			segs[k.Key] = k.Value
+		}
+		out = append(out, &csi.Topology{Segments: segs})
 	}
 	return out
 }
