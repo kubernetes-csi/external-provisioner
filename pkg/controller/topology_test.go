@@ -18,10 +18,12 @@ package controller
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/testing/protocmp"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -1454,6 +1456,42 @@ func TestPreferredTopologies(t *testing.T) {
 	}
 }
 
+func BenchmarkDedupAndSortZone(b *testing.B) {
+	terms := make([]topologyTerm, 0, 3000)
+	for range 1000 {
+		for _, zone := range [...]string{"zone1", "zone2", "zone3"} {
+			terms = append(terms, topologyTerm{
+				{"topology.kubernetes.io/region", "some-region"},
+				{"topology.kubernetes.io/zone", zone},
+			})
+		}
+	}
+	benchmarkDedupAndSort(b, terms)
+}
+
+func BenchmarkDedupAndSortHost(b *testing.B) {
+	terms := make([]topologyTerm, 0, 3000)
+	for i := range 1000 {
+		for j, zone := range [...]string{"zone1", "zone2", "zone3"} {
+			terms = append(terms, topologyTerm{
+				{"example.com/instance-id", fmt.Sprintf("i-%05d", i+j*10000)},
+				{"topology.kubernetes.io/region", "some-region"},
+				{"topology.kubernetes.io/zone", zone},
+			})
+		}
+	}
+	benchmarkDedupAndSort(b, terms)
+}
+
+func benchmarkDedupAndSort(b *testing.B, terms []topologyTerm) {
+	for range b.N {
+		terms := slices.Clone(terms)
+		slices.SortFunc(terms, topologyTerm.compare)
+		terms = slices.CompactFunc(terms, slices.Equal)
+		toCSITopology(terms)
+	}
+}
+
 func buildNodes(nodeLabels []map[string]string) *v1.NodeList {
 	list := &v1.NodeList{}
 	i := 0
@@ -1635,4 +1673,161 @@ func listers(kubeClient *fakeclientset.Clientset) (
 	factory.Start(stopChan)
 	factory.WaitForCacheSync(stopChan)
 	return scLister, csiNodeLister, nodeLister, claimLister, vaLister, stopChan
+}
+
+func TestTopologyTermSort(t *testing.T) {
+	testCases := []struct {
+		name            string
+		terms, expected topologyTerm
+	}{
+		{
+			name: "empty",
+		},
+		{
+			name: "single-key",
+			terms: topologyTerm{
+				{"zone", "us-east-1a"},
+			},
+			expected: topologyTerm{
+				{"zone", "us-east-1a"},
+			},
+		},
+		{
+			name: "multiple-keys",
+			terms: topologyTerm{
+				{"zone", "us-east-1a"},
+				{"instance", "i-123"},
+			},
+			expected: topologyTerm{
+				{"instance", "i-123"},
+				{"zone", "us-east-1a"},
+			},
+		},
+		{
+			name: "multiple-values", // should not happen currently
+			terms: topologyTerm{
+				{"zone", "us-east-1b"},
+				{"zone", "us-east-1a"},
+			},
+			expected: topologyTerm{
+				{"zone", "us-east-1a"},
+				{"zone", "us-east-1b"},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.terms.sort()
+			assert.Equal(t, tc.expected, tc.terms)
+		})
+	}
+}
+
+func TestTopologyTermCompare(t *testing.T) {
+	testCases := []struct {
+		name          string
+		first, second topologyTerm
+	}{
+		{
+			name:  "shorter",
+			first: topologyTerm{},
+			second: topologyTerm{
+				{"zone", "us-east-1a"},
+			},
+		},
+		{
+			name: "key-smaller",
+			first: topologyTerm{
+				{"instance", "i-123"},
+			},
+			second: topologyTerm{
+				{"zone", "us-east-1a"},
+			},
+		},
+		{
+			name: "value-smaller",
+			first: topologyTerm{
+				{"instance", "i-123"},
+				{"zone", "us-east-1a"},
+			},
+			second: topologyTerm{
+				{"instance", "i-123"},
+				{"zone", "us-east-1b"},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Less(t, tc.first.compare(tc.second), 0)
+			assert.Greater(t, tc.second.compare(tc.first), 0)
+			assert.Equal(t, 0, tc.first.compare(tc.first))
+			assert.Equal(t, 0, tc.second.compare(tc.second))
+		})
+	}
+}
+
+func TestTopologyTermSubset(t *testing.T) {
+	testCases := []struct {
+		name         string
+		terms, other topologyTerm
+		subset       bool
+	}{
+		{
+			name:   "empty",
+			subset: true,
+		},
+		{
+			name:   "shorter",
+			terms:  topologyTerm{},
+			other:  topologyTerm{{"zone", "us-east-1a"}},
+			subset: true,
+		},
+		{
+			name:   "longer",
+			terms:  topologyTerm{{"zone", "us-east-1a"}},
+			other:  topologyTerm{},
+			subset: false,
+		},
+		{
+			name:   "same",
+			terms:  topologyTerm{{"zone", "us-east-1a"}},
+			other:  topologyTerm{{"zone", "us-east-1a"}},
+			subset: true,
+		},
+		{
+			name:   "shorter-2",
+			terms:  topologyTerm{{"instance", "i-123"}},
+			other:  topologyTerm{{"instance", "i-123"}, {"zone", "us-east-1a"}},
+			subset: true,
+		},
+		{
+			name:   "longer-2",
+			terms:  topologyTerm{{"instance", "i-123"}, {"zone", "us-east-1a"}},
+			other:  topologyTerm{{"instance", "i-123"}},
+			subset: false,
+		},
+		{
+			name:   "shorter-3",
+			terms:  topologyTerm{{"zone", "us-east-1a"}},
+			other:  topologyTerm{{"instance", "i-123"}, {"zone", "us-east-1a"}},
+			subset: true,
+		},
+		{
+			name:   "longer-3",
+			terms:  topologyTerm{{"instance", "i-123"}, {"zone", "us-east-1a"}},
+			other:  topologyTerm{{"zone", "us-east-1a"}},
+			subset: false,
+		},
+		{
+			name:   "unrelated",
+			terms:  topologyTerm{{"instance", "i-123"}},
+			other:  topologyTerm{{"zone", "us-east-1a"}},
+			subset: false,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.subset, tc.terms.subset(tc.other))
+		})
+	}
 }
