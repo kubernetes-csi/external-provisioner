@@ -64,7 +64,7 @@ import (
 	ctrl "github.com/kubernetes-csi/external-provisioner/v5/pkg/controller"
 	"github.com/kubernetes-csi/external-provisioner/v5/pkg/features"
 	"github.com/kubernetes-csi/external-provisioner/v5/pkg/owner"
-	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned"
+	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned"
 	gatewayclientset "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned"
 	gatewayInformers "sigs.k8s.io/gateway-api/pkg/client/informers/externalversions"
 	referenceGrantv1beta1 "sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1beta1"
