@@ -3,8 +3,8 @@ package storage
 import (
 	"context"
 
-	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
-	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
+	snapshotclientset "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
