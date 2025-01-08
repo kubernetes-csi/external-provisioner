@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/go-logr/logr"
 	"os"
 	"strconv"
 	"strings"
@@ -51,8 +52,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v10/util"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v11/util"
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
@@ -206,10 +207,10 @@ var (
 // ProvisionerCSITranslator contains the set of CSI Translation functionality
 // required by the provisioner
 type ProvisionerCSITranslator interface {
-	TranslateInTreeStorageClassToCSI(inTreePluginName string, sc *storagev1.StorageClass) (*storagev1.StorageClass, error)
+	TranslateInTreeStorageClassToCSI(logger logr.Logger, inTreePluginName string, sc *storagev1.StorageClass) (*storagev1.StorageClass, error)
 	TranslateCSIPVToInTree(pv *v1.PersistentVolume) (*v1.PersistentVolume, error)
 	IsPVMigratable(pv *v1.PersistentVolume) bool
-	TranslateInTreePVToCSI(pv *v1.PersistentVolume) (*v1.PersistentVolume, error)
+	TranslateInTreePVToCSI(logger logr.Logger, pv *v1.PersistentVolume) (*v1.PersistentVolume, error)
 
 	IsMigratedCSIDriverByName(csiPluginName string) bool
 	GetInTreeNameFromCSIName(pluginName string) (string, error)
@@ -566,7 +567,9 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		// so that external provisioner can correctly pick up the PVC pointing to an in-tree plugin
 		if sc.Provisioner == p.supportsMigrationFromInTreePluginName {
 			klog.V(2).Infof("translating storage class for in-tree plugin %s to CSI", sc.Provisioner)
-			storageClass, err := p.translator.TranslateInTreeStorageClassToCSI(p.supportsMigrationFromInTreePluginName, sc)
+
+			// TODO replace klog.TODO() once contextual logging is implemented for provisioner
+			storageClass, err := p.translator.TranslateInTreeStorageClassToCSI(klog.TODO(), p.supportsMigrationFromInTreePluginName, sc)
 			if err != nil {
 				return nil, controller.ProvisioningFinished, fmt.Errorf("failed to translate storage class: %v", err)
 			}
@@ -1240,7 +1243,8 @@ func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 		// controller to yield deletion of PVs with in-tree source to external provisioner
 		// based on AnnDynamicallyProvisioned annotation.
 		migratedVolume = true
-		volume, err = p.translator.TranslateInTreePVToCSI(volume)
+		// TODO replace klog.TODO() once contextual logging is implemented for provisioner
+		volume, err = p.translator.TranslateInTreePVToCSI(klog.TODO(), volume)
 		if err != nil {
 			return err
 		}
@@ -1327,7 +1331,8 @@ func (p *csiProvisioner) getSecretsFromSC(ctx context.Context, volume *v1.Persis
 		if storageClass, err := p.scLister.Get(storageClassName); err == nil {
 			if migratedVolume && storageClass.Provisioner == p.supportsMigrationFromInTreePluginName {
 				klog.V(2).Infof("translating storage class for in-tree plugin %s to CSI", storageClass.Provisioner)
-				storageClass, err = p.translator.TranslateInTreeStorageClassToCSI(p.supportsMigrationFromInTreePluginName, storageClass)
+				// TODO replace klog.TODO() once contextual logging is implemented for provisioner
+				storageClass, err = p.translator.TranslateInTreeStorageClassToCSI(klog.TODO(), p.supportsMigrationFromInTreePluginName, storageClass)
 				if err != nil {
 					return err
 				}
