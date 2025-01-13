@@ -4,92 +4,121 @@
 package controller
 
 import (
-	"github.com/golang/mock/gomock"
+	reflect "reflect"
+
+	logr "github.com/go-logr/logr"
+	gomock "github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
+	v10 "k8s.io/api/storage/v1"
 )
 
-// Mock of ProvisionerCSITranslator interface
+// MockProvisionerCSITranslator is a mock of ProvisionerCSITranslator interface.
 type MockProvisionerCSITranslator struct {
 	ctrl     *gomock.Controller
-	recorder *_MockProvisionerCSITranslatorRecorder
+	recorder *MockProvisionerCSITranslatorMockRecorder
 }
 
-// Recorder for MockProvisionerCSITranslator (not exported)
-type _MockProvisionerCSITranslatorRecorder struct {
+// MockProvisionerCSITranslatorMockRecorder is the mock recorder for MockProvisionerCSITranslator.
+type MockProvisionerCSITranslatorMockRecorder struct {
 	mock *MockProvisionerCSITranslator
 }
 
+// NewMockProvisionerCSITranslator creates a new mock instance.
 func NewMockProvisionerCSITranslator(ctrl *gomock.Controller) *MockProvisionerCSITranslator {
 	mock := &MockProvisionerCSITranslator{ctrl: ctrl}
-	mock.recorder = &_MockProvisionerCSITranslatorRecorder{mock}
+	mock.recorder = &MockProvisionerCSITranslatorMockRecorder{mock}
 	return mock
 }
 
-func (_m *MockProvisionerCSITranslator) EXPECT() *_MockProvisionerCSITranslatorRecorder {
-	return _m.recorder
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockProvisionerCSITranslator) EXPECT() *MockProvisionerCSITranslatorMockRecorder {
+	return m.recorder
 }
 
-func (_m *MockProvisionerCSITranslator) GetInTreeNameFromCSIName(_param0 string) (string, error) {
-	ret := _m.ctrl.Call(_m, "GetInTreeNameFromCSIName", _param0)
+// GetInTreeNameFromCSIName mocks base method.
+func (m *MockProvisionerCSITranslator) GetInTreeNameFromCSIName(pluginName string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetInTreeNameFromCSIName", pluginName)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-func (_mr *_MockProvisionerCSITranslatorRecorder) GetInTreeNameFromCSIName(arg0 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "GetInTreeNameFromCSIName", arg0)
+// GetInTreeNameFromCSIName indicates an expected call of GetInTreeNameFromCSIName.
+func (mr *MockProvisionerCSITranslatorMockRecorder) GetInTreeNameFromCSIName(pluginName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInTreeNameFromCSIName", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).GetInTreeNameFromCSIName), pluginName)
 }
 
-func (_m *MockProvisionerCSITranslator) IsMigratedCSIDriverByName(_param0 string) bool {
-	ret := _m.ctrl.Call(_m, "IsMigratedCSIDriverByName", _param0)
+// IsMigratedCSIDriverByName mocks base method.
+func (m *MockProvisionerCSITranslator) IsMigratedCSIDriverByName(csiPluginName string) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsMigratedCSIDriverByName", csiPluginName)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
-func (_mr *_MockProvisionerCSITranslatorRecorder) IsMigratedCSIDriverByName(arg0 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "IsMigratedCSIDriverByName", arg0)
+// IsMigratedCSIDriverByName indicates an expected call of IsMigratedCSIDriverByName.
+func (mr *MockProvisionerCSITranslatorMockRecorder) IsMigratedCSIDriverByName(csiPluginName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsMigratedCSIDriverByName", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).IsMigratedCSIDriverByName), csiPluginName)
 }
 
-func (_m *MockProvisionerCSITranslator) IsPVMigratable(_param0 *v1.PersistentVolume) bool {
-	ret := _m.ctrl.Call(_m, "IsPVMigratable", _param0)
+// IsPVMigratable mocks base method.
+func (m *MockProvisionerCSITranslator) IsPVMigratable(pv *v1.PersistentVolume) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsPVMigratable", pv)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
-func (_mr *_MockProvisionerCSITranslatorRecorder) IsPVMigratable(arg0 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "IsPVMigratable", arg0)
+// IsPVMigratable indicates an expected call of IsPVMigratable.
+func (mr *MockProvisionerCSITranslatorMockRecorder) IsPVMigratable(pv interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPVMigratable", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).IsPVMigratable), pv)
 }
 
-func (_m *MockProvisionerCSITranslator) TranslateCSIPVToInTree(_param0 *v1.PersistentVolume) (*v1.PersistentVolume, error) {
-	ret := _m.ctrl.Call(_m, "TranslateCSIPVToInTree", _param0)
+// TranslateCSIPVToInTree mocks base method.
+func (m *MockProvisionerCSITranslator) TranslateCSIPVToInTree(pv *v1.PersistentVolume) (*v1.PersistentVolume, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TranslateCSIPVToInTree", pv)
 	ret0, _ := ret[0].(*v1.PersistentVolume)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-func (_mr *_MockProvisionerCSITranslatorRecorder) TranslateCSIPVToInTree(arg0 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "TranslateCSIPVToInTree", arg0)
+// TranslateCSIPVToInTree indicates an expected call of TranslateCSIPVToInTree.
+func (mr *MockProvisionerCSITranslatorMockRecorder) TranslateCSIPVToInTree(pv interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TranslateCSIPVToInTree", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).TranslateCSIPVToInTree), pv)
 }
 
-func (_m *MockProvisionerCSITranslator) TranslateInTreePVToCSI(_param0 *v1.PersistentVolume) (*v1.PersistentVolume, error) {
-	ret := _m.ctrl.Call(_m, "TranslateInTreePVToCSI", _param0)
+// TranslateInTreePVToCSI mocks base method.
+func (m *MockProvisionerCSITranslator) TranslateInTreePVToCSI(logger logr.Logger, pv *v1.PersistentVolume) (*v1.PersistentVolume, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TranslateInTreePVToCSI", logger, pv)
 	ret0, _ := ret[0].(*v1.PersistentVolume)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-func (_mr *_MockProvisionerCSITranslatorRecorder) TranslateInTreePVToCSI(arg0 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "TranslateInTreePVToCSI", arg0)
+// TranslateInTreePVToCSI indicates an expected call of TranslateInTreePVToCSI.
+func (mr *MockProvisionerCSITranslatorMockRecorder) TranslateInTreePVToCSI(logger, pv interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TranslateInTreePVToCSI", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).TranslateInTreePVToCSI), logger, pv)
 }
 
-func (_m *MockProvisionerCSITranslator) TranslateInTreeStorageClassToCSI(_param0 string, _param1 *storagev1.StorageClass) (*storagev1.StorageClass, error) {
-	ret := _m.ctrl.Call(_m, "TranslateInTreeStorageClassToCSI", _param0, _param1)
-	ret0, _ := ret[0].(*storagev1.StorageClass)
+// TranslateInTreeStorageClassToCSI mocks base method.
+func (m *MockProvisionerCSITranslator) TranslateInTreeStorageClassToCSI(logger logr.Logger, inTreePluginName string, sc *v10.StorageClass) (*v10.StorageClass, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TranslateInTreeStorageClassToCSI", logger, inTreePluginName, sc)
+	ret0, _ := ret[0].(*v10.StorageClass)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-func (_mr *_MockProvisionerCSITranslatorRecorder) TranslateInTreeStorageClassToCSI(arg0, arg1 interface{}) *gomock.Call {
-	return _mr.mock.ctrl.RecordCall(_mr.mock, "TranslateInTreeStorageClassToCSI", arg0, arg1)
+// TranslateInTreeStorageClassToCSI indicates an expected call of TranslateInTreeStorageClassToCSI.
+func (mr *MockProvisionerCSITranslatorMockRecorder) TranslateInTreeStorageClassToCSI(logger, inTreePluginName, sc interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TranslateInTreeStorageClassToCSI", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).TranslateInTreeStorageClassToCSI), logger, inTreePluginName, sc)
 }

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/go-logr/logr"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -48,7 +49,7 @@ import (
 	utilfeaturetesting "k8s.io/component-base/featuregate/testing"
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v10/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller"
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
@@ -6809,8 +6810,8 @@ func TestProvisionWithMigration(t *testing.T) {
 
 			// Have fake translation provide same as input SC but with
 			// Parameter indicating it has been translated
-			mockTranslator.EXPECT().TranslateInTreeStorageClassToCSI(gomock.Any(), gomock.Any()).DoAndReturn(
-				func(_ string, sc *storagev1.StorageClass) (*storagev1.StorageClass, error) {
+			mockTranslator.EXPECT().TranslateInTreeStorageClassToCSI(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ logr.Logger, _ string, sc *storagev1.StorageClass) (*storagev1.StorageClass, error) {
 					newSC := sc.DeepCopy()
 					newSC.Parameters[translatedKey] = "foo"
 					return newSC, nil
@@ -6986,8 +6987,8 @@ func TestDeleteMigration(t *testing.T) {
 			if tc.expectTranslation {
 				// In the translation case we translate to CSI we return a fake
 				// PV with a different handle
-				mockTranslator.EXPECT().TranslateInTreePVToCSI(gomock.Any()).Return(createFakeCSIPV(translatedHandle), nil).AnyTimes()
-				mockTranslator.EXPECT().TranslateInTreeStorageClassToCSI(gomock.Any(), gomock.Any()).Return(tc.sc, nil).AnyTimes()
+				mockTranslator.EXPECT().TranslateInTreePVToCSI(gomock.Any(), gomock.Any()).Return(createFakeCSIPV(translatedHandle), nil).AnyTimes()
+				mockTranslator.EXPECT().TranslateInTreeStorageClassToCSI(gomock.Any(), gomock.Any(), gomock.Any()).Return(tc.sc, nil).AnyTimes()
 			}
 
 			volID := normalHandle
