@@ -45,6 +45,10 @@ func TestGetNameWithMaxLength(t *testing.T) {
 			nodeName: fmt.Sprintf("node%s", strings.Repeat("a", 39)),
 		},
 		"very long, ignore suffix": {
+			expected: fmt.Sprintf("%s-%s", externalProvisioner, "a3607ff1"),
+			nodeName: fmt.Sprintf("node%s", strings.Repeat("a", 49)),
+		},
+		"very very long, ignore suffix": {
 			expected: fmt.Sprintf("%s-%s", externalProvisioner, "df38e37f"),
 			nodeName: fmt.Sprintf("node%s", strings.Repeat("a", 63)),
 		},
