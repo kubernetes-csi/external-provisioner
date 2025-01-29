@@ -461,19 +461,33 @@ func main() {
 		}
 		var controller *metav1.OwnerReference
 		if *capacityOwnerrefLevel >= 0 {
-			podName := os.Getenv("POD_NAME")
-			if podName == "" {
-				klog.Fatal("need POD_NAME env variable to determine CSIStorageCapacity owner")
-			}
-			var err error
-			controller, err = owner.Lookup(config, namespace, podName,
-				schema.GroupVersionKind{
-					Group:   "",
-					Version: "v1",
-					Kind:    "Pod",
-				}, *capacityOwnerrefLevel)
-			if err != nil {
-				klog.Fatalf("look up owner(s) of pod: %v", err)
+			if *enableNodeDeployment {
+				// When using node deployment, set the OwnerReference of the CSIStorageCapacity to
+				// the node so that it will be garbage collected when the node is deleted.
+				controller, err = owner.Lookup(config, "", node,
+					schema.GroupVersionKind{
+						Group:   "",
+						Version: "v1",
+						Kind:    "Node",
+					}, 0)
+				if err != nil {
+					klog.Fatalf("getting node details: %v", err)
+				}
+			} else {
+				podName := os.Getenv("POD_NAME")
+				if podName == "" {
+					klog.Fatal("need POD_NAME env variable to determine CSIStorageCapacity owner")
+				}
+				var err error
+				controller, err = owner.Lookup(config, namespace, podName,
+					schema.GroupVersionKind{
+						Group:   "",
+						Version: "v1",
+						Kind:    "Pod",
+					}, *capacityOwnerrefLevel)
+				if err != nil {
+					klog.Fatalf("look up owner(s) of pod: %v", err)
+				}
 			}
 			klog.Infof("using %s/%s %s as owner of CSIStorageCapacity objects", controller.APIVersion, controller.Kind, controller.Name)
 		}
