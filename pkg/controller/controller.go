@@ -54,6 +54,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v11/util"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v11/gidallocator"
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
@@ -120,6 +121,9 @@ const (
 	pvcNameKey      = "csi.storage.k8s.io/pvc/name"
 	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
 	pvNameKey       = "csi.storage.k8s.io/pv/name"
+
+	// GID metadata key to add to PV annotation if returned in volume context
+	gidCsiKey = "csi.storage.k8s.io/pv.gid"
 
 	snapshotKind     = "VolumeSnapshot"
 	snapshotAPIGroup = snapapi.GroupName       // "snapshot.storage.k8s.io"
@@ -931,6 +935,11 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	} else {
 		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annDeletionProvisionerSecretRefName, "")
 		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annDeletionProvisionerSecretRefNamespace, "")
+	}
+
+	if gid, ok := volumeAttributes[gidCsiKey]; ok {
+		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, gidallocator.VolumeGidAnnotationKey, gid)
+		delete(result.csiPVSource.VolumeAttributes, gidCsiKey)
 	}
 
 	if options.StorageClass.ReclaimPolicy != nil {
