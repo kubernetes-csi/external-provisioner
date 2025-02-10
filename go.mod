@@ -24,7 +24,7 @@ require (
 	k8s.io/component-helpers v0.32.0
 	k8s.io/csi-translation-lib v0.32.0
 	k8s.io/klog/v2 v2.130.1
-	sigs.k8s.io/controller-runtime v0.20.0
+	sigs.k8s.io/controller-runtime v0.20.1
 	sigs.k8s.io/gateway-api v1.2.1
 )
 
@@ -157,7 +157,7 @@ require (
 	k8s.io/mount-utils v0.32.0 // indirect
 	k8s.io/pod-security-admission v0.32.0 // indirect
 	k8s.io/utils v0.0.0-20241210054802-24370beab758 // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.1 // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.2 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.5.0 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
