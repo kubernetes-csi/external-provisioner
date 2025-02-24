@@ -28,7 +28,11 @@ import (
 // it will truncate the base, add the hash of the base and return [base]-[hash]-[suffix]
 // copied from https://github.com/openshift/library-go/blob/master/pkg/build/naming/namer.go
 func getNameWithMaxLength(base, suffix string, maxLength int) string {
-	name := fmt.Sprintf("%s-%s", base, suffix)
+	name := suffix
+	if base != "" {
+		name = fmt.Sprintf("%s-%s", base, suffix)
+	}
+
 	if len(name) <= maxLength {
 		return name
 	}
@@ -36,10 +40,13 @@ func getNameWithMaxLength(base, suffix string, maxLength int) string {
 	baseLength := maxLength - 10 /*length of -hash-*/ - len(suffix)
 
 	// if the suffix is too long, ignore it
-	if baseLength < 0 {
+	if baseLength <= 0 {
+		shortName := hash(name)
 		prefix := base[0:min(len(base), max(0, maxLength-9))]
-		// Calculate hash on initial base-suffix string
-		shortName := fmt.Sprintf("%s-%s", prefix, hash(name))
+		if prefix != "" {
+			// Calculate hash on initial base-suffix string
+			shortName = fmt.Sprintf("%s-%s", prefix, hash(name))
+		}
 		return shortName[:min(maxLength, len(shortName))]
 	}
 
