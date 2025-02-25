@@ -7,7 +7,7 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/kubernetes-csi/csi-lib-utils v0.20.0
+	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/kubernetes-csi/csi-test/v5 v5.3.1
 	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.2.0
 	github.com/miekg/dns v1.1.62 // indirect
