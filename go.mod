@@ -16,13 +16,13 @@ require (
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.69.2
 	google.golang.org/protobuf v1.36.2
-	k8s.io/api v0.32.0
-	k8s.io/apimachinery v0.32.0
+	k8s.io/api v0.32.2
+	k8s.io/apimachinery v0.32.2
 	k8s.io/apiserver v0.32.0
 	k8s.io/client-go v0.32.0
 	k8s.io/component-base v0.32.0
 	k8s.io/component-helpers v0.32.0
-	k8s.io/csi-translation-lib v0.32.0
+	k8s.io/csi-translation-lib v0.32.2
 	k8s.io/klog/v2 v2.130.1
 	sigs.k8s.io/controller-runtime v0.20.0
 	sigs.k8s.io/gateway-api v1.2.1
@@ -189,7 +189,7 @@ replace k8s.io/controller-manager => k8s.io/controller-manager v0.32.0
 
 replace k8s.io/cri-api => k8s.io/cri-api v0.32.0
 
-replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.32.0
+replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.32.2
 
 replace k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.32.0
 
