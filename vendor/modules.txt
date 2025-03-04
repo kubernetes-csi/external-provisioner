@@ -256,7 +256,7 @@ github.com/klauspost/compress/internal/cpuinfo
 github.com/klauspost/compress/internal/snapref
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
-# github.com/kubernetes-csi/csi-lib-utils v0.20.0
+# github.com/kubernetes-csi/csi-lib-utils v0.21.0
 ## explicit; go 1.23.1
 github.com/kubernetes-csi/csi-lib-utils/accessmodes
 github.com/kubernetes-csi/csi-lib-utils/connection
