@@ -7,7 +7,7 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/kubernetes-csi/csi-lib-utils v0.20.0
+	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/kubernetes-csi/csi-test/v5 v5.3.1
 	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.2.0
 	github.com/miekg/dns v1.1.62 // indirect
@@ -18,13 +18,13 @@ require (
 	google.golang.org/protobuf v1.36.2
 	k8s.io/api v0.32.2
 	k8s.io/apimachinery v0.32.2
-	k8s.io/apiserver v0.32.0
-	k8s.io/client-go v0.32.0
-	k8s.io/component-base v0.32.0
+	k8s.io/apiserver v0.32.1
+	k8s.io/client-go v0.32.1
+	k8s.io/component-base v0.32.1
 	k8s.io/component-helpers v0.32.0
 	k8s.io/csi-translation-lib v0.32.2
 	k8s.io/klog/v2 v2.130.1
-	sigs.k8s.io/controller-runtime v0.20.0
+	sigs.k8s.io/controller-runtime v0.20.2
 	sigs.k8s.io/gateway-api v1.2.1
 )
 
@@ -33,7 +33,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
-	k8s.io/kubernetes v1.32.1
+	k8s.io/kubernetes v1.32.2
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v11 v11.0.1
 )
 
@@ -60,7 +60,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
 	github.com/euank/go-kmsg-parser v2.0.0+incompatible // indirect
-	github.com/evanphx/json-patch/v5 v5.9.0 // indirect
+	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
@@ -143,7 +143,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.32.0 // indirect
+	k8s.io/apiextensions-apiserver v0.32.1 // indirect
 	k8s.io/cloud-provider v0.32.0 // indirect
 	k8s.io/controller-manager v0.32.0 // indirect
 	k8s.io/cri-api v0.32.0 // indirect
@@ -157,7 +157,7 @@ require (
 	k8s.io/mount-utils v0.32.0 // indirect
 	k8s.io/pod-security-admission v0.32.0 // indirect
 	k8s.io/utils v0.0.0-20241210054802-24370beab758 // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.1 // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.2 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.5.0 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
