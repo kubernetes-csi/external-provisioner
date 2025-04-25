@@ -226,3 +226,7 @@ replace k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.32.0
 replace k8s.io/cri-client => k8s.io/cri-client v0.32.0
 
 replace k8s.io/externaljwt => k8s.io/externaljwt v0.32.0
+
+replace github.com/kubernetes-csi/csi-lib-utils => github.com/mdzraf/csi-lib-utils v0.0.0-20250408153324-d3fabff50cd7
+
+replace sigs.k8s.io/sig-storage-lib-external-provisioner/v11 => github.com/mdzraf/sig-storage-lib-external-provisioner/v11 v11.0.0-20250425170941-c0d82f7c5539
