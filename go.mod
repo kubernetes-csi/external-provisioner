@@ -1,6 +1,7 @@
 module github.com/kubernetes-csi/external-provisioner/v5
 
 go 1.23.1
+toolchain go1.24.1
 
 require (
 	github.com/container-storage-interface/spec v1.11.0
@@ -16,16 +17,16 @@ require (
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.72.0
 	google.golang.org/protobuf v1.36.6
-	k8s.io/api v0.32.2
-	k8s.io/apimachinery v0.32.2
+	k8s.io/api v0.32.3
+	k8s.io/apimachinery v0.32.3
 	k8s.io/apiserver v0.32.1
-	k8s.io/client-go v0.32.1
+	k8s.io/client-go v0.32.3
 	k8s.io/component-base v0.32.1
 	k8s.io/component-helpers v0.32.0
 	k8s.io/csi-translation-lib v0.32.2
 	k8s.io/klog/v2 v2.130.1
-	sigs.k8s.io/controller-runtime v0.20.3
-	sigs.k8s.io/gateway-api v1.2.1
+	sigs.k8s.io/controller-runtime v0.20.4
+	sigs.k8s.io/gateway-api v1.3.0
 )
 
 require (
@@ -132,7 +133,7 @@ require (
 	golang.org/x/crypto v0.37.0 // indirect
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
 	golang.org/x/mod v0.24.0 // indirect
-	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sync v0.13.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect
@@ -147,7 +148,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.32.1 // indirect
+	k8s.io/apiextensions-apiserver v0.32.3 // indirect
 	k8s.io/cloud-provider v0.32.0 // indirect
 	k8s.io/controller-manager v0.32.0 // indirect
 	k8s.io/cri-api v0.32.0 // indirect
@@ -161,9 +162,9 @@ require (
 	k8s.io/mount-utils v0.32.0 // indirect
 	k8s.io/pod-security-admission v0.32.0 // indirect
 	k8s.io/utils v0.0.0-20241210054802-24370beab758 // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.3 // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.32.0 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.6.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.7.0 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
