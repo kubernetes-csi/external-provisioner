@@ -20,11 +20,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-logr/logr"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-logr/logr"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/accessmodes"
@@ -639,7 +640,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 			fsTypesFound++
 		}
 		if strings.ToLower(k) == "fstype" {
-			klog.Warningf(deprecationWarning("fstype", prefixedFsTypeKey, ""))
+			klog.Warning(deprecationWarning("fstype", prefixedFsTypeKey, ""))
 		}
 	}
 	if fsTypesFound > 1 {
