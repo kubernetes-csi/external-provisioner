@@ -1571,13 +1571,13 @@ k8s.io/utils/pointer
 k8s.io/utils/ptr
 k8s.io/utils/strings
 k8s.io/utils/trace
-# sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.3
+# sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.32.1
 ## explicit; go 1.21
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/common/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/controller-runtime v0.20.3
+# sigs.k8s.io/controller-runtime v0.20.4
 ## explicit; go 1.23.0
 sigs.k8s.io/controller-runtime/pkg/client
 sigs.k8s.io/controller-runtime/pkg/client/apiutil
@@ -1586,18 +1586,20 @@ sigs.k8s.io/controller-runtime/pkg/client/interceptor
 sigs.k8s.io/controller-runtime/pkg/internal/field/selector
 sigs.k8s.io/controller-runtime/pkg/internal/objectutil
 sigs.k8s.io/controller-runtime/pkg/log
-# sigs.k8s.io/gateway-api v1.2.1
-## explicit; go 1.22.0
-sigs.k8s.io/gateway-api/apis/applyconfiguration
-sigs.k8s.io/gateway-api/apis/applyconfiguration/apis/v1
-sigs.k8s.io/gateway-api/apis/applyconfiguration/apis/v1alpha2
-sigs.k8s.io/gateway-api/apis/applyconfiguration/apis/v1alpha3
-sigs.k8s.io/gateway-api/apis/applyconfiguration/apis/v1beta1
-sigs.k8s.io/gateway-api/apis/applyconfiguration/internal
+# sigs.k8s.io/gateway-api v1.3.0
+## explicit; go 1.24.0
 sigs.k8s.io/gateway-api/apis/v1
 sigs.k8s.io/gateway-api/apis/v1alpha2
 sigs.k8s.io/gateway-api/apis/v1alpha3
 sigs.k8s.io/gateway-api/apis/v1beta1
+sigs.k8s.io/gateway-api/apisx/v1alpha1
+sigs.k8s.io/gateway-api/applyconfiguration
+sigs.k8s.io/gateway-api/applyconfiguration/apis/v1
+sigs.k8s.io/gateway-api/applyconfiguration/apis/v1alpha2
+sigs.k8s.io/gateway-api/applyconfiguration/apis/v1alpha3
+sigs.k8s.io/gateway-api/applyconfiguration/apis/v1beta1
+sigs.k8s.io/gateway-api/applyconfiguration/apisx/v1alpha1
+sigs.k8s.io/gateway-api/applyconfiguration/internal
 sigs.k8s.io/gateway-api/pkg/client/clientset/versioned
 sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/fake
 sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/scheme
@@ -1609,17 +1611,22 @@ sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1alpha3
 sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1alpha3/fake
 sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1beta1
 sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1beta1/fake
+sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apisx/v1alpha1
+sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apisx/v1alpha1/fake
 sigs.k8s.io/gateway-api/pkg/client/informers/externalversions
 sigs.k8s.io/gateway-api/pkg/client/informers/externalversions/apis
 sigs.k8s.io/gateway-api/pkg/client/informers/externalversions/apis/v1
 sigs.k8s.io/gateway-api/pkg/client/informers/externalversions/apis/v1alpha2
 sigs.k8s.io/gateway-api/pkg/client/informers/externalversions/apis/v1alpha3
 sigs.k8s.io/gateway-api/pkg/client/informers/externalversions/apis/v1beta1
+sigs.k8s.io/gateway-api/pkg/client/informers/externalversions/apisx
+sigs.k8s.io/gateway-api/pkg/client/informers/externalversions/apisx/v1alpha1
 sigs.k8s.io/gateway-api/pkg/client/informers/externalversions/internalinterfaces
 sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1
 sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1alpha2
 sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1alpha3
 sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1beta1
+sigs.k8s.io/gateway-api/pkg/client/listers/apisx/v1alpha1
 # sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8
 ## explicit; go 1.23
 sigs.k8s.io/json
@@ -1633,7 +1640,7 @@ sigs.k8s.io/randfill/bytesource
 sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller
 sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller/metrics
 sigs.k8s.io/sig-storage-lib-external-provisioner/v11/util
-# sigs.k8s.io/structured-merge-diff/v4 v4.6.0
+# sigs.k8s.io/structured-merge-diff/v4 v4.7.0
 ## explicit; go 1.13
 sigs.k8s.io/structured-merge-diff/v4/fieldpath
 sigs.k8s.io/structured-merge-diff/v4/merge
