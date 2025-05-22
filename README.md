@@ -130,6 +130,8 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * `--prevent-volume-mode-conversion`: Prevents an unauthorized user from modifying the volume mode when creating a PVC from an existing VolumeSnapshot. Defaults to true.
 
+* `--automaxprocs`: Automatically set the `GOMAXPROCS` environment variable to match the configured Linux container CPU quota. Defaults to false.
+
 * All glog / klog arguments are supported, such as `-v <log level>` or `-alsologtostderr`.
 
 ### Design
