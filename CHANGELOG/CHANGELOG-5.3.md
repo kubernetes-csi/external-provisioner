@@ -1,0 +1,309 @@
+# Release notes for 5.3.0
+
+[Documentation](https://kubernetes-csi.github.io)
+
+# Changelog since 5.2.0
+
+## Changes by Kind
+
+### Feature
+
+- Add a new `--automaxprocs` flag to set the `GOMAXPROCS` environment variable to match the configured Linux container CPU quota. ([#1379](https://github.com/kubernetes-csi/external-provisioner/pull/1379), [@nixpanic](https://github.com/nixpanic))
+- Promoted the feature gate `HonorPVReclaimPolicy` to GA. ([#1328](https://github.com/kubernetes-csi/external-provisioner/pull/1328), [@carlory](https://github.com/carlory))
+- Users can now provide a secret name and namespace during provision by passing the correct storage class parameters: "provisioner-secret-name" and "provisioner-secret-namespace" ([#274](https://github.com/kubernetes-csi/external-provisioner/pull/274), [@ggriffiths](https://github.com/ggriffiths))
+
+### Bug or Regression
+
+- Fix: CVE-2025-22870 ([#1355](https://github.com/kubernetes-csi/external-provisioner/pull/1355), [@andyzhangx](https://github.com/andyzhangx))
+- Upgrade csi-translation-lib to fix in-tree to CSI migration for Portworx volumes, in clusters where Portworx security feature is enabled (it's a Portworx feature, not Kubernetes feature). It required secret data from the secret mentioned in-tree SC, to be passed in CSI CreateVolume request which was not happening before this fix. ([#1350](https://github.com/kubernetes-csi/external-provisioner/pull/1350), [@gohilankit](https://github.com/gohilankit))
+
+### Uncategorized
+
+- Storage capacity: managed-by label getting invalid label  with a long node name and enableNodeDeployment set to true ([#1334](https://github.com/kubernetes-csi/external-provisioner/pull/1334), [@vamsikrishna-siddu](https://github.com/vamsikrishna-siddu))
+- Update kubernetes dependencies to v1.33.0` ([#1373](https://github.com/kubernetes-csi/external-provisioner/pull/1373), [@Aishwarya-Hebbar](https://github.com/Aishwarya-Hebbar))
+
+## Dependencies
+
+### Added
+- github.com/Masterminds/goutils: [v1.1.1](https://github.com/Masterminds/goutils/tree/v1.1.1)
+- github.com/Masterminds/semver: [v1.5.0](https://github.com/Masterminds/semver/tree/v1.5.0)
+- github.com/Masterminds/sprig: [v2.22.0+incompatible](https://github.com/Masterminds/sprig/tree/v2.22.0)
+- github.com/containerd/errdefs/pkg: [v0.3.0](https://github.com/containerd/errdefs/tree/pkg/v0.3.0)
+- github.com/elastic/crd-ref-docs: [v0.1.0](https://github.com/elastic/crd-ref-docs/tree/v0.1.0)
+- github.com/envoyproxy/go-control-plane/envoy: [v1.32.4](https://github.com/envoyproxy/go-control-plane/tree/envoy/v1.32.4)
+- github.com/envoyproxy/go-control-plane/ratelimit: [v0.1.0](https://github.com/envoyproxy/go-control-plane/tree/ratelimit/v0.1.0)
+- github.com/go-jose/go-jose/v4: [v4.0.4](https://github.com/go-jose/go-jose/tree/v4.0.4)
+- github.com/goccy/go-yaml: [v1.11.3](https://github.com/goccy/go-yaml/tree/v1.11.3)
+- github.com/huandu/xstrings: [v1.3.3](https://github.com/huandu/xstrings/tree/v1.3.3)
+- github.com/mitchellh/copystructure: [v1.2.0](https://github.com/mitchellh/copystructure/tree/v1.2.0)
+- github.com/mitchellh/reflectwalk: [v1.0.2](https://github.com/mitchellh/reflectwalk/tree/v1.0.2)
+- github.com/opencontainers/cgroups: [v0.0.2](https://github.com/opencontainers/cgroups/tree/v0.0.2)
+- github.com/prashantv/gostub: [v1.1.0](https://github.com/prashantv/gostub/tree/v1.1.0)
+- github.com/santhosh-tekuri/jsonschema/v5: [v5.3.1](https://github.com/santhosh-tekuri/jsonschema/tree/v5.3.1)
+- github.com/spiffe/go-spiffe/v2: [v2.5.0](https://github.com/spiffe/go-spiffe/tree/v2.5.0)
+- github.com/zeebo/errs: [v1.4.0](https://github.com/zeebo/errs/tree/v1.4.0)
+- go.uber.org/automaxprocs: v1.6.0
+- gopkg.in/go-jose/go-jose.v2: v2.6.3
+- sigs.k8s.io/randfill: v1.0.0
+
+### Changed
+- cel.dev/expr: v0.19.1 → v0.24.0
+- cloud.google.com/go/compute/metadata: v0.5.2 → v0.6.0
+- github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp: [v1.24.2 → v1.26.0](https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/compare/detectors/gcp/v1.24.2...detectors/gcp/v1.26.0)
+- github.com/cilium/ebpf: [v0.16.0 → v0.17.3](https://github.com/cilium/ebpf/compare/v0.16.0...v0.17.3)
+- github.com/cncf/xds/go: [b4127c9 → 2f00578](https://github.com/cncf/xds/compare/b4127c9...2f00578)
+- github.com/containerd/containerd/api: [v1.8.0 → v1.9.0](https://github.com/containerd/containerd/compare/api/v1.8.0...api/v1.9.0)
+- github.com/containerd/errdefs: [v0.1.0 → v1.0.0](https://github.com/containerd/errdefs/compare/v0.1.0...v1.0.0)
+- github.com/containerd/typeurl/v2: [v2.2.0 → v2.2.3](https://github.com/containerd/typeurl/compare/v2.2.0...v2.2.3)
+- github.com/coredns/corefile-migration: [v1.0.24 → v1.0.25](https://github.com/coredns/corefile-migration/compare/v1.0.24...v1.0.25)
+- github.com/coreos/go-oidc: [v2.2.1+incompatible → v2.3.0+incompatible](https://github.com/coreos/go-oidc/compare/v2.2.1...v2.3.0)
+- github.com/cpuguy83/go-md2man/v2: [v2.0.4 → v2.0.6](https://github.com/cpuguy83/go-md2man/compare/v2.0.4...v2.0.6)
+- github.com/cyphar/filepath-securejoin: [v0.3.6 → v0.4.1](https://github.com/cyphar/filepath-securejoin/compare/v0.3.6...v0.4.1)
+- github.com/emicklei/go-restful/v3: [v3.12.1 → v3.12.2](https://github.com/emicklei/go-restful/compare/v3.12.1...v3.12.2)
+- github.com/envoyproxy/go-control-plane: [v0.13.1 → v0.13.4](https://github.com/envoyproxy/go-control-plane/compare/v0.13.1...v0.13.4)
+- github.com/envoyproxy/protoc-gen-validate: [v1.1.0 → v1.2.1](https://github.com/envoyproxy/protoc-gen-validate/compare/v1.1.0...v1.2.1)
+- github.com/evanphx/json-patch/v5: [v5.9.0 → v5.9.11](https://github.com/evanphx/json-patch/compare/v5.9.0...v5.9.11)
+- github.com/evanphx/json-patch: [v5.7.0+incompatible → v5.6.0+incompatible](https://github.com/evanphx/json-patch/compare/v5.7.0...v5.6.0)
+- github.com/fatih/color: [v1.17.0 → v1.18.0](https://github.com/fatih/color/compare/v1.17.0...v1.18.0)
+- github.com/fsnotify/fsnotify: [v1.8.0 → v1.9.0](https://github.com/fsnotify/fsnotify/compare/v1.8.0...v1.9.0)
+- github.com/fxamacker/cbor/v2: [v2.7.0 → v2.8.0](https://github.com/fxamacker/cbor/compare/v2.7.0...v2.8.0)
+- github.com/go-openapi/jsonpointer: [v0.21.0 → v0.21.1](https://github.com/go-openapi/jsonpointer/compare/v0.21.0...v0.21.1)
+- github.com/go-openapi/swag: [v0.23.0 → v0.23.1](https://github.com/go-openapi/swag/compare/v0.23.0...v0.23.1)
+- github.com/gobuffalo/flect: [v1.0.2 → v1.0.3](https://github.com/gobuffalo/flect/compare/v1.0.2...v1.0.3)
+- github.com/golang-jwt/jwt/v4: [v4.5.0 → v4.5.2](https://github.com/golang-jwt/jwt/compare/v4.5.0...v4.5.2)
+- github.com/golang/glog: [v1.2.2 → v1.2.4](https://github.com/golang/glog/compare/v1.2.2...v1.2.4)
+- github.com/google/cadvisor: [v0.51.0 → v0.52.1](https://github.com/google/cadvisor/compare/v0.51.0...v0.52.1)
+- github.com/google/cel-go: [v0.22.1 → v0.23.2](https://github.com/google/cel-go/compare/v0.22.1...v0.23.2)
+- github.com/google/go-cmp: [v0.6.0 → v0.7.0](https://github.com/google/go-cmp/compare/v0.6.0...v0.7.0)
+- github.com/google/pprof: [40e02aa → 27863c8](https://github.com/google/pprof/compare/40e02aa...27863c8)
+- github.com/gorilla/websocket: [v1.5.3 → e064f32](https://github.com/gorilla/websocket/compare/v1.5.3...e064f32)
+- github.com/grpc-ecosystem/grpc-gateway/v2: [v2.25.1 → v2.26.3](https://github.com/grpc-ecosystem/grpc-gateway/compare/v2.25.1...v2.26.3)
+- github.com/imdario/mergo: [v0.3.16 → v0.3.11](https://github.com/imdario/mergo/compare/v0.3.16...v0.3.11)
+- github.com/jessevdk/go-flags: [v1.4.0 → v1.6.1](https://github.com/jessevdk/go-flags/compare/v1.4.0...v1.6.1)
+- github.com/klauspost/compress: [v1.17.11 → v1.18.0](https://github.com/klauspost/compress/compare/v1.17.11...v1.18.0)
+- github.com/kubernetes-csi/csi-lib-utils: [v0.20.0 → v0.22.0](https://github.com/kubernetes-csi/csi-lib-utils/compare/v0.20.0...v0.22.0)
+- github.com/matttproud/golang_protobuf_extensions: [v1.0.2 → v1.0.1](https://github.com/matttproud/golang_protobuf_extensions/compare/v1.0.2...v1.0.1)
+- github.com/miekg/dns: [v1.1.62 → v1.1.66](https://github.com/miekg/dns/compare/v1.1.62...v1.1.66)
+- github.com/onsi/ginkgo/v2: [v2.22.2 → v2.23.4](https://github.com/onsi/ginkgo/compare/v2.22.2...v2.23.4)
+- github.com/onsi/gomega: [v1.36.2 → v1.37.0](https://github.com/onsi/gomega/compare/v1.36.2...v1.37.0)
+- github.com/opencontainers/image-spec: [v1.1.0 → v1.1.1](https://github.com/opencontainers/image-spec/compare/v1.1.0...v1.1.1)
+- github.com/opencontainers/runc: [v1.2.4 → v1.2.5](https://github.com/opencontainers/runc/compare/v1.2.4...v1.2.5)
+- github.com/opencontainers/runtime-spec: [v1.2.0 → v1.2.1](https://github.com/opencontainers/runtime-spec/compare/v1.2.0...v1.2.1)
+- github.com/opencontainers/selinux: [v1.11.1 → v1.12.0](https://github.com/opencontainers/selinux/compare/v1.11.1...v1.12.0)
+- github.com/prometheus/client_golang: [v1.20.5 → v1.22.0](https://github.com/prometheus/client_golang/compare/v1.20.5...v1.22.0)
+- github.com/prometheus/client_model: [v0.6.1 → v0.6.2](https://github.com/prometheus/client_model/compare/v0.6.1...v0.6.2)
+- github.com/prometheus/common: [v0.61.0 → v0.64.0](https://github.com/prometheus/common/compare/v0.61.0...v0.64.0)
+- github.com/prometheus/procfs: [v0.15.1 → v0.16.1](https://github.com/prometheus/procfs/compare/v0.15.1...v0.16.1)
+- github.com/spf13/cobra: [v1.8.1 → v1.9.1](https://github.com/spf13/cobra/compare/v1.8.1...v1.9.1)
+- github.com/spf13/pflag: [v1.0.5 → v1.0.6](https://github.com/spf13/pflag/compare/v1.0.5...v1.0.6)
+- github.com/vishvananda/netlink: [b1ce50c → 62fb240](https://github.com/vishvananda/netlink/compare/b1ce50c...62fb240)
+- go.etcd.io/etcd/api/v3: v3.5.17 → v3.5.21
+- go.etcd.io/etcd/client/pkg/v3: v3.5.17 → v3.5.21
+- go.etcd.io/etcd/client/v2: v2.305.16 → v2.305.21
+- go.etcd.io/etcd/client/v3: v3.5.17 → v3.5.21
+- go.etcd.io/etcd/pkg/v3: v3.5.16 → v3.5.21
+- go.etcd.io/etcd/raft/v3: v3.5.16 → v3.5.21
+- go.etcd.io/etcd/server/v3: v3.5.16 → v3.5.21
+- go.opentelemetry.io/contrib/detectors/gcp: v1.31.0 → v1.34.0
+- go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc: v0.58.0 → v0.60.0
+- go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp: v0.58.0 → v0.60.0
+- go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc: v1.33.0 → v1.35.0
+- go.opentelemetry.io/otel/exporters/otlp/otlptrace: v1.33.0 → v1.35.0
+- go.opentelemetry.io/otel/metric: v1.33.0 → v1.35.0
+- go.opentelemetry.io/otel/sdk/metric: v1.31.0 → v1.35.0
+- go.opentelemetry.io/otel/sdk: v1.33.0 → v1.35.0
+- go.opentelemetry.io/otel/trace: v1.33.0 → v1.35.0
+- go.opentelemetry.io/otel: v1.33.0 → v1.35.0
+- go.opentelemetry.io/proto/otlp: v1.5.0 → v1.6.0
+- golang.org/x/crypto: v0.32.0 → v0.38.0
+- golang.org/x/mod: v0.22.0 → v0.24.0
+- golang.org/x/net: v0.34.0 → v0.40.0
+- golang.org/x/oauth2: v0.25.0 → v0.30.0
+- golang.org/x/sync: v0.10.0 → v0.14.0
+- golang.org/x/sys: v0.29.0 → v0.33.0
+- golang.org/x/term: v0.28.0 → v0.32.0
+- golang.org/x/text: v0.21.0 → v0.25.0
+- golang.org/x/time: v0.9.0 → v0.11.0
+- golang.org/x/tools: v0.29.0 → v0.33.0
+- golang.org/x/xerrors: 5ec99f8 → 104605a
+- google.golang.org/genproto/googleapis/api: 5f5ef82 → 10db94c
+- google.golang.org/genproto/googleapis/rpc: 5f5ef82 → 10db94c
+- google.golang.org/genproto: 6ceb2ff → ef43131
+- google.golang.org/grpc: v1.69.2 → v1.72.1
+- google.golang.org/protobuf: v1.36.2 → v1.36.6
+- k8s.io/api: v0.32.0 → v0.33.0
+- k8s.io/apiextensions-apiserver: v0.32.0 → v0.33.0
+- k8s.io/apimachinery: v0.32.0 → v0.33.0
+- k8s.io/apiserver: v0.32.0 → v0.33.0
+- k8s.io/cli-runtime: v0.32.0 → v0.33.0
+- k8s.io/client-go: v0.32.0 → v0.33.0
+- k8s.io/cloud-provider: v0.32.0 → v0.33.0
+- k8s.io/cluster-bootstrap: v0.32.0 → v0.33.0
+- k8s.io/code-generator: v0.32.0 → v0.33.0
+- k8s.io/component-base: v0.32.0 → v0.33.0
+- k8s.io/component-helpers: v0.32.0 → v0.33.0
+- k8s.io/controller-manager: v0.32.0 → v0.33.0
+- k8s.io/cri-api: v0.32.0 → v0.33.0
+- k8s.io/cri-client: v0.32.0 → v0.33.0
+- k8s.io/csi-translation-lib: v0.32.0 → v0.33.0
+- k8s.io/dynamic-resource-allocation: v0.32.0 → v0.33.0
+- k8s.io/endpointslice: v0.32.0 → v0.33.0
+- k8s.io/externaljwt: v0.32.0 → v0.33.0
+- k8s.io/gengo/v2: 2b36238 → 1244d31
+- k8s.io/kms: v0.32.0 → v0.33.0
+- k8s.io/kube-aggregator: v0.32.0 → v0.33.0
+- k8s.io/kube-controller-manager: v0.32.0 → v0.33.0
+- k8s.io/kube-openapi: 2c72e55 → c8a335a
+- k8s.io/kube-proxy: v0.32.0 → v0.33.0
+- k8s.io/kube-scheduler: v0.32.0 → v0.33.0
+- k8s.io/kubectl: v0.32.0 → v0.33.0
+- k8s.io/kubelet: v0.32.0 → v0.33.0
+- k8s.io/kubernetes: v1.32.0 → v1.33.1
+- k8s.io/metrics: v0.32.0 → v0.33.0
+- k8s.io/mount-utils: v0.32.0 → v0.33.0
+- k8s.io/pod-security-admission: v0.32.0 → v0.33.0
+- k8s.io/sample-apiserver: v0.32.0 → v0.33.0
+- sigs.k8s.io/apiserver-network-proxy/konnectivity-client: v0.31.1 → v0.32.1
+- sigs.k8s.io/controller-runtime: v0.19.4 → v0.21.0
+- sigs.k8s.io/controller-tools: v0.16.3 → v0.17.3
+- sigs.k8s.io/gateway-api: v1.2.1 → v1.3.0
+- sigs.k8s.io/kustomize/api: v0.18.0 → v0.19.0
+- sigs.k8s.io/kustomize/kustomize/v5: v5.5.0 → v5.6.0
+- sigs.k8s.io/kustomize/kyaml: v0.18.1 → v0.19.0
+- sigs.k8s.io/structured-merge-diff/v4: v4.5.0 → v4.7.0
+
+### Removed
+- cloud.google.com/go/accessapproval: v1.7.5
+- cloud.google.com/go/accesscontextmanager: v1.8.5
+- cloud.google.com/go/aiplatform: v1.60.0
+- cloud.google.com/go/analytics: v0.23.0
+- cloud.google.com/go/apigateway: v1.6.5
+- cloud.google.com/go/apigeeconnect: v1.6.5
+- cloud.google.com/go/apigeeregistry: v0.8.3
+- cloud.google.com/go/appengine: v1.8.5
+- cloud.google.com/go/area120: v0.8.5
+- cloud.google.com/go/artifactregistry: v1.14.7
+- cloud.google.com/go/asset: v1.17.2
+- cloud.google.com/go/assuredworkloads: v1.11.5
+- cloud.google.com/go/automl: v1.13.5
+- cloud.google.com/go/baremetalsolution: v1.2.4
+- cloud.google.com/go/batch: v1.8.0
+- cloud.google.com/go/beyondcorp: v1.0.4
+- cloud.google.com/go/bigquery: v1.59.1
+- cloud.google.com/go/billing: v1.18.2
+- cloud.google.com/go/binaryauthorization: v1.8.1
+- cloud.google.com/go/certificatemanager: v1.7.5
+- cloud.google.com/go/channel: v1.17.5
+- cloud.google.com/go/cloudbuild: v1.15.1
+- cloud.google.com/go/clouddms: v1.7.4
+- cloud.google.com/go/cloudtasks: v1.12.6
+- cloud.google.com/go/compute: v1.25.1
+- cloud.google.com/go/contactcenterinsights: v1.13.0
+- cloud.google.com/go/container: v1.31.0
+- cloud.google.com/go/containeranalysis: v0.11.4
+- cloud.google.com/go/datacatalog: v1.19.3
+- cloud.google.com/go/dataflow: v0.9.5
+- cloud.google.com/go/dataform: v0.9.2
+- cloud.google.com/go/datafusion: v1.7.5
+- cloud.google.com/go/datalabeling: v0.8.5
+- cloud.google.com/go/dataplex: v1.14.2
+- cloud.google.com/go/dataproc/v2: v2.4.0
+- cloud.google.com/go/dataqna: v0.8.5
+- cloud.google.com/go/datastore: v1.15.0
+- cloud.google.com/go/datastream: v1.10.4
+- cloud.google.com/go/deploy: v1.17.1
+- cloud.google.com/go/dialogflow: v1.49.0
+- cloud.google.com/go/dlp: v1.11.2
+- cloud.google.com/go/documentai: v1.25.0
+- cloud.google.com/go/domains: v0.9.5
+- cloud.google.com/go/edgecontainer: v1.1.5
+- cloud.google.com/go/errorreporting: v0.3.0
+- cloud.google.com/go/essentialcontacts: v1.6.6
+- cloud.google.com/go/eventarc: v1.13.4
+- cloud.google.com/go/filestore: v1.8.1
+- cloud.google.com/go/firestore: v1.14.0
+- cloud.google.com/go/functions: v1.16.0
+- cloud.google.com/go/gkebackup: v1.3.5
+- cloud.google.com/go/gkeconnect: v0.8.5
+- cloud.google.com/go/gkehub: v0.14.5
+- cloud.google.com/go/gkemulticloud: v1.1.1
+- cloud.google.com/go/gsuiteaddons: v1.6.5
+- cloud.google.com/go/iam: v1.1.6
+- cloud.google.com/go/iap: v1.9.4
+- cloud.google.com/go/ids: v1.4.5
+- cloud.google.com/go/iot: v1.7.5
+- cloud.google.com/go/kms: v1.15.7
+- cloud.google.com/go/language: v1.12.3
+- cloud.google.com/go/lifesciences: v0.9.5
+- cloud.google.com/go/logging: v1.9.0
+- cloud.google.com/go/longrunning: v0.5.5
+- cloud.google.com/go/managedidentities: v1.6.5
+- cloud.google.com/go/maps: v1.6.4
+- cloud.google.com/go/mediatranslation: v0.8.5
+- cloud.google.com/go/memcache: v1.10.5
+- cloud.google.com/go/metastore: v1.13.4
+- cloud.google.com/go/monitoring: v1.18.0
+- cloud.google.com/go/networkconnectivity: v1.14.4
+- cloud.google.com/go/networkmanagement: v1.9.4
+- cloud.google.com/go/networksecurity: v0.9.5
+- cloud.google.com/go/notebooks: v1.11.3
+- cloud.google.com/go/optimization: v1.6.3
+- cloud.google.com/go/orchestration: v1.8.5
+- cloud.google.com/go/orgpolicy: v1.12.1
+- cloud.google.com/go/osconfig: v1.12.5
+- cloud.google.com/go/oslogin: v1.13.1
+- cloud.google.com/go/phishingprotection: v0.8.5
+- cloud.google.com/go/policytroubleshooter: v1.10.3
+- cloud.google.com/go/privatecatalog: v0.9.5
+- cloud.google.com/go/pubsub: v1.36.1
+- cloud.google.com/go/pubsublite: v1.8.1
+- cloud.google.com/go/recaptchaenterprise/v2: v2.9.2
+- cloud.google.com/go/recommendationengine: v0.8.5
+- cloud.google.com/go/recommender: v1.12.1
+- cloud.google.com/go/redis: v1.14.2
+- cloud.google.com/go/resourcemanager: v1.9.5
+- cloud.google.com/go/resourcesettings: v1.6.5
+- cloud.google.com/go/retail: v1.16.0
+- cloud.google.com/go/run: v1.3.4
+- cloud.google.com/go/scheduler: v1.10.6
+- cloud.google.com/go/secretmanager: v1.11.5
+- cloud.google.com/go/security: v1.15.5
+- cloud.google.com/go/securitycenter: v1.24.4
+- cloud.google.com/go/servicedirectory: v1.11.4
+- cloud.google.com/go/shell: v1.7.5
+- cloud.google.com/go/spanner: v1.57.0
+- cloud.google.com/go/speech: v1.21.1
+- cloud.google.com/go/storagetransfer: v1.10.4
+- cloud.google.com/go/talent: v1.6.6
+- cloud.google.com/go/texttospeech: v1.7.5
+- cloud.google.com/go/tpu: v1.6.5
+- cloud.google.com/go/trace: v1.10.5
+- cloud.google.com/go/translate: v1.10.1
+- cloud.google.com/go/video: v1.20.4
+- cloud.google.com/go/videointelligence: v1.11.5
+- cloud.google.com/go/vision/v2: v2.8.0
+- cloud.google.com/go/vmmigration: v1.7.5
+- cloud.google.com/go/vmwareengine: v1.1.1
+- cloud.google.com/go/vpcaccess: v1.7.5
+- cloud.google.com/go/webrisk: v1.9.5
+- cloud.google.com/go/websecurityscanner: v1.6.5
+- cloud.google.com/go/workflows: v1.12.4
+- cloud.google.com/go: v0.112.0
+- github.com/ahmetb/gen-crd-api-reference-docs: [v0.3.0](https://github.com/ahmetb/gen-crd-api-reference-docs/tree/v0.3.0)
+- github.com/asaskevich/govalidator: [a9d515a](https://github.com/asaskevich/govalidator/tree/a9d515a)
+- github.com/census-instrumentation/opencensus-proto: [v0.4.1](https://github.com/census-instrumentation/opencensus-proto/tree/v0.4.1)
+- github.com/checkpoint-restore/go-criu/v6: [v6.3.0](https://github.com/checkpoint-restore/go-criu/tree/v6.3.0)
+- github.com/containerd/console: [v1.0.4](https://github.com/containerd/console/tree/v1.0.4)
+- github.com/go-kit/log: [v0.2.1](https://github.com/go-kit/log/tree/v0.2.1)
+- github.com/go-logfmt/logfmt: [v0.5.1](https://github.com/go-logfmt/logfmt/tree/v0.5.1)
+- github.com/moby/sys/user: [v0.3.0](https://github.com/moby/sys/tree/user/v0.3.0)
+- github.com/seccomp/libseccomp-golang: [v0.10.0](https://github.com/seccomp/libseccomp-golang/tree/v0.10.0)
+- github.com/syndtr/gocapability: [42c35b4](https://github.com/syndtr/gocapability/tree/42c35b4)
+- github.com/urfave/cli: [v1.22.14](https://github.com/urfave/cli/tree/v1.22.14)
+- github.com/xeipuuv/gojsonpointer: [4e3ac27](https://github.com/xeipuuv/gojsonpointer/tree/4e3ac27)
+- github.com/xeipuuv/gojsonreference: [bd5ef7b](https://github.com/xeipuuv/gojsonreference/tree/bd5ef7b)
+- github.com/xeipuuv/gojsonschema: [v1.2.0](https://github.com/xeipuuv/gojsonschema/tree/v1.2.0)
+- go.uber.org/atomic: v1.7.0
+- gopkg.in/square/go-jose.v2: v2.6.0
+- k8s.io/gengo: 9cce18d
+- k8s.io/klog: v0.2.0
