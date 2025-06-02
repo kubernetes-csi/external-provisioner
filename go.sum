@@ -353,8 +353,8 @@ k8s.io/pod-security-admission v0.33.0 h1:di/iicB5plCq+iQeqgf2s1N5DOSzTDiOOv5OiAb
 k8s.io/pod-security-admission v0.33.0/go.mod h1:McuUMtSclLNxQdCkDTTWqKR79jnpHT/022GuanVU/Wg=
 k8s.io/utils v0.0.0-20241210054802-24370beab758 h1:sdbE21q2nlQtFh65saZY+rRM6x6aJJI8IUa1AmH/qa0=
 k8s.io/utils v0.0.0-20241210054802-24370beab758/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
-sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.32.1 h1:Cf+ed5N8038zbsaXFO7mKQDi/+VcSRafb0jM84KX5so=
-sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.32.1/go.mod h1:Ve9uj1L+deCXFrPOk1LpFXqTg7LCFzFso6PA48q/XZw=
+sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.33.0 h1:qPrZsv1cwQiFeieFlRqT627fVZ+tyfou/+S5S0H5ua0=
+sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.33.0/go.mod h1:Ve9uj1L+deCXFrPOk1LpFXqTg7LCFzFso6PA48q/XZw=
 sigs.k8s.io/controller-runtime v0.21.0 h1:CYfjpEuicjUecRk+KAeyYh+ouUBn4llGyDYytIGcJS8=
 sigs.k8s.io/controller-runtime v0.21.0/go.mod h1:OSg14+F65eWqIu4DceX7k/+QRAbTTvxeQSNSOQpukWM=
 sigs.k8s.io/gateway-api v1.3.0 h1:q6okN+/UKDATola4JY7zXzx40WO4VISk7i9DIfOvr9M=
