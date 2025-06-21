@@ -532,6 +532,7 @@ func createFakeNamedPVC(requestBytes int64, name string, userAnnotations map[str
 			Name:        name,
 			Namespace:   "fake-ns",
 			Annotations: annotations,
+			Finalizers:  []string{"volume.kubernetes.io/clone-protection"},
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
 			Selector: nil, // Provisioner doesn't support selector
@@ -970,7 +971,7 @@ func TestFSTypeProvision(t *testing.T) {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{
+					Parameters: map[string]string{
 						// We deliberately skip fsType in sc param
 						//	"fstype": "",
 					},
@@ -1028,7 +1029,7 @@ func TestFSTypeProvision(t *testing.T) {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{
+					Parameters: map[string]string{
 						// We deliberately skip fsType in sc param
 						//	"fstype": "xfs",
 					},
