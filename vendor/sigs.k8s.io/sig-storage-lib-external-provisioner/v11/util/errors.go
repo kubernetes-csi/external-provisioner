@@ -1,10 +1,5 @@
-// This file contains changes that are only compatible with go 1.10 and onwards.
-
-//go:build go1.10
-// +build go1.10
-
 /*
-Copyright 2021 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,13 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package yaml
+package util
 
-import "encoding/json"
+type DelayRetryError struct {
+	message string
+}
 
-// DisallowUnknownFields configures the JSON decoder to error out if unknown
-// fields come along, instead of dropping them by default.
-func DisallowUnknownFields(d *json.Decoder) *json.Decoder {
-	d.DisallowUnknownFields()
-	return d
+func (e *DelayRetryError) Error() string {
+	return e.message
+}
+
+func NewDelayRetryError(message string) error {
+	return &DelayRetryError{message: message}
+}
+
+func IsDelayRetryError(err error) bool {
+	_, ok := err.(*DelayRetryError)
+	return ok
 }
