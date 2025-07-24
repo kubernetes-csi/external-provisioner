@@ -37,7 +37,6 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -2328,7 +2327,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				features.VolumeAttributesClass: true,
 			},
 			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1beta1.VolumeAttributesClass{
+			clientSetObjects: []runtime.Object{&storagev1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
@@ -2381,7 +2380,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				features.VolumeAttributesClass: false,
 			},
 			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1beta1.VolumeAttributesClass{
+			clientSetObjects: []runtime.Object{&storagev1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
@@ -2450,7 +2449,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				features.VolumeAttributesClass: true,
 			},
 			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1beta1.VolumeAttributesClass{
+			clientSetObjects: []runtime.Object{&storagev1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
@@ -2477,7 +2476,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				features.VolumeAttributesClass: true,
 			},
 			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1beta1.VolumeAttributesClass{
+			clientSetObjects: []runtime.Object{&storagev1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
