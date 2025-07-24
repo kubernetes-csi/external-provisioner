@@ -19,13 +19,14 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/go-logr/logr"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -35,7 +36,6 @@ import (
 	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
