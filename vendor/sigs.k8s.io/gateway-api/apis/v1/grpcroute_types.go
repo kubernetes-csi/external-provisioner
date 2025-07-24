@@ -60,6 +60,7 @@ type GRPCRoute struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// Spec defines the desired state of GRPCRoute.
+	// +required
 	Spec GRPCRouteSpec `json:"spec,omitempty"`
 
 	// Status defines the current state of GRPCRoute.
@@ -156,7 +157,6 @@ type GRPCRouteRule struct {
 	//
 	// Support: Extended
 	// +optional
-	// <gateway:experimental>
 	Name *SectionName `json:"name,omitempty"`
 
 	// Matches define conditions used for matching the rule against incoming

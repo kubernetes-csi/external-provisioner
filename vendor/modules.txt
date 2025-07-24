@@ -369,7 +369,7 @@ go.yaml.in/yaml/v2
 # go.yaml.in/yaml/v3 v3.0.4
 ## explicit; go 1.16
 go.yaml.in/yaml/v3
-# golang.org/x/crypto v0.38.0
+# golang.org/x/crypto v0.39.0
 ## explicit; go 1.23.0
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/chacha20
@@ -381,10 +381,10 @@ golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 # golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
 ## explicit; go 1.22.0
 golang.org/x/exp/slices
-# golang.org/x/mod v0.24.0
+# golang.org/x/mod v0.25.0
 ## explicit; go 1.23.0
 golang.org/x/mod/semver
-# golang.org/x/net v0.40.0
+# golang.org/x/net v0.41.0
 ## explicit; go 1.23.0
 golang.org/x/net/bpf
 golang.org/x/net/html
@@ -408,7 +408,7 @@ golang.org/x/net/websocket
 ## explicit; go 1.23.0
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.14.0
+# golang.org/x/sync v0.16.0
 ## explicit; go 1.23.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/singleflight
@@ -422,7 +422,7 @@ golang.org/x/sys/windows/registry
 # golang.org/x/term v0.32.0
 ## explicit; go 1.23.0
 golang.org/x/term
-# golang.org/x/text v0.25.0
+# golang.org/x/text v0.26.0
 ## explicit; go 1.23.0
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
@@ -485,8 +485,8 @@ google.golang.org/genproto/googleapis/api/httpbody
 ## explicit; go 1.23.0
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.72.1
-## explicit; go 1.23
+# google.golang.org/grpc v1.73.0
+## explicit; go 1.23.0
 google.golang.org/grpc
 google.golang.org/grpc/attributes
 google.golang.org/grpc/backoff
@@ -609,7 +609,7 @@ gopkg.in/inf.v0
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# k8s.io/api v0.33.1 => github.com/carlory/kubernetes/staging/src/k8s.io/api v0.0.0-20250724034424-78a2afa4ba07
+# k8s.io/api v0.33.2 => github.com/carlory/kubernetes/staging/src/k8s.io/api v0.0.0-20250724034424-78a2afa4ba07
 ## explicit; go 1.24.0
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
@@ -670,12 +670,12 @@ k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
 k8s.io/api/storagemigration/v1alpha1
-# k8s.io/apiextensions-apiserver v0.33.0 => github.com/carlory/kubernetes/staging/src/k8s.io/apiextensions-apiserver v0.0.0-20250724034424-78a2afa4ba07
+# k8s.io/apiextensions-apiserver v0.33.2 => github.com/carlory/kubernetes/staging/src/k8s.io/apiextensions-apiserver v0.0.0-20250724034424-78a2afa4ba07
 ## explicit; go 1.24.0
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/features
-# k8s.io/apimachinery v0.33.1 => github.com/carlory/kubernetes/staging/src/k8s.io/apimachinery v0.0.0-20250724034424-78a2afa4ba07
+# k8s.io/apimachinery v0.33.2 => github.com/carlory/kubernetes/staging/src/k8s.io/apimachinery v0.0.0-20250724034424-78a2afa4ba07
 ## explicit; go 1.24.0
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -797,7 +797,7 @@ k8s.io/apiserver/pkg/util/feature
 k8s.io/apiserver/pkg/util/webhook
 k8s.io/apiserver/pkg/util/x509metrics
 k8s.io/apiserver/pkg/warning
-# k8s.io/client-go v0.33.1 => github.com/carlory/kubernetes/staging/src/k8s.io/client-go v0.0.0-20250724034424-78a2afa4ba07
+# k8s.io/client-go v0.33.2 => github.com/carlory/kubernetes/staging/src/k8s.io/client-go v0.0.0-20250724034424-78a2afa4ba07
 ## explicit; go 1.24.0
 k8s.io/client-go/applyconfigurations
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
@@ -1315,7 +1315,7 @@ sigs.k8s.io/controller-runtime/pkg/client/interceptor
 sigs.k8s.io/controller-runtime/pkg/internal/field/selector
 sigs.k8s.io/controller-runtime/pkg/internal/objectutil
 sigs.k8s.io/controller-runtime/pkg/log
-# sigs.k8s.io/gateway-api v1.3.0
+# sigs.k8s.io/gateway-api v1.3.0 => github.com/carlory/gateway-api v0.0.0-20250724073505-96d4c84872c1
 ## explicit; go 1.24.0
 sigs.k8s.io/gateway-api/apis/v1
 sigs.k8s.io/gateway-api/apis/v1alpha2
@@ -1369,12 +1369,6 @@ sigs.k8s.io/randfill/bytesource
 sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller
 sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller/metrics
 sigs.k8s.io/sig-storage-lib-external-provisioner/v11/util
-# sigs.k8s.io/structured-merge-diff/v4 v4.7.0
-## explicit; go 1.13
-sigs.k8s.io/structured-merge-diff/v4/fieldpath
-sigs.k8s.io/structured-merge-diff/v4/schema
-sigs.k8s.io/structured-merge-diff/v4/typed
-sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/structured-merge-diff/v6 v6.3.0
 ## explicit; go 1.23
 sigs.k8s.io/structured-merge-diff/v6/fieldpath
@@ -1385,7 +1379,7 @@ sigs.k8s.io/structured-merge-diff/v6/value
 # sigs.k8s.io/yaml v1.5.0
 ## explicit; go 1.22
 sigs.k8s.io/yaml
-sigs.k8s.io/yaml/goyaml.v2
+# sigs.k8s.io/gateway-api => github.com/carlory/gateway-api v0.0.0-20250724073505-96d4c84872c1
 # k8s.io/kubernetes => github.com/carlory/kubernetes v0.0.0-20250724034424-78a2afa4ba07
 # k8s.io/apimachinery => github.com/carlory/kubernetes/staging/src/k8s.io/apimachinery v0.0.0-20250724034424-78a2afa4ba07
 # k8s.io/api => github.com/carlory/kubernetes/staging/src/k8s.io/api v0.0.0-20250724034424-78a2afa4ba07
