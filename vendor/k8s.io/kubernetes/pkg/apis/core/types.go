@@ -406,7 +406,6 @@ type PersistentVolumeSpec struct {
 	// after a volume has been updated successfully to a new class.
 	// For an unbound PersistentVolume, the volumeAttributesClassName will be matched with unbound
 	// PersistentVolumeClaims during the binding process.
-	// This is a beta field and requires enabling VolumeAttributesClass feature (off by default).
 	// +featureGate=VolumeAttributesClass
 	// +optional
 	VolumeAttributesClassName *string
@@ -562,15 +561,13 @@ type PersistentVolumeClaimSpec struct {
 	// volumeAttributesClassName may be used to set the VolumeAttributesClass used by this claim.
 	// If specified, the CSI driver will create or update the volume with the attributes defined
 	// in the corresponding VolumeAttributesClass. This has a different purpose than storageClassName,
-	// it can be changed after the claim is created. An empty string value means that no VolumeAttributesClass
-	// will be applied to the claim but it's not allowed to reset this field to empty string once it is set.
-	// If unspecified and the PersistentVolumeClaim is unbound, the default VolumeAttributesClass
-	// will be set by the persistentvolume controller if it exists.
+	// it can be changed after the claim is created. An empty string or nil value indicates that no
+	// VolumeAttributesClass will be applied to the claim. If the claim enters an Infeasible error state,
+	// this field can be reset to its previous value (including nil) to cancel the modification.
 	// If the resource referred to by volumeAttributesClass does not exist, this PersistentVolumeClaim will be
 	// set to a Pending state, as reflected by the modifyVolumeStatus field, until such as a resource
 	// exists.
 	// More info: https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/
-	// (Beta) Using this field requires the VolumeAttributesClass feature gate to be enabled (off by default).
 	// +featureGate=VolumeAttributesClass
 	// +optional
 	VolumeAttributesClassName *string
@@ -773,13 +770,11 @@ type PersistentVolumeClaimStatus struct {
 	AllocatedResourceStatuses map[ResourceName]ClaimResourceStatus
 	// currentVolumeAttributesClassName is the current name of the VolumeAttributesClass the PVC is using.
 	// When unset, there is no VolumeAttributeClass applied to this PersistentVolumeClaim
-	// This is a beta field and requires enabling VolumeAttributesClass feature (off by default).
 	// +featureGate=VolumeAttributesClass
 	// +optional
 	CurrentVolumeAttributesClassName *string
 	// ModifyVolumeStatus represents the status object of ControllerModifyVolume operation.
 	// When this is unset, there is no ModifyVolume operation being attempted.
-	// This is a beta field and requires enabling VolumeAttributesClass feature (off by default).
 	// +featureGate=VolumeAttributesClass
 	// +optional
 	ModifyVolumeStatus *ModifyVolumeStatus
@@ -1856,6 +1851,61 @@ type ClusterTrustBundleProjection struct {
 	Path string
 }
 
+// PodCertificateProjection provides a private key and X.509 certificate in
+// a combined file.
+type PodCertificateProjection struct {
+	// Kubelet's generated CSRs will be addressed to this signer.
+	SignerName string
+
+	// The type of keypair Kubelet will generate for the pod.
+	//
+	// Valid values are "RSA3072", "RSA4096", "ECDSAP256", "ECDSAP384",
+	// "ECDSAP521", and "ED25519".
+	KeyType string
+
+	// maxExpirationSeconds is the maximum lifetime permitted for the
+	// certificate.
+	//
+	// Kubelet copies this value verbatim into the PodCertificateRequests it
+	// generates for this projection.
+	//
+	// If omitted, kube-apiserver will set it to 86400(24 hours). kube-apiserver
+	// will reject values shorter than 3600 (1 hour).  The maximum allowable
+	// value is 7862400 (91 days).
+	//
+	// The signer implementation is then free to issue a certificate with any
+	// lifetime *shorter* than MaxExpirationSeconds, but no shorter than 3600
+	// seconds (1 hour).  This constraint is enforced by kube-apiserver.
+	// `kubernetes.io` signers will never issue certificates with a lifetime
+	// longer than 24 hours.
+	MaxExpirationSeconds *int32
+
+	// Write the credential bundle at this path in the projected volume.
+	//
+	// The credential bundle is a single file that contains multiple PEM blocks.
+	// The first PEM block is a PRIVATE KEY block, containing a PKCS#8 private
+	// key.
+	//
+	// The remaining blocks are CERTIFICATE blocks, containing the issued
+	// certificate chain from the signer (leaf and any intermediates).
+	//
+	// Using credentialBundlePath lets your Pod's application code make a single
+	// atomic read that retrieves a consistent key and certificate chain.  If you
+	// project them to separate files, your application code will need to
+	// additionally check that the leaf certificate was issued to the key.
+	CredentialBundlePath string
+
+	// Write the key at this path in the projected volume.
+	//
+	// When using keyPath and certificateChainPath, your application needs to check
+	// that the key and leaf certificate are consistent, because it is possible to
+	// read the files mid-rotation.
+	KeyPath string
+
+	// Write the certificate chain at this path in the projected volume.
+	CertificateChainPath string
+}
+
 // ProjectedVolumeSource represents a projected volume source
 type ProjectedVolumeSource struct {
 	// list of volume projections
@@ -1883,6 +1933,8 @@ type VolumeProjection struct {
 	ServiceAccountToken *ServiceAccountTokenProjection
 	// information about the ClusterTrustBundle data to project
 	ClusterTrustBundle *ClusterTrustBundleProjection
+	// information about the pod certificate to project.
+	PodCertificate *PodCertificateProjection
 }
 
 // KeyToPath maps a string key to a path within a volume.
@@ -2177,10 +2229,7 @@ type VolumeDevice struct {
 // EnvVar represents an environment variable present in a Container.
 type EnvVar struct {
 	// Required: Name of the environment variable.
-	// When the RelaxedEnvironmentVariableValidation feature gate is disabled, this must consist of alphabetic characters,
-	// digits, '_', '-', or '.', and must not start with a digit.
-	// When the RelaxedEnvironmentVariableValidation feature gate is enabled,
-	// this may contain any printable ASCII characters except '='.
+	// May consist of any printable ASCII characters except '='.
 	Name string
 	// Optional: no more than one of the following may be specified.
 	// Optional: Defaults to ""; variable references $(VAR_NAME) are expanded
@@ -2215,6 +2264,38 @@ type EnvVarSource struct {
 	// Selects a key of a secret in the pod's namespace.
 	// +optional
 	SecretKeyRef *SecretKeySelector
+	// FileKeyRef selects a key of the env file.
+	// Requires the EnvFiles feature gate to be enabled.
+	//
+	// +featureGate=EnvFiles
+	// +optional
+	FileKeyRef *FileKeySelector
+}
+
+// FileKeySelector selects a key of the env file.
+type FileKeySelector struct {
+	// The name of the volume mount containing the env file.
+	// +required
+	VolumeName string
+	// The path within the volume from which to select the file.
+	// Must be relative and may not contain the '..' path or start with '..'.
+	// +required
+	Path string
+	// The key within the env file. An invalid key will prevent the pod from starting.
+	// The keys defined within a source may consist of any printable ASCII characters except '='.
+	// During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+	// +required
+	Key string
+	// Specify whether the file or its key must be defined. If the file or key
+	// does not exist, then the env var is not published.
+	// If optional is set to true and the specified key does not exist,
+	// the environment variable will not be set in the Pod's containers.
+	//
+	// If optional is set to false and the specified key does not exist,
+	// an error will be returned during Pod creation.
+	// +optional
+	// +default=false
+	Optional *bool
 }
 
 // ObjectFieldSelector selects an APIVersioned field of an object.
@@ -3296,8 +3377,8 @@ type PodAntiAffinity struct {
 	// most preferred is the one with the greatest sum of weights, i.e.
 	// for each node that meets all of the scheduling requirements (resource
 	// request, requiredDuringScheduling anti-affinity expressions, etc.),
-	// compute a sum by iterating through the elements of this field and adding
-	// "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the
+	// compute a sum by iterating through the elements of this field and subtracting
+	// "weight" from the sum if the node has pods which matches the corresponding podAffinityTerm; the
 	// node(s) with the highest sum are the most preferred.
 	// +optional
 	PreferredDuringSchedulingIgnoredDuringExecution []WeightedPodAffinityTerm
@@ -3423,7 +3504,6 @@ type Taint struct {
 	// Valid effects are NoSchedule, PreferNoSchedule and NoExecute.
 	Effect TaintEffect
 	// TimeAdded represents the time at which the taint was added.
-	// It is only written for NoExecute taints.
 	// +optional
 	TimeAdded *metav1.Time
 }
@@ -3714,6 +3794,20 @@ type PodSpec struct {
 	// +featureGate=PodLevelResources
 	// +optional
 	Resources *ResourceRequirements
+	// HostnameOverride specifies an explicit override for the pod's hostname as perceived by the pod.
+	// This field only specifies the pod's hostname and does not affect its DNS records.
+	// When this field is set to a non-empty string:
+	// - It takes precedence over the values set in `hostname` and `subdomain`.
+	// - The Pod's hostname will be set to this value.
+	// - `setHostnameAsFQDN` must be nil or set to false.
+	// - `hostNetwork` must be set to false.
+	//
+	// This field must be a valid DNS subdomain as defined in RFC 1123 and contain at most 64 characters.
+	// Requires the HostnameOverride feature gate to be enabled.
+	//
+	// +featureGate=HostnameOverride
+	// +optional
+	HostnameOverride *string
 }
 
 // PodResourceClaim references exactly one ResourceClaim through a ClaimSource.

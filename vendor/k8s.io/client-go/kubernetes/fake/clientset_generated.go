@@ -96,8 +96,6 @@ import (
 	fakeflowcontrolv1beta3 "k8s.io/client-go/kubernetes/typed/flowcontrol/v1beta3/fake"
 	networkingv1 "k8s.io/client-go/kubernetes/typed/networking/v1"
 	fakenetworkingv1 "k8s.io/client-go/kubernetes/typed/networking/v1/fake"
-	networkingv1alpha1 "k8s.io/client-go/kubernetes/typed/networking/v1alpha1"
-	fakenetworkingv1alpha1 "k8s.io/client-go/kubernetes/typed/networking/v1alpha1/fake"
 	networkingv1beta1 "k8s.io/client-go/kubernetes/typed/networking/v1beta1"
 	fakenetworkingv1beta1 "k8s.io/client-go/kubernetes/typed/networking/v1beta1/fake"
 	nodev1 "k8s.io/client-go/kubernetes/typed/node/v1"
@@ -213,8 +211,8 @@ func NewClientset(objects ...runtime.Object) *Clientset {
 	cs.AddReactor("*", "*", testing.ObjectReaction(o))
 	cs.AddWatchReactor("*", func(action testing.Action) (handled bool, ret watch.Interface, err error) {
 		var opts metav1.ListOptions
-		if watchActcion, ok := action.(testing.WatchActionImpl); ok {
-			opts = watchActcion.ListOptions
+		if watchAction, ok := action.(testing.WatchActionImpl); ok {
+			opts = watchAction.ListOptions
 		}
 		gvr := action.GetResource()
 		ns := action.GetNamespace()
@@ -406,11 +404,6 @@ func (c *Clientset) FlowcontrolV1beta3() flowcontrolv1beta3.FlowcontrolV1beta3In
 // NetworkingV1 retrieves the NetworkingV1Client
 func (c *Clientset) NetworkingV1() networkingv1.NetworkingV1Interface {
 	return &fakenetworkingv1.FakeNetworkingV1{Fake: &c.Fake}
-}
-
-// NetworkingV1alpha1 retrieves the NetworkingV1alpha1Client
-func (c *Clientset) NetworkingV1alpha1() networkingv1alpha1.NetworkingV1alpha1Interface {
-	return &fakenetworkingv1alpha1.FakeNetworkingV1alpha1{Fake: &c.Fake}
 }
 
 // NetworkingV1beta1 retrieves the NetworkingV1beta1Client
