@@ -21,7 +21,7 @@ package applyconfiguration
 import (
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
-	testing "k8s.io/client-go/testing"
+	managedfields "k8s.io/apimachinery/pkg/util/managedfields"
 	v1 "sigs.k8s.io/gateway-api/apis/v1"
 	v1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 	v1alpha3 "sigs.k8s.io/gateway-api/apis/v1alpha3"
@@ -212,6 +212,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apisv1alpha3.BackendTLSPolicyValidationApplyConfiguration{}
 	case v1alpha3.SchemeGroupVersion.WithKind("SubjectAltName"):
 		return &apisv1alpha3.SubjectAltNameApplyConfiguration{}
+	case v1alpha3.SchemeGroupVersion.WithKind("TLSRoute"):
+		return &apisv1alpha3.TLSRouteApplyConfiguration{}
+	case v1alpha3.SchemeGroupVersion.WithKind("TLSRouteSpec"):
+		return &apisv1alpha3.TLSRouteSpecApplyConfiguration{}
 
 		// Group=gateway.networking.k8s.io, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithKind("Gateway"):
@@ -257,6 +261,6 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 	return nil
 }
 
-func NewTypeConverter(scheme *runtime.Scheme) *testing.TypeConverter {
-	return &testing.TypeConverter{Scheme: scheme, TypeResolver: internal.Parser()}
+func NewTypeConverter(scheme *runtime.Scheme) managedfields.TypeConverter {
+	return managedfields.NewSchemeTypeConverter(scheme, internal.Parser())
 }
