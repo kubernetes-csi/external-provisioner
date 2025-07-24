@@ -2328,7 +2328,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				features.VolumeAttributesClass: true,
 			},
 			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1beta1.VolumeAttributesClass{
+			clientSetObjects: []runtime.Object{&storagev1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
@@ -2381,7 +2381,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				features.VolumeAttributesClass: false,
 			},
 			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1beta1.VolumeAttributesClass{
+			clientSetObjects: []runtime.Object{&storagev1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
@@ -2450,7 +2450,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				features.VolumeAttributesClass: true,
 			},
 			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1beta1.VolumeAttributesClass{
+			clientSetObjects: []runtime.Object{&storagev1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
@@ -2477,7 +2477,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				features.VolumeAttributesClass: true,
 			},
 			pluginCapabilities: provisionWithVACCapabilities,
-			clientSetObjects: []runtime.Object{&storagev1beta1.VolumeAttributesClass{
+			clientSetObjects: []runtime.Object{&storagev1.VolumeAttributesClass{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: vacName,
 				},
