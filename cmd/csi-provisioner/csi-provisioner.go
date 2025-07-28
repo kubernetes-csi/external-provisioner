@@ -406,6 +406,7 @@ func main() {
 		controller.CreateProvisionedPVLimiter(workqueue.DefaultControllerRateLimiter()),
 		controller.ClaimsInformer(claimInformer),
 		controller.NodesLister(nodeLister),
+		controller.RetryIntervalMax(*retryIntervalMax),
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.HonorPVReclaimPolicy) {
