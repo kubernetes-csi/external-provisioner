@@ -142,8 +142,8 @@ func main() {
 	c := logsapi.NewLoggingConfiguration()
 	logsapi.AddFlags(c, flag.CommandLine)
 	logs.InitLogs()
-	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	standardflags.AddAutomaxprocs(klog.Infof)
+	flag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 	flag.Parse()
 	if err := logsapi.ValidateAndApply(c, fg); err != nil {
 		klog.ErrorS(err, "LoggingConfiguration is invalid")
