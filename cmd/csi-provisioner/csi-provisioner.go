@@ -419,7 +419,7 @@ func main() {
 	if supportsMigrationFromInTreePluginName != "" {
 		provisionerOptions = append(provisionerOptions, controller.AdditionalProvisionerNames([]string{supportsMigrationFromInTreePluginName}))
 	}
-
+	pvcNodeStore := ctrl.NewInMemoryStore()
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
 	csiProvisioner := ctrl.NewCSIProvisioner(
@@ -448,6 +448,7 @@ func main() {
 		nodeDeployment,
 		*controllerPublishReadOnly,
 		*preventVolumeModeConversion,
+		*pvcNodeStore,
 	)
 
 	var capacityController *capacity.Controller

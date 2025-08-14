@@ -30,6 +30,7 @@ import (
 	"github.com/kubernetes-csi/external-provisioner/v5/pkg/features"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -140,13 +141,15 @@ func SupportsTopology(pluginCapabilities rpc.PluginCapabilitySet) bool {
 func GenerateAccessibilityRequirements(
 	kubeClient kubernetes.Interface,
 	driverName string,
+	pvcNamespace string,
 	pvcName string,
 	allowedTopologies []v1.TopologySelectorTerm,
-	selectedNode *v1.Node,
+	selectedNodeName string,
 	strictTopology bool,
 	immediateTopology bool,
 	csiNodeLister storagelistersv1.CSINodeLister,
-	nodeLister corelisters.NodeLister) (*csi.TopologyRequirement, error) {
+	nodeLister corelisters.NodeLister,
+	pvcNodeStore InMemoryStore) (*csi.TopologyRequirement, error) {
 	requirement := &csi.TopologyRequirement{}
 
 	var (
@@ -157,12 +160,27 @@ func GenerateAccessibilityRequirements(
 	)
 
 	// 1. Get CSINode for the selected node
-	if selectedNode != nil {
-		selectedCSINode, err = getSelectedCSINode(csiNodeLister, selectedNode)
+	klog.Infof("======== Get CSINode for the selected node ========")
+	var topologyKeys []string
+	if len(selectedNodeName) > 0 {
+		selectedCSINode, err = getSelectedCSINode(csiNodeLister, selectedNodeName)
 		if err != nil {
-			return nil, err
+			klog.Infof("======== Err getSelectedCSINode, trying to read from cache ========")
+			cacheInfo, err := pvcNodeStore.GetByName(pvcNamespace + "/" + pvcName)
+			if err != nil {
+				klog.Errorf("no topology key found in node %s in the in memory cache: %v", selectedCSINode.Name, err)
+				return nil, fmt.Errorf("no topology key found on CSINode %s after getSelectedCSINode", selectedCSINode.Name)
+			}
+			topologyKeys = cacheInfo.TopologyKeys
+			klog.Infof("======== topologyKeys %v after reading from cache ========", topologyKeys)
+			if len(topologyKeys) == 0 {
+				return nil, fmt.Errorf("no topology key found on CSINode %s after getSelectedCSINode", selectedCSINode.Name)
+			}
+		} else {
+			klog.Infof("======== selectedCSINode exists ========")
+			topologyKeys = getTopologyKeys(selectedCSINode, driverName)
 		}
-		topologyKeys := getTopologyKeys(selectedCSINode, driverName)
+
 		if len(topologyKeys) == 0 {
 			// The scheduler selected a node with no topology information.
 			// This can happen if:
@@ -173,12 +191,27 @@ func GenerateAccessibilityRequirements(
 			//
 			// Returning an error in provisioning will cause the scheduler to retry and potentially
 			// (but not guaranteed) pick a different node.
-			return nil, fmt.Errorf("no topology key found on CSINode %s", selectedCSINode.Name)
+
+			// Check the in memory cache
+			cacheInfo, err := pvcNodeStore.GetByName(pvcNamespace + "/" + pvcName)
+			if err != nil {
+				return nil, fmt.Errorf("no topology key found in node %s in the in memory cache: %v", selectedCSINode.Name, err)
+			}
+			topologyKeys = cacheInfo.TopologyKeys
+			klog.Infof("======== topologyKeys %v after reading from cache ========", topologyKeys)
+			if len(topologyKeys) == 0 {
+				return nil, fmt.Errorf("no topology key found on CSINode %s", selectedCSINode.Name)
+			}
+		} else {
+			// Add or update to cache for csiNode
+			klog.Infof("======== Add or update to in memory cache for csiNode ========")
+			pvcNodeStore.UpdateTopologyKeys(pvcNamespace+"/"+pvcName, topologyKeys)
 		}
 		var isMissingKey bool
-		selectedTopology, isMissingKey = getTopologyFromNode(selectedNode, topologyKeys)
+		var selectedNodeLabels map[string]string
+		selectedTopology, selectedNodeLabels, isMissingKey = getTopologyFromNodeName(selectedNodeName, topologyKeys, nodeLister, kubeClient, pvcNamespace+"/"+pvcName, pvcNodeStore)
 		if isMissingKey {
-			return nil, fmt.Errorf("topology labels from selected node %v does not match topology keys from CSINode %v", selectedNode.Labels, topologyKeys)
+			return nil, fmt.Errorf("topology labels from selected node %v does not match topology keys from CSINode %v", selectedNodeLabels, topologyKeys)
 		}
 
 		if strictTopology {
@@ -193,7 +226,7 @@ func GenerateAccessibilityRequirements(
 					}
 				}
 				if !found {
-					return nil, fmt.Errorf("selected node '%q' topology '%v' is not in allowed topologies: %v", selectedNode.Name, selectedTopology, allowedTopologiesFlatten)
+					return nil, fmt.Errorf("selected node '%q' topology '%v' is not in allowed topologies: %v", selectedNodeName, selectedTopology, allowedTopologiesFlatten)
 				}
 			}
 			// Only pass topology of selected node.
@@ -207,7 +240,7 @@ func GenerateAccessibilityRequirements(
 			// Distribute out one of the OR layers in allowedTopologies
 			requisiteTerms = flatten(allowedTopologies)
 		} else {
-			if selectedNode == nil && !immediateTopology {
+			if len(selectedNodeName) == 0 && !immediateTopology {
 				// Don't specify any topology requirements because neither the PVC nor
 				// the storage class have limitations and the CSI driver is not interested
 				// in being told where it runs (perhaps it already knows, for example).
@@ -215,7 +248,8 @@ func GenerateAccessibilityRequirements(
 			}
 
 			// Aggregate existing topologies in nodes across the entire cluster.
-			requisiteTerms, err = aggregateTopologies(driverName, selectedCSINode, csiNodeLister, nodeLister)
+			requisiteTerms, err = aggregateTopologies(driverName, selectedCSINode, csiNodeLister, nodeLister, pvcNamespace+"/"+pvcName, pvcNodeStore)
+			klog.Info("======== Get requisiteTerms from aggregateTopologies========")
 			if err != nil {
 				return nil, err
 			}
@@ -223,6 +257,7 @@ func GenerateAccessibilityRequirements(
 				// We may reach here if the driver has not registered on any nodes.
 				// We should wait for at least one driver to start so that we can
 				// provision in a supported topology.
+				klog.Info("======== No available topology found ========")
 				return nil, fmt.Errorf("no available topology found")
 			}
 		}
@@ -236,6 +271,7 @@ func GenerateAccessibilityRequirements(
 
 	slices.SortFunc(requisiteTerms, topologyTerm.compare)
 	requisiteTerms = slices.CompactFunc(requisiteTerms, slices.Equal)
+	klog.Infof("======== requisiteTerms is %v ========", requisiteTerms)
 	// TODO (verult) reduce subset duplicate terms (advanced reduction)
 
 	requirement.Requisite = toCSITopology(requisiteTerms)
@@ -243,6 +279,7 @@ func GenerateAccessibilityRequirements(
 	// 3. Generate CSI Preferred Terms
 	var preferredTerms []topologyTerm
 	if selectedCSINode == nil {
+		klog.Infof("======== Immediate binding, we fallback to statefulset spreading hash for backwards compatibility. ========")
 		// Immediate binding, we fallback to statefulset spreading hash for backwards compatibility.
 
 		// Ensure even spreading of StatefulSet volumes by sorting
@@ -252,10 +289,12 @@ func GenerateAccessibilityRequirements(
 		preferredTerms = append(requisiteTerms[i:], requisiteTerms[:i]...)
 	} else {
 		// Delayed binding, use topology from that node to populate preferredTerms
+		klog.Infof("======== Delayed binding, use topology from that node to populate preferredTerms ========")
 		if strictTopology {
 			// In case of strict topology, preferred = requisite
 			preferredTerms = requisiteTerms
 		} else {
+			klog.Infof("======== selectedTopology is %v ========", selectedTopology)
 			for i, t := range requisiteTerms {
 				if t.subset(selectedTopology) {
 					preferredTerms = append(requisiteTerms[i:], requisiteTerms[:i]...)
@@ -268,7 +307,7 @@ func GenerateAccessibilityRequirements(
 				//   constraint.
 				// - Otherwise, the aggregated topology is guaranteed to contain topology information from the
 				//   selected node.
-				return nil, fmt.Errorf("topology %v from selected node %q is not in requisite: %v", selectedTopology, selectedNode.Name, requisiteTerms)
+				return nil, fmt.Errorf("topology %v from selected node %q is not in requisite: %v", selectedTopology, selectedNodeName, requisiteTerms)
 			}
 		}
 	}
@@ -279,16 +318,18 @@ func GenerateAccessibilityRequirements(
 // getSelectedCSINode returns the CSINode object for the given selectedNode.
 func getSelectedCSINode(
 	csiNodeLister storagelistersv1.CSINodeLister,
-	selectedNode *v1.Node) (*storagev1.CSINode, error) {
+	selectedNodeName string) (*storagev1.CSINode, error) {
 
-	selectedCSINode, err := csiNodeLister.Get(selectedNode.Name)
+	selectedCSINode, err := csiNodeLister.Get(selectedNodeName)
 	if err != nil {
 		// We don't want to fallback and provision in the wrong topology if there's some temporary
 		// error with the API server.
-		return nil, fmt.Errorf("error getting CSINode for selected node %q: %v", selectedNode.Name, err)
+
+		// Try to get from cache
+		return nil, fmt.Errorf("error getting CSINode for selected node %q: %v", selectedNodeName, err)
 	}
 	if selectedCSINode == nil {
-		return nil, fmt.Errorf("CSINode for selected node %q not found", selectedNode.Name)
+		return nil, fmt.Errorf("CSINode for selected node %q not found", selectedNodeName)
 	}
 	return selectedCSINode, nil
 }
@@ -299,12 +340,16 @@ func aggregateTopologies(
 	driverName string,
 	selectedCSINode *storagev1.CSINode,
 	csiNodeLister storagelistersv1.CSINodeLister,
-	nodeLister corelisters.NodeLister) ([]topologyTerm, error) {
+	nodeLister corelisters.NodeLister,
+	pvcKeyForStore string,
+	pvcNodeStore InMemoryStore) ([]topologyTerm, error) {
 
+	klog.Infof("======== aggregateTopologies ========")
 	// 1. Determine topologyKeys to use for aggregation
 	var topologyKeys []string
 	if selectedCSINode == nil {
 		// Immediate binding
+		klog.Infof("======== Immediate binding in aggregateTopologies ========")
 		csiNodes, err := csiNodeLister.List(labels.Everything())
 		if err != nil {
 			// Require CSINode beta feature on K8s apiserver to be enabled.
@@ -333,6 +378,7 @@ func aggregateTopologies(
 
 	} else {
 		// Delayed binding; use topology key from selected node
+		klog.Infof("======== Delayed binding in aggregateTopologies ========")
 		topologyKeys = getTopologyKeys(selectedCSINode, driverName)
 		if len(topologyKeys) == 0 {
 			// The scheduler selected a node with no topology information.
@@ -344,7 +390,17 @@ func aggregateTopologies(
 			//
 			// Returning an error in provisioning will cause the scheduler to retry and potentially
 			// (but not guaranteed) pick a different node.
-			return nil, fmt.Errorf("no topology key found on CSINode %s", selectedCSINode.Name)
+			klog.Infof("======== Delayed binding no topology key found on CSINode ========")
+			cacheInfo, err := pvcNodeStore.GetByName(pvcKeyForStore)
+			if err != nil {
+				return nil, fmt.Errorf("no topology key found in the in memory cache: %v", err)
+			}
+			if cacheInfo.TopologyKeys != nil && len(cacheInfo.TopologyKeys) > 0 {
+				topologyKeys = cacheInfo.TopologyKeys
+			}
+			if len(topologyKeys) == 0 {
+				return nil, fmt.Errorf("no topology key found on CSINode %s", selectedCSINode.Name)
+			}
 		}
 
 		// Even though selectedNode is set, we still need to aggregate topology values across
@@ -359,6 +415,7 @@ func aggregateTopologies(
 	// 2. Find all nodes with the topology keys and extract the topology values
 	selector, err := buildTopologyKeySelector(topologyKeys)
 	if err != nil {
+		klog.Infof("======== Err buildTopologyKeySelector ========")
 		return nil, err
 	}
 	nodes, err := nodeLister.List(selector)
@@ -374,8 +431,10 @@ func aggregateTopologies(
 	if len(terms) == 0 {
 		// This means that a CSINode was found with topologyKeys, but we couldn't find
 		// the topology labels on any nodes.
+		klog.Infof("======== terms is empty in aggregateTopologies ========")
 		return nil, fmt.Errorf("topologyKeys %v were not found on any nodes", topologyKeys)
 	}
+	klog.Infof("======== terms in aggregateTopologies is %v ========", terms)
 	return terms, nil
 }
 
@@ -461,8 +520,95 @@ func getTopologyKeys(csiNode *storagev1.CSINode, driverName string) []string {
 	return nil
 }
 
+func getTopologyFromNodeName(nodeName string, topologyKeys []string, nodeLister corelisters.NodeLister, kubeClient kubernetes.Interface, pvcKeyForStore string, pvcNodeStore InMemoryStore) (term topologyTerm, selectedNodeLabels map[string]string, isMissingKey bool) {
+	term = make(topologyTerm, 0, len(topologyKeys))
+	// Get Node Here
+	klog.Infof("======== getTopologyFromNodeName ========")
+	var nodeLabels map[string]string
+	var cacheInfo *TopologyInfo
+	if nodeLister != nil {
+		klog.Infof("======== nodeLister not nil getTopologyFromNodeName ========")
+		node, err := nodeLister.Get(nodeName)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				// Read from the cache
+				klog.Infof("======== node not found in getTopologyFromNodeName ========")
+
+				cacheInfo, err = pvcNodeStore.GetByName(pvcKeyForStore)
+				if err != nil {
+					return nil, nil, true
+				}
+
+				if cacheInfo.NodeLabels != nil {
+					klog.Infof("======== Read from the annotation cache in getTopologyFromNodeName ========")
+					nodeLabels = cacheInfo.NodeLabels
+					for _, key := range topologyKeys {
+						v, ok := nodeLabels[key]
+						if !ok {
+							return nil, nil, true
+						}
+						term = append(term, topologySegment{key, v})
+					}
+					term.sort()
+					klog.Infof("======== term is %v, nodeLabels is %v ========", term, nodeLabels)
+					return term, nodeLabels, false
+				} else {
+					return nil, nil, true
+				}
+			} else {
+				return nil, nil, true
+			}
+		}
+		if node != nil {
+			// Add or update to cache for node
+			klog.Infof("======== Node is not nil in getTopologyFromNodeName ========")
+			klog.Infof("======== Add or update to cache for node labels ========")
+
+			pvcNodeStore.UpdateNodeLabels(pvcKeyForStore, node.Labels)
+
+			for _, key := range topologyKeys {
+				v, ok := node.Labels[key]
+				if !ok {
+					return nil, nil, true
+				}
+				term = append(term, topologySegment{key, v})
+			}
+			term.sort()
+			klog.Infof("======== term is %v ========", term)
+			return term, node.Labels, false
+		}
+	} else {
+		// nodeLister is nil, read from the cache directly
+		klog.Infof("======== nodeLister is nil, read from the cache directly ========")
+		cacheInfo, err := pvcNodeStore.GetByName(pvcKeyForStore)
+		if err != nil {
+			return nil, nil, true
+		}
+
+		if cacheInfo.NodeLabels != nil && len(cacheInfo.NodeLabels) > 0 {
+			nodeLabels = cacheInfo.NodeLabels
+			for _, key := range topologyKeys {
+				v, ok := nodeLabels[key]
+				if !ok {
+					return nil, nil, true
+				}
+				term = append(term, topologySegment{key, v})
+			}
+			term.sort()
+			klog.Infof("======== nodeLister is nil, term is %v ========", term)
+			return term, nodeLabels, false
+
+		} else {
+			klog.Infof("======== in memory cache does not have node labels ========")
+			return nil, nil, true
+		}
+	}
+	return nil, nil, true
+}
+
 func getTopologyFromNode(node *v1.Node, topologyKeys []string) (term topologyTerm, isMissingKey bool) {
 	term = make(topologyTerm, 0, len(topologyKeys))
+	// Get Node Here
 	for _, key := range topologyKeys {
 		v, ok := node.Labels[key]
 		if !ok {
