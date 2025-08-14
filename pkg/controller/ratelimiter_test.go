@@ -27,7 +27,7 @@ func TestRateLimiter(t *testing.T) {
 	maxDelay := factorMaxDelay * time.Second
 	rd := newItemExponentialFailureRateLimiterWithJitter(time.Second, maxDelay)
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		backoff := rd.When(1)
 		if backoff > maxDelay || backoff < 0 {
 			t.Errorf("expected value > 0, < %s, got %s", maxDelay, backoff)

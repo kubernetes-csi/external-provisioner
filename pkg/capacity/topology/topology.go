@@ -57,7 +57,7 @@ func (s Segment) Compare(other Segment) int {
 	if len(s) > len(other) {
 		return 1
 	}
-	for i := 0; i < len(s); i++ {
+	for i := range s {
 		cmp := s[i].Compare(other[i])
 		if cmp != 0 {
 			return cmp

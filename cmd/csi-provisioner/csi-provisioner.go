@@ -392,7 +392,7 @@ func main() {
 
 	// -------------------------------
 	// PersistentVolumeClaims informer
-	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)
+	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[any](*retryIntervalStart, *retryIntervalMax)
 	claimQueue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "claims")
 	claimInformer := factory.Core().V1().PersistentVolumeClaims().Informer()
 

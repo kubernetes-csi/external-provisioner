@@ -68,12 +68,12 @@ func (p *CloningProtectionController) Run(ctx context.Context, threadiness int) 
 	defer p.claimQueue.ShutDown()
 
 	claimHandler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { p.enqueueClaimUpdate(ctx, obj) },
-		UpdateFunc: func(_ interface{}, newObj interface{}) { p.enqueueClaimUpdate(ctx, newObj) },
+		AddFunc:    func(obj any) { p.enqueueClaimUpdate(ctx, obj) },
+		UpdateFunc: func(_ any, newObj any) { p.enqueueClaimUpdate(ctx, newObj) },
 	}
 	p.claimInformer.AddEventHandlerWithResyncPeriod(claimHandler, controller.DefaultResyncPeriod)
 
-	for i := 0; i < threadiness; i++ {
+	for range threadiness {
 		go wait.Until(func() {
 			p.runClaimWorker(ctx)
 		}, time.Second, ctx.Done())
@@ -96,7 +96,7 @@ func (p *CloningProtectionController) processNextClaimWorkItem(ctx context.Conte
 		return false
 	}
 
-	err := func(obj interface{}) error {
+	err := func(obj any) error {
 		defer p.claimQueue.Done(obj)
 		var key string
 		var ok bool
@@ -124,7 +124,7 @@ func (p *CloningProtectionController) processNextClaimWorkItem(ctx context.Conte
 }
 
 // enqueueClaimUpdate takes a PVC obj and stores it into the claim work queue.
-func (p *CloningProtectionController) enqueueClaimUpdate(ctx context.Context, obj interface{}) {
+func (p *CloningProtectionController) enqueueClaimUpdate(_ context.Context, obj any) {
 	new, ok := obj.(*v1.PersistentVolumeClaim)
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("expected claim but got %+v", new))
@@ -156,7 +156,7 @@ func (p *CloningProtectionController) syncClaimHandler(ctx context.Context, key 
 	claim, err := p.claimLister.PersistentVolumeClaims(namespace).Get(name)
 	if err != nil {
 		if apierrs.IsNotFound(err) {
-			utilruntime.HandleError(fmt.Errorf("Item '%s' in work queue no longer exists", key))
+			utilruntime.HandleError(fmt.Errorf("item '%s' in work queue no longer exists", key))
 			return nil
 		}
 

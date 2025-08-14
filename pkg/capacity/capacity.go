@@ -110,14 +110,6 @@ func (w workItem) equals(capacity *storagev1.CSIStorageCapacity) bool {
 }
 
 var (
-	// Defines parameters for ExponentialBackoff used while starting up
-	// and listing CSIStorageCapacity objects.
-	listCSIStorageCapacityBackoff = wait.Backoff{
-		Duration: time.Second * 5,
-		Factor:   1.1,
-		Steps:    10,
-	}
-
 	objectsGoalDesc = metrics.NewDesc(
 		"csistoragecapacities_desired_goal",
 		"Number of CSIStorageCapacity objects that are supposed to be managed automatically.",
@@ -196,7 +188,7 @@ func NewCentralCapacityController(
 	// Now register for changes. Depending on the implementation of the informers,
 	// this may already invoke callbacks.
 	handler := cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
+		AddFunc: func(obj any) {
 			sc, ok := obj.(*storagev1.StorageClass)
 			if !ok {
 				klog.Errorf("added object: expected StorageClass, got %T -> ignoring it", obj)
@@ -204,7 +196,7 @@ func NewCentralCapacityController(
 			}
 			c.onSCAddOrUpdate(sc)
 		},
-		UpdateFunc: func(_ interface{}, newObj interface{}) {
+		UpdateFunc: func(_ any, newObj any) {
 			sc, ok := newObj.(*storagev1.StorageClass)
 			if !ok {
 				klog.Errorf("updated object: expected StorageClass, got %T -> ignoring it", newObj)
@@ -212,7 +204,7 @@ func NewCentralCapacityController(
 			}
 			c.onSCAddOrUpdate(sc)
 		},
-		DeleteFunc: func(obj interface{}) {
+		DeleteFunc: func(obj any) {
 			// Beware of "xxx deleted" events
 			if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
 				obj = unknown.Obj
@@ -244,7 +236,7 @@ func (c *Controller) Run(ctx context.Context, threadiness int) {
 	defer c.queue.ShutDown()
 
 	c.prepare(ctx)
-	for i := 0; i < threadiness; i++ {
+	for range threadiness {
 		go wait.UntilWithContext(ctx, func(ctx context.Context) {
 			c.runWorker(ctx)
 		}, time.Second)
@@ -289,7 +281,7 @@ func (c *Controller) prepare(ctx context.Context) {
 	// for all objects immediately when adding it.
 	klog.V(3).Info("Checking for existing CSIStorageCapacity objects")
 	handler := cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
+		AddFunc: func(obj any) {
 			csc, ok := obj.(*storagev1.CSIStorageCapacity)
 			if !ok {
 				klog.Errorf("added object: expected CSIStorageCapacity, got %T -> ignoring it", obj)
@@ -297,7 +289,7 @@ func (c *Controller) prepare(ctx context.Context) {
 			}
 			c.onCAddOrUpdate(ctx, csc)
 		},
-		UpdateFunc: func(_ interface{}, newObj interface{}) {
+		UpdateFunc: func(_ any, newObj any) {
 			csc, ok := newObj.(*storagev1.CSIStorageCapacity)
 			if !ok {
 				klog.Errorf("updated object: expected CSIStorageCapacity, got %T -> ignoring it", newObj)
@@ -305,7 +297,7 @@ func (c *Controller) prepare(ctx context.Context) {
 			}
 			c.onCAddOrUpdate(ctx, csc)
 		},
-		DeleteFunc: func(obj interface{}) {
+		DeleteFunc: func(obj any) {
 			// Beware of "xxx deleted" events
 			if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
 				obj = unknown.Obj
@@ -682,7 +674,7 @@ func (c *Controller) deleteCapacity(ctx context.Context, capacity *storagev1.CSI
 // and either remembers the pointer to it for future updates or
 // ensures that it gets deleted if no longer needed. Foreign objects
 // are ignored.
-func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1.CSIStorageCapacity) {
+func (c *Controller) onCAddOrUpdate(_ context.Context, capacity *storagev1.CSIStorageCapacity) {
 	if !c.isManaged(capacity) {
 		// Not ours (anymore?). For the unlikely case that someone removed our owner reference,
 		// we also must remove our reference to the object.
@@ -723,7 +715,7 @@ func (c *Controller) onCAddOrUpdate(ctx context.Context, capacity *storagev1.CSI
 	c.queue.Add(capacity)
 }
 
-func (c *Controller) onCDelete(ctx context.Context, capacity *storagev1.CSIStorageCapacity) {
+func (c *Controller) onCDelete(_ context.Context, capacity *storagev1.CSIStorageCapacity) {
 	c.capacitiesLock.Lock()
 	defer c.capacitiesLock.Unlock()
 	for item, capacity2 := range c.capacities {
@@ -806,7 +798,7 @@ func (c *Controller) getObjectsObsolete() int64 {
 }
 
 func (c *Controller) isObsolete(capacity *storagev1.CSIStorageCapacity) bool {
-	for item, _ := range c.capacities {
+	for item := range c.capacities {
 		if item.equals(capacity) {
 			return false
 		}

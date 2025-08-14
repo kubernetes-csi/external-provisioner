@@ -19,13 +19,15 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/go-logr/logr"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -522,9 +524,7 @@ var fakeSCName = "fake-test-sc"
 
 func createFakeNamedPVC(requestBytes int64, name string, userAnnotations map[string]string) *v1.PersistentVolumeClaim {
 	annotations := map[string]string{annBetaStorageProvisioner: driverName}
-	for k, v := range userAnnotations {
-		annotations[k] = v
-	}
+	maps.Copy(annotations, userAnnotations)
 
 	return &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -2850,7 +2850,7 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 }
 
 // newContent returns a new content with given attributes
-func newContent(name, namespace, className, snapshotHandle, volumeUID, volumeName, boundToSnapshotUID, boundToSnapshotName string, size *int64, creationTime *int64) *crdv1.VolumeSnapshotContent {
+func newContent(name, namespace, className, snapshotHandle, boundToSnapshotUID, boundToSnapshotName string, size *int64, creationTime *int64) *crdv1.VolumeSnapshotContent {
 	ready := true
 	content := crdv1.VolumeSnapshotContent{
 		ObjectMeta: metav1.ObjectMeta{
@@ -4461,8 +4461,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 	defer driver.Stop()
 
 	doit := func(t *testing.T, tc testcase) {
-		var clientSet kubernetes.Interface
-		clientSet = fakeclientset.NewSimpleClientset()
+		var clientSet kubernetes.Interface = fakeclientset.NewSimpleClientset()
 		client := &fake.Clientset{}
 
 		client.AddReactor("get", "volumesnapshots", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
@@ -4488,7 +4487,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			if tc.snapNamespace != "" {
 				namespace = tc.snapNamespace
 			}
-			content := newContent("snapcontent-snapuid", namespace, snapClassName, "sid", "pv-uid", "volume", "snapuid", snapName, &requestedBytes, &timeNow)
+			content := newContent("snapcontent-snapuid", namespace, snapClassName, "sid", "snapuid", snapName, &requestedBytes, &timeNow)
 			if tc.misBoundSnapshotContentUID {
 				content.Spec.VolumeSnapshotRef.UID = "another-snapshot-uid"
 			}
@@ -6480,7 +6479,6 @@ func TestProvisionFromPVC(t *testing.T) {
 	}
 
 	for k, tc := range testcases {
-		tc := tc
 		t.Run(k, func(t *testing.T) {
 			var clientSet *fakeclientset.Clientset
 

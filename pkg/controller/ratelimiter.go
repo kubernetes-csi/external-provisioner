@@ -31,7 +31,7 @@ type rateLimiterWithJitter struct {
 	mutex     sync.Mutex
 }
 
-func (r *rateLimiterWithJitter) When(item interface{}) time.Duration {
+func (r *rateLimiterWithJitter) When(item any) time.Duration {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -46,7 +46,7 @@ func (r *rateLimiterWithJitter) When(item interface{}) time.Duration {
 
 func newItemExponentialFailureRateLimiterWithJitter(baseDelay time.Duration, maxDelay time.Duration) workqueue.RateLimiter {
 	return &rateLimiterWithJitter{
-		RateLimiter: workqueue.NewItemExponentialFailureRateLimiter(baseDelay, maxDelay),
+		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[any](baseDelay, maxDelay),
 		baseDelay:   baseDelay,
 		rd:          rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
 	}

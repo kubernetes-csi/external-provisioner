@@ -20,7 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -402,7 +404,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		}
 		// Remove deleted PVCs from rate limiter.
 		claimHandler := cache.ResourceEventHandlerFuncs{
-			DeleteFunc: func(obj interface{}) {
+			DeleteFunc: func(obj any) {
 				if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
 					obj = unknown.Obj
 				}
@@ -458,7 +460,7 @@ func makeVolumeName(prefix, pvcUID string, volumeNameUUIDLength int) (string, er
 	// create persistent name based on a volumeNamePrefix and volumeNameUUIDLength
 	// of PVC's UID
 	if len(prefix) == 0 {
-		return "", fmt.Errorf("Volume name prefix cannot be of length 0")
+		return "", fmt.Errorf("volume name prefix cannot be of length 0")
 	}
 	if len(pvcUID) == 0 {
 		return "", fmt.Errorf("corrupted PVC object, it is missing UID")
@@ -677,7 +679,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	}
 
 	if dataSource != nil && rc.clone {
-		err = p.setCloneFinalizer(ctx, claim, dataSource)
+		err = p.setCloneFinalizer(ctx, dataSource)
 		if err != nil {
 			return nil, controller.ProvisioningNoChange, err
 		}
@@ -857,9 +859,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		klog.V(3).Infof("create volume rep: %+v", rep.Volume)
 	}
 	volumeAttributes := map[string]string{provisionerIDKey: p.identity}
-	for k, v := range rep.Volume.VolumeContext {
-		volumeAttributes[k] = v
-	}
+	maps.Copy(volumeAttributes, rep.Volume.VolumeContext)
 	respCap := rep.GetVolume().GetCapacityBytes()
 
 	// According to CSI spec CreateVolume should be able to return capacity = 0, which means it is unknown. for example NFS/FTP
@@ -976,7 +976,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	return pv, controller.ProvisioningFinished, nil
 }
 
-func (p *csiProvisioner) setCloneFinalizer(ctx context.Context, pvc *v1.PersistentVolumeClaim, dataSource *v1.ObjectReference) error {
+func (p *csiProvisioner) setCloneFinalizer(ctx context.Context, dataSource *v1.ObjectReference) error {
 	claim, err := p.claimLister.PersistentVolumeClaims(dataSource.Namespace).Get(dataSource.Name)
 	if err != nil {
 		return err
@@ -1169,7 +1169,7 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.Persis
 		return nil, fmt.Errorf(snapshotNotBound, dataSource.Name)
 	}
 
-	if snapshotObj.Status.ReadyToUse == nil || *snapshotObj.Status.ReadyToUse == false {
+	if snapshotObj.Status.ReadyToUse == nil || !*snapshotObj.Status.ReadyToUse {
 		return nil, fmt.Errorf("snapshot %s is not Ready", dataSource.Name)
 	}
 
@@ -1596,10 +1596,7 @@ func (nc *internalNodeDeployment) becomeOwner(ctx context.Context, p *csiProvisi
 	// With multiple provisioners running in parallel, it becomes more
 	// likely that one of them became the owner quickly, so we don't
 	// want to check too slowly either.
-	pollInterval := nc.BaseDelay / 100
-	if pollInterval < 10*time.Millisecond {
-		pollInterval = 10 * time.Millisecond
-	}
+	pollInterval := max(nc.BaseDelay/100, 10*time.Millisecond)
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	check := func() (bool, *v1.PersistentVolumeClaim, error) {
@@ -1919,7 +1916,7 @@ func cleanupVolume(ctx context.Context, p *csiProvisioner, delReq *csi.DeleteVol
 	delReq.Secrets = provisionerCredentials
 	deleteCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
-	for i := 0; i < deleteVolumeRetryCount; i++ {
+	for range deleteVolumeRetryCount {
 		_, err = p.csiClient.DeleteVolume(deleteCtx, delReq)
 		if err == nil {
 			break
@@ -1929,12 +1926,7 @@ func cleanupVolume(ctx context.Context, p *csiProvisioner, delReq *csi.DeleteVol
 }
 
 func checkFinalizer(obj metav1.Object, finalizer string) bool {
-	for _, f := range obj.GetFinalizers() {
-		if f == finalizer {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(obj.GetFinalizers(), finalizer)
 }
 
 func markAsMigrated(parent context.Context, hasMigrated bool) context.Context {

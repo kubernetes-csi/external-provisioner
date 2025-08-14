@@ -123,7 +123,6 @@ func TestNodeTopology(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
-		tc := tc
 		t.Run(name, func(t *testing.T) {
 			c := fake.NewFakeClient(tc.objects...)
 			gkv := tc.start.GroupVersionKind()

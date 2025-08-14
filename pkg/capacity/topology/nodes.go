@@ -60,7 +60,7 @@ func NewNodeTopology(
 	// immediately, but it is better to let the input data settle
 	// a bit and just remember that there is work to be done.
 	nodeHandler := cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
+		AddFunc: func(obj any) {
 			node, ok := obj.(*v1.Node)
 			if !ok {
 				klog.Errorf("added object: expected Node, got %T -> ignoring it", obj)
@@ -69,7 +69,7 @@ func NewNodeTopology(
 			klog.V(5).Infof("capacity topology: new node: %s", node.Name)
 			queue.Add("")
 		},
-		UpdateFunc: func(oldObj interface{}, newObj interface{}) {
+		UpdateFunc: func(oldObj any, newObj any) {
 			oldNode, ok := oldObj.(*v1.Node)
 			if !ok {
 				klog.Errorf("original object: expected Node, got %T -> ignoring it", oldObj)
@@ -87,7 +87,7 @@ func NewNodeTopology(
 			klog.V(5).Infof("capacity topology: updated node: %s", newNode.Name)
 			queue.Add("")
 		},
-		DeleteFunc: func(obj interface{}) {
+		DeleteFunc: func(obj any) {
 			// Beware of "xxx deleted" events
 			if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
 				obj = unknown.Obj
@@ -103,7 +103,7 @@ func NewNodeTopology(
 	}
 	nodeInformer.Informer().AddEventHandler(nodeHandler)
 	csiNodeHandler := cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
+		AddFunc: func(obj any) {
 			csiNode, ok := obj.(*storagev1.CSINode)
 			if !ok {
 				klog.Errorf("added object: expected CSINode, got %T -> ignoring it", obj)
@@ -112,7 +112,7 @@ func NewNodeTopology(
 			klog.V(5).Infof("capacity topology: new CSINode: %s", csiNode.Name)
 			queue.Add("")
 		},
-		UpdateFunc: func(oldObj interface{}, newObj interface{}) {
+		UpdateFunc: func(oldObj any, newObj any) {
 			oldCSINode, ok := oldObj.(*storagev1.CSINode)
 			if !ok {
 				klog.Errorf("original object: expected CSINode, got %T -> ignoring it", oldObj)
@@ -132,7 +132,7 @@ func NewNodeTopology(
 			klog.V(5).Infof("capacity topology: updated CSINode: %s", newCSINode.Name)
 			queue.Add("")
 		},
-		DeleteFunc: func(obj interface{}) {
+		DeleteFunc: func(obj any) {
 			// Beware of "xxx deleted" events
 			if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
 				obj = unknown.Obj
@@ -230,7 +230,7 @@ func (nt *nodeTopology) processNextWorkItem(ctx context.Context) bool {
 	return true
 }
 
-func (nt *nodeTopology) sync(ctx context.Context) {
+func (nt *nodeTopology) sync(_ context.Context) {
 	// For all nodes on which the driver is registered, collect the topology key/value pairs
 	// and sort them by key name to make the result deterministic. Skip all segments that have
 	// been seen before.
