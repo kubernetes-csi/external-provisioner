@@ -174,12 +174,14 @@ func TestStatefulSetSpreading(t *testing.T) {
 	// If statefulset name is changed, make sure expectedPreferred is kept in sync.
 	// pvc prefix in pvcName does not have any effect on segment ordering
 	testcases := map[string]struct {
+		pvcNamespace      string
 		pvcName           string
 		allowedTopologies []v1.TopologySelectorTerm
 		expectedPreferred []*csi.Topology
 	}{
 		"select index 0 among nodes for pvc with statefulset name:testset and id:1; ignore claimname:testpvcA": {
-			pvcName: "testpvcA-testset-1",
+			pvcNamespace: "default",
+			pvcName:      "testpvcA-testset-1",
 			expectedPreferred: []*csi.Topology{
 				{
 					Segments: map[string]string{
@@ -208,7 +210,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 0 among nodes for pvc with statefulset name:testset and id:1; ignore claimname:testpvcB": {
-			pvcName: "testpvcB-testset-1",
+			pvcNamespace: "default",
+			pvcName:      "testpvcB-testset-1",
 			expectedPreferred: []*csi.Topology{
 				{
 					Segments: map[string]string{
@@ -237,7 +240,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 0 among allowedTopologies with single term/multiple requirements for pvc with statefulset name:testset and id:1; ignore claimname:testpvcC": {
-			pvcName: "testpvcC-testset-1",
+			pvcNamespace: "default",
+			pvcName:      "testpvcC-testset-1",
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -262,7 +266,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 1 among nodes for pvc with statefulset name:testset and id:2": {
-			pvcName: "testset-2",
+			pvcNamespace: "default",
+			pvcName:      "testset-2",
 			expectedPreferred: []*csi.Topology{
 				{
 					Segments: map[string]string{
@@ -291,7 +296,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 1 among allowedTopologies with multiple terms/multiple requirements for pvc with statefulset name:testset and id:2; ignore claimname:testpvcB": {
-			pvcName: "testpvcB-testset-2",
+			pvcNamespace: "default",
+			pvcName:      "testpvcB-testset-2",
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -334,7 +340,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 2 among nodes with statefulset name:testset and id:3; ignore claimname:testpvc": {
-			pvcName: "testpvc-testset-3",
+			pvcNamespace: "default",
+			pvcName:      "testpvc-testset-3",
 			expectedPreferred: []*csi.Topology{
 				{
 					Segments: map[string]string{
@@ -363,7 +370,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 3 among nodes with statefulset name:testset and id:4; ignore claimname:testpvc": {
-			pvcName: "testpvc-testset-4",
+			pvcNamespace: "default",
+			pvcName:      "testpvc-testset-4",
 			expectedPreferred: []*csi.Topology{
 				{
 					Segments: map[string]string{
@@ -399,6 +407,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 	kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
 	_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
+	pvcNodeStore := *NewInMemoryStore()
 	defer close(stopChan)
 
 	for name, tc := range testcases {
@@ -410,13 +419,15 @@ func TestStatefulSetSpreading(t *testing.T) {
 							requirements, err := GenerateAccessibilityRequirements(
 								kubeClient,
 								testDriverName,
+								tc.pvcNamespace,
 								tc.pvcName,
 								tc.allowedTopologies,
-								nil,
+								"",
 								strictTopology,
 								immediateTopology,
 								csiNodeLister,
 								nodeLister,
+								pvcNodeStore,
 							)
 
 							if err != nil {
@@ -808,6 +819,7 @@ func TestAllowedTopologies(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
+			pvcNodeStore := *NewInMemoryStore()
 			for strictTopology, withOrWithout := range withWithout {
 				t.Run(withOrWithout+" strict topology", func(t *testing.T) {
 					for immediateTopology, withOrWithout := range withWithout {
@@ -815,13 +827,15 @@ func TestAllowedTopologies(t *testing.T) {
 							requirements, err := GenerateAccessibilityRequirements(
 								nil,           /* kubeClient */
 								"test-driver", /* driverName */
+								"default",     /* namespace */
 								"testpvc",
 								tc.allowedTopologies,
-								nil, /* selectedNode */
+								"", /* selectedNode */
 								strictTopology,
 								immediateTopology,
 								nil,
 								nil,
+								pvcNodeStore,
 							)
 
 							if err != nil {
@@ -1082,26 +1096,38 @@ func TestTopologyAggregation(t *testing.T) {
 						t.Run(withOrWithout+" immediate topology", func(t *testing.T) {
 							nodes := buildNodes(tc.nodeLabels)
 							csiNodes := buildCSINodes(tc.topologyKeys)
+							pvc := &v1.PersistentVolumeClaim{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "testpvc",
+									Namespace: "default",
+								},
+							}
 
-							kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+							kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes, pvc)
 
 							_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
+							pvcNodeStore := *NewInMemoryStore()
 							defer close(stopChan)
 
 							var selectedNode *v1.Node
+							var selectedNodeName string
 							if tc.hasSelectedNode {
 								selectedNode = &nodes.Items[0]
+								selectedNodeName = selectedNode.Name
 							}
+
 							requirements, err := GenerateAccessibilityRequirements(
 								kubeClient,
 								testDriverName,
+								"default",
 								"testpvc",
 								nil, /* allowedTopologies */
-								selectedNode,
+								selectedNodeName,
 								strictTopology,
 								immediateTopology,
 								csiNodeLister,
 								nodeLister,
+								pvcNodeStore,
 							)
 
 							expectError := tc.expectError
@@ -1408,22 +1434,32 @@ func TestPreferredTopologies(t *testing.T) {
 							nodes := buildNodes(tc.nodeLabels)
 							csiNodes := buildCSINodes(tc.topologyKeys)
 
-							kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+							pvc := &v1.PersistentVolumeClaim{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "testpvc",
+									Namespace: "default",
+								},
+							}
+
+							kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes, pvc)
 							selectedNode := &nodes.Items[0]
 
 							_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
+							pvcNodeStore := *NewInMemoryStore()
 							defer close(stopChan)
 
 							requirements, err := GenerateAccessibilityRequirements(
 								kubeClient,
 								testDriverName,
+								"default",
 								"testpvc",
 								tc.allowedTopologies,
-								selectedNode,
+								selectedNode.Name,
 								strictTopology,
 								immediateTopology,
 								csiNodeLister,
 								nodeLister,
+								pvcNodeStore,
 							)
 
 							if tc.expectError && err == nil {
