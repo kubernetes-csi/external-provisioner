@@ -280,6 +280,7 @@ type csiProvisioner struct {
 	nodeDeployment                        *internalNodeDeployment
 	controllerPublishReadOnly             bool
 	preventVolumeModeConversion           bool
+	pvcNodeStore                          TopologyProvider
 }
 
 var (
@@ -361,6 +362,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	nodeDeployment *NodeDeployment,
 	controllerPublishReadOnly bool,
 	preventVolumeModeConversion bool,
+	pvcNodeStore TopologyProvider,
 ) controller.Provisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
@@ -396,6 +398,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		eventRecorder:                         eventRecorder,
 		controllerPublishReadOnly:             controllerPublishReadOnly,
 		preventVolumeModeConversion:           preventVolumeModeConversion,
+		pvcNodeStore:                          pvcNodeStore,
 	}
 	if nodeDeployment != nil {
 		provisioner.nodeDeployment = &internalNodeDeployment{
@@ -551,7 +554,7 @@ type prepareProvisionResult struct {
 }
 
 // prepareProvision does non-destructive parameter checking and preparations for provisioning a volume.
-func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass, selectedNode *v1.Node) (*prepareProvisionResult, controller.ProvisioningState, error) {
+func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass, selectedNodeName string) (*prepareProvisionResult, controller.ProvisioningState, error) {
 	if sc == nil {
 		return nil, controller.ProvisioningFinished, errors.New("storage class was nil")
 	}
@@ -689,13 +692,15 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		requirements, err := GenerateAccessibilityRequirements(
 			p.client,
 			p.driverName,
+			claim.UID,
 			claim.Name,
 			sc.AllowedTopologies,
-			selectedNode,
+			selectedNodeName,
 			p.strictTopology,
 			p.immediateTopology,
 			p.csiNodeLister,
-			p.nodeLister)
+			p.nodeLister,
+			p.pvcNodeStore)
 		if err != nil {
 			return nil, controller.ProvisioningNoChange, fmt.Errorf("error generating accessibility requirements: %v", err)
 		}
@@ -815,7 +820,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		}
 	}
 
-	result, state, err := p.prepareProvision(ctx, claim, options.StorageClass, options.SelectedNode)
+	result, state, err := p.prepareProvision(ctx, claim, options.StorageClass, options.SelectedNodeName)
 	if result == nil {
 		return nil, state, err
 	}
@@ -844,14 +849,18 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		// even drivers which did not ask for it explicitly might still only look at the first
 		// topology entry and thus succeed after rescheduling.
 		mayReschedule := p.supportsTopology() &&
-			options.SelectedNode != nil
+			len(options.SelectedNodeName) > 0
 		state := checkError(err, mayReschedule)
 		klog.V(5).Infof("CreateVolume failed, supports topology = %v, node selected %v => may reschedule = %v => state = %v: %v",
 			p.supportsTopology(),
-			options.SelectedNode != nil,
+			options.SelectedNodeName,
 			mayReschedule,
 			state,
 			err)
+		// Delete the entry in in memory cache if the error is final
+		if p.supportsTopology() && (state == controller.ProvisioningFinished || state == controller.ProvisioningReschedule) {
+			p.pvcNodeStore.Delete(claim.UID)
+		}
 		return nil, state, err
 	}
 
@@ -973,6 +982,10 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	}
 
 	klog.V(5).Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
+	// Remove entry from the in memory cache
+	if p.supportsTopology() {
+		p.pvcNodeStore.Delete(claim.UID)
+	}
 	return pv, controller.ProvisioningFinished, nil
 }
 
@@ -1481,7 +1494,7 @@ func (p *csiProvisioner) checkNode(ctx context.Context, claim *v1.PersistentVolu
 		// it must match our own. We can find out by trying to
 		// create accessibility requirements.  If that fails,
 		// we should not become the owner.
-		if len(sc.AllowedTopologies) > 0 {
+		if len(sc.AllowedTopologies) > 0 && p.supportsTopology() {
 			node, err := p.nodeLister.Get(p.nodeDeployment.NodeName)
 			if err != nil {
 				return false, err
@@ -1489,13 +1502,15 @@ func (p *csiProvisioner) checkNode(ctx context.Context, claim *v1.PersistentVolu
 			if _, err := GenerateAccessibilityRequirements(
 				p.client,
 				p.driverName,
+				claim.UID,
 				claim.Name,
 				sc.AllowedTopologies,
-				node,
+				node.Name,
 				p.strictTopology,
 				p.immediateTopology,
 				p.csiNodeLister,
-				p.nodeLister); err != nil {
+				p.nodeLister,
+				p.pvcNodeStore); err != nil {
 				if logger.Enabled() {
 					logger.Infof("%s: ignoring PVC %s/%s, allowed topologies is not compatible: %v", caller, claim.Namespace, claim.Name, err)
 				}
@@ -1550,7 +1565,7 @@ func (p *csiProvisioner) checkCapacity(ctx context.Context, claim *v1.Persistent
 		return false, err
 	}
 
-	result, _, err := p.prepareProvision(ctx, claim, sc, node)
+	result, _, err := p.prepareProvision(ctx, claim, sc, node.Name)
 	if err != nil {
 		return false, err
 	}

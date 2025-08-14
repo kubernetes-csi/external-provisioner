@@ -408,7 +408,6 @@ func main() {
 		controller.Threadiness(int(*workerThreads)),
 		controller.CreateProvisionedPVLimiter(workqueue.DefaultTypedControllerRateLimiter[string]()),
 		controller.ClaimsInformer(claimInformer),
-		controller.NodesLister(nodeLister),
 		controller.RetryIntervalMax(*retryIntervalMax),
 	}
 
@@ -418,6 +417,10 @@ func main() {
 
 	if supportsMigrationFromInTreePluginName != "" {
 		provisionerOptions = append(provisionerOptions, controller.AdditionalProvisionerNames([]string{supportsMigrationFromInTreePluginName}))
+	}
+	var pvcNodeStore *ctrl.InMemoryStore
+	if ctrl.SupportsTopology(pluginCapabilities) {
+		pvcNodeStore = ctrl.NewInMemoryStore()
 	}
 
 	// Create the provisioner: it implements the Provisioner interface expected by
@@ -448,6 +451,7 @@ func main() {
 		nodeDeployment,
 		*controllerPublishReadOnly,
 		*preventVolumeModeConversion,
+		pvcNodeStore,
 	)
 
 	var capacityController *capacity.Controller
