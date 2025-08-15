@@ -393,7 +393,7 @@ func main() {
 	// -------------------------------
 	// PersistentVolumeClaims informer
 	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[any](*retryIntervalStart, *retryIntervalMax)
-	claimQueue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "claims")
+	claimQueue := workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[any]{Name: "claims"})
 	claimInformer := factory.Core().V1().PersistentVolumeClaims().Informer()
 
 	// Setup options
@@ -403,7 +403,7 @@ func main() {
 		controller.FailedDeleteThreshold(0),
 		controller.RateLimiter(rateLimiter),
 		controller.Threadiness(int(*workerThreads)),
-		controller.CreateProvisionedPVLimiter(workqueue.DefaultControllerRateLimiter()),
+		controller.CreateProvisionedPVLimiter(workqueue.DefaultTypedControllerRateLimiter[any]()),
 		controller.ClaimsInformer(claimInformer),
 		controller.NodesLister(nodeLister),
 		controller.RetryIntervalMax(*retryIntervalMax),
@@ -488,7 +488,7 @@ func main() {
 				clientset,
 				factory.Core().V1().Nodes(),
 				factory.Storage().V1().CSINodes(),
-				workqueue.NewNamedRateLimitingQueue(rateLimiter, "csitopology"),
+				workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[any]{Name: "csitopology"}),
 			)
 		} else {
 			var segment topology.Segment
@@ -553,7 +553,7 @@ func main() {
 			provisionerName,
 			clientFactory,
 			// Metrics for the queue is available in the default registry.
-			workqueue.NewNamedRateLimitingQueue(rateLimiter, "csistoragecapacity"),
+			workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[any]{Name: "csistoragecapacity"}),
 			controller,
 			managedByID,
 			namespace,

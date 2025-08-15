@@ -187,7 +187,7 @@ func fakeCloningProtector(client *fakeclientset.Clientset, objects ...runtime.Ob
 	claimInformer := informerFactory.Core().V1().PersistentVolumeClaims().Informer()
 	claimLister := informerFactory.Core().V1().PersistentVolumeClaims().Lister()
 	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[any](time.Second, 2*time.Second)
-	claimQueue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "claims")
+	claimQueue := workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[any]{Name: "claims"})
 
 	for _, claim := range objects {
 		claimInformer.GetStore().Add(claim)

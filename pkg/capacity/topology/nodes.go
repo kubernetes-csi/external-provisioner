@@ -45,7 +45,7 @@ func NewNodeTopology(
 	client kubernetes.Interface,
 	nodeInformer coreinformersv1.NodeInformer,
 	csiNodeInformer storageinformersv1.CSINodeInformer,
-	queue workqueue.RateLimitingInterface,
+	queue workqueue.TypedRateLimitingInterface[any],
 ) Informer {
 	nt := &nodeTopology{
 		driverName:      driverName,
@@ -158,7 +158,7 @@ type nodeTopology struct {
 	client          kubernetes.Interface
 	nodeInformer    coreinformersv1.NodeInformer
 	csiNodeInformer storageinformersv1.CSINodeInformer
-	queue           workqueue.RateLimitingInterface
+	queue           workqueue.TypedRateLimitingInterface[any]
 
 	mutex sync.Mutex
 	// segments hold a list of all currently known topology segments.

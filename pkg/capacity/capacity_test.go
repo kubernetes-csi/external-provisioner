@@ -1378,7 +1378,7 @@ func (r *rateLimitingQueue) ShutDownWithDrain() {
 	klog.Error("ShutDownWithDrain is unimplemented")
 }
 
-var _ workqueue.RateLimitingInterface = &rateLimitingQueue{}
+var _ workqueue.TypedRateLimitingInterface[any] = &rateLimitingQueue{}
 
 func (r *rateLimitingQueue) Add(item any) {
 	r.mutex.Lock()

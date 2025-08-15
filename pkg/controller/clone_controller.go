@@ -38,7 +38,7 @@ type CloningProtectionController struct {
 	client        kubernetes.Interface
 	claimLister   corelisters.PersistentVolumeClaimLister
 	claimInformer cache.SharedInformer
-	claimQueue    workqueue.RateLimitingInterface
+	claimQueue    workqueue.TypedRateLimitingInterface[any]
 }
 
 // NewCloningProtectionController creates new controller for additional CSI claim protection capabilities
@@ -46,7 +46,7 @@ func NewCloningProtectionController(
 	client kubernetes.Interface,
 	claimLister corelisters.PersistentVolumeClaimLister,
 	claimInformer cache.SharedInformer,
-	claimQueue workqueue.RateLimitingInterface,
+	claimQueue workqueue.TypedRateLimitingInterface[any],
 	controllerCapabilities rpc.ControllerCapabilitySet,
 ) *CloningProtectionController {
 	if !controllerCapabilities[csi.ControllerServiceCapability_RPC_CLONE_VOLUME] {

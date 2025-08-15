@@ -610,7 +610,7 @@ func fakeNodeTopology(ctx context.Context, testDriverName string, client *fakecl
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	csiNodeInformer := informerFactory.Storage().V1().CSINodes()
 	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[any](time.Second, 2*time.Second)
-	queue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "items")
+	queue := workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[any]{Name: "items"})
 
 	nt := NewNodeTopology(
 		testDriverName,
@@ -637,8 +637,7 @@ func waitForInformers(ctx context.Context, nt *nodeTopology) error {
 		}
 		informerNodes, err := nt.nodeInformer.Lister().List(labels.Everything())
 		if err != nil {
-			klog.V(5).Infof("waiting for informers: failed to list from node informer, retrying: %v", err)
-			return false, nil
+			return false, err
 		}
 		if len(informerNodes) != len(actualNodes.Items) {
 			return false, nil
@@ -662,8 +661,7 @@ func waitForInformers(ctx context.Context, nt *nodeTopology) error {
 		}
 		informerCSINodes, err := nt.csiNodeInformer.Lister().List(labels.Everything())
 		if err != nil {
-			klog.V(5).Infof("waiting for informers: failed to list from csi node informer, retrying: %v", err)
-			return false, nil
+			return false, err
 		}
 		if len(informerCSINodes) != len(actualCSINodes.Items) {
 			return false, nil

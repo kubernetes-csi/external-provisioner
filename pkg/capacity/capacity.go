@@ -79,7 +79,7 @@ type Controller struct {
 	csiController    CSICapacityClient
 	driverName       string
 	clientFactory    CSIStorageCapacityFactory
-	queue            workqueue.RateLimitingInterface
+	queue            workqueue.TypedRateLimitingInterface[any]
 	owner            *metav1.OwnerReference
 	managedByID      string
 	ownerNamespace   string
@@ -157,7 +157,7 @@ func NewCentralCapacityController(
 	csiController CSICapacityClient,
 	driverName string,
 	clientFactory CSIStorageCapacityFactory,
-	queue workqueue.RateLimitingInterface,
+	queue workqueue.TypedRateLimitingInterface[any],
 	owner *metav1.OwnerReference,
 	managedByID string,
 	ownerNamespace string,

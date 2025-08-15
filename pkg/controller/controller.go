@@ -249,7 +249,7 @@ type NodeDeployment struct {
 
 type internalNodeDeployment struct {
 	NodeDeployment
-	rateLimiter workqueue.RateLimiter
+	rateLimiter workqueue.TypedRateLimiter[any]
 }
 
 type csiProvisioner struct {
