@@ -609,8 +609,8 @@ func fakeNodeTopology(ctx context.Context, testDriverName string, client *fakecl
 	informerFactory := informers.NewSharedInformerFactory(client, 0*time.Second /* no resync */)
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	csiNodeInformer := informerFactory.Storage().V1().CSINodes()
-	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[any](time.Second, 2*time.Second)
-	queue := workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[any]{Name: "items"})
+	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Second, 2*time.Second)
+	queue := workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{Name: "items"})
 
 	nt := NewNodeTopology(
 		testDriverName,

@@ -38,7 +38,7 @@ type CloningProtectionController struct {
 	client        kubernetes.Interface
 	claimLister   corelisters.PersistentVolumeClaimLister
 	claimInformer cache.SharedInformer
-	claimQueue    workqueue.TypedRateLimitingInterface[any]
+	claimQueue    workqueue.TypedRateLimitingInterface[string]
 }
 
 // NewCloningProtectionController creates new controller for additional CSI claim protection capabilities
@@ -46,7 +46,7 @@ func NewCloningProtectionController(
 	client kubernetes.Interface,
 	claimLister corelisters.PersistentVolumeClaimLister,
 	claimInformer cache.SharedInformer,
-	claimQueue workqueue.TypedRateLimitingInterface[any],
+	claimQueue workqueue.TypedRateLimitingInterface[string],
 	controllerCapabilities rpc.ControllerCapabilitySet,
 ) *CloningProtectionController {
 	if !controllerCapabilities[csi.ControllerServiceCapability_RPC_CLONE_VOLUME] {
@@ -74,9 +74,9 @@ func (p *CloningProtectionController) Run(ctx context.Context, threadiness int) 
 	p.claimInformer.AddEventHandlerWithResyncPeriod(claimHandler, controller.DefaultResyncPeriod)
 
 	for range threadiness {
-		go wait.Until(func() {
+		go wait.UntilWithContext(ctx, func(ctx context.Context) {
 			p.runClaimWorker(ctx)
-		}, time.Second, ctx.Done())
+		}, time.Second)
 	}
 
 	klog.Infof("Started CloningProtection controller")
@@ -96,17 +96,10 @@ func (p *CloningProtectionController) processNextClaimWorkItem(ctx context.Conte
 		return false
 	}
 
-	err := func(obj any) error {
+	err := func(obj string) error {
 		defer p.claimQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			p.claimQueue.Forget(obj)
-			return fmt.Errorf("expected string in workqueue but got %#v", obj)
-		}
-
-		if err := p.syncClaimHandler(ctx, key); err != nil {
-			klog.Warningf("Retrying syncing claim %q after %v failures", key, p.claimQueue.NumRequeues(obj))
+		if err := p.syncClaimHandler(ctx, obj); err != nil {
+			klog.Warningf("Retrying to sync claim %q after %v failures", obj, p.claimQueue.NumRequeues(obj))
 			p.claimQueue.AddRateLimited(obj)
 		} else {
 			p.claimQueue.Forget(obj)

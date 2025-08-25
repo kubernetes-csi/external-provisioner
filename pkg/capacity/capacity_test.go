@@ -1370,7 +1370,7 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, owner 
 // which only supports adding and removing items.
 type rateLimitingQueue struct {
 	mutex        sync.Mutex
-	items        []any
+	items        []QueueKey
 	shuttingDown bool
 }
 
@@ -1378,14 +1378,26 @@ func (r *rateLimitingQueue) ShutDownWithDrain() {
 	klog.Error("ShutDownWithDrain is unimplemented")
 }
 
-var _ workqueue.TypedRateLimitingInterface[any] = &rateLimitingQueue{}
+var _ workqueue.TypedRateLimitingInterface[QueueKey] = &rateLimitingQueue{}
 
-func (r *rateLimitingQueue) Add(item any) {
+func (r *rateLimitingQueue) Add(item QueueKey) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
 	if slices.Contains(r.items, item) {
 		return
+	}
+	for _, existing := range r.items {
+		if existing.item != nil && item.item != nil {
+			if *existing.item == *item.item {
+				return
+			}
+		}
+		if existing.capacity != nil && item.capacity != nil {
+			if existing.capacity.UID == item.capacity.UID {
+				return
+			}
+		}
 	}
 	r.items = append(r.items, item)
 }
@@ -1395,7 +1407,7 @@ func (r *rateLimitingQueue) Len() int {
 
 	return len(r.items)
 }
-func (r *rateLimitingQueue) Get() (item any, shutdown bool) {
+func (r *rateLimitingQueue) Get() (item QueueKey, shutdown bool) {
 	done := func() bool {
 		r.mutex.Lock()
 		defer r.mutex.Unlock()
@@ -1418,7 +1430,7 @@ func (r *rateLimitingQueue) Get() (item any, shutdown bool) {
 	}
 	return
 }
-func (r *rateLimitingQueue) Done(item any) {
+func (r *rateLimitingQueue) Done(item QueueKey) {
 }
 func (r *rateLimitingQueue) ShutDown() {
 	r.mutex.Lock()
@@ -1432,17 +1444,17 @@ func (r *rateLimitingQueue) ShuttingDown() bool {
 
 	return r.shuttingDown
 }
-func (r *rateLimitingQueue) AddRateLimited(item any) {}
-func (r *rateLimitingQueue) Forget(item any) {
+func (r *rateLimitingQueue) AddRateLimited(item QueueKey) {}
+func (r *rateLimitingQueue) Forget(item QueueKey) {
 }
-func (r *rateLimitingQueue) NumRequeues(item any) int {
+func (r *rateLimitingQueue) NumRequeues(item QueueKey) int {
 	return 0
 }
-func (r *rateLimitingQueue) AddAfter(item any, duration time.Duration) {
+func (r *rateLimitingQueue) AddAfter(item QueueKey, duration time.Duration) {
 	r.Add(item)
 }
 
-func (r *rateLimitingQueue) allItems() []any {
+func (r *rateLimitingQueue) allItems() []QueueKey {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -1980,11 +1992,11 @@ func TestRefresh(t *testing.T) {
 func itemsAsSortedStringSlice(queue *rateLimitingQueue) []string {
 	var content []string
 	for _, item := range queue.allItems() {
-		switch item := item.(type) {
-		case workItem:
-			content = append(content, fmt.Sprintf("%s, %v", item.storageClassName, *item.segment))
-		case *storagev1.CSIStorageCapacity:
-			content = append(content, fmt.Sprintf("csc for %s, %v", item.StorageClassName, item.NodeTopology))
+		switch {
+		case item.item != nil:
+			content = append(content, fmt.Sprintf("%s, %v", item.item.storageClassName, *item.item.segment))
+		case item.capacity != nil:
+			content = append(content, fmt.Sprintf("csc for %s, %v", item.capacity.StorageClassName, item.capacity.NodeTopology))
 		default:
 			content = append(content, fmt.Sprintf("%v", item))
 		}
