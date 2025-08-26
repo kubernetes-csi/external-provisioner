@@ -45,7 +45,7 @@ func (m *MockProvisionerCSITranslator) GetInTreeNameFromCSIName(pluginName strin
 }
 
 // GetInTreeNameFromCSIName indicates an expected call of GetInTreeNameFromCSIName.
-func (mr *MockProvisionerCSITranslatorMockRecorder) GetInTreeNameFromCSIName(pluginName interface{}) *gomock.Call {
+func (mr *MockProvisionerCSITranslatorMockRecorder) GetInTreeNameFromCSIName(pluginName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInTreeNameFromCSIName", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).GetInTreeNameFromCSIName), pluginName)
 }
@@ -59,7 +59,7 @@ func (m *MockProvisionerCSITranslator) IsMigratedCSIDriverByName(csiPluginName s
 }
 
 // IsMigratedCSIDriverByName indicates an expected call of IsMigratedCSIDriverByName.
-func (mr *MockProvisionerCSITranslatorMockRecorder) IsMigratedCSIDriverByName(csiPluginName interface{}) *gomock.Call {
+func (mr *MockProvisionerCSITranslatorMockRecorder) IsMigratedCSIDriverByName(csiPluginName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsMigratedCSIDriverByName", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).IsMigratedCSIDriverByName), csiPluginName)
 }
@@ -73,7 +73,7 @@ func (m *MockProvisionerCSITranslator) IsPVMigratable(pv *v1.PersistentVolume) b
 }
 
 // IsPVMigratable indicates an expected call of IsPVMigratable.
-func (mr *MockProvisionerCSITranslatorMockRecorder) IsPVMigratable(pv interface{}) *gomock.Call {
+func (mr *MockProvisionerCSITranslatorMockRecorder) IsPVMigratable(pv any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPVMigratable", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).IsPVMigratable), pv)
 }
@@ -88,7 +88,7 @@ func (m *MockProvisionerCSITranslator) TranslateCSIPVToInTree(pv *v1.PersistentV
 }
 
 // TranslateCSIPVToInTree indicates an expected call of TranslateCSIPVToInTree.
-func (mr *MockProvisionerCSITranslatorMockRecorder) TranslateCSIPVToInTree(pv interface{}) *gomock.Call {
+func (mr *MockProvisionerCSITranslatorMockRecorder) TranslateCSIPVToInTree(pv any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TranslateCSIPVToInTree", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).TranslateCSIPVToInTree), pv)
 }
@@ -103,7 +103,7 @@ func (m *MockProvisionerCSITranslator) TranslateInTreePVToCSI(logger logr.Logger
 }
 
 // TranslateInTreePVToCSI indicates an expected call of TranslateInTreePVToCSI.
-func (mr *MockProvisionerCSITranslatorMockRecorder) TranslateInTreePVToCSI(logger, pv interface{}) *gomock.Call {
+func (mr *MockProvisionerCSITranslatorMockRecorder) TranslateInTreePVToCSI(logger, pv any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TranslateInTreePVToCSI", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).TranslateInTreePVToCSI), logger, pv)
 }
@@ -118,7 +118,7 @@ func (m *MockProvisionerCSITranslator) TranslateInTreeStorageClassToCSI(logger l
 }
 
 // TranslateInTreeStorageClassToCSI indicates an expected call of TranslateInTreeStorageClassToCSI.
-func (mr *MockProvisionerCSITranslatorMockRecorder) TranslateInTreeStorageClassToCSI(logger, inTreePluginName, sc interface{}) *gomock.Call {
+func (mr *MockProvisionerCSITranslatorMockRecorder) TranslateInTreeStorageClassToCSI(logger, inTreePluginName, sc any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TranslateInTreeStorageClassToCSI", reflect.TypeOf((*MockProvisionerCSITranslator)(nil).TranslateInTreeStorageClassToCSI), logger, inTreePluginName, sc)
 }

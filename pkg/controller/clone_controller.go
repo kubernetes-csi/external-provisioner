@@ -38,7 +38,7 @@ type CloningProtectionController struct {
 	client        kubernetes.Interface
 	claimLister   corelisters.PersistentVolumeClaimLister
 	claimInformer cache.SharedInformer
-	claimQueue    workqueue.RateLimitingInterface
+	claimQueue    workqueue.TypedRateLimitingInterface[string]
 }
 
 // NewCloningProtectionController creates new controller for additional CSI claim protection capabilities
@@ -46,7 +46,7 @@ func NewCloningProtectionController(
 	client kubernetes.Interface,
 	claimLister corelisters.PersistentVolumeClaimLister,
 	claimInformer cache.SharedInformer,
-	claimQueue workqueue.RateLimitingInterface,
+	claimQueue workqueue.TypedRateLimitingInterface[string],
 	controllerCapabilities rpc.ControllerCapabilitySet,
 ) *CloningProtectionController {
 	if !controllerCapabilities[csi.ControllerServiceCapability_RPC_CLONE_VOLUME] {
@@ -68,15 +68,15 @@ func (p *CloningProtectionController) Run(ctx context.Context, threadiness int) 
 	defer p.claimQueue.ShutDown()
 
 	claimHandler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { p.enqueueClaimUpdate(ctx, obj) },
-		UpdateFunc: func(_ interface{}, newObj interface{}) { p.enqueueClaimUpdate(ctx, newObj) },
+		AddFunc:    func(obj any) { p.enqueueClaimUpdate(ctx, obj) },
+		UpdateFunc: func(_ any, newObj any) { p.enqueueClaimUpdate(ctx, newObj) },
 	}
 	p.claimInformer.AddEventHandlerWithResyncPeriod(claimHandler, controller.DefaultResyncPeriod)
 
-	for i := 0; i < threadiness; i++ {
-		go wait.Until(func() {
+	for range threadiness {
+		go wait.UntilWithContext(ctx, func(ctx context.Context) {
 			p.runClaimWorker(ctx)
-		}, time.Second, ctx.Done())
+		}, time.Second)
 	}
 
 	klog.Infof("Started CloningProtection controller")
@@ -96,17 +96,10 @@ func (p *CloningProtectionController) processNextClaimWorkItem(ctx context.Conte
 		return false
 	}
 
-	err := func(obj interface{}) error {
+	err := func(obj string) error {
 		defer p.claimQueue.Done(obj)
-		var key string
-		var ok bool
-		if key, ok = obj.(string); !ok {
-			p.claimQueue.Forget(obj)
-			return fmt.Errorf("expected string in workqueue but got %#v", obj)
-		}
-
-		if err := p.syncClaimHandler(ctx, key); err != nil {
-			klog.Warningf("Retrying syncing claim %q after %v failures", key, p.claimQueue.NumRequeues(obj))
+		if err := p.syncClaimHandler(ctx, obj); err != nil {
+			klog.Warningf("Retrying to sync claim %q after %v failures", obj, p.claimQueue.NumRequeues(obj))
 			p.claimQueue.AddRateLimited(obj)
 		} else {
 			p.claimQueue.Forget(obj)
@@ -124,7 +117,7 @@ func (p *CloningProtectionController) processNextClaimWorkItem(ctx context.Conte
 }
 
 // enqueueClaimUpdate takes a PVC obj and stores it into the claim work queue.
-func (p *CloningProtectionController) enqueueClaimUpdate(ctx context.Context, obj interface{}) {
+func (p *CloningProtectionController) enqueueClaimUpdate(_ context.Context, obj any) {
 	new, ok := obj.(*v1.PersistentVolumeClaim)
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("expected claim but got %+v", new))
@@ -156,7 +149,7 @@ func (p *CloningProtectionController) syncClaimHandler(ctx context.Context, key 
 	claim, err := p.claimLister.PersistentVolumeClaims(namespace).Get(name)
 	if err != nil {
 		if apierrs.IsNotFound(err) {
-			utilruntime.HandleError(fmt.Errorf("Item '%s' in work queue no longer exists", key))
+			utilruntime.HandleError(fmt.Errorf("item '%s' in work queue no longer exists", key))
 			return nil
 		}
 

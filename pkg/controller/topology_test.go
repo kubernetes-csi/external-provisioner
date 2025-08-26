@@ -166,7 +166,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 	}
 	var topologyKeys []map[string][]string
 	keys := map[string][]string{testDriverName: {"com.example.csi/zone", "com.example.csi/rack"}}
-	for i := 0; i < len(nodeLabels); i++ {
+	for range nodeLabels {
 		topologyKeys = append(topologyKeys, keys)
 	}
 	// Ordering of segments in preferred array is sensitive to statefulset name portion of pvcName.
@@ -1484,7 +1484,7 @@ func BenchmarkDedupAndSortHost(b *testing.B) {
 }
 
 func benchmarkDedupAndSort(b *testing.B, terms []topologyTerm) {
-	for range b.N {
+	for b.Loop() {
 		terms := slices.Clone(terms)
 		slices.SortFunc(terms, topologyTerm.compare)
 		terms = slices.CompactFunc(terms, slices.Equal)
@@ -1553,10 +1553,7 @@ func nodeSelectorRequirementsEqual(r1, r2 v1.NodeSelectorRequirement) bool {
 	}
 	vals1 := sets.NewString(r1.Values...)
 	vals2 := sets.NewString(r2.Values...)
-	if vals1.Equal(vals2) {
-		return true
-	}
-	return false
+	return vals1.Equal(vals2)
 }
 
 func nodeSelectorTermsEqual(t1, t2 v1.NodeSelectorTerm) bool {

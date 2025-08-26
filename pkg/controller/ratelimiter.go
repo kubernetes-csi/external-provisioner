@@ -25,17 +25,17 @@ import (
 )
 
 type rateLimiterWithJitter struct {
-	workqueue.RateLimiter
+	workqueue.TypedRateLimiter[any]
 	baseDelay time.Duration
 	rd        *rand.Rand
 	mutex     sync.Mutex
 }
 
-func (r *rateLimiterWithJitter) When(item interface{}) time.Duration {
+func (r *rateLimiterWithJitter) When(item any) time.Duration {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	delay := r.RateLimiter.When(item).Nanoseconds()
+	delay := r.TypedRateLimiter.When(item).Nanoseconds()
 	percentage := r.rd.Float64()
 	jitter := int64(float64(r.baseDelay.Nanoseconds()) * percentage)
 	if jitter > delay {
@@ -44,10 +44,10 @@ func (r *rateLimiterWithJitter) When(item interface{}) time.Duration {
 	return time.Duration(delay - jitter)
 }
 
-func newItemExponentialFailureRateLimiterWithJitter(baseDelay time.Duration, maxDelay time.Duration) workqueue.RateLimiter {
+func newItemExponentialFailureRateLimiterWithJitter(baseDelay time.Duration, maxDelay time.Duration) workqueue.TypedRateLimiter[any] {
 	return &rateLimiterWithJitter{
-		RateLimiter: workqueue.NewItemExponentialFailureRateLimiter(baseDelay, maxDelay),
-		baseDelay:   baseDelay,
-		rd:          rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
+		TypedRateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[any](baseDelay, maxDelay),
+		baseDelay:        baseDelay,
+		rd:               rand.New(rand.NewSource(time.Now().UTC().UnixNano())),
 	}
 }

@@ -179,11 +179,13 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		vscName := vs.Status.BoundVolumeSnapshotContentName
 		vsc, err := local.snapshotClient.SnapshotV1().VolumeSnapshotContents().Get(context.TODO(), *vscName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
 		if vsc.Annotations == nil {
 			vsc.Annotations = make(map[string]string)
 		}
 		vsc.Annotations[annAllowVolumeModeChange] = "true"
-		vsc, err = local.snapshotClient.SnapshotV1().VolumeSnapshotContents().Update(context.TODO(), vsc, metav1.UpdateOptions{})
+		_, err = local.snapshotClient.SnapshotV1().VolumeSnapshotContents().Update(context.TODO(), vsc, metav1.UpdateOptions{})
+		framework.ExpectNoError(err)
 
 		block := v1.PersistentVolumeBlock
 		pvcConfig = e2epv.PersistentVolumeClaimConfig{
@@ -237,8 +239,10 @@ var _ = ginkgo.Describe("provision volumes with different volume modes from volu
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		vscName := vs.Status.BoundVolumeSnapshotContentName
 		vsc, err := local.snapshotClient.SnapshotV1().VolumeSnapshotContents().Get(context.TODO(), *vscName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
 		vsc.Spec.SourceVolumeMode = nil
-		vsc, err = local.snapshotClient.SnapshotV1().VolumeSnapshotContents().Update(context.TODO(), vsc, metav1.UpdateOptions{})
+		_, err = local.snapshotClient.SnapshotV1().VolumeSnapshotContents().Update(context.TODO(), vsc, metav1.UpdateOptions{})
+		framework.ExpectNoError(err)
 
 		block := v1.PersistentVolumeBlock
 		pvcConfig = e2epv.PersistentVolumeClaimConfig{

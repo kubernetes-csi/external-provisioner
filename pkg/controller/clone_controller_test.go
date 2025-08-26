@@ -107,7 +107,6 @@ func TestCloneFinalizerRemoval(t *testing.T) {
 	}
 
 	for k, tc := range testcases {
-		tc := tc
 		t.Run(k, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
@@ -161,7 +160,6 @@ func TestEnqueueClaimUpadate(t *testing.T) {
 	}
 
 	for k, tc := range testcases {
-		tc := tc
 		t.Run(k, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
@@ -188,8 +186,8 @@ func fakeCloningProtector(client *fakeclientset.Clientset, objects ...runtime.Ob
 	informerFactory := informers.NewSharedInformerFactory(client, 1*time.Second)
 	claimInformer := informerFactory.Core().V1().PersistentVolumeClaims().Informer()
 	claimLister := informerFactory.Core().V1().PersistentVolumeClaims().Lister()
-	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(time.Second, 2*time.Second)
-	claimQueue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "claims")
+	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Second, 2*time.Second)
+	claimQueue := workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{Name: "claims"})
 
 	for _, claim := range objects {
 		claimInformer.GetStore().Add(claim)

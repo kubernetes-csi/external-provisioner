@@ -392,8 +392,9 @@ func main() {
 
 	// -------------------------------
 	// PersistentVolumeClaims informer
-	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax)
-	claimQueue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "claims")
+	genericRateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[any](*retryIntervalStart, *retryIntervalMax)
+	claimRateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[string](*retryIntervalStart, *retryIntervalMax)
+	claimQueue := workqueue.NewTypedRateLimitingQueueWithConfig(claimRateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{Name: "claims"})
 	claimInformer := factory.Core().V1().PersistentVolumeClaims().Informer()
 
 	// Setup options
@@ -401,9 +402,9 @@ func main() {
 		controller.LeaderElection(false), // Always disable leader election in provisioner lib. Leader election should be done here in the CSI provisioner level instead.
 		controller.FailedProvisionThreshold(0),
 		controller.FailedDeleteThreshold(0),
-		controller.RateLimiter(rateLimiter),
+		controller.RateLimiter(genericRateLimiter),
 		controller.Threadiness(int(*workerThreads)),
-		controller.CreateProvisionedPVLimiter(workqueue.DefaultControllerRateLimiter()),
+		controller.CreateProvisionedPVLimiter(workqueue.DefaultTypedControllerRateLimiter[any]()),
 		controller.ClaimsInformer(claimInformer),
 		controller.NodesLister(nodeLister),
 		controller.RetryIntervalMax(*retryIntervalMax),
@@ -483,12 +484,13 @@ func main() {
 
 		var topologyInformer topology.Informer
 		if nodeDeployment == nil {
+			topologyRateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[string](*retryIntervalStart, *retryIntervalMax)
 			topologyInformer = topology.NewNodeTopology(
 				provisionerName,
 				clientset,
 				factory.Core().V1().Nodes(),
 				factory.Storage().V1().CSINodes(),
-				workqueue.NewNamedRateLimitingQueue(rateLimiter, "csitopology"),
+				workqueue.NewTypedRateLimitingQueueWithConfig(topologyRateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{Name: "csitopology"}),
 			)
 		} else {
 			var segment topology.Segment
@@ -548,12 +550,13 @@ func main() {
 			klog.Fatalf("unexpected error when checking for the V1 CSIStorageCapacity API: %v", err)
 		}
 
+		capacityRateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[capacity.QueueKey](*retryIntervalStart, *retryIntervalMax)
 		capacityController = capacity.NewCentralCapacityController(
 			csi.NewControllerClient(grpcClient),
 			provisionerName,
 			clientFactory,
 			// Metrics for the queue is available in the default registry.
-			workqueue.NewNamedRateLimitingQueue(rateLimiter, "csistoragecapacity"),
+			workqueue.NewTypedRateLimitingQueueWithConfig(capacityRateLimiter, workqueue.TypedRateLimitingQueueConfig[capacity.QueueKey]{Name: "csistoragecapacity"}),
 			controller,
 			managedByID,
 			namespace,

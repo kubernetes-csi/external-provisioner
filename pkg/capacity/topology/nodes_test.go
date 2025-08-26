@@ -19,6 +19,7 @@ package topology
 import (
 	"context"
 	"fmt"
+	"maps"
 	"reflect"
 	"sort"
 	"testing"
@@ -381,9 +382,7 @@ func TestNodeTopology(t *testing.T) {
 				if node.Labels == nil {
 					node.Labels = make(map[string]string)
 				}
-				for key, value := range localStorageLabelsNode1 {
-					node.Labels[key] = value
-				}
+				maps.Copy(node.Labels, localStorageLabelsNode1)
 				if _, err := client.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{}); err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -405,9 +404,7 @@ func TestNodeTopology(t *testing.T) {
 				if node.Labels == nil {
 					node.Labels = make(map[string]string)
 				}
-				for key, value := range localStorageLabelsNode1 {
-					node.Labels[key] = value
-				}
+				maps.Copy(node.Labels, localStorageLabelsNode1)
 				if _, err := client.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{}); err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -612,8 +609,8 @@ func fakeNodeTopology(ctx context.Context, testDriverName string, client *fakecl
 	informerFactory := informers.NewSharedInformerFactory(client, 0*time.Second /* no resync */)
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	csiNodeInformer := informerFactory.Storage().V1().CSINodes()
-	rateLimiter := workqueue.NewItemExponentialFailureRateLimiter(time.Second, 2*time.Second)
-	queue := workqueue.NewNamedRateLimitingQueue(rateLimiter, "items")
+	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Second, 2*time.Second)
+	queue := workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{Name: "items"})
 
 	nt := NewNodeTopology(
 		testDriverName,
@@ -633,12 +630,15 @@ func waitForInformers(ctx context.Context, nt *nodeTopology) error {
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
-	err := wait.PollImmediateUntil(time.Millisecond, func() (bool, error) {
+	err := wait.PollUntilContextCancel(ctx, time.Millisecond, true, func(_ context.Context) (bool, error) {
 		actualNodes, err := nt.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return false, err
 		}
 		informerNodes, err := nt.nodeInformer.Lister().List(labels.Everything())
+		if err != nil {
+			return false, err
+		}
 		if len(informerNodes) != len(actualNodes.Items) {
 			return false, nil
 		}
@@ -660,6 +660,9 @@ func waitForInformers(ctx context.Context, nt *nodeTopology) error {
 			return false, err
 		}
 		informerCSINodes, err := nt.csiNodeInformer.Lister().List(labels.Everything())
+		if err != nil {
+			return false, err
+		}
 		if len(informerCSINodes) != len(actualCSINodes.Items) {
 			return false, nil
 		}
@@ -677,7 +680,7 @@ func waitForInformers(ctx context.Context, nt *nodeTopology) error {
 		}
 
 		return true, nil
-	}, ctx.Done())
+	})
 	if err != nil {
 		return fmt.Errorf("get informers in sync: %v", err)
 	}
@@ -802,8 +805,7 @@ func benchmarkSyncInitial(b *testing.B, numNodes, segmentSize int) {
 	ctx := context.Background()
 	expectedSize := (numNodes + segmentSize - 1) / segmentSize
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		nt := nodeTopology{
 			driverName:      driverName,
 			nodeInformer:    nodeInformer,
@@ -837,8 +839,7 @@ func benchmarkSyncRefresh(b *testing.B, numNodes, segmentSize int) {
 		b.Fatalf("expected %d segments, got %d: %+v", expectedSize, actualSize, nt.segments)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		nt.sync(ctx)
 	}
 }
@@ -849,7 +850,7 @@ func createTopology(numNodes, segmentSize int) (coreinformersv1.NodeInformer, st
 	nodeInformer := fakeNodeInformer{}
 	csiNodeInformer := fakeCSINodeInformer{}
 
-	for i := 0; i < numNodes; i++ {
+	for i := range numNodes {
 		nodeName := fmt.Sprintf("node-%d", i)
 		node := &v1.Node{
 			ObjectMeta: metav1.ObjectMeta{

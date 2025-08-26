@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -77,14 +78,7 @@ var (
 		UID:        "309cd460-2d62-4f40-bbcf-b7765aac5a6d",
 		Controller: &yes,
 	}
-	noOwner    = metav1.OwnerReference{}
-	otherOwner = metav1.OwnerReference{
-		APIVersion: "apps/v1",
-		Kind:       "statefulset",
-		Name:       "other-test-driver",
-		UID:        "11111111-2d62-4f40-bbcf-b7765aac5a6d",
-		Controller: &yes,
-	}
+	noOwner = metav1.OwnerReference{}
 
 	layer0 = topology.Segment{
 		{Key: "layer0", Value: "foo"},
@@ -168,7 +162,7 @@ func TestCapacityController(t *testing.T) {
 		"one capacity object": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -195,7 +189,7 @@ func TestCapacityController(t *testing.T) {
 			owner:    &noOwner,
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -222,7 +216,7 @@ func TestCapacityController(t *testing.T) {
 		"one maximum volume size": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi,1Mi",
 				},
@@ -249,7 +243,7 @@ func TestCapacityController(t *testing.T) {
 		"ignore SC with immediate binding": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -266,7 +260,7 @@ func TestCapacityController(t *testing.T) {
 			immediateBinding: true,
 			topology:         topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -293,7 +287,7 @@ func TestCapacityController(t *testing.T) {
 		"reuse one capacity object, no changes": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -330,7 +324,7 @@ func TestCapacityController(t *testing.T) {
 		"reuse one capacity object, update capacity": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "2Gi",
 				},
@@ -367,7 +361,7 @@ func TestCapacityController(t *testing.T) {
 		"reuse one capacity object, add owner": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -407,7 +401,7 @@ func TestCapacityController(t *testing.T) {
 			owner:    &noOwner,
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -446,7 +440,7 @@ func TestCapacityController(t *testing.T) {
 		"obsolete object, missing SC": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -465,7 +459,7 @@ func TestCapacityController(t *testing.T) {
 		},
 		"obsolete object, missing segment": {
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -530,7 +524,7 @@ func TestCapacityController(t *testing.T) {
 		"two segments, two classes, four objects missing": {
 			topology: topology.NewMock(&layer0, &layer0other),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 					"bar": "2Gi",
@@ -583,7 +577,7 @@ func TestCapacityController(t *testing.T) {
 		"two segments, two classes, four objects updated": {
 			topology: topology.NewMock(&layer0, &layer0other),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 					"bar": "2Gi",
@@ -667,7 +661,7 @@ func TestCapacityController(t *testing.T) {
 		"two segments, two classes, two added, two removed": {
 			topology: topology.NewMock(&layer0, &layer0other),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 					"bar": "2Gi",
@@ -750,7 +744,7 @@ func TestCapacityController(t *testing.T) {
 		"re-create capacity": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -799,7 +793,7 @@ func TestCapacityController(t *testing.T) {
 		"ignore capacity after owner change": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -851,7 +845,7 @@ func TestCapacityController(t *testing.T) {
 		"delete and recreate by someone": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -899,7 +893,7 @@ func TestCapacityController(t *testing.T) {
 		"storage capacity change": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -932,7 +926,7 @@ func TestCapacityController(t *testing.T) {
 		},
 		"add storage topology segment": {
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -969,7 +963,7 @@ func TestCapacityController(t *testing.T) {
 		"add storage topology segment, immediate binding": {
 			immediateBinding: true,
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -1009,7 +1003,7 @@ func TestCapacityController(t *testing.T) {
 		"remove storage topology segment": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 				},
@@ -1045,7 +1039,7 @@ func TestCapacityController(t *testing.T) {
 		"add and remove storage topology segment": {
 			topology: topology.NewMock(&layer0),
 			storage: mockCapacity{
-				capacity: map[string]interface{}{
+				capacity: map[string]any{
 					// This matches layer0.
 					"foo": "1Gi",
 					"bar": "2Gi",
@@ -1092,7 +1086,6 @@ func TestCapacityController(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
-		tc := tc
 		t.Run(name, func(t *testing.T) {
 			// Running in parallel is possible because only logging uses a global instance.
 			t.Parallel()
@@ -1377,7 +1370,7 @@ func fakeController(ctx context.Context, client *fakeclientset.Clientset, owner 
 // which only supports adding and removing items.
 type rateLimitingQueue struct {
 	mutex        sync.Mutex
-	items        []interface{}
+	items        []QueueKey
 	shuttingDown bool
 }
 
@@ -1385,15 +1378,25 @@ func (r *rateLimitingQueue) ShutDownWithDrain() {
 	klog.Error("ShutDownWithDrain is unimplemented")
 }
 
-var _ workqueue.RateLimitingInterface = &rateLimitingQueue{}
+var _ workqueue.TypedRateLimitingInterface[QueueKey] = &rateLimitingQueue{}
 
-func (r *rateLimitingQueue) Add(item interface{}) {
+func (r *rateLimitingQueue) Add(item QueueKey) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
+	if slices.Contains(r.items, item) {
+		return
+	}
 	for _, existing := range r.items {
-		if existing == item {
-			return
+		if existing.item != nil && item.item != nil {
+			if *existing.item == *item.item {
+				return
+			}
+		}
+		if existing.capacity != nil && item.capacity != nil {
+			if existing.capacity.UID == item.capacity.UID {
+				return
+			}
 		}
 	}
 	r.items = append(r.items, item)
@@ -1404,7 +1407,7 @@ func (r *rateLimitingQueue) Len() int {
 
 	return len(r.items)
 }
-func (r *rateLimitingQueue) Get() (item interface{}, shutdown bool) {
+func (r *rateLimitingQueue) Get() (item QueueKey, shutdown bool) {
 	done := func() bool {
 		r.mutex.Lock()
 		defer r.mutex.Unlock()
@@ -1427,7 +1430,7 @@ func (r *rateLimitingQueue) Get() (item interface{}, shutdown bool) {
 	}
 	return
 }
-func (r *rateLimitingQueue) Done(item interface{}) {
+func (r *rateLimitingQueue) Done(item QueueKey) {
 }
 func (r *rateLimitingQueue) ShutDown() {
 	r.mutex.Lock()
@@ -1441,17 +1444,17 @@ func (r *rateLimitingQueue) ShuttingDown() bool {
 
 	return r.shuttingDown
 }
-func (r *rateLimitingQueue) AddRateLimited(item interface{}) {}
-func (r *rateLimitingQueue) Forget(item interface{}) {
+func (r *rateLimitingQueue) AddRateLimited(item QueueKey) {}
+func (r *rateLimitingQueue) Forget(item QueueKey) {
 }
-func (r *rateLimitingQueue) NumRequeues(item interface{}) int {
+func (r *rateLimitingQueue) NumRequeues(item QueueKey) int {
 	return 0
 }
-func (r *rateLimitingQueue) AddAfter(item interface{}, duration time.Duration) {
+func (r *rateLimitingQueue) AddAfter(item QueueKey, duration time.Duration) {
 	r.Add(item)
 }
 
-func (r *rateLimitingQueue) allItems() []interface{} {
+func (r *rateLimitingQueue) allItems() []QueueKey {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -1495,6 +1498,9 @@ func storageClassesSynced(ctx context.Context, c *Controller, clientSet kubernet
 		return false, err
 	}
 	informerStorageClasses, err := c.scInformer.Lister().List(labels.Everything())
+	if err != nil {
+		return false, nil
+	}
 	if len(informerStorageClasses) != len(actualStorageClasses.Items) {
 		return false, nil
 	}
@@ -1527,7 +1533,7 @@ const (
 // "<capacity>,<max volume size>", or another map.
 // A fake "multiplier" parameter is applied to the resulting capacity.
 type mockCapacity struct {
-	capacity map[string]interface{}
+	capacity map[string]any
 }
 
 func (mc *mockCapacity) GetCapacity(ctx context.Context, in *csi.GetCapacityRequest, opts ...grpc.CallOption) (*csi.GetCapacityResponse, error) {
@@ -1560,7 +1566,7 @@ func (mc *mockCapacity) GetCapacity(ctx context.Context, in *csi.GetCapacityRequ
 	return resp, nil
 }
 
-func getCapacity(capacity map[string]interface{}, segments map[string]string, layer int) (string, error) {
+func getCapacity(capacity map[string]any, segments map[string]string, layer int) (string, error) {
 	if capacity == nil {
 		return "", fmt.Errorf("no information found at layer %d", layer)
 	}
@@ -1569,7 +1575,7 @@ func getCapacity(capacity map[string]interface{}, segments map[string]string, la
 	switch value := value.(type) {
 	case string:
 		return value, nil
-	case map[string]interface{}:
+	case map[string]any:
 		result, err := getCapacity(value, segments, layer+1)
 		if err != nil {
 			return "", fmt.Errorf("%s -> %s: %v", key, segments[key], err)
@@ -1773,7 +1779,6 @@ func TestTermToSegment(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
-		tc := tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -1928,7 +1933,6 @@ func TestRefresh(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
-		tc := tc
 		t.Run(name, func(t *testing.T) {
 			// Running in parallel is possible because only logging uses a global instance.
 			t.Parallel()
@@ -1988,11 +1992,11 @@ func TestRefresh(t *testing.T) {
 func itemsAsSortedStringSlice(queue *rateLimitingQueue) []string {
 	var content []string
 	for _, item := range queue.allItems() {
-		switch item := item.(type) {
-		case workItem:
-			content = append(content, fmt.Sprintf("%s, %v", item.storageClassName, *item.segment))
-		case *storagev1.CSIStorageCapacity:
-			content = append(content, fmt.Sprintf("csc for %s, %v", item.StorageClassName, item.NodeTopology))
+		switch {
+		case item.item != nil:
+			content = append(content, fmt.Sprintf("%s, %v", item.item.storageClassName, *item.item.segment))
+		case item.capacity != nil:
+			content = append(content, fmt.Sprintf("csc for %s, %v", item.capacity.StorageClassName, item.capacity.NodeTopology))
 		default:
 			content = append(content, fmt.Sprintf("%v", item))
 		}

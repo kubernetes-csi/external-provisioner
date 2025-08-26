@@ -19,6 +19,7 @@ package controller
 import (
 	"fmt"
 	"hash/fnv"
+	"maps"
 	"math/rand"
 	"slices"
 	"strconv"
@@ -88,9 +89,7 @@ func VolumeIsAccessible(affinity *v1.VolumeNodeAffinity, nodeTopology *csi.Topol
 	}
 
 	nodeLabels := labels.Set{}
-	for k, v := range nodeTopology.Segments {
-		nodeLabels[k] = v
-	}
+	maps.Copy(nodeLabels, nodeTopology.Segments)
 	node := v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: nodeLabels,

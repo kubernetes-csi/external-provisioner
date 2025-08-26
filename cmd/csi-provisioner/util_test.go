@@ -38,7 +38,7 @@ func TestGetNameWithMaxLength(t *testing.T) {
 			base:     externalProvisioner,
 		},
 		"with empty base": {
-			expected: fmt.Sprintf("%s", "node01"),
+			expected: "node01",
 			nodeName: "node01",
 			base:     "",
 		},
@@ -70,7 +70,7 @@ func TestGetNameWithMaxLength(t *testing.T) {
 			base:     externalProvisioner,
 		},
 		"long node name ,with empty base": {
-			expected: fmt.Sprintf("%s", "fa65587e"),
+			expected: "fa65587e",
 			nodeName: fmt.Sprintf("node%s", strings.Repeat("a", 63)),
 			base:     "",
 		},

@@ -117,7 +117,7 @@ var _ cache.SharedIndexInformer = csiStorageCapacityIndexInformerBridge{}
 
 func (iib csiStorageCapacityIndexInformerBridge) AddEventHandler(handlerv1 cache.ResourceEventHandler) (cache.ResourceEventHandlerRegistration, error) {
 	handlerv1beta1 := cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
+		AddFunc: func(obj any) {
 			csc, ok := obj.(*storagev1beta1.CSIStorageCapacity)
 			if !ok {
 				klog.Errorf("added object: expected v1beta1.CSIStorageCapacity, got %T -> ignoring it", obj)
@@ -125,7 +125,7 @@ func (iib csiStorageCapacityIndexInformerBridge) AddEventHandler(handlerv1 cache
 			}
 			handlerv1.OnAdd(v1beta1Tov1(csc), iib.HasSynced())
 		},
-		UpdateFunc: func(oldObj interface{}, newObj interface{}) {
+		UpdateFunc: func(oldObj any, newObj any) {
 			oldCsc, ok := oldObj.(*storagev1beta1.CSIStorageCapacity)
 			if !ok {
 				klog.Errorf("updated object: expected v1beta1.CSIStorageCapacity, got %T -> ignoring it", oldObj)
@@ -138,7 +138,7 @@ func (iib csiStorageCapacityIndexInformerBridge) AddEventHandler(handlerv1 cache
 			}
 			handlerv1.OnUpdate(v1beta1Tov1(oldCsc), v1beta1Tov1(newCsc))
 		},
-		DeleteFunc: func(obj interface{}) {
+		DeleteFunc: func(obj any) {
 			// Beware of "xxx deleted" events
 			if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
 				obj = unknown.Obj
