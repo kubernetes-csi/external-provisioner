@@ -280,7 +280,7 @@ type csiProvisioner struct {
 	nodeDeployment                        *internalNodeDeployment
 	controllerPublishReadOnly             bool
 	preventVolumeModeConversion           bool
-	pvcNodeStore                          InMemoryStore
+	pvcNodeStore                          *InMemoryStore
 }
 
 var (
@@ -362,7 +362,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	nodeDeployment *NodeDeployment,
 	controllerPublishReadOnly bool,
 	preventVolumeModeConversion bool,
-	pvcNodeStore InMemoryStore,
+	pvcNodeStore *InMemoryStore,
 ) controller.Provisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
@@ -1497,7 +1497,6 @@ func (p *csiProvisioner) checkNode(ctx context.Context, claim *v1.PersistentVolu
 				if !apierrors.IsNotFound(err) {
 					return false, err
 				}
-				// If node is not found, still continue to check the annotation in PVC
 			}
 			var nodeName string
 			if node != nil {
