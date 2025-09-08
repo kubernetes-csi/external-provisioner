@@ -427,7 +427,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 
 	var clientSetObjects []runtime.Object
 	clientSet := fakeclientset.NewSimpleClientset(clientSetObjects...)
-	pvcNodeStore := *NewInMemoryStore()
+	pvcNodeStore := NewInMemoryStore()
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test",
@@ -2562,7 +2562,7 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 	defer driver.Stop()
 
 	clientSet := fakeclientset.NewSimpleClientset(tc.clientSetObjects...)
-	pvcNodeStore := *NewInMemoryStore()
+	pvcNodeStore := NewInMemoryStore()
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 
@@ -2737,7 +2737,7 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 	scInformer := informerFactory.Storage().V1().StorageClasses()
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	csiNodeInformer := informerFactory.Storage().V1().CSINodes()
-	pvcNodeStore := *NewInMemoryStore()
+	pvcNodeStore := NewInMemoryStore()
 
 	var nodeDeployment *NodeDeployment
 	if tc.deploymentNode != "" {
@@ -4516,7 +4516,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			return true, content, nil
 		})
 
-		pvcNodeStore := *NewInMemoryStore()
+		pvcNodeStore := NewInMemoryStore()
 
 		var refGrantLister referenceGrantv1beta1.ReferenceGrantLister
 		var stopChan chan struct{}
@@ -4724,7 +4724,7 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 			clientSet := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
 			scLister, csiNodeLister, nodeLister, claimLister, vaLister, stopChan := listers(clientSet)
-			pvcNodeStore := *NewInMemoryStore()
+			pvcNodeStore := NewInMemoryStore()
 			defer close(stopChan)
 
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
@@ -4819,7 +4819,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 					csiNodes := buildCSINodes(topologyKeys)
 					clientSet := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 					scLister, csiNodeLister, nodeLister, claimLister, vaLister, stopChan := listers(clientSet)
-					pvcNodeStore := *NewInMemoryStore()
+					pvcNodeStore := NewInMemoryStore()
 					defer close(stopChan)
 
 					csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
@@ -4894,7 +4894,7 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 	defer driver.Stop()
 
 	clientSet := fakeclientset.NewSimpleClientset()
-	pvcNodeStore := *NewInMemoryStore()
+	pvcNodeStore := NewInMemoryStore()
 	pluginCaps, controllerCaps := provisionWithTopologyCapabilities()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
 		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
@@ -5588,7 +5588,7 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	scLister, _, _, _, vaLister, _ := listers(clientSet)
-	pvcNodeStore := *NewInMemoryStore()
+	pvcNodeStore := NewInMemoryStore()
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
 		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, nil, nil, nil, vaLister, nil, false, defaultfsType, nodeDeployment, true, false, pvcNodeStore)
 
@@ -6672,7 +6672,7 @@ func TestProvisionFromPVC(t *testing.T) {
 			}
 
 			_, _, _, claimLister, _, _ := listers(clientSet)
-			pvcNodeStore := *NewInMemoryStore()
+			pvcNodeStore := NewInMemoryStore()
 
 			// Phase: execute the test
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
@@ -6807,7 +6807,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			defer mockController.Finish()
 			defer driver.Stop()
 			clientSet := fakeclientset.NewSimpleClientset()
-			pvcNodeStore := *NewInMemoryStore()
+			pvcNodeStore := NewInMemoryStore()
 			pluginCaps, controllerCaps := provisionCapabilities()
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps,
@@ -6984,7 +6984,7 @@ func TestDeleteMigration(t *testing.T) {
 
 			pluginCaps, controllerCaps := provisionCapabilities()
 			scLister, _, _, _, vaLister, stopCh := listers(clientSet)
-			pvcNodeStore := *NewInMemoryStore()
+			pvcNodeStore := NewInMemoryStore()
 			defer close(stopCh)
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, inTreePluginName,

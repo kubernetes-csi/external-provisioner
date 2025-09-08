@@ -407,7 +407,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 	kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
 	_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
-	pvcNodeStore := *NewInMemoryStore()
+	pvcNodeStore := NewInMemoryStore()
 	defer close(stopChan)
 
 	for name, tc := range testcases {
@@ -819,7 +819,7 @@ func TestAllowedTopologies(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
-			pvcNodeStore := *NewInMemoryStore()
+			pvcNodeStore := NewInMemoryStore()
 			for strictTopology, withOrWithout := range withWithout {
 				t.Run(withOrWithout+" strict topology", func(t *testing.T) {
 					for immediateTopology, withOrWithout := range withWithout {
@@ -1106,7 +1106,7 @@ func TestTopologyAggregation(t *testing.T) {
 							kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes, pvc)
 
 							_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
-							pvcNodeStore := *NewInMemoryStore()
+							pvcNodeStore := NewInMemoryStore()
 							defer close(stopChan)
 
 							var selectedNode *v1.Node
@@ -1445,7 +1445,7 @@ func TestPreferredTopologies(t *testing.T) {
 							selectedNode := &nodes.Items[0]
 
 							_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
-							pvcNodeStore := *NewInMemoryStore()
+							pvcNodeStore := NewInMemoryStore()
 							defer close(stopChan)
 
 							requirements, err := GenerateAccessibilityRequirements(

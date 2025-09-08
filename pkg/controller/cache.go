@@ -14,7 +14,7 @@ type TopologyInfo struct {
 
 // TopologyProvider is an interface that defines the behavior for looking up
 // a TopologyInfo object by its name.
-// The name is pvcNamespace-pvcName
+// The name is pvcNamespace/pvcName
 type TopologyProvider interface {
 	GetByName(name string) (*TopologyInfo, error)
 	Delete(name string) error

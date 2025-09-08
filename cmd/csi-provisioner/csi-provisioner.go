@@ -446,7 +446,7 @@ func main() {
 		nodeDeployment,
 		*controllerPublishReadOnly,
 		*preventVolumeModeConversion,
-		*pvcNodeStore,
+		pvcNodeStore,
 	)
 
 	var capacityController *capacity.Controller
