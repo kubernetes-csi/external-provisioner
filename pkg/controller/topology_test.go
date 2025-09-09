@@ -28,6 +28,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
@@ -174,14 +175,14 @@ func TestStatefulSetSpreading(t *testing.T) {
 	// If statefulset name is changed, make sure expectedPreferred is kept in sync.
 	// pvc prefix in pvcName does not have any effect on segment ordering
 	testcases := map[string]struct {
-		pvcNamespace      string
+		pvcUID            types.UID
 		pvcName           string
 		allowedTopologies []v1.TopologySelectorTerm
 		expectedPreferred []*csi.Topology
 	}{
 		"select index 0 among nodes for pvc with statefulset name:testset and id:1; ignore claimname:testpvcA": {
-			pvcNamespace: "default",
-			pvcName:      "testpvcA-testset-1",
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
+			pvcName: "testpvcA-testset-1",
 			expectedPreferred: []*csi.Topology{
 				{
 					Segments: map[string]string{
@@ -210,8 +211,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 0 among nodes for pvc with statefulset name:testset and id:1; ignore claimname:testpvcB": {
-			pvcNamespace: "default",
-			pvcName:      "testpvcB-testset-1",
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
+			pvcName: "testpvcB-testset-1",
 			expectedPreferred: []*csi.Topology{
 				{
 					Segments: map[string]string{
@@ -240,8 +241,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 0 among allowedTopologies with single term/multiple requirements for pvc with statefulset name:testset and id:1; ignore claimname:testpvcC": {
-			pvcNamespace: "default",
-			pvcName:      "testpvcC-testset-1",
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
+			pvcName: "testpvcC-testset-1",
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -266,8 +267,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 1 among nodes for pvc with statefulset name:testset and id:2": {
-			pvcNamespace: "default",
-			pvcName:      "testset-2",
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
+			pvcName: "testset-2",
 			expectedPreferred: []*csi.Topology{
 				{
 					Segments: map[string]string{
@@ -296,8 +297,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 1 among allowedTopologies with multiple terms/multiple requirements for pvc with statefulset name:testset and id:2; ignore claimname:testpvcB": {
-			pvcNamespace: "default",
-			pvcName:      "testpvcB-testset-2",
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
+			pvcName: "testpvcB-testset-2",
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
 					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
@@ -340,8 +341,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 2 among nodes with statefulset name:testset and id:3; ignore claimname:testpvc": {
-			pvcNamespace: "default",
-			pvcName:      "testpvc-testset-3",
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
+			pvcName: "testpvc-testset-3",
 			expectedPreferred: []*csi.Topology{
 				{
 					Segments: map[string]string{
@@ -370,8 +371,8 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 3 among nodes with statefulset name:testset and id:4; ignore claimname:testpvc": {
-			pvcNamespace: "default",
-			pvcName:      "testpvc-testset-4",
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
+			pvcName: "testpvc-testset-4",
 			expectedPreferred: []*csi.Topology{
 				{
 					Segments: map[string]string{
@@ -419,7 +420,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 							requirements, err := GenerateAccessibilityRequirements(
 								kubeClient,
 								testDriverName,
-								tc.pvcNamespace,
+								tc.pvcUID,
 								tc.pvcName,
 								tc.allowedTopologies,
 								"",
@@ -825,9 +826,9 @@ func TestAllowedTopologies(t *testing.T) {
 					for immediateTopology, withOrWithout := range withWithout {
 						t.Run(withOrWithout+" immediate topology", func(t *testing.T) {
 							requirements, err := GenerateAccessibilityRequirements(
-								nil,           /* kubeClient */
-								"test-driver", /* driverName */
-								"default",     /* namespace */
+								nil,                                    /* kubeClient */
+								"test-driver",                          /* driverName */
+								"a9e2d5a3-1c64-4787-97b7-1a22d5a0b123", /* PVC UID */
 								"testpvc",
 								tc.allowedTopologies,
 								"", /* selectedNode */
@@ -1119,7 +1120,7 @@ func TestTopologyAggregation(t *testing.T) {
 							requirements, err := GenerateAccessibilityRequirements(
 								kubeClient,
 								testDriverName,
-								"default",
+								"a9e2d5a3-1c64-4787-97b7-1a22d5a0b123", /* PVC UID */
 								"testpvc",
 								nil, /* allowedTopologies */
 								selectedNodeName,
@@ -1451,7 +1452,7 @@ func TestPreferredTopologies(t *testing.T) {
 							requirements, err := GenerateAccessibilityRequirements(
 								kubeClient,
 								testDriverName,
-								"default",
+								"a9e2d5a3-1c64-4787-97b7-1a22d5a0b123", /* PVC UID */
 								"testpvc",
 								tc.allowedTopologies,
 								selectedNode.Name,

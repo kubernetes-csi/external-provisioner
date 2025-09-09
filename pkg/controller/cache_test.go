@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // TestNewInMemoryStore tests the NewInMemoryStore function.
@@ -22,9 +24,10 @@ func TestNewInMemoryStore(t *testing.T) {
 func TestAddAndGetInInMemoryStore(t *testing.T) {
 	store := NewInMemoryStore()
 	info := &TopologyInfo{NodeLabels: map[string]string{"foo": "bar"}}
-	store.Add("test", info)
+	pvcUID := types.UID("a9e2d5a3-1c64-4787-97b7-1a22d5a0b123")
+	store.Add(pvcUID, info)
 
-	retrieved, err := store.GetByName("test")
+	retrieved, err := store.GetByName(pvcUID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -42,52 +45,48 @@ func TestAddAndGetInInMemoryStore(t *testing.T) {
 func TestDeleteInInMemoryStore(t *testing.T) {
 	store := NewInMemoryStore()
 	info := &TopologyInfo{NodeLabels: map[string]string{"foo": "bar"}}
-	store.Add("test", info)
+	pvcUID := types.UID("a9e2d5a3-1c64-4787-97b7-1a22d5a0b123")
+	store.Add(pvcUID, info)
 
-	err := store.Delete("test")
+	err := store.Delete(pvcUID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err = store.GetByName("test")
+	_, err = store.GetByName(pvcUID)
 	if err == nil {
 		t.Error("Expected an error after deleting the entry, but got nil")
 	}
 
 	err = store.Delete("nonexistent")
-	if err == nil {
-		t.Error("Expected an error for deleting a nonexistent entry, but got nil")
+	if err != nil {
+		t.Errorf("Did not expect an error for deleting a nonexistent entry, but got: %v", err)
 	}
 }
 
 // TestUpdate tests the update methods.
 func TestUpdateInInMemoryStore(t *testing.T) {
 	store := NewInMemoryStore()
+	pvcUID := types.UID("a9e2d5a3-1c64-4787-97b7-1a22d5a0b123")
 
 	// Test updating a nonexistent entry
-	store.UpdateNodeLabels("test", map[string]string{"foo": "bar"})
-	retrieved, _ := store.GetByName("test")
+	store.UpdateNodeLabels(pvcUID, map[string]string{"foo": "bar"})
+	retrieved, _ := store.GetByName(pvcUID)
 	if retrieved.NodeLabels["foo"] != "bar" {
 		t.Errorf("Expected NodeLabels to be updated")
 	}
 
 	// Test updating an existing entry
-	store.UpdateNodeLabels("test", map[string]string{"foo": "baz"})
-	retrieved, _ = store.GetByName("test")
+	store.UpdateNodeLabels(pvcUID, map[string]string{"foo": "baz"})
+	retrieved, _ = store.GetByName(pvcUID)
 	if retrieved.NodeLabels["foo"] != "baz" {
 		t.Errorf("Expected NodeLabels to be updated")
 	}
 
-	store.UpdateTopologyKeys("test", []string{"key1"})
-	retrieved, _ = store.GetByName("test")
+	store.UpdateTopologyKeys(pvcUID, []string{"key1"})
+	retrieved, _ = store.GetByName(pvcUID)
 	if retrieved.TopologyKeys[0] != "key1" {
 		t.Errorf("Expected TopologyKeys to be updated")
-	}
-
-	store.UpdateSelectedNodeName("test", "node1")
-	retrieved, _ = store.GetByName("test")
-	if retrieved.SelectedNodeName != "node1" {
-		t.Errorf("Expected SelectedNodeName to be updated")
 	}
 }
 
@@ -103,22 +102,29 @@ func TestConcurrentAccessInInMemoryStore(t *testing.T) {
 	for i := 0; i < concurrency; i++ {
 		go func(i int) {
 			defer wg.Done()
-			name := fmt.Sprintf("item-%d", i)
-			info := &TopologyInfo{SelectedNodeName: fmt.Sprintf("node-%d", i)}
+			pvcUID := types.UID(fmt.Sprintf("item-%d", i))
+			info := &TopologyInfo{TopologyKeys: []string{fmt.Sprintf("key-%d", i)}}
 
-			store.Add(name, info)
+			store.Add(pvcUID, info)
 
-			retrieved, err := store.GetByName(name)
+			retrieved, err := store.GetByName(pvcUID)
 			if err != nil {
 				t.Errorf("goroutine %d: unexpected error getting item: %v", i, err)
 			}
-			if retrieved.SelectedNodeName != info.SelectedNodeName {
+			if !reflect.DeepEqual(retrieved.TopologyKeys, info.TopologyKeys) {
 				t.Errorf("goroutine %d: retrieved wrong data", i)
 			}
 
-			store.UpdateSelectedNodeName(name, fmt.Sprintf("new-node-%d", i))
+			store.UpdateTopologyKeys(pvcUID, []string{fmt.Sprintf("new-key-%d", i)})
+			retrieved, err = store.GetByName(pvcUID)
+			if err != nil {
+				t.Errorf("goroutine %d: unexpected error getting item: %v", i, err)
+			}
+			if !reflect.DeepEqual(retrieved.TopologyKeys, []string{fmt.Sprintf("new-key-%d", i)}) {
+				t.Errorf("goroutine %d: retrieved wrong data after update", i)
+			}
 
-			err = store.Delete(name)
+			err = store.Delete(pvcUID)
 			if err != nil {
 				t.Errorf("goroutine %d: unexpected error deleting item: %v", i, err)
 			}

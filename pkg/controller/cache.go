@@ -3,111 +3,105 @@ package controller
 import (
 	"fmt"
 	"sync"
+
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 )
 
 // TopologyInfo holds the data for NodeLabels and TopologyKeys
 type TopologyInfo struct {
-	NodeLabels       map[string]string
-	TopologyKeys     []string
-	SelectedNodeName string
+	NodeLabels   map[string]string
+	TopologyKeys []string
 }
 
 // TopologyProvider is an interface that defines the behavior for looking up
-// a TopologyInfo object by its name.
-// The name is pvcNamespace/pvcName
+// a TopologyInfo object by its pvc UID.
 type TopologyProvider interface {
-	GetByName(name string) (*TopologyInfo, error)
-	Delete(name string) error
+	Add(pvcUID types.UID, info *TopologyInfo)
+	GetByName(pvcUID types.UID) (*TopologyInfo, error)
+	// The entry is deleted when provision succeeds or returns a final error.
+	Delete(pvcUID types.UID) error
 
 	// Update methods now perform an "upsert" and don't return errors.
-	UpdateNodeLabels(name string, newLabels map[string]string)
-	UpdateTopologyKeys(name string, newKeys []string)
-	UpdateSelectedNodeName(name string, newName string)
+	UpdateNodeLabels(pvcUID types.UID, newLabels map[string]string)
+	UpdateTopologyKeys(pvcUID types.UID, newKeys []string)
 }
 
 // InMemoryStore is a concrete implementation of TopologyProvider.
 // It uses an in-memory map for quick lookups.
 type InMemoryStore struct {
 	// The map key is the object's name.
-	data map[string]*TopologyInfo
+	data map[types.UID]*TopologyInfo
 	// Adding a mutex for thread-safe access
-	mutex sync.Mutex
+	mutex sync.RWMutex
 }
 
 // NewInMemoryStore creates and initializes a new store.
 func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{
-		data: make(map[string]*TopologyInfo),
+		data: make(map[types.UID]*TopologyInfo),
 	}
 }
 
 // Add is a helper function to populate our store with data.
-func (s *InMemoryStore) Add(name string, info *TopologyInfo) {
+func (s *InMemoryStore) Add(pvcUID types.UID, info *TopologyInfo) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.data[name] = info
+	s.data[pvcUID] = info
 }
 
 // Delete implements the TopologyProvider interface.
 // It uses the built-in delete() function to remove the item from the map.
-func (s *InMemoryStore) Delete(name string) error {
+func (s *InMemoryStore) Delete(pvcUID types.UID) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	// First, check if the key exists to provide a helpful error.
-	_, found := s.data[name]
+	_, found := s.data[pvcUID]
 	if !found {
-		return fmt.Errorf("cannot delete: object with name '%s' not found", name)
+		klog.Warningf("cannot delete: object with pvcUID '%s' not found", pvcUID)
+		return nil
 	}
-	delete(s.data, name)
+	delete(s.data, pvcUID)
 	return nil
 }
 
 // GetByName implements the TopologyProvider interface.
-func (s *InMemoryStore) GetByName(name string) (*TopologyInfo, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+func (s *InMemoryStore) GetByName(pvcUID types.UID) (*TopologyInfo, error) {
 	if s == nil {
 		return nil, fmt.Errorf("pvcNodeStore is nil")
 	}
-	info, found := s.data[name]
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	if s == nil {
+		return nil, fmt.Errorf("pvcNodeStore is nil")
+	}
+	info, found := s.data[pvcUID]
 	if !found {
-		return nil, fmt.Errorf("topology object with name '%s' not found", name)
+		return nil, fmt.Errorf("topology object with pvcUID '%s' not found", pvcUID)
 	}
 	return info, nil
 }
 
-// UpdateNodeLabels finds an object by name and replaces its NodeLabels.
-func (s *InMemoryStore) UpdateNodeLabels(name string, newLabels map[string]string) {
+// UpdateNodeLabels finds an object by pvcUID and replaces its NodeLabels.
+func (s *InMemoryStore) UpdateNodeLabels(pvcUID types.UID, newLabels map[string]string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	info, found := s.data[name]
+	info, found := s.data[pvcUID]
 	if !found {
-		s.data[name] = &TopologyInfo{NodeLabels: newLabels}
+		s.data[pvcUID] = &TopologyInfo{NodeLabels: newLabels}
 	} else {
 		info.NodeLabels = newLabels
 	}
 }
 
-// UpdateTopologyKeys finds an object by name and replaces its TopologyKeys.
-func (s *InMemoryStore) UpdateTopologyKeys(name string, newKeys []string) {
+// UpdateTopologyKeys finds an object by pvcUID and replaces its TopologyKeys.
+func (s *InMemoryStore) UpdateTopologyKeys(pvcUID types.UID, newKeys []string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	info, found := s.data[name]
+	info, found := s.data[pvcUID]
 	if !found {
-		s.data[name] = &TopologyInfo{TopologyKeys: newKeys}
+		s.data[pvcUID] = &TopologyInfo{TopologyKeys: newKeys}
 	} else {
 		info.TopologyKeys = newKeys
-	}
-}
-
-// UpdateSelectedNodeName finds an object by name and replaces its SelectedNodeName.
-func (s *InMemoryStore) UpdateSelectedNodeName(name string, newName string) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	info, found := s.data[name]
-	if !found {
-		s.data[name] = &TopologyInfo{SelectedNodeName: newName}
-	} else {
-		info.SelectedNodeName = newName
 	}
 }
