@@ -692,7 +692,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		requirements, err := GenerateAccessibilityRequirements(
 			p.client,
 			p.driverName,
-			claim.Namespace,
+			claim.UID,
 			claim.Name,
 			sc.AllowedTopologies,
 			selectedNodeName,
@@ -857,8 +857,9 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 			mayReschedule,
 			state,
 			err)
-		if IsFinalError(err) {
-			p.pvcNodeStore.Delete(claim.Namespace + "/" + claim.Name)
+		// Delete the entry in in memory cache if the error is final
+		if state == controller.ProvisioningFinished || state == controller.ProvisioningReschedule {
+			p.pvcNodeStore.Delete(claim.UID)
 		}
 		return nil, state, err
 	}
@@ -982,7 +983,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 
 	klog.V(5).Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
 	// Remove entry from the in memory cache
-	p.pvcNodeStore.Delete(claim.Namespace + "/" + claim.Name)
+	p.pvcNodeStore.Delete(claim.UID)
 	return pv, controller.ProvisioningFinished, nil
 }
 
@@ -1494,21 +1495,15 @@ func (p *csiProvisioner) checkNode(ctx context.Context, claim *v1.PersistentVolu
 		if len(sc.AllowedTopologies) > 0 {
 			node, err := p.nodeLister.Get(p.nodeDeployment.NodeName)
 			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					return false, err
-				}
-			}
-			var nodeName string
-			if node != nil {
-				nodeName = node.Name
+				return false, err
 			}
 			if _, err := GenerateAccessibilityRequirements(
 				p.client,
 				p.driverName,
-				claim.Namespace,
+				claim.UID,
 				claim.Name,
 				sc.AllowedTopologies,
-				nodeName,
+				node.Name,
 				p.strictTopology,
 				p.immediateTopology,
 				p.csiNodeLister,

@@ -2,11 +2,8 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -271,68 +268,6 @@ func TestIsGranted(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			doit(t, *tc)
-		})
-	}
-}
-
-func TestIsFinalError(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		want bool
-	}{
-		{
-			name: "non-gRPC error",
-			err:  fmt.Errorf("some error"),
-			want: false,
-		},
-		{
-			name: "Canceled",
-			err:  status.Error(codes.Canceled, "Canceled"),
-			want: false,
-		},
-		{
-			name: "DeadlineExceeded",
-			err:  status.Error(codes.DeadlineExceeded, "DeadlineExceeded"),
-			want: false,
-		},
-		{
-			name: "Unavailable",
-			err:  status.Error(codes.Unavailable, "Unavailable"),
-			want: false,
-		},
-		{
-			name: "ResourceExhausted",
-			err:  status.Error(codes.ResourceExhausted, "ResourceExhausted"),
-			want: false,
-		},
-		{
-			name: "Aborted",
-			err:  status.Error(codes.Aborted, "Aborted"),
-			want: false,
-		},
-		{
-			name: "Internal",
-			err:  status.Error(codes.Internal, "Internal"),
-			want: true,
-		},
-		{
-			name: "NotFound",
-			err:  status.Error(codes.NotFound, "NotFound"),
-			want: true,
-		},
-		{
-			name: "AlreadyExists",
-			err:  status.Error(codes.AlreadyExists, "AlreadyExists"),
-			want: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := IsFinalError(tt.err); got != tt.want {
-				t.Errorf("IsFinalError() = %v, want %v", got, tt.want)
-			}
 		})
 	}
 }
