@@ -18,7 +18,7 @@ type TopologyInfo struct {
 // a TopologyInfo object by its pvc UID.
 type TopologyProvider interface {
 	Add(pvcUID types.UID, info *TopologyInfo)
-	GetByName(pvcUID types.UID) (*TopologyInfo, error)
+	GetByPvcUID(pvcUID types.UID) (*TopologyInfo, error)
 	// The entry is deleted when provision succeeds or returns a final error.
 	Delete(pvcUID types.UID) error
 
@@ -65,8 +65,8 @@ func (s *InMemoryStore) Delete(pvcUID types.UID) error {
 	return nil
 }
 
-// GetByName implements the TopologyProvider interface.
-func (s *InMemoryStore) GetByName(pvcUID types.UID) (*TopologyInfo, error) {
+// GetByPvcUID implements the TopologyProvider interface.
+func (s *InMemoryStore) GetByPvcUID(pvcUID types.UID) (*TopologyInfo, error) {
 	if s == nil {
 		return nil, fmt.Errorf("pvcNodeStore is nil")
 	}

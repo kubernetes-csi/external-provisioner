@@ -359,10 +359,17 @@ func aggregateTopologies(
 		})
 
 		// Pick the first node with topology keys
-		for _, csiNode := range csiNodes {
-			topologyKeys = getTopologyKeys(csiNode, driverName)
-			if topologyKeys != nil {
-				break
+		topologyKeys, err = getTopologyKeysFromCache(pvcNodeStore, pvcKeyForStore)
+		if err != nil {
+			// Not in the in memory cache. Find from csiNodes.
+			for _, csiNode := range csiNodes {
+				keys := getTopologyKeys(csiNode, driverName)
+				if len(keys) > 0 {
+					topologyKeys = keys
+					// Store in cache for next time.
+					pvcNodeStore.UpdateTopologyKeys(pvcKeyForStore, topologyKeys)
+					break
+				}
 			}
 		}
 
@@ -372,7 +379,6 @@ func aggregateTopologies(
 			klog.Warningf("No topology keys found on any node")
 			return nil, nil
 		}
-
 	} else {
 		// Delayed binding; use topology key from selected node
 		topologyKeys = getTopologyKeys(selectedCSINode, driverName)
@@ -501,7 +507,7 @@ func flatten(allowedTopologies []v1.TopologySelectorTerm) []topologyTerm {
 }
 
 func getTopologyKeysFromCache(pvcNodeStore *InMemoryStore, pvcKey types.UID) ([]string, error) {
-	cacheInfo, err := pvcNodeStore.GetByName(pvcKey)
+	cacheInfo, err := pvcNodeStore.GetByPvcUID(pvcKey)
 	if err != nil {
 		return nil, err
 	}
@@ -512,7 +518,7 @@ func getTopologyKeysFromCache(pvcNodeStore *InMemoryStore, pvcKey types.UID) ([]
 }
 
 func getNodeLabelsFromCache(pvcNodeStore *InMemoryStore, pvcKey types.UID) (map[string]string, error) {
-	cacheInfo, err := pvcNodeStore.GetByName(pvcKey)
+	cacheInfo, err := pvcNodeStore.GetByPvcUID(pvcKey)
 	if err != nil {
 		return nil, err
 	}

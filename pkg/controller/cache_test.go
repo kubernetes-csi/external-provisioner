@@ -20,14 +20,14 @@ func TestNewInMemoryStore(t *testing.T) {
 	}
 }
 
-// TestAddAndGet tests the Add and GetByName methods.
+// TestAddAndGet tests the Add and GetByPvcUID methods.
 func TestAddAndGetInInMemoryStore(t *testing.T) {
 	store := NewInMemoryStore()
 	info := &TopologyInfo{NodeLabels: map[string]string{"foo": "bar"}}
 	pvcUID := types.UID("a9e2d5a3-1c64-4787-97b7-1a22d5a0b123")
 	store.Add(pvcUID, info)
 
-	retrieved, err := store.GetByName(pvcUID)
+	retrieved, err := store.GetByPvcUID(pvcUID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestAddAndGetInInMemoryStore(t *testing.T) {
 		t.Errorf("Expected %+v, got %+v", info, retrieved)
 	}
 
-	_, err = store.GetByName("nonexistent")
+	_, err = store.GetByPvcUID("nonexistent")
 	if err == nil {
 		t.Error("Expected an error for a nonexistent entry, but got nil")
 	}
@@ -53,7 +53,7 @@ func TestDeleteInInMemoryStore(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err = store.GetByName(pvcUID)
+	_, err = store.GetByPvcUID(pvcUID)
 	if err == nil {
 		t.Error("Expected an error after deleting the entry, but got nil")
 	}
@@ -71,20 +71,20 @@ func TestUpdateInInMemoryStore(t *testing.T) {
 
 	// Test updating a nonexistent entry
 	store.UpdateNodeLabels(pvcUID, map[string]string{"foo": "bar"})
-	retrieved, _ := store.GetByName(pvcUID)
+	retrieved, _ := store.GetByPvcUID(pvcUID)
 	if retrieved.NodeLabels["foo"] != "bar" {
 		t.Errorf("Expected NodeLabels to be updated")
 	}
 
 	// Test updating an existing entry
 	store.UpdateNodeLabels(pvcUID, map[string]string{"foo": "baz"})
-	retrieved, _ = store.GetByName(pvcUID)
+	retrieved, _ = store.GetByPvcUID(pvcUID)
 	if retrieved.NodeLabels["foo"] != "baz" {
 		t.Errorf("Expected NodeLabels to be updated")
 	}
 
 	store.UpdateTopologyKeys(pvcUID, []string{"key1"})
-	retrieved, _ = store.GetByName(pvcUID)
+	retrieved, _ = store.GetByPvcUID(pvcUID)
 	if retrieved.TopologyKeys[0] != "key1" {
 		t.Errorf("Expected TopologyKeys to be updated")
 	}
@@ -107,7 +107,7 @@ func TestConcurrentAccessInInMemoryStore(t *testing.T) {
 
 			store.Add(pvcUID, info)
 
-			retrieved, err := store.GetByName(pvcUID)
+			retrieved, err := store.GetByPvcUID(pvcUID)
 			if err != nil {
 				t.Errorf("goroutine %d: unexpected error getting item: %v", i, err)
 			}
@@ -116,7 +116,7 @@ func TestConcurrentAccessInInMemoryStore(t *testing.T) {
 			}
 
 			store.UpdateTopologyKeys(pvcUID, []string{fmt.Sprintf("new-key-%d", i)})
-			retrieved, err = store.GetByName(pvcUID)
+			retrieved, err = store.GetByPvcUID(pvcUID)
 			if err != nil {
 				t.Errorf("goroutine %d: unexpected error getting item: %v", i, err)
 			}
