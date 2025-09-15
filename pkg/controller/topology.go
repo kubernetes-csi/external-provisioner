@@ -253,7 +253,7 @@ func GenerateAccessibilityRequirements(
 			}
 
 			// Aggregate existing topologies in nodes across the entire cluster.
-			requisiteTerms, err = aggregateTopologies(driverName, selectedCSINode, csiNodeLister, nodeLister, pvcUID, pvcNodeStore)
+			requisiteTerms, err = aggregateTopologies(driverName, selectedCSINode, csiNodeLister, nodeLister, pvcUID, pvcNodeStore, strictTopology)
 			if err != nil {
 				return nil, err
 			}
@@ -341,7 +341,8 @@ func aggregateTopologies(
 	csiNodeLister storagelistersv1.CSINodeLister,
 	nodeLister corelisters.NodeLister,
 	pvcKeyForStore types.UID,
-	pvcNodeStore *InMemoryStore) ([]topologyTerm, error) {
+	pvcNodeStore *InMemoryStore,
+	strictTopology bool) ([]topologyTerm, error) {
 	// 1. Determine topologyKeys to use for aggregation
 	var topologyKeys []string
 	var err error
@@ -357,11 +358,22 @@ func aggregateTopologies(
 		rand.Shuffle(len(csiNodes), func(i, j int) {
 			csiNodes[i], csiNodes[j] = csiNodes[j], csiNodes[i]
 		})
-
 		// Pick the first node with topology keys
 		topologyKeys, err = getTopologyKeysFromCache(pvcNodeStore, pvcKeyForStore)
+
 		if err != nil {
 			// Not in the in memory cache. Find from csiNodes.
+			csiNodes, err := csiNodeLister.List(labels.Everything())
+			if err != nil {
+				// Require CSINode beta feature on K8s apiserver to be enabled.
+				// We don't want to fallback and provision in the wrong topology if there's some temporary
+				// error with the API server.
+				return nil, fmt.Errorf("error listing CSINodes: %v", err)
+			}
+			rand.Shuffle(len(csiNodes), func(i, j int) {
+				csiNodes[i], csiNodes[j] = csiNodes[j], csiNodes[i]
+			})
+
 			for _, csiNode := range csiNodes {
 				keys := getTopologyKeys(csiNode, driverName)
 				if len(keys) > 0 {
@@ -425,6 +437,7 @@ func aggregateTopologies(
 		term, _ := getTopologyFromNode(node, topologyKeys)
 		terms = append(terms, term)
 	}
+
 	if len(terms) == 0 {
 		// This means that a CSINode was found with topologyKeys, but we couldn't find
 		// the topology labels on any nodes.

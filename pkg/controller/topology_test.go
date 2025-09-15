@@ -1865,3 +1865,134 @@ func TestTopologyTermSubset(t *testing.T) {
 		})
 	}
 }
+
+func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
+	testcases := map[string]struct {
+		nodeLabelsForLister map[string]map[string]string   // map node name to labels
+		csiNodeSpecs        map[string]map[string][]string // map node name to map of driver to topology keys
+		pvcUID              types.UID
+		selectedNodeName    string
+		initialCache        *TopologyInfo
+		expectError         bool
+	}{
+		"node deleted but cache exists": {
+			nodeLabelsForLister: map[string]map[string]string{
+				"node-1": {"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"},
+			},
+			csiNodeSpecs: map[string]map[string][]string{
+				"node-1": {testDriverName: {"com.example.csi/zone", "com.example.csi/rack"}},
+			},
+			pvcUID:           types.UID("pvc-uid-1234"),
+			selectedNodeName: "node-0",
+			initialCache: &TopologyInfo{
+				NodeLabels:   map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
+				TopologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
+			},
+			expectError: false,
+		},
+		"node deleted with immediate binding with nil selectedCSINode": {
+			nodeLabelsForLister: map[string]map[string]string{
+				"node-1": {"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"},
+			},
+			csiNodeSpecs: map[string]map[string][]string{
+				"node-0": {testDriverName: {"com.example.csi/zone", "com.example.csi/rack"}},
+				"node-1": {testDriverName: {"com.example.csi/zone", "com.example.csi/rack"}},
+			},
+			pvcUID:           types.UID("pvc-uid-5678"),
+			selectedNodeName: "",
+			initialCache: &TopologyInfo{
+				NodeLabels:   map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
+				TopologyKeys: []string{"com.example.csi/zone", "com.example.csi/rack"},
+			},
+			expectError: false,
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			nodes := &v1.NodeList{}
+			for nodeName, labels := range tc.nodeLabelsForLister {
+				node := v1.Node{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   nodeName,
+						Labels: labels,
+					},
+				}
+				nodes.Items = append(nodes.Items, node)
+			}
+
+			csiNodes := &storagev1.CSINodeList{}
+			for nodeName, csiNodeSpec := range tc.csiNodeSpecs {
+				n := storagev1.CSINode{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: nodeName,
+					},
+				}
+				var csiDrivers []storagev1.CSINodeDriver
+				for driver, topologyKeys := range csiNodeSpec {
+					driverInfo := storagev1.CSINodeDriver{
+						Name:         driver,
+						NodeID:       nodeName,
+						TopologyKeys: topologyKeys,
+					}
+					csiDrivers = append(csiDrivers, driverInfo)
+				}
+				n.Spec = storagev1.CSINodeSpec{Drivers: csiDrivers}
+				csiNodes.Items = append(csiNodes.Items, n)
+			}
+
+			kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+			_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
+			defer close(stopChan)
+
+			pvcNodeStore := NewInMemoryStore()
+			if tc.initialCache != nil {
+				pvcNodeStore.Add(tc.pvcUID, tc.initialCache)
+			}
+
+			scenarios := []struct {
+				strict    bool
+				immediate bool
+			}{
+				{false, false},
+				{false, true},
+				{true, false},
+			}
+
+			for _, scenario := range scenarios {
+				strictTopology := scenario.strict
+				immediateTopology := scenario.immediate
+
+				name := fmt.Sprintf("%s strict topology/%s immediate topology", withWithout[strictTopology], withWithout[immediateTopology])
+				t.Run(name, func(t *testing.T) {
+					if !immediateTopology && tc.selectedNodeName == "" {
+						// This test case is for immediate binding, skip for delayed binding.
+						t.Skip()
+					}
+					requirements, err := GenerateAccessibilityRequirements(
+						kubeClient,
+						testDriverName,
+						tc.pvcUID,
+						"test-pvc",
+						nil, /* allowedTopologies */
+						tc.selectedNodeName,
+						strictTopology,
+						immediateTopology,
+						csiNodeLister,
+						nodeLister,
+						pvcNodeStore,
+					)
+
+					if tc.expectError {
+						assert.Error(t, err)
+						return
+					}
+
+					assert.NoError(t, err, "GenerateAccessibilityRequirements should succeed")
+					assert.NotNil(t, requirements, "Requirements should not be nil")
+				})
+			}
+
+		})
+	}
+}
