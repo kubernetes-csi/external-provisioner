@@ -408,7 +408,6 @@ func main() {
 		controller.Threadiness(int(*workerThreads)),
 		controller.CreateProvisionedPVLimiter(workqueue.DefaultTypedControllerRateLimiter[string]()),
 		controller.ClaimsInformer(claimInformer),
-		controller.NodesLister(nodeLister),
 		controller.RetryIntervalMax(*retryIntervalMax),
 	}
 
