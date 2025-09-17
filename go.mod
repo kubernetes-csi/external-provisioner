@@ -23,7 +23,7 @@ require (
 	k8s.io/component-helpers v0.34.0
 	k8s.io/csi-translation-lib v0.34.0
 	k8s.io/klog/v2 v2.130.1
-	sigs.k8s.io/controller-runtime v0.21.0
+	sigs.k8s.io/controller-runtime v0.22.1
 	sigs.k8s.io/gateway-api v1.4.0-rc.1
 )
 
@@ -32,7 +32,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
-	k8s.io/kubernetes v1.34.0
+	k8s.io/kubernetes v1.34.1
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v12 v12.0.1
 )
 
@@ -131,7 +131,7 @@ require (
 	k8s.io/mount-utils v0.34.0 // indirect
 	k8s.io/pod-security-admission v0.34.0 // indirect
 	k8s.io/utils v0.0.0-20250820121507-0af2bda4dd1d // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.32.0 // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.33.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
