@@ -1554,11 +1554,11 @@ sigs.k8s.io/json/internal/golang/encoding/json
 ## explicit; go 1.18
 sigs.k8s.io/randfill
 sigs.k8s.io/randfill/bytesource
-# sigs.k8s.io/sig-storage-lib-external-provisioner/v12 v12.0.1
+# sigs.k8s.io/sig-storage-lib-external-provisioner/v13 v13.0.0
 ## explicit; go 1.24.0
-sigs.k8s.io/sig-storage-lib-external-provisioner/v12/controller
-sigs.k8s.io/sig-storage-lib-external-provisioner/v12/controller/metrics
-sigs.k8s.io/sig-storage-lib-external-provisioner/v12/util
+sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller
+sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller/metrics
+sigs.k8s.io/sig-storage-lib-external-provisioner/v13/util
 # sigs.k8s.io/structured-merge-diff/v6 v6.3.0
 ## explicit; go 1.23
 sigs.k8s.io/structured-merge-diff/v6/fieldpath

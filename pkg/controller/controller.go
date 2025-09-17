@@ -55,8 +55,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v12/controller"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v12/util"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v13/util"
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"

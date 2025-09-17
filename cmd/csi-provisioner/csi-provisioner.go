@@ -60,8 +60,8 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/workqueue"               // register work queues in the default legacy registry
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v12/controller"
-	libmetrics "sigs.k8s.io/sig-storage-lib-external-provisioner/v12/controller/metrics"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller"
+	libmetrics "sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller/metrics"
 
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
