@@ -57,6 +57,8 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=gateway.networking.k8s.io, Version=v1
+	case v1.SchemeGroupVersion.WithResource("backendtlspolicies"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Gateway().V1().BackendTLSPolicies().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("grpcroutes"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Gateway().V1().GRPCRoutes().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("gateways"):
@@ -81,6 +83,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		// Group=gateway.networking.k8s.io, Version=v1alpha3
 	case v1alpha3.SchemeGroupVersion.WithResource("backendtlspolicies"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Gateway().V1alpha3().BackendTLSPolicies().Informer()}, nil
+	case v1alpha3.SchemeGroupVersion.WithResource("tlsroutes"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Gateway().V1alpha3().TLSRoutes().Informer()}, nil
 
 		// Group=gateway.networking.k8s.io, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("gateways"):
@@ -97,6 +101,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Experimental().V1alpha1().XBackendTrafficPolicies().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("xlistenersets"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Experimental().V1alpha1().XListenerSets().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("xmeshes"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Experimental().V1alpha1().XMeshes().Informer()}, nil
 
 	}
 
