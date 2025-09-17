@@ -58,8 +58,8 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/workqueue"               // register work queues in the default legacy registry
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller"
-	libmetrics "sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller/metrics"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v12/controller"
+	libmetrics "sigs.k8s.io/sig-storage-lib-external-provisioner/v12/controller/metrics"
 
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
@@ -392,7 +392,7 @@ func main() {
 
 	// -------------------------------
 	// PersistentVolumeClaims informer
-	genericRateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[any](*retryIntervalStart, *retryIntervalMax)
+	genericRateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[string](*retryIntervalStart, *retryIntervalMax)
 	claimRateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[string](*retryIntervalStart, *retryIntervalMax)
 	claimQueue := workqueue.NewTypedRateLimitingQueueWithConfig(claimRateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{Name: "claims"})
 	claimInformer := factory.Core().V1().PersistentVolumeClaims().Informer()
@@ -404,7 +404,7 @@ func main() {
 		controller.FailedDeleteThreshold(0),
 		controller.RateLimiter(genericRateLimiter),
 		controller.Threadiness(int(*workerThreads)),
-		controller.CreateProvisionedPVLimiter(workqueue.DefaultTypedControllerRateLimiter[any]()),
+		controller.CreateProvisionedPVLimiter(workqueue.DefaultTypedControllerRateLimiter[string]()),
 		controller.ClaimsInformer(claimInformer),
 		controller.NodesLister(nodeLister),
 		controller.RetryIntervalMax(*retryIntervalMax),
@@ -475,7 +475,8 @@ func main() {
 					Group:   "",
 					Version: "v1",
 					Kind:    "Pod",
-				}, *capacityOwnerrefLevel)
+				},
+				*capacityOwnerrefLevel)
 			if err != nil {
 				klog.Fatalf("look up owner(s) of pod: %v", err)
 			}
@@ -597,7 +598,8 @@ func main() {
 		mux.Handle(*metricsPath,
 			promhttp.InstrumentMetricHandler(
 				reg,
-				promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})))
+				promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{}),
+			))
 
 		if *enableProfile {
 			klog.InfoS("Starting profiling", "endpoint", httpEndpoint)

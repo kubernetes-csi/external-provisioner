@@ -51,7 +51,7 @@ import (
 	utilfeaturetesting "k8s.io/component-base/featuregate/testing"
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v11/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v12/controller"
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
