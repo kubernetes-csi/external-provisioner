@@ -294,11 +294,15 @@ func GenerateAccessibilityRequirements(
 			// In case of strict topology, preferred = requisite
 			preferredTerms = requisiteTerms
 		} else {
-			for i, t := range requisiteTerms {
-				if t.subset(selectedTopology) {
-					preferredTerms = append(requisiteTerms[i:], requisiteTerms[:i]...)
-					break
+			preferredTerms, err = getPreferredTermsFromCache(pvcNodeStore, pvcUID)
+			if err != nil {
+				for i, t := range requisiteTerms {
+					if t.subset(selectedTopology) {
+						preferredTerms = append(requisiteTerms[i:], requisiteTerms[:i]...)
+						break
+					}
 				}
+				pvcNodeStore.UpdatePreferredTerms(pvcUID, preferredTerms)
 			}
 			if preferredTerms == nil {
 				// Topology from selected node is not in requisite. This case should never be hit:
@@ -427,22 +431,31 @@ func aggregateTopologies(
 	if err != nil {
 		return nil, err
 	}
-	nodes, err := nodeLister.List(selector)
-	if err != nil {
-		return nil, fmt.Errorf("error listing nodes: %v", err)
-	}
-
 	var terms []topologyTerm
-	for _, node := range nodes {
-		term, _ := getTopologyFromNode(node, topologyKeys)
-		terms = append(terms, term)
+	terms, err = getRequisiteTermsFromCache(pvcNodeStore, pvcKeyForStore)
+	if err != nil {
+		nodes, err := nodeLister.List(selector)
+		if err != nil {
+			return nil, fmt.Errorf("error listing nodes: %v", err)
+		}
+
+		for _, node := range nodes {
+			term, _ := getTopologyFromNode(node, topologyKeys)
+			if len(term) > 0 {
+				terms = append(terms, term)
+			}
+		}
+
+		if len(terms) == 0 {
+			// Try again to read from cache
+			// This means that a CSINode was found with topologyKeys, but we couldn't find
+			// the topology labels on any nodes.
+			return nil, fmt.Errorf("topologyKeys %v were not found on any nodes", topologyKeys)
+		} else {
+			pvcNodeStore.UpdateRequisiteTerms(pvcKeyForStore, terms)
+		}
 	}
 
-	if len(terms) == 0 {
-		// This means that a CSINode was found with topologyKeys, but we couldn't find
-		// the topology labels on any nodes.
-		return nil, fmt.Errorf("topologyKeys %v were not found on any nodes", topologyKeys)
-	}
 	return terms, nil
 }
 
@@ -528,6 +541,28 @@ func getTopologyKeysFromCache(pvcNodeStore *InMemoryStore, pvcKey types.UID) ([]
 		return nil, errors.New("")
 	}
 	return cacheInfo.TopologyKeys, nil
+}
+
+func getRequisiteTermsFromCache(pvcNodeStore *InMemoryStore, pvcKey types.UID) ([]topologyTerm, error) {
+	cacheInfo, err := pvcNodeStore.GetByPvcUID(pvcKey)
+	if err != nil {
+		return nil, err
+	}
+	if len(cacheInfo.RequisiteTerms) == 0 {
+		return nil, errors.New("")
+	}
+	return cacheInfo.RequisiteTerms, nil
+}
+
+func getPreferredTermsFromCache(pvcNodeStore *InMemoryStore, pvcKey types.UID) ([]topologyTerm, error) {
+	cacheInfo, err := pvcNodeStore.GetByPvcUID(pvcKey)
+	if err != nil {
+		return nil, err
+	}
+	if len(cacheInfo.PreferredTerms) == 0 {
+		return nil, errors.New("")
+	}
+	return cacheInfo.PreferredTerms, nil
 }
 
 func getNodeLabelsFromCache(pvcNodeStore *InMemoryStore, pvcKey types.UID) (map[string]string, error) {
@@ -678,6 +713,9 @@ func (t topologyTerm) subset(other topologyTerm) bool {
 func toCSITopology(terms []topologyTerm) []*csi.Topology {
 	out := make([]*csi.Topology, 0, len(terms))
 	for _, term := range terms {
+		if len(term) == 0 {
+			continue
+		}
 		segs := make(map[string]string, len(term))
 		for _, k := range term {
 			segs[k.Key] = k.Value
