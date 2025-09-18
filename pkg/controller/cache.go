@@ -10,8 +10,10 @@ import (
 
 // TopologyInfo holds the data for NodeLabels and TopologyKeys
 type TopologyInfo struct {
-	NodeLabels   map[string]string
-	TopologyKeys []string
+	NodeLabels     map[string]string
+	TopologyKeys   []string
+	RequisiteTerms []topologyTerm
+	PreferredTerms []topologyTerm
 }
 
 // TopologyProvider is an interface that defines the behavior for looking up
@@ -25,6 +27,8 @@ type TopologyProvider interface {
 	// Update methods now perform an "upsert" and don't return errors.
 	UpdateNodeLabels(pvcUID types.UID, newLabels map[string]string)
 	UpdateTopologyKeys(pvcUID types.UID, newKeys []string)
+	UpdateRequisiteTerms(pvcUID types.UID, requisiteTerms []topologyTerm)
+	UpdatePreferredTerms(pvcUID types.UID, preferredTerms []topologyTerm)
 }
 
 // InMemoryStore is a concrete implementation of TopologyProvider.
@@ -103,5 +107,29 @@ func (s *InMemoryStore) UpdateTopologyKeys(pvcUID types.UID, newKeys []string) {
 		s.data[pvcUID] = &TopologyInfo{TopologyKeys: newKeys}
 	} else {
 		info.TopologyKeys = newKeys
+	}
+}
+
+// UpdateRequisiteTerms finds an object by pvcUID and replaces its RequisiteTerms.
+func (s *InMemoryStore) UpdateRequisiteTerms(pvcUID types.UID, requisiteTerms []topologyTerm) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	info, found := s.data[pvcUID]
+	if !found {
+		s.data[pvcUID] = &TopologyInfo{RequisiteTerms: requisiteTerms}
+	} else {
+		info.RequisiteTerms = requisiteTerms
+	}
+}
+
+// UpdatePreferredTerms finds an object by pvcUID and replaces its PreferredTerms.
+func (s *InMemoryStore) UpdatePreferredTerms(pvcUID types.UID, preferredTerms []topologyTerm) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	info, found := s.data[pvcUID]
+	if !found {
+		s.data[pvcUID] = &TopologyInfo{PreferredTerms: preferredTerms}
+	} else {
+		info.PreferredTerms = preferredTerms
 	}
 }

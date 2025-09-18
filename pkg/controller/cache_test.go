@@ -90,6 +90,51 @@ func TestUpdateInInMemoryStore(t *testing.T) {
 	}
 }
 
+// TestUpdateTermsInInMemoryStore tests the UpdateRequisiteTerms and UpdatePreferredTerms methods.
+func TestUpdateTermsInInMemoryStore(t *testing.T) {
+	store := NewInMemoryStore()
+	pvcUID := types.UID("a9e2d5a3-1c64-4787-97b7-1a22d5a0b123")
+
+	// Define some topology terms for testing
+	term1 := topologyTerm{
+		{Key: "zone", Value: "zone1"},
+		{Key: "rack", Value: "rack1"},
+	}
+	term2 := topologyTerm{
+		{Key: "zone", Value: "zone2"},
+		{Key: "rack", Value: "rack2"},
+	}
+
+	// Test updating requisite terms for a nonexistent entry
+	store.UpdateRequisiteTerms(pvcUID, []topologyTerm{term1})
+	retrieved, _ := store.GetByPvcUID(pvcUID)
+	if !reflect.DeepEqual(retrieved.RequisiteTerms, []topologyTerm{term1}) {
+		t.Errorf("Expected RequisiteTerms to be updated")
+	}
+
+	// Test updating requisite terms for an existing entry
+	store.UpdateRequisiteTerms(pvcUID, []topologyTerm{term2})
+	retrieved, _ = store.GetByPvcUID(pvcUID)
+	if !reflect.DeepEqual(retrieved.RequisiteTerms, []topologyTerm{term2}) {
+		t.Errorf("Expected RequisiteTerms to be updated")
+	}
+
+	// Test updating preferred terms for a nonexistent entry
+	pvcUID2 := types.UID("b9e2d5a3-1c64-4787-97b7-1a22d5a0b123")
+	store.UpdatePreferredTerms(pvcUID2, []topologyTerm{term1})
+	retrieved, _ = store.GetByPvcUID(pvcUID2)
+	if !reflect.DeepEqual(retrieved.PreferredTerms, []topologyTerm{term1}) {
+		t.Errorf("Expected PreferredTerms to be updated")
+	}
+
+	// Test updating preferred terms for an existing entry
+	store.UpdatePreferredTerms(pvcUID2, []topologyTerm{term2})
+	retrieved, _ = store.GetByPvcUID(pvcUID2)
+	if !reflect.DeepEqual(retrieved.PreferredTerms, []topologyTerm{term2}) {
+		t.Errorf("Expected PreferredTerms to be updated")
+	}
+}
+
 // TestConcurrentAccess tests thread-safety of the InMemoryStore.
 func TestConcurrentAccessInInMemoryStore(t *testing.T) {
 	store := NewInMemoryStore()
