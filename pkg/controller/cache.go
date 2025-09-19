@@ -76,9 +76,6 @@ func (s *InMemoryStore) GetByPvcUID(pvcUID types.UID) (*TopologyInfo, error) {
 	}
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
-	if s == nil {
-		return nil, fmt.Errorf("pvcNodeStore is nil")
-	}
 	info, found := s.data[pvcUID]
 	if !found {
 		return nil, fmt.Errorf("topology object with pvcUID '%s' not found", pvcUID)

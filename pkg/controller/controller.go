@@ -280,7 +280,7 @@ type csiProvisioner struct {
 	nodeDeployment                        *internalNodeDeployment
 	controllerPublishReadOnly             bool
 	preventVolumeModeConversion           bool
-	pvcNodeStore                          *InMemoryStore
+	pvcNodeStore                          TopologyProvider
 }
 
 var (
@@ -362,7 +362,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	nodeDeployment *NodeDeployment,
 	controllerPublishReadOnly bool,
 	preventVolumeModeConversion bool,
-	pvcNodeStore *InMemoryStore,
+	pvcNodeStore TopologyProvider,
 ) controller.Provisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
