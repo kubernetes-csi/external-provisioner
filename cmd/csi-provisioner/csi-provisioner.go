@@ -420,6 +420,7 @@ func main() {
 	if ctrl.SupportsTopology(pluginCapabilities) {
 		pvcNodeStore = ctrl.NewInMemoryStore()
 	}
+
 	// Create the provisioner: it implements the Provisioner interface expected by
 	// the controller
 	csiProvisioner := ctrl.NewCSIProvisioner(
