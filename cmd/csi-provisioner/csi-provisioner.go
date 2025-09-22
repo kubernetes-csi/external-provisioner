@@ -26,6 +26,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -40,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
+	server "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -635,7 +637,31 @@ func main() {
 		controllerCapabilities,
 	)
 
+	// handle SIGTERM and SIGINT by cancelling the context.
+	var (
+		terminate       func()          // called when all controllers are finished
+		controllerCtx   context.Context // shuts down all controllers on a signal
+		shutdownHandler <-chan struct{} // called when the signal is received
+	)
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.ReleaseLeaderElectionOnExit) {
+		// ctx waits for all controllers to finish, then shuts down the whole process, incl. leader election
+		ctx, terminate = context.WithCancel(ctx)
+		var cancelControllerCtx context.CancelFunc
+		controllerCtx, cancelControllerCtx = context.WithCancel(ctx)
+		shutdownHandler = server.SetupSignalHandler()
+
+		defer terminate()
+
+		go func() {
+			defer cancelControllerCtx()
+			<-shutdownHandler
+			klog.Info("Received SIGTERM or SIGINT signal, shutting down controller.")
+		}()
+	}
+
 	run := func(ctx context.Context) {
+
 		factory.Start(ctx.Done())
 		if factoryForNamespace != nil {
 			// Starting is enough, the capacity controller will
@@ -661,13 +687,35 @@ func main() {
 			}
 		}
 
-		if capacityController != nil {
-			go capacityController.Run(ctx, int(*capacityThreads))
+		if utilfeature.DefaultFeatureGate.Enabled(features.ReleaseLeaderElectionOnExit) {
+			var wg sync.WaitGroup
+			if capacityController != nil {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					capacityController.Run(controllerCtx, int(*capacityThreads), &wg)
+				}()
+			}
+			if csiClaimController != nil {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					csiClaimController.Run(controllerCtx, int(*finalizerThreads), &wg)
+				}()
+			}
+			provisionController.ControllerWaitGroup(&wg)
+			provisionController.Run(controllerCtx)
+			wg.Wait()
+			terminate()
+		} else {
+			if capacityController != nil {
+				go capacityController.Run(ctx, int(*capacityThreads), nil)
+			}
+			if csiClaimController != nil {
+				go csiClaimController.Run(ctx, int(*finalizerThreads), nil)
+			}
+			provisionController.Run(ctx)
 		}
-		if csiClaimController != nil {
-			go csiClaimController.Run(ctx, int(*finalizerThreads))
-		}
-		provisionController.Run(ctx)
 	}
 
 	if !*enableLeaderElection {
@@ -696,6 +744,10 @@ func main() {
 		le.WithRenewDeadline(*leaderElectionRenewDeadline)
 		le.WithRetryPeriod(*leaderElectionRetryPeriod)
 		le.WithIdentity(identity)
+		if utilfeature.DefaultFeatureGate.Enabled(features.ReleaseLeaderElectionOnExit) {
+			le.WithReleaseOnCancel(true)
+			le.WithContext(ctx)
+		}
 
 		if err := le.Run(); err != nil {
 			klog.Fatalf("failed to initialize leader election: %v", err)
