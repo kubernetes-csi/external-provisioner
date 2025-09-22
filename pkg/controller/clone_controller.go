@@ -3,16 +3,19 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
+	"github.com/kubernetes-csi/external-provisioner/v5/pkg/features"
 	v1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -62,7 +65,7 @@ func NewCloningProtectionController(
 }
 
 // Run is a main CloningProtectionController handler
-func (p *CloningProtectionController) Run(ctx context.Context, threadiness int) {
+func (p *CloningProtectionController) Run(ctx context.Context, threadiness int, wg *sync.WaitGroup) {
 	klog.Info("Starting CloningProtection controller")
 	defer utilruntime.HandleCrash()
 	defer p.claimQueue.ShutDown()
@@ -73,10 +76,22 @@ func (p *CloningProtectionController) Run(ctx context.Context, threadiness int) 
 	}
 	p.claimInformer.AddEventHandlerWithResyncPeriod(claimHandler, controller.DefaultResyncPeriod)
 
-	for range threadiness {
-		go wait.UntilWithContext(ctx, func(ctx context.Context) {
-			p.runClaimWorker(ctx)
-		}, time.Second)
+	if utilfeature.DefaultFeatureGate.Enabled(features.ReleaseLeaderElectionOnExit) {
+		for range threadiness {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				wait.Until(func() {
+					p.runClaimWorker(ctx)
+				}, time.Second, ctx.Done())
+			}()
+		}
+	} else {
+		for range threadiness {
+			go wait.Until(func() {
+				p.runClaimWorker(ctx)
+			}, time.Second, ctx.Done())
+		}
 	}
 
 	klog.Infof("Started CloningProtection controller")

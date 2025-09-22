@@ -28,6 +28,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/external-provisioner/v5/pkg/capacity/topology"
+	"github.com/kubernetes-csi/external-provisioner/v5/pkg/features"
 	"google.golang.org/grpc"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -37,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	storageinformersv1 "k8s.io/client-go/informers/storage/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -238,15 +240,27 @@ func NewCentralCapacityController(
 var _ metrics.StableCollector = &Controller{}
 
 // Run is a main Controller handler
-func (c *Controller) Run(ctx context.Context, threadiness int) {
+func (c *Controller) Run(ctx context.Context, threadiness int, wg *sync.WaitGroup) {
 	klog.Info("Starting Capacity Controller")
 	defer c.queue.ShutDown()
 
 	c.prepare(ctx)
-	for range threadiness {
-		go wait.UntilWithContext(ctx, func(ctx context.Context) {
-			c.runWorker(ctx)
-		}, time.Second)
+	if utilfeature.DefaultFeatureGate.Enabled(features.ReleaseLeaderElectionOnExit) {
+		for range threadiness {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				wait.UntilWithContext(ctx, func(ctx context.Context) {
+					c.runWorker(ctx)
+				}, time.Second)
+			}()
+		}
+	} else {
+		for range threadiness {
+			go wait.UntilWithContext(ctx, func(ctx context.Context) {
+				c.runWorker(ctx)
+			}, time.Second)
+		}
 	}
 
 	go wait.UntilWithContext(ctx, func(ctx context.Context) { c.pollCapacities() }, c.pollPeriod)

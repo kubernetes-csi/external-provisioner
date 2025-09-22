@@ -51,6 +51,12 @@ const (
 	//
 	// Pass VolumeAttributesClass parameters to supporting CSI drivers during CreateVolume
 	VolumeAttributesClass featuregate.Feature = "VolumeAttributesClass"
+
+	// owner: @rhrmo
+	// alpha: v1.34
+	//
+	// Releases leader election lease on sigterm / sigint.
+	ReleaseLeaderElectionOnExit featuregate.Feature = "ReleaseLeaderElectionOnExit"
 )
 
 func init() {
@@ -64,4 +70,5 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	HonorPVReclaimPolicy:           {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 	CrossNamespaceVolumeDataSource: {Default: false, PreRelease: featuregate.Alpha},
 	VolumeAttributesClass:          {Default: false, PreRelease: featuregate.Beta},
+	ReleaseLeaderElectionOnExit:    {Default: false, PreRelease: featuregate.Alpha},
 }
