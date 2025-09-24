@@ -48,6 +48,7 @@ const (
 	// kep: https://kep.k8s.io/3751
 	// alpha: v1.29
 	// beta: v1.31
+	// GA: v1.34
 	//
 	// Pass VolumeAttributesClass parameters to supporting CSI drivers during CreateVolume
 	VolumeAttributesClass featuregate.Feature = "VolumeAttributesClass"
@@ -69,6 +70,6 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	Topology:                       {Default: true, PreRelease: featuregate.GA},
 	HonorPVReclaimPolicy:           {Default: true, PreRelease: featuregate.GA, LockToDefault: true},
 	CrossNamespaceVolumeDataSource: {Default: false, PreRelease: featuregate.Alpha},
-	VolumeAttributesClass:          {Default: false, PreRelease: featuregate.Beta},
+	VolumeAttributesClass:          {Default: true, PreRelease: featuregate.GA},
 	ReleaseLeaderElectionOnExit:    {Default: false, PreRelease: featuregate.Alpha},
 }
