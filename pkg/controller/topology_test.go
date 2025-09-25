@@ -409,13 +409,13 @@ func TestStatefulSetSpreading(t *testing.T) {
 	kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
 	_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
-	pvcNodeStore := NewInMemoryStore()
 	defer close(stopChan)
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
 			for strictTopology, withOrWithout := range withWithout {
 				t.Run(withOrWithout+" strict topology", func(t *testing.T) {
+					pvcNodeStore := NewInMemoryStore()
 					for immediateTopology, withOrWithout := range withWithout {
 						t.Run(withOrWithout+" immediate topology", func(t *testing.T) {
 							requirements, err := GenerateAccessibilityRequirements(
@@ -1498,6 +1498,7 @@ func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
 	nodeLabels := []map[string]string{
 		{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
 		{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"},
+		{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"},
 	}
 	topologyKeys := []map[string][]string{
 		{testDriverName: {"com.example.csi/zone", "com.example.csi/rack"}},
@@ -1524,10 +1525,29 @@ func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
 				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
 			},
 			expectedPreferred: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
 				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
+			},
+		},
+		{
+			name:              "delayed-binding, non-strict, without-allowed-topology, different-order",
+			strictTopology:    false,
+			immediateTopology: false,
+			allowedTopologies: nil,
+			selectedNode:      "node-1",
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
 			},
 		},
 		{
@@ -1541,13 +1561,21 @@ func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
 						{Key: "com.example.csi/rack", Values: []string{"rackA"}},
 					},
 				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone2"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackB"}},
+					},
+				},
 			},
 			selectedNode: "node-0",
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
 			},
 			expectedPreferred: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
 			},
 		},
 		{
@@ -1574,6 +1602,12 @@ func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
 						{Key: "com.example.csi/rack", Values: []string{"rackA"}},
 					},
 				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone2"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackB"}},
+					},
+				},
 			},
 			selectedNode: "node-0",
 			expectedRequisite: []*csi.Topology{
@@ -1592,8 +1626,10 @@ func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
 				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
 			},
 			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
 				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
 			},
@@ -1609,13 +1645,21 @@ func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
 						{Key: "com.example.csi/rack", Values: []string{"rackA"}},
 					},
 				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone2"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackB"}},
+					},
+				},
 			},
 			selectedNode: "",
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
 			},
 			expectedPreferred: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
 			},
 		},
 		{
@@ -1627,8 +1671,10 @@ func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
 				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
 			},
 			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
 				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
 			},
@@ -1644,13 +1690,21 @@ func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
 						{Key: "com.example.csi/rack", Values: []string{"rackA"}},
 					},
 				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone2"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackB"}},
+					},
+				},
 			},
 			selectedNode: "",
 			expectedRequisite: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
 			},
 			expectedPreferred: []*csi.Topology{
 				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
 			},
 		},
 	}

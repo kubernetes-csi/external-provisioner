@@ -19,7 +19,6 @@ type TopologyInfo struct {
 // TopologyProvider is an interface that defines the behavior for looking up
 // a TopologyInfo object by its pvc UID.
 type TopologyProvider interface {
-	Add(pvcUID types.UID, info *TopologyInfo)
 	GetByPvcUID(pvcUID types.UID) (*TopologyInfo, error)
 	// The entry is deleted when provision succeeds or returns a final error.
 	Delete(pvcUID types.UID) error
@@ -45,13 +44,6 @@ func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{
 		data: make(map[types.UID]*TopologyInfo),
 	}
-}
-
-// Add is a helper function to populate our store with data.
-func (s *InMemoryStore) Add(pvcUID types.UID, info *TopologyInfo) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.data[pvcUID] = info
 }
 
 // Delete implements the TopologyProvider interface.

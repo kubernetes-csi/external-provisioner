@@ -858,7 +858,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 			state,
 			err)
 		// Delete the entry in in memory cache if the error is final
-		if state == controller.ProvisioningFinished || state == controller.ProvisioningReschedule {
+		if p.pvcNodeStore != nil && (state == controller.ProvisioningFinished || state == controller.ProvisioningReschedule) {
 			p.pvcNodeStore.Delete(claim.UID)
 		}
 		return nil, state, err
@@ -983,7 +983,9 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 
 	klog.V(5).Infof("successfully created PV %+v", pv.Spec.PersistentVolumeSource)
 	// Remove entry from the in memory cache
-	p.pvcNodeStore.Delete(claim.UID)
+	if p.pvcNodeStore != nil {
+		p.pvcNodeStore.Delete(claim.UID)
+	}
 	return pv, controller.ProvisioningFinished, nil
 }
 

@@ -23,16 +23,18 @@ func TestNewInMemoryStore(t *testing.T) {
 // TestAddAndGet tests the Add and GetByPvcUID methods.
 func TestAddAndGetInInMemoryStore(t *testing.T) {
 	store := NewInMemoryStore()
-	info := &TopologyInfo{NodeLabels: map[string]string{"foo": "bar"}}
 	pvcUID := types.UID("a9e2d5a3-1c64-4787-97b7-1a22d5a0b123")
-	store.Add(pvcUID, info)
+	labels := map[string]string{"foo": "bar"}
+	store.UpdateNodeLabels(pvcUID, labels)
 
 	retrieved, err := store.GetByPvcUID(pvcUID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !reflect.DeepEqual(info, retrieved) {
-		t.Errorf("Expected %+v, got %+v", info, retrieved)
+
+	expectedInfo := &TopologyInfo{NodeLabels: labels}
+	if !reflect.DeepEqual(expectedInfo, retrieved) {
+		t.Errorf("Expected %+v, got %+v", expectedInfo, retrieved)
 	}
 
 	_, err = store.GetByPvcUID("nonexistent")
@@ -44,9 +46,9 @@ func TestAddAndGetInInMemoryStore(t *testing.T) {
 // TestDelete tests the Delete method.
 func TestDeleteInInMemoryStore(t *testing.T) {
 	store := NewInMemoryStore()
-	info := &TopologyInfo{NodeLabels: map[string]string{"foo": "bar"}}
 	pvcUID := types.UID("a9e2d5a3-1c64-4787-97b7-1a22d5a0b123")
-	store.Add(pvcUID, info)
+	labels := map[string]string{"foo": "bar"}
+	store.UpdateNodeLabels(pvcUID, labels)
 
 	err := store.Delete(pvcUID)
 	if err != nil {
@@ -150,7 +152,7 @@ func TestConcurrentAccessInInMemoryStore(t *testing.T) {
 			pvcUID := types.UID(fmt.Sprintf("item-%d", i))
 			info := &TopologyInfo{TopologyKeys: []string{fmt.Sprintf("key-%d", i)}}
 
-			store.Add(pvcUID, info)
+			store.UpdateTopologyKeys(pvcUID, info.TopologyKeys)
 
 			retrieved, err := store.GetByPvcUID(pvcUID)
 			if err != nil {

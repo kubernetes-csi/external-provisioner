@@ -17,7 +17,6 @@ limitations under the License.
 package controller
 
 import (
-	"errors"
 	"fmt"
 	"hash/fnv"
 	"maps"
@@ -119,13 +118,15 @@ func topologyKeysLookup(
 	} else if apierrors.IsNotFound(err) {
 		// Fallback to in memory cache.
 		topologyKeys, err = getTopologyKeysFromCache(pvcNodeStore, pvcUID)
-		if err != nil {
+		if err != nil || len(topologyKeys) == 0 {
 			return nil, fmt.Errorf("failed to get topology key from cache for PVC uid %s: %w", pvcUID, err)
 		}
 	} else {
 		topologyKeys = getTopologyKeys(selectedCSINode, driverName)
 		// Update in memory cache.
-		pvcNodeStore.UpdateTopologyKeys(pvcUID, topologyKeys)
+		if len(topologyKeys) > 0 {
+			pvcNodeStore.UpdateTopologyKeys(pvcUID, topologyKeys)
+		}
 	}
 	return topologyKeys, nil
 }
@@ -273,18 +274,25 @@ func GenerateAccessibilityRequirements(
 	var preferredTerms []topologyTerm
 	if len(selectedNodeName) == 0 {
 		// Immediate binding, we fallback to statefulset spreading hash for backwards compatibility.
+		preferredTerms, err = getPreferredTermsFromCache(pvcNodeStore, pvcUID)
+		if err != nil || len(preferredTerms) == 0 {
+			// Ensure even spreading of StatefulSet volumes by sorting
+			// requisiteTerms and shifting the sorted terms based on hash of pvcName and replica index suffix
+			hash, index := getPVCNameHashAndIndexOffset(pvcName)
+			i := (hash + index) % uint32(len(requisiteTerms))
+			preferredTerms = append(requisiteTerms[i:], requisiteTerms[:i]...)
+			if len(preferredTerms) > 0 {
+				pvcNodeStore.UpdatePreferredTerms(pvcUID, preferredTerms)
+			}
+		}
 
-		// Ensure even spreading of StatefulSet volumes by sorting
-		// requisiteTerms and shifting the sorted terms based on hash of pvcName and replica index suffix
-		hash, index := getPVCNameHashAndIndexOffset(pvcName)
-		i := (hash + index) % uint32(len(requisiteTerms))
-		preferredTerms = append(requisiteTerms[i:], requisiteTerms[:i]...)
 	} else {
 		// Delayed binding, use topology from that node to populate preferredTerms
 		if strictTopology {
 			// In case of strict topology, preferred = requisite
 			preferredTerms = requisiteTerms
 		} else {
+			// Read from cache first to make sure retry with the same arguments
 			preferredTerms, err = getPreferredTermsFromCache(pvcNodeStore, pvcUID)
 			if err != nil || len(preferredTerms) == 0 {
 				for i, t := range requisiteTerms {
@@ -293,9 +301,11 @@ func GenerateAccessibilityRequirements(
 						break
 					}
 				}
-				pvcNodeStore.UpdatePreferredTerms(pvcUID, preferredTerms)
+				if len(preferredTerms) > 0 {
+					pvcNodeStore.UpdatePreferredTerms(pvcUID, preferredTerms)
+				}
 			}
-			if preferredTerms == nil {
+			if len(preferredTerms) == 0 {
 				// Topology from selected node is not in requisite. This case should never be hit:
 				// - If AllowedTopologies is specified, the scheduler should choose a node satisfying the
 				//   constraint.
@@ -316,14 +326,9 @@ func getSelectedCSINode(
 
 	selectedCSINode, err := csiNodeLister.Get(selectedNodeName)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, err
-		}
 		// We don't want to fallback and provision in the wrong topology if there's some temporary
 		// error with the API server.
-
-		// Try to get from cache
-		return nil, fmt.Errorf("error getting CSINode for selected node %q: %v", selectedNodeName, err)
+		return nil, err
 	}
 	return selectedCSINode, nil
 }
@@ -344,8 +349,9 @@ func aggregateTopologies(
 	var err error
 	if len(selectedNodeName) == 0 {
 		// Immediate binding
+		// Read from cache first to make sure retry with the same arguments
 		topologyKeys, err = getTopologyKeysFromCache(pvcNodeStore, pvcKeyForStore)
-		if err != nil {
+		if err != nil || len(topologyKeys) == 0 {
 			// Not in the in memory cache. Find from csiNodes.
 			csiNodes, err := csiNodeLister.List(labels.Everything())
 			if err != nil {
@@ -388,7 +394,6 @@ func aggregateTopologies(
 			//
 			// Returning an error in provisioning will cause the scheduler to retry and potentially
 			// (but not guaranteed) pick a different node.
-			topologyKeys, err = getTopologyKeysFromCache(pvcNodeStore, pvcKeyForStore)
 			return nil, fmt.Errorf("no topology key found on CSINode %s", selectedNodeName)
 		}
 
@@ -408,7 +413,8 @@ func aggregateTopologies(
 	}
 	var terms []topologyTerm
 	terms, err = getRequisiteTermsFromCache(pvcNodeStore, pvcKeyForStore)
-	if err != nil {
+	if err != nil || len(terms) == 0 {
+		// Not in the in memory cache.
 		nodes, err := nodeLister.List(selector)
 		if err != nil {
 			return nil, fmt.Errorf("error listing nodes: %v", err)
@@ -422,7 +428,6 @@ func aggregateTopologies(
 		}
 
 		if len(terms) == 0 {
-			// Try again to read from cache
 			// This means that a CSINode was found with topologyKeys, but we couldn't find
 			// the topology labels on any nodes.
 			return nil, fmt.Errorf("topologyKeys %v were not found on any nodes", topologyKeys)
@@ -513,7 +518,7 @@ func getTopologyKeysFromCache(pvcNodeStore TopologyProvider, pvcKey types.UID) (
 		return nil, err
 	}
 	if len(cacheInfo.TopologyKeys) == 0 {
-		return nil, errors.New("")
+		return nil, nil
 	}
 	return cacheInfo.TopologyKeys, nil
 }
@@ -524,7 +529,7 @@ func getRequisiteTermsFromCache(pvcNodeStore TopologyProvider, pvcKey types.UID)
 		return nil, err
 	}
 	if len(cacheInfo.RequisiteTerms) == 0 {
-		return nil, errors.New("")
+		return nil, nil
 	}
 	return cacheInfo.RequisiteTerms, nil
 }
@@ -582,7 +587,6 @@ func getTopologyFromNodeName(nodeName string, topologyKeys []string, nodeLister 
 				// Read from the cache
 				nodeLabels, err := getNodeLabelsFromCache(pvcNodeStore, pvcKeyForStore)
 				if err != nil || len(nodeLabels) == 0 {
-					klog.Warningf("no node labels for node %s found in memory cache", nodeName)
 					return nil, nil, true
 				}
 				return extractTopologyTerm(nodeLabels, topologyKeys)
@@ -590,7 +594,9 @@ func getTopologyFromNodeName(nodeName string, topologyKeys []string, nodeLister 
 		}
 
 		// Add or update to cache for node, node is not nil
-		pvcNodeStore.UpdateNodeLabels(pvcKeyForStore, node.Labels)
+		if len(node.Labels) > 0 {
+			pvcNodeStore.UpdateNodeLabels(pvcKeyForStore, node.Labels)
+		}
 		return extractTopologyTerm(node.Labels, topologyKeys)
 	} else {
 		// nodeLister cannot be nil if the plugin supports topology
