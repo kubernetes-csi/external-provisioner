@@ -268,6 +268,10 @@ func GenerateAccessibilityRequirements(
 	requisiteTerms = slices.CompactFunc(requisiteTerms, slices.Equal)
 	// TODO (verult) reduce subset duplicate terms (advanced reduction)
 
+	// Filter out empty topology terms to prevent issues with caching and spreading.
+	// An empty term can be generated from an empty TopologySelectorTerm,
+	// but should not be considered for placement.
+	requisiteTerms = filterEmptyTerms(requisiteTerms)
 	requirement.Requisite = toCSITopology(requisiteTerms)
 
 	// 3. Generate CSI Preferred Terms
@@ -282,6 +286,7 @@ func GenerateAccessibilityRequirements(
 			i := (hash + index) % uint32(len(requisiteTerms))
 			preferredTerms = append(requisiteTerms[i:], requisiteTerms[:i]...)
 			if len(preferredTerms) > 0 {
+				preferredTerms = filterEmptyTerms(preferredTerms)
 				pvcNodeStore.UpdatePreferredTerms(pvcUID, preferredTerms)
 			}
 		}
@@ -302,6 +307,7 @@ func GenerateAccessibilityRequirements(
 					}
 				}
 				if len(preferredTerms) > 0 {
+					preferredTerms = filterEmptyTerms(preferredTerms)
 					pvcNodeStore.UpdatePreferredTerms(pvcUID, preferredTerms)
 				}
 			}
@@ -432,6 +438,7 @@ func aggregateTopologies(
 			// the topology labels on any nodes.
 			return nil, fmt.Errorf("topologyKeys %v were not found on any nodes", topologyKeys)
 		} else {
+			terms = filterEmptyTerms(terms)
 			pvcNodeStore.UpdateRequisiteTerms(pvcKeyForStore, terms)
 		}
 	}
@@ -704,6 +711,16 @@ func toCSITopology(terms []topologyTerm) []*csi.Topology {
 		out = append(out, &csi.Topology{Segments: segs})
 	}
 	return out
+}
+
+func filterEmptyTerms(terms []topologyTerm) []topologyTerm {
+	var filteredTerms []topologyTerm
+	for _, term := range terms {
+		if len(term) > 0 {
+			filteredTerms = append(filteredTerms, term)
+		}
+	}
+	return filteredTerms
 }
 
 // identical to logic in getPVCNameHashAndIndexOffset in pkg/volume/util/util.go in-tree
