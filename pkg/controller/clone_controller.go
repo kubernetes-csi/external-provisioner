@@ -21,7 +21,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v12/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller"
 )
 
 //
