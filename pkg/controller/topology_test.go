@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"testing"
@@ -28,6 +29,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
@@ -174,11 +176,13 @@ func TestStatefulSetSpreading(t *testing.T) {
 	// If statefulset name is changed, make sure expectedPreferred is kept in sync.
 	// pvc prefix in pvcName does not have any effect on segment ordering
 	testcases := map[string]struct {
+		pvcUID            types.UID
 		pvcName           string
 		allowedTopologies []v1.TopologySelectorTerm
 		expectedPreferred []*csi.Topology
 	}{
 		"select index 0 among nodes for pvc with statefulset name:testset and id:1; ignore claimname:testpvcA": {
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
 			pvcName: "testpvcA-testset-1",
 			expectedPreferred: []*csi.Topology{
 				{
@@ -208,6 +212,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 0 among nodes for pvc with statefulset name:testset and id:1; ignore claimname:testpvcB": {
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
 			pvcName: "testpvcB-testset-1",
 			expectedPreferred: []*csi.Topology{
 				{
@@ -237,6 +242,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 0 among allowedTopologies with single term/multiple requirements for pvc with statefulset name:testset and id:1; ignore claimname:testpvcC": {
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
 			pvcName: "testpvcC-testset-1",
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
@@ -262,6 +268,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 1 among nodes for pvc with statefulset name:testset and id:2": {
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
 			pvcName: "testset-2",
 			expectedPreferred: []*csi.Topology{
 				{
@@ -291,6 +298,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 1 among allowedTopologies with multiple terms/multiple requirements for pvc with statefulset name:testset and id:2; ignore claimname:testpvcB": {
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
 			pvcName: "testpvcB-testset-2",
 			allowedTopologies: []v1.TopologySelectorTerm{
 				{
@@ -334,6 +342,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 2 among nodes with statefulset name:testset and id:3; ignore claimname:testpvc": {
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
 			pvcName: "testpvc-testset-3",
 			expectedPreferred: []*csi.Topology{
 				{
@@ -363,6 +372,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 			},
 		},
 		"select index 3 among nodes with statefulset name:testset and id:4; ignore claimname:testpvc": {
+			pvcUID:  "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123",
 			pvcName: "testpvc-testset-4",
 			expectedPreferred: []*csi.Topology{
 				{
@@ -405,18 +415,21 @@ func TestStatefulSetSpreading(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			for strictTopology, withOrWithout := range withWithout {
 				t.Run(withOrWithout+" strict topology", func(t *testing.T) {
+					pvcNodeStore := NewInMemoryStore()
 					for immediateTopology, withOrWithout := range withWithout {
 						t.Run(withOrWithout+" immediate topology", func(t *testing.T) {
 							requirements, err := GenerateAccessibilityRequirements(
 								kubeClient,
 								testDriverName,
+								tc.pvcUID,
 								tc.pvcName,
 								tc.allowedTopologies,
-								nil,
+								"",
 								strictTopology,
 								immediateTopology,
 								csiNodeLister,
 								nodeLister,
+								pvcNodeStore,
 							)
 
 							if err != nil {
@@ -808,20 +821,23 @@ func TestAllowedTopologies(t *testing.T) {
 
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
+			pvcNodeStore := NewInMemoryStore()
 			for strictTopology, withOrWithout := range withWithout {
 				t.Run(withOrWithout+" strict topology", func(t *testing.T) {
 					for immediateTopology, withOrWithout := range withWithout {
 						t.Run(withOrWithout+" immediate topology", func(t *testing.T) {
 							requirements, err := GenerateAccessibilityRequirements(
-								nil,           /* kubeClient */
-								"test-driver", /* driverName */
+								nil,                                    /* kubeClient */
+								"test-driver",                          /* driverName */
+								"a9e2d5a3-1c64-4787-97b7-1a22d5a0b123", /* PVC UID */
 								"testpvc",
 								tc.allowedTopologies,
-								nil, /* selectedNode */
+								"", /* selectedNode */
 								strictTopology,
 								immediateTopology,
 								nil,
 								nil,
+								pvcNodeStore,
 							)
 
 							if err != nil {
@@ -1082,26 +1098,38 @@ func TestTopologyAggregation(t *testing.T) {
 						t.Run(withOrWithout+" immediate topology", func(t *testing.T) {
 							nodes := buildNodes(tc.nodeLabels)
 							csiNodes := buildCSINodes(tc.topologyKeys)
+							pvc := &v1.PersistentVolumeClaim{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "testpvc",
+									Namespace: "default",
+								},
+							}
 
-							kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+							kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes, pvc)
 
 							_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
+							pvcNodeStore := NewInMemoryStore()
 							defer close(stopChan)
 
 							var selectedNode *v1.Node
+							var selectedNodeName string
 							if tc.hasSelectedNode {
 								selectedNode = &nodes.Items[0]
+								selectedNodeName = selectedNode.Name
 							}
+
 							requirements, err := GenerateAccessibilityRequirements(
 								kubeClient,
 								testDriverName,
+								"a9e2d5a3-1c64-4787-97b7-1a22d5a0b123", /* PVC UID */
 								"testpvc",
 								nil, /* allowedTopologies */
-								selectedNode,
+								selectedNodeName,
 								strictTopology,
 								immediateTopology,
 								csiNodeLister,
 								nodeLister,
+								pvcNodeStore,
 							)
 
 							expectError := tc.expectError
@@ -1408,22 +1436,32 @@ func TestPreferredTopologies(t *testing.T) {
 							nodes := buildNodes(tc.nodeLabels)
 							csiNodes := buildCSINodes(tc.topologyKeys)
 
-							kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+							pvc := &v1.PersistentVolumeClaim{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "testpvc",
+									Namespace: "default",
+								},
+							}
+
+							kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes, pvc)
 							selectedNode := &nodes.Items[0]
 
 							_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
+							pvcNodeStore := NewInMemoryStore()
 							defer close(stopChan)
 
 							requirements, err := GenerateAccessibilityRequirements(
 								kubeClient,
 								testDriverName,
+								"a9e2d5a3-1c64-4787-97b7-1a22d5a0b123", /* PVC UID */
 								"testpvc",
 								tc.allowedTopologies,
-								selectedNode,
+								selectedNode.Name,
 								strictTopology,
 								immediateTopology,
 								csiNodeLister,
 								nodeLister,
+								pvcNodeStore,
 							)
 
 							if tc.expectError && err == nil {
@@ -1451,6 +1489,306 @@ func TestPreferredTopologies(t *testing.T) {
 						})
 					}
 				})
+			}
+		})
+	}
+}
+
+func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
+	nodeLabels := []map[string]string{
+		{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
+		{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"},
+		{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"},
+	}
+	topologyKeys := []map[string][]string{
+		{testDriverName: {"com.example.csi/zone", "com.example.csi/rack"}},
+		{testDriverName: {"com.example.csi/zone", "com.example.csi/rack"}},
+		{testDriverName: {"com.example.csi/zone", "com.example.csi/rack"}},
+	}
+	pvcUID := "a9e2d5a3-1c64-4787-97b7-1a22d5a0b123"
+	pvcName := "testpvc"
+
+	testcases := []struct {
+		name              string
+		strictTopology    bool
+		immediateTopology bool
+		allowedTopologies []v1.TopologySelectorTerm
+		selectedNode      string
+		expectedRequisite []*csi.Topology
+		expectedPreferred []*csi.Topology
+	}{
+		{
+			name:              "delayed-binding, non-strict, without-allowed-topology",
+			strictTopology:    false,
+			immediateTopology: false,
+			allowedTopologies: nil,
+			selectedNode:      "node-0",
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
+			},
+		},
+		{
+			name:              "delayed-binding, non-strict, without-allowed-topology, different-order",
+			strictTopology:    false,
+			immediateTopology: false,
+			allowedTopologies: nil,
+			selectedNode:      "node-1",
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+			},
+		},
+		{
+			name:              "delayed-binding, non-strict, with-allowed-topology",
+			strictTopology:    false,
+			immediateTopology: false,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone1"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackA"}},
+					},
+				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone2"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackB"}},
+					},
+				},
+			},
+			selectedNode: "node-0",
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+			},
+		},
+		{
+			name:              "delayed-binding, strict, without-allowed-topology",
+			strictTopology:    true,
+			immediateTopology: false,
+			allowedTopologies: nil,
+			selectedNode:      "node-0",
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+			},
+		},
+		{
+			name:              "delayed-binding, strict, with-allowed-topology",
+			strictTopology:    true,
+			immediateTopology: false,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone1"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackA"}},
+					},
+				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone2"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackB"}},
+					},
+				},
+			},
+			selectedNode: "node-0",
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+			},
+		},
+		{
+			name:              "immediate-no-selected-node, non-strict, without-allowed-topology",
+			strictTopology:    false,
+			immediateTopology: true,
+			allowedTopologies: nil,
+			selectedNode:      "",
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+			},
+		},
+		{
+			name:              "immediate-no-selected-node, non-strict, with-allowed-topology",
+			strictTopology:    false,
+			immediateTopology: true,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone1"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackA"}},
+					},
+				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone2"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackB"}},
+					},
+				},
+			},
+			selectedNode: "",
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+			},
+		},
+		{
+			name:              "immediate-no-selected-node, strict, without-allowed-topology",
+			strictTopology:    true,
+			immediateTopology: true,
+			allowedTopologies: nil,
+			selectedNode:      "",
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone3", "com.example.csi/rack": "rackC"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+			},
+		},
+		{
+			name:              "immediate-no-selected-node, strict, with-allowed-topology",
+			strictTopology:    true,
+			immediateTopology: true,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone1"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackA"}},
+					},
+				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "com.example.csi/zone", Values: []string{"zone2"}},
+						{Key: "com.example.csi/rack", Values: []string{"rackB"}},
+					},
+				},
+			},
+			selectedNode: "",
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+			},
+			expectedPreferred: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2", "com.example.csi/rack": "rackB"}},
+			},
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			nodes := buildNodes(nodeLabels)
+			csiNodes := buildCSINodes(topologyKeys)
+			kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+
+			_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
+			pvcNodeStore := NewInMemoryStore()
+			defer close(stopChan)
+
+			// First call to GenerateAccessibilityRequirements to populate the cache
+			requirements, err := GenerateAccessibilityRequirements(
+				kubeClient,
+				testDriverName,
+				types.UID(pvcUID),
+				pvcName,
+				tc.allowedTopologies,
+				tc.selectedNode,
+				tc.strictTopology,
+				tc.immediateTopology,
+				csiNodeLister,
+				nodeLister,
+				pvcNodeStore,
+			)
+			if err != nil {
+				t.Fatalf("unexpected error found: %v", err)
+			}
+			if requirements == nil {
+				t.Fatalf("expected requirements to be generated")
+			}
+
+			// Delete the node from the client
+			selectedNode := tc.selectedNode
+			if selectedNode == "" {
+				selectedNode = "node-0"
+			}
+
+			err = kubeClient.CoreV1().Nodes().Delete(context.TODO(), selectedNode, metav1.DeleteOptions{})
+			if err != nil {
+				t.Fatalf("failed to delete node: %v", err)
+			}
+			err = kubeClient.StorageV1().CSINodes().Delete(context.TODO(), selectedNode, metav1.DeleteOptions{})
+			if err != nil {
+				t.Fatalf("failed to delete csinode: %v", err)
+			}
+
+			// Re-create listers to reflect the deleted node
+			_, csiNodeLister, nodeLister, _, _, stopChan2 := listers(kubeClient)
+			defer close(stopChan2)
+
+			// Second call to GenerateAccessibilityRequirements, should use cache
+			cachedRequirements, err := GenerateAccessibilityRequirements(
+				kubeClient,
+				testDriverName,
+				types.UID(pvcUID),
+				pvcName,
+				tc.allowedTopologies,
+				tc.selectedNode,
+				tc.strictTopology,
+				tc.immediateTopology,
+				csiNodeLister,
+				nodeLister,
+				pvcNodeStore,
+			)
+			if err != nil {
+				t.Fatalf("unexpected error on second call: %v", err)
+			}
+
+			if !cmp.Equal(requirements, cachedRequirements, protocmp.Transform()) {
+				t.Errorf("expected requirements from cache to be the same. got %v, want %v", cachedRequirements, requirements)
+			}
+
+			// Also verify the values of Requisite and Preferred terms.
+			if !requisiteEqual(cachedRequirements.Requisite, tc.expectedRequisite) {
+				t.Errorf("expected requisite %v; got: %v", tc.expectedRequisite, cachedRequirements.Requisite)
+			}
+
+			if !cmp.Equal(cachedRequirements.Preferred, tc.expectedPreferred, protocmp.Transform()) {
+				t.Errorf("expected preferred %v; got: %v", tc.expectedPreferred, cachedRequirements.Preferred)
 			}
 		})
 	}

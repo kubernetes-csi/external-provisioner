@@ -50,7 +50,7 @@ import (
 	utilfeaturetesting "k8s.io/component-base/featuregate/testing"
 	csitrans "k8s.io/csi-translation-lib"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v12/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller"
 
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
@@ -428,8 +428,12 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	clientSet := fakeclientset.NewSimpleClientset(clientSetObjects...)
 
 	pluginCaps, controllerCaps := provisionCapabilities()
+	var pvcNodeStore *InMemoryStore = nil
+	if SupportsTopology(pluginCaps) {
+		pvcNodeStore = NewInMemoryStore()
+	}
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test",
-		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false)
+		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
 
 	// Requested PVC with requestedBytes storage
 	deletePolicy := v1.PersistentVolumeReclaimDelete
@@ -2091,7 +2095,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 		"distributed, right node selected": {
 			deploymentNode: "foo",
 			volOpts: controller.ProvisionOptions{
-				SelectedNode: nodeFoo,
+				SelectedNodeName: nodeFoo.Name,
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: fakeSCName,
@@ -2147,7 +2151,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 		"distributed, wrong node selected": {
 			deploymentNode: "foo",
 			volOpts: controller.ProvisionOptions{
-				SelectedNode: nodeBar,
+				SelectedNodeName: nodeBar.Name,
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: fakeSCName,
@@ -2172,7 +2176,7 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			deploymentNode:   "foo",
 			immediateBinding: true,
 			volOpts: controller.ProvisionOptions{
-				SelectedNode: nodeFoo,
+				SelectedNodeName: nodeFoo.Name,
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: fakeSCName,
@@ -2290,8 +2294,9 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			// the owner (= leaves the selected node annotation unset) because
 			// it would not be able to provision the volume if it was
 			// the owner (generating accessibility requirements would fail).
-			deploymentNode:   "foo",
-			immediateBinding: true,
+			deploymentNode:     "foo",
+			immediateBinding:   true,
+			pluginCapabilities: provisionWithTopologyCapabilities,
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ObjectMeta: metav1.ObjectMeta{
@@ -2562,12 +2567,16 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 	clientSet := fakeclientset.NewSimpleClientset(tc.clientSetObjects...)
 
 	pluginCaps, controllerCaps := provisionCapabilities()
+	var pvcNodeStore *InMemoryStore = nil
+	if SupportsTopology(pluginCaps) {
+		pvcNodeStore = NewInMemoryStore()
+	}
 
 	if tc.skipDefaultFSType {
 		myDefaultfsType = ""
 	}
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, myDefaultfsType, nil, false, false)
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, myDefaultfsType, nil, false, false, pvcNodeStore)
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: requestedBytes,
@@ -2690,6 +2699,7 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 	objects := tc.clientSetObjects
 	var node *v1.Node
 	var csiNode *storagev1.CSINode
+	var pvc *v1.PersistentVolumeClaim
 	if tc.deploymentNode != "" {
 		node = &v1.Node{
 			ObjectMeta: metav1.ObjectMeta{
@@ -2713,7 +2723,8 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 				},
 			},
 		}
-		objects = append(objects, node, csiNode)
+		pvc = &v1.PersistentVolumeClaim{}
+		objects = append(objects, node, csiNode, pvc)
 	}
 	if tc.volOpts.PVC != nil {
 		tc.volOpts.PVC = tc.volOpts.PVC.DeepCopy()
@@ -2749,9 +2760,13 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 	} else {
 		pluginCaps, controllerCaps = provisionCapabilities()
 	}
+	var pvcNodeStore *InMemoryStore = nil
+	if SupportsTopology(pluginCaps) {
+		pvcNodeStore = NewInMemoryStore()
+	}
 	mycontrollerPublishReadOnly := tc.controllerPublishReadOnly
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(), nil, nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment, mycontrollerPublishReadOnly, false)
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(), claimInformer.Lister(), nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment, mycontrollerPublishReadOnly, false, pvcNodeStore)
 
 	// Adding objects to the informer ensures that they are consistent with
 	// the fake storage without having to start the informers.
@@ -4538,8 +4553,12 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CrossNamespaceVolumeDataSource, tc.xnsEnabled)
 
 		pluginCaps, controllerCaps := provisionFromSnapshotCapabilities()
+		var pvcNodeStore *InMemoryStore = nil
+		if SupportsTopology(pluginCaps) {
+			pvcNodeStore = NewInMemoryStore()
+		}
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-			client, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, refGrantLister, false, defaultfsType, nil, true, true)
+			client, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, refGrantLister, false, defaultfsType, nil, true, true, pvcNodeStore)
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -4716,10 +4735,14 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 			clientSet := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 
 			scLister, csiNodeLister, nodeLister, claimLister, vaLister, stopChan := listers(clientSet)
+			var pvcNodeStore *InMemoryStore = nil
+			if SupportsTopology(pluginCaps) {
+				pvcNodeStore = NewInMemoryStore()
+			}
 			defer close(stopChan)
 
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, nil, false, defaultfsType, nil, true, false)
+				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
 
 			pv, _, err := csiProvisioner.Provision(context.Background(), controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{},
@@ -4810,17 +4833,21 @@ func TestProvisionErrorHandling(t *testing.T) {
 					csiNodes := buildCSINodes(topologyKeys)
 					clientSet := fakeclientset.NewSimpleClientset(nodes, csiNodes)
 					scLister, csiNodeLister, nodeLister, claimLister, vaLister, stopChan := listers(clientSet)
+					var pvcNodeStore *InMemoryStore = nil
+					if SupportsTopology(pluginCaps) {
+						pvcNodeStore = NewInMemoryStore()
+					}
 					defer close(stopChan)
 
 					csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-						csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, nil, false, defaultfsType, nil, true, false)
+						csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
 
 					options := controller.ProvisionOptions{
 						StorageClass: &storagev1.StorageClass{},
 						PVC:          createFakePVC(requestBytes),
 					}
 					if nodeSelected {
-						options.SelectedNode = &nodes.Items[0]
+						options.SelectedNodeName = nodes.Items[0].Name
 					}
 					pv, state, err := csiProvisioner.Provision(context.Background(), options)
 
@@ -4885,8 +4912,12 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 
 	clientSet := fakeclientset.NewSimpleClientset()
 	pluginCaps, controllerCaps := provisionWithTopologyCapabilities()
+	var pvcNodeStore *InMemoryStore = nil
+	if SupportsTopology(pluginCaps) {
+		pvcNodeStore = NewInMemoryStore()
+	}
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false)
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -4899,13 +4930,9 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 	controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 
 	pv, _, err := csiProvisioner.Provision(context.Background(), controller.ProvisionOptions{
-		StorageClass: &storagev1.StorageClass{},
-		PVC:          createFakePVC(requestBytes),
-		SelectedNode: &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "some-node",
-			},
-		},
+		StorageClass:     &storagev1.StorageClass{},
+		PVC:              createFakePVC(requestBytes),
+		SelectedNodeName: "some-node",
 	})
 	if err != nil {
 		t.Fatalf("got error from Provision call: %v", err)
@@ -5580,9 +5607,13 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 	}
 
 	pluginCaps, controllerCaps := provisionCapabilities()
+	var pvcNodeStore *InMemoryStore = nil
+	if SupportsTopology(pluginCaps) {
+		pvcNodeStore = NewInMemoryStore()
+	}
 	scLister, _, _, _, vaLister, _ := listers(clientSet)
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, nil, nil, nil, vaLister, nil, false, defaultfsType, nodeDeployment, true, false)
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, nil, nil, nil, vaLister, nil, false, defaultfsType, nodeDeployment, true, false, pvcNodeStore)
 
 	err = csiProvisioner.Delete(context.Background(), tc.persistentVolume)
 	if tc.expectErr && err == nil {
@@ -6664,10 +6695,14 @@ func TestProvisionFromPVC(t *testing.T) {
 			}
 
 			_, _, _, claimLister, _, _ := listers(clientSet)
+			var pvcNodeStore *InMemoryStore = nil
+			if SupportsTopology(pluginCaps) {
+				pvcNodeStore = NewInMemoryStore()
+			}
 
 			// Phase: execute the test
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-				nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, claimLister, nil, refGrantLister, false, defaultfsType, nil, true, false)
+				nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, claimLister, nil, refGrantLister, false, defaultfsType, nil, true, false, pvcNodeStore)
 
 			pv, _, err = csiProvisioner.Provision(context.Background(), tc.volOpts)
 			if tc.expectErr && err == nil {
@@ -6799,9 +6834,13 @@ func TestProvisionWithMigration(t *testing.T) {
 			defer driver.Stop()
 			clientSet := fakeclientset.NewSimpleClientset()
 			pluginCaps, controllerCaps := provisionCapabilities()
+			var pvcNodeStore *InMemoryStore = nil
+			if SupportsTopology(pluginCaps) {
+				pvcNodeStore = NewInMemoryStore()
+			}
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps,
-				inTreePluginName, false, true, mockTranslator, nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false)
+				inTreePluginName, false, true, mockTranslator, nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
 
 			// Set up return values (AnyTimes to avoid overfitting on implementation)
 
@@ -6973,11 +7012,15 @@ func TestDeleteMigration(t *testing.T) {
 			}
 
 			pluginCaps, controllerCaps := provisionCapabilities()
+			var pvcNodeStore *InMemoryStore = nil
+			if SupportsTopology(pluginCaps) {
+				pvcNodeStore = NewInMemoryStore()
+			}
 			scLister, _, _, _, vaLister, stopCh := listers(clientSet)
 			defer close(stopCh)
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, inTreePluginName,
-				false, true, mockTranslator, scLister, nil, nil, nil, vaLister, nil, false, defaultfsType, nil, true, false)
+				false, true, mockTranslator, scLister, nil, nil, nil, vaLister, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
 
 			// Set mock return values (AnyTimes to avoid overfitting on implementation details)
 			mockTranslator.EXPECT().IsPVMigratable(gomock.Any()).Return(tc.expectTranslation).AnyTimes()
