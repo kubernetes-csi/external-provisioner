@@ -17,6 +17,9 @@ limitations under the License.
 package features
 
 import (
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/discovery"
+
 	"k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/component-base/featuregate"
 )
@@ -72,4 +75,25 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	CrossNamespaceVolumeDataSource: {Default: false, PreRelease: featuregate.Alpha},
 	VolumeAttributesClass:          {Default: true, PreRelease: featuregate.GA},
 	ReleaseLeaderElectionOnExit:    {Default: false, PreRelease: featuregate.Alpha},
+}
+
+// IsVolumeAttributesClassV1Enabled checks if the VolumeAttributesClass v1 API is enabled.
+func IsVolumeAttributesClassV1Enabled(d discovery.DiscoveryInterface) (bool, error) {
+	return resourceExists(d, "storage.k8s.io/v1", "VolumeAttributesClass")
+}
+
+func resourceExists(d discovery.DiscoveryInterface, groupVersion, kind string) (bool, error) {
+	res, err := d.ServerResourcesForGroupVersion(groupVersion)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	for _, r := range res.APIResources {
+		if r.Kind == kind {
+			return true, nil
+		}
+	}
+	return false, nil
 }
