@@ -207,6 +207,16 @@ func main() {
 		klog.Fatalf("Failed to create client: %v", err)
 	}
 
+	volumeAttributesClassV1Enabled, err := features.IsVolumeAttributesClassV1Enabled(clientset.Discovery())
+	if err == nil && !volumeAttributesClassV1Enabled {
+		if utilfeature.DefaultMutableFeatureGate.Enabled(features.VolumeAttributesClass) {
+			klog.InfoS("Disabling VolumeAttributesClass feature gate because the VolumeAttributesClass v1 API is not available")
+			if err := utilfeature.DefaultMutableFeatureGate.Set(fmt.Sprintf("%s=false", features.VolumeAttributesClass)); err != nil {
+				klog.Fatalf("Failed to disable VolumeAttributesClass feature gate: %v", err)
+			}
+		}
+	}
+
 	// snapclientset.NewForConfig creates a new Clientset for  VolumesnapshotV1Client
 	snapClient, err := snapclientset.NewForConfig(config)
 	if err != nil {
