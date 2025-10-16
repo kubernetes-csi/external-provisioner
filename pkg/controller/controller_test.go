@@ -973,7 +973,7 @@ func TestFSTypeProvision(t *testing.T) {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{
+					Parameters: map[string]string{
 						// We deliberately skip fsType in sc param
 						//	"fstype": "",
 					},
@@ -1031,7 +1031,7 @@ func TestFSTypeProvision(t *testing.T) {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
-					Parameters:    map[string]string{
+					Parameters: map[string]string{
 						// We deliberately skip fsType in sc param
 						//	"fstype": "xfs",
 					},
@@ -6712,9 +6712,11 @@ func TestProvisionFromPVC(t *testing.T) {
 			if tc.volOpts.PVC.Spec.DataSourceRef != nil || tc.volOpts.PVC.Spec.DataSource != nil {
 				var claim *v1.PersistentVolumeClaim
 				if tc.volOpts.PVC.Spec.DataSourceRef != nil {
-					claim, _ = claimLister.PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(tc.volOpts.PVC.Spec.DataSourceRef.Name)
+					claim, _ = clientSet.CoreV1().PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(context.Background(),
+						tc.volOpts.PVC.Spec.DataSourceRef.Name, metav1.GetOptions{})
 				} else if tc.volOpts.PVC.Spec.DataSource != nil {
-					claim, _ = claimLister.PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(tc.volOpts.PVC.Spec.DataSource.Name)
+					claim, _ = clientSet.CoreV1().PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(context.Background(),
+						tc.volOpts.PVC.Spec.DataSource.Name, metav1.GetOptions{})
 				}
 				if claim != nil {
 					set := checkFinalizer(claim, pvcCloneFinalizer)
