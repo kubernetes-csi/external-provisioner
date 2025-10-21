@@ -3,7 +3,7 @@ module github.com/kubernetes-csi/external-provisioner/v5
 go 1.24.2
 
 require (
-	github.com/container-storage-interface/spec v1.11.0
+	github.com/container-storage-interface/spec v1.12.0
 	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
