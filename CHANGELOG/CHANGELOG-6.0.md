@@ -2,6 +2,12 @@
 
 [Documentation](https://kubernetes-csi.github.io)
 
+## Urgent Upgrade Notes
+
+### (No, really, you MUST read this before you upgrade)
+
+- This provisioner version needs Kubernetes 1.34.0+ to support volume creation with VolumeAttributesClass, as the storage/v1 VolumeAttributesClass object is available starting in v1.34. While the provisioner can run on Kubernetes versions below 1.34 (including emulated versions), the VolumeAttributesClass feature will be disabled. If you update an emulated version from below 1.34 directly to 1.35 or higher, a provisioner restart is required.
+
 # Changelog since 5.3.0
 
 ## Changes by Kind
