@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/kubernetes-csi/csi-test/v5 v5.4.0
-	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.2.0
+	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.4.0
 	github.com/miekg/dns v1.1.68 // indirect
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/pflag v1.0.7
