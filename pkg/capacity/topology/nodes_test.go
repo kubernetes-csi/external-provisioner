@@ -566,6 +566,41 @@ func TestNodeTopology(t *testing.T) {
 	}
 }
 
+func TestHasSynced(t *testing.T) {
+	client := fakeclientset.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(client, 0*time.Second /* no resync */)
+	nodeInformer := informerFactory.Core().V1().Nodes()
+	csiNodeInformer := informerFactory.Storage().V1().CSINodes()
+	rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Second, 2*time.Second)
+	queue := workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{Name: "items"})
+
+	nt := NewNodeTopology(
+		driverName,
+		client,
+		nodeInformer,
+		csiNodeInformer,
+		queue,
+	).(*nodeTopology)
+
+	ctx := t.Context()
+	nt.sync(ctx)
+	if nt.HasSynced() {
+		t.Fatalf("upstream informer not started yet, expected HasSynced to return false")
+	}
+
+	informerFactory.Start(ctx.Done())
+	informerFactory.WaitForCacheSync(ctx.Done())
+	if nt.HasSynced() { // should enqueue a work item
+		t.Fatalf("nt not started, expected HasSynced to return false")
+	}
+
+	// consume the work item
+	nt.processNextWorkItem(ctx)
+	if !nt.HasSynced() {
+		t.Fatalf("nt should be synced now")
+	}
+}
+
 type segmentsFound map[*Segment]bool
 
 func (sf segmentsFound) Found() []*Segment {
