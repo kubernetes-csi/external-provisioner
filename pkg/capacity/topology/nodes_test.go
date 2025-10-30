@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -564,6 +565,39 @@ func TestNodeTopology(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHasSynced(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		client := fakeclientset.NewSimpleClientset()
+		informerFactory := informers.NewSharedInformerFactory(client, 1*time.Hour)
+		nodeInformer := informerFactory.Core().V1().Nodes()
+		csiNodeInformer := informerFactory.Storage().V1().CSINodes()
+		rateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Second, 2*time.Second)
+		queue := workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{Name: "items"})
+
+		nt := NewNodeTopology(
+			driverName,
+			client,
+			nodeInformer,
+			csiNodeInformer,
+			queue,
+		).(*nodeTopology)
+
+		ctx := t.Context()
+		go nt.RunWorker(ctx)
+		time.Sleep(10 * time.Second)
+		if nt.HasSynced() {
+			t.Fatalf("upstream informer not started yet, expected HasSynced to return false")
+		}
+
+		informerFactory.Start(ctx.Done())
+		informerFactory.WaitForCacheSync(ctx.Done())
+		synctest.Wait()
+		if !nt.HasSynced() {
+			t.Fatalf("nt should be synced now")
+		}
+	})
 }
 
 type segmentsFound map[*Segment]bool
