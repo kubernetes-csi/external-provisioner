@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/kubernetes-csi/csi-test/v5 v5.4.0
-	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.2.0
+	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.4.0
 	github.com/miekg/dns v1.1.68 // indirect
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/pflag v1.0.7
@@ -140,7 +140,7 @@ require (
 	k8s.io/mount-utils v0.34.0 // indirect
 	k8s.io/pod-security-admission v0.34.0 // indirect
 	k8s.io/utils v0.0.0-20250820121507-0af2bda4dd1d // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.33.0 // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.34.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
