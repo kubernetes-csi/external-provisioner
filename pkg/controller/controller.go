@@ -701,7 +701,10 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 			p.csiNodeLister,
 			p.nodeLister,
 			p.pvcNodeStore)
-		if err != nil {
+		if apierrors.IsNotFound(err) {
+			// The node or CSINode object can't be found, ask the scheduler for a reschedule
+			return nil, controller.ProvisioningReschedule, err
+		} else if err != nil {
 			return nil, controller.ProvisioningNoChange, fmt.Errorf("error generating accessibility requirements: %v", err)
 		}
 		req.AccessibilityRequirements = requirements
