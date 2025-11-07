@@ -105,6 +105,9 @@ const (
 	prefixedNodeExpandSecretNameKey      = csiParameterPrefix + "node-expand-secret-name"
 	prefixedNodeExpandSecretNamespaceKey = csiParameterPrefix + "node-expand-secret-namespace"
 
+	prefixedControllerModifySecretNameKey      = csiParameterPrefix + "controller-modify-secret-name"
+	prefixedControllerModifySecretNamespaceKey = csiParameterPrefix + "controller-modify-secret-namespace"
+
 	// [Deprecated] CSI Parameters that are put into fields but
 	// NOT stripped from the parameters passed to CreateVolume
 	provisionerSecretNameKey      = "csiProvisionerSecretName"
@@ -147,6 +150,11 @@ const (
 	// and used at pvc deletion time.
 	annDeletionProvisionerSecretRefName      = "volume.kubernetes.io/provisioner-deletion-secret-name"
 	annDeletionProvisionerSecretRefNamespace = "volume.kubernetes.io/provisioner-deletion-secret-namespace"
+
+	// Annotation for secret name and namespace will be added to the pv object
+	// and used for ControllerModifyVolume procedures by the external-resizer
+	annModifyControllerSecretRefName      = "volume.kubernetes.io/controller-modify-secret-name"
+	annModifyControllerSecretRefNamespace = "volume.kubernetes.io/controller-modify-secret-namespace"
 
 	snapshotNotBound = "snapshot %s not bound"
 
@@ -204,6 +212,12 @@ var (
 		name:               "NodeExpand",
 		secretNameKey:      prefixedNodeExpandSecretNameKey,
 		secretNamespaceKey: prefixedNodeExpandSecretNamespaceKey,
+	}
+
+	controllerModifySecretParams = secretParamsMap{
+		name:               "ControllerModify",
+		secretNameKey:      prefixedControllerModifySecretNameKey,
+		secretNamespaceKey: prefixedControllerModifySecretNamespaceKey,
 	}
 )
 
@@ -540,7 +554,7 @@ func (p *csiProvisioner) getVolumeCapabilities(
 	return volumeCaps, nil
 }
 
-type deletionSecretParams struct {
+type annotatedSecretParams struct {
 	name      string
 	namespace string
 }
@@ -550,7 +564,8 @@ type prepareProvisionResult struct {
 	migratedVolume      bool
 	req                 *csi.CreateVolumeRequest
 	csiPVSource         *v1.CSIPersistentVolumeSource
-	provDeletionSecrets *deletionSecretParams
+	provDeletionSecrets *annotatedSecretParams
+	provModifySecrets   *annotatedSecretParams
 }
 
 // prepareProvision does non-destructive parameter checking and preparations for provisioning a volume.
@@ -739,6 +754,10 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
+	controllerModifySecretRef, err := getSecretReference(controllerModifySecretParams, sc.Parameters, pvName, claim)
+	if err != nil {
+		return nil, controller.ProvisioningNoChange, err
+	}
 	csiPVSource := &v1.CSIPersistentVolumeSource{
 		Driver: p.driverName,
 		// VolumeHandle and VolumeAttributes will be added after provisioning.
@@ -760,11 +779,19 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		req.Parameters[pvcNamespaceKey] = claim.GetNamespace()
 		req.Parameters[pvNameKey] = pvName
 	}
-	deletionAnnSecrets := new(deletionSecretParams)
 
+	deletionAnnSecrets := new(annotatedSecretParams)
 	if provisionerSecretRef != nil {
 		deletionAnnSecrets.name = provisionerSecretRef.Name
 		deletionAnnSecrets.namespace = provisionerSecretRef.Namespace
+	}
+
+	var modifyAnnSecrets *annotatedSecretParams
+	if controllerModifySecretRef != nil {
+		modifyAnnSecrets = &annotatedSecretParams{
+			name:      controllerModifySecretRef.Name,
+			namespace: controllerModifySecretRef.Namespace,
+		}
 	}
 
 	if vacName != "" {
@@ -786,6 +813,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		req:                 &req,
 		csiPVSource:         csiPVSource,
 		provDeletionSecrets: deletionAnnSecrets,
+		provModifySecrets:   modifyAnnSecrets,
 	}, controller.ProvisioningNoChange, nil
 
 }
@@ -868,6 +896,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		klog.V(3).Infof("create volume rep: %+v", rep.Volume)
 	}
 	volumeAttributes := map[string]string{provisionerIDKey: p.identity}
+
 	maps.Copy(volumeAttributes, rep.Volume.VolumeContext)
 	respCap := rep.GetVolume().GetCapacityBytes()
 
@@ -941,6 +970,13 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	} else {
 		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annDeletionProvisionerSecretRefName, "")
 		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annDeletionProvisionerSecretRefNamespace, "")
+	}
+
+	// Set annModifyControllerSecretRefName and namespace in PV object when modify secrets are configured.
+	if result.provModifySecrets != nil {
+		klog.V(5).Infof("createVolumeOperation: set annotation [%s/%s] on pv [%s].", annModifyControllerSecretRefNamespace, annModifyControllerSecretRefName, pv.Name)
+		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annModifyControllerSecretRefName, result.provModifySecrets.name)
+		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annModifyControllerSecretRefNamespace, result.provModifySecrets.namespace)
 	}
 
 	if options.StorageClass.ReclaimPolicy != nil {
@@ -1030,6 +1066,8 @@ func removePrefixedParameters(param map[string]string) (map[string]string, error
 			case prefixedDefaultSecretNamespaceKey:
 			case prefixedNodeExpandSecretNameKey:
 			case prefixedNodeExpandSecretNamespaceKey:
+			case prefixedControllerModifySecretNameKey:
+			case prefixedControllerModifySecretNamespaceKey:
 			default:
 				return map[string]string{}, fmt.Errorf("found unknown parameter key \"%s\" with reserved namespace %s", k, csiParameterPrefix)
 			}
