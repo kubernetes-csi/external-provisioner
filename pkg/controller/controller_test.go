@@ -2503,6 +2503,29 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectErr:   true,
 			expectState: controller.ProvisioningFinished,
 		},
+		"fail with selected node but node doesn't exist": {
+			pluginCapabilities: provisionWithTopologyCapabilities,
+			volOpts: controller.ProvisionOptions{
+				SelectedNodeName: nodeBar.Name,
+				StorageClass: &storagev1.StorageClass{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fakeSCName,
+					},
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+				},
+				PVName: "test-name",
+				PVC: func() *v1.PersistentVolumeClaim {
+					claim := createFakePVC(requestedBytes)
+					claim.Annotations[annSelectedNode] = nodeBar.Name
+					return claim
+				}(),
+			},
+			expectErr:   true,
+			expectState: controller.ProvisioningReschedule,
+		},
 	}
 }
 
