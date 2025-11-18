@@ -237,6 +237,8 @@ func TestStripPrefixedCSIParams(t *testing.T) {
 				prefixedDefaultSecretNamespaceKey:           "csiBar",
 				prefixedNodeExpandSecretNameKey:             "csiBar",
 				prefixedNodeExpandSecretNamespaceKey:        "csiBar",
+				prefixedControllerModifySecretNameKey:       "csiBar",
+				prefixedControllerModifySecretNamespaceKey:  "csiBar",
 			},
 			expectedParams: map[string]string{},
 		},
@@ -926,6 +928,8 @@ func getDefaultStorageClassSecretParameters() map[string]string {
 		prefixedProvisionerSecretNamespaceKey:      defaultSecretNsName,
 		prefixedNodeExpandSecretNameKey:            "nodeexpandsecret",
 		prefixedNodeExpandSecretNamespaceKey:       defaultSecretNsName,
+		prefixedControllerModifySecretNameKey:      "ctrlmodifysecret",
+		prefixedControllerModifySecretNamespaceKey: defaultSecretNsName,
 	}
 }
 
@@ -1623,6 +1627,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
+					annModifyControllerSecretRefName:         "ctrlmodifysecret",
+					annModifyControllerSecretRefNamespace:    defaultSecretNsName,
 					annDeletionProvisionerSecretRefName:      "provisionersecret",
 					annDeletionProvisionerSecretRefNamespace: defaultSecretNsName,
 				},
@@ -1682,6 +1688,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
+					annModifyControllerSecretRefName:         "default-secret",
+					annModifyControllerSecretRefNamespace:    "default-ns",
 					annDeletionProvisionerSecretRefName:      "default-secret",
 					annDeletionProvisionerSecretRefNamespace: "default-ns",
 				},
@@ -1741,6 +1749,8 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			expectedPVSpec: &pvSpec{
 				Name: "test-testi",
 				Annotations: map[string]string{
+					annModifyControllerSecretRefName:         "my-pvc",
+					annModifyControllerSecretRefNamespace:    "default-ns",
 					annDeletionProvisionerSecretRefName:      "my-pvc",
 					annDeletionProvisionerSecretRefNamespace: "default-ns",
 				},
