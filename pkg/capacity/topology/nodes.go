@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -159,6 +160,7 @@ type nodeTopology struct {
 	nodeInformer    coreinformersv1.NodeInformer
 	csiNodeInformer storageinformersv1.CSINodeInformer
 	queue           workqueue.TypedRateLimitingInterface[string]
+	hasSynced       atomic.Bool
 
 	mutex sync.Mutex
 	// segments hold a list of all currently known topology segments.
@@ -209,13 +211,19 @@ func (nt *nodeTopology) RunWorker(ctx context.Context) {
 	}
 }
 
+func (nt *nodeTopology) upstreamSynced() bool {
+	return nt.nodeInformer.Informer().HasSynced() &&
+		nt.csiNodeInformer.Informer().HasSynced()
+}
+
 func (nt *nodeTopology) HasSynced() bool {
-	if nt.nodeInformer.Informer().HasSynced() &&
-		nt.csiNodeInformer.Informer().HasSynced() {
-		// Now that both informers are up-to-date, use that
-		// information to update our own view of the world.
-		nt.sync(context.Background())
+	if nt.hasSynced.Load() {
 		return true
+	}
+	if nt.upstreamSynced() {
+		// Now that both informers are up-to-date,
+		// trigger a sync to update the list of topology segments.
+		nt.queue.Add("")
 	}
 	return false
 }
@@ -231,6 +239,11 @@ func (nt *nodeTopology) processNextWorkItem(ctx context.Context) bool {
 }
 
 func (nt *nodeTopology) sync(_ context.Context) {
+	if !nt.hasSynced.Load() && nt.upstreamSynced() {
+		// We are not yet synced, but the upstream informers are.
+		// we will become synced when this function returns
+		defer nt.hasSynced.Store(true)
+	}
 	// For all nodes on which the driver is registered, collect the topology key/value pairs
 	// and sort them by key name to make the result deterministic. Skip all segments that have
 	// been seen before.
