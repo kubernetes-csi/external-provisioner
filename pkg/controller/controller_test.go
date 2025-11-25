@@ -2963,6 +2963,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		nilContentStatus                  bool
 		nilSnapshotHandle                 bool
 		allowVolumeModeChange             bool
+		snapshotBeingDeleted              bool // set DeletionTimestamp on snapshot
+		snapshotWithoutFinalizers         bool // don't add finalizers even if snapshot is being deleted
 		xnsEnabled                        bool // set to use CrossNamespaceVolumeDataSource feature, default false
 		snapNamespace                     string
 		withreferenceGrants               bool // set to use ReferenceGrant, default false
@@ -4486,6 +4488,89 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			referenceGrantFrom:   []gatewayv1beta1.ReferenceGrantFrom{},
 			referenceGrantTo:     []gatewayv1beta1.ReferenceGrantTo{},
 		},
+		"provision with snapshot being deleted without finalizers should fail": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.VolumeResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:       true,
+			snapshotBeingDeleted:      true,
+			snapshotWithoutFinalizers: true,
+			expectErr:                 true,
+		},
+		"provision with snapshot being deleted with finalizers should proceed for cleanup": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.VolumeResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:  true,
+			snapshotBeingDeleted: true,
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				AccessModes:   []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext4",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCSICall: true,
+		},
 	}
 
 	tmpdir := tempDir(t)
@@ -4515,6 +4600,16 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			}
 			if tc.nilReadyToUse {
 				snap.Status.ReadyToUse = nil
+			}
+			if tc.snapshotBeingDeleted {
+				deletionTime := metav1.Now()
+				snap.ObjectMeta.DeletionTimestamp = &deletionTime
+				// Add a finalizer to simulate that provisioning already started,
+				// unless the test explicitly wants to test without finalizers.
+				// In real scenarios, the external-snapshotter adds this finalizer.
+				if !tc.snapshotWithoutFinalizers {
+					snap.ObjectMeta.Finalizers = []string{"snapshot.storage.kubernetes.io/volumesnapshot-as-source-protection"}
+				}
 			}
 			return true, snap, nil
 		})
