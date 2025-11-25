@@ -1161,7 +1161,15 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.Persis
 	}
 
 	if snapshotObj.ObjectMeta.DeletionTimestamp != nil {
-		return nil, fmt.Errorf("snapshot %s is currently being deleted", dataSource.Name)
+		// VolumeSnapshot is being deleted. Check if provisioning already started by looking for finalizers.
+		// If the snapshot has finalizers, it means provisioning was started before deletion began,
+		// so we should continue to prevent resource leaks. The external-snapshotter adds finalizers
+		// when a snapshot is used as a data source.
+		// If there are no finalizers, this is a new provisioning attempt and should be rejected.
+		if len(snapshotObj.ObjectMeta.Finalizers) == 0 {
+			return nil, fmt.Errorf("snapshot %s is being deleted", dataSource.Name)
+		}
+		klog.V(3).Infof("Snapshot %s/%s is being deleted but has finalizers, allowing provisioning to continue", dataSource.Namespace, dataSource.Name)
 	}
 	klog.V(5).Infof("VolumeSnapshot %+v", snapshotObj)
 
