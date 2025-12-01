@@ -150,7 +150,8 @@ const (
 
 	snapshotNotBound = "snapshot %s not bound"
 
-	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
+	pvcCloneFinalizer                 = "provisioner.storage.kubernetes.io/cloning-protection"
+	snapshotSourceProtectionFinalizer = "snapshot.storage.kubernetes.io/volumesnapshot-as-source-protection"
 
 	annAllowVolumeModeChange = "snapshot.storage.kubernetes.io/allow-volume-mode-change"
 )
@@ -1161,15 +1162,15 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.Persis
 	}
 
 	if snapshotObj.ObjectMeta.DeletionTimestamp != nil {
-		// VolumeSnapshot is being deleted. Check if provisioning already started by looking for finalizers.
-		// If the snapshot has finalizers, it means provisioning was started before deletion began,
-		// so we should continue to prevent resource leaks. The external-snapshotter adds finalizers
-		// when a snapshot is used as a data source.
-		// If there are no finalizers, this is a new provisioning attempt and should be rejected.
-		if len(snapshotObj.ObjectMeta.Finalizers) == 0 {
+		// VolumeSnapshot is being deleted. Check if provisioning already started by looking for
+		// the specific finalizer added by external-snapshotter when a snapshot is used as a data source.
+		// If the finalizer exists, it means provisioning was started before deletion began,
+		// so we should continue to prevent resource leaks.
+		// If the finalizer doesn't exist, this is a new provisioning attempt and should be rejected.
+		if !checkFinalizer(snapshotObj, snapshotSourceProtectionFinalizer) {
 			return nil, fmt.Errorf("snapshot %s is being deleted", dataSource.Name)
 		}
-		klog.V(3).Infof("Snapshot %s/%s is being deleted but has finalizers, allowing provisioning to continue", dataSource.Namespace, dataSource.Name)
+		klog.V(3).Infof("Snapshot %s/%s is being deleted but has volumesnapshot-as-source-protection finalizer, allowing provisioning to continue", dataSource.Namespace, dataSource.Name)
 	}
 	klog.V(5).Infof("VolumeSnapshot %+v", snapshotObj)
 
