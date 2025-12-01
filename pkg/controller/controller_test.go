@@ -2946,31 +2946,32 @@ func TestProvisionFromSnapshot(t *testing.T) {
 	}
 
 	type testcase struct {
-		volOpts                           controller.ProvisionOptions
-		restoredVolSizeSmall              bool
-		wrongDataSource                   bool
-		snapshotStatusReady               bool
-		expectedPVSpec                    *pvSpec
-		expectErr                         bool
-		expectCSICall                     bool
-		notPopulated                      bool
-		misBoundSnapshotContentUID        bool
-		misBoundSnapshotContentNamespace  bool
-		misBoundSnapshotContentName       bool
-		nilBoundVolumeSnapshotContentName bool
-		nilSnapshotStatus                 bool
-		nilReadyToUse                     bool
-		nilContentStatus                  bool
-		nilSnapshotHandle                 bool
-		allowVolumeModeChange             bool
-		snapshotBeingDeleted              bool // set DeletionTimestamp on snapshot
-		snapshotWithoutFinalizers         bool // don't add finalizers even if snapshot is being deleted
-		xnsEnabled                        bool // set to use CrossNamespaceVolumeDataSource feature, default false
-		snapNamespace                     string
-		withreferenceGrants               bool // set to use ReferenceGrant, default false
-		refGrantsrcNamespace              string
-		referenceGrantFrom                []gatewayv1beta1.ReferenceGrantFrom
-		referenceGrantTo                  []gatewayv1beta1.ReferenceGrantTo
+		volOpts                                  controller.ProvisionOptions
+		restoredVolSizeSmall                     bool
+		wrongDataSource                          bool
+		snapshotStatusReady                      bool
+		expectedPVSpec                           *pvSpec
+		expectErr                                bool
+		expectCSICall                            bool
+		notPopulated                             bool
+		misBoundSnapshotContentUID               bool
+		misBoundSnapshotContentNamespace         bool
+		misBoundSnapshotContentName              bool
+		nilBoundVolumeSnapshotContentName        bool
+		nilSnapshotStatus                        bool
+		nilReadyToUse                            bool
+		nilContentStatus                         bool
+		nilSnapshotHandle                        bool
+		allowVolumeModeChange                    bool
+		snapshotBeingDeleted                     bool // set DeletionTimestamp on snapshot
+		snapshotWithoutSourceProtectionFinalizer bool // simulate snapshot being deleted without the volumesnapshot-as-source-protection finalizer
+		snapshotWithDifferentFinalizer           bool // simulate snapshot with a different finalizer (not the source protection one)
+		xnsEnabled                               bool // set to use CrossNamespaceVolumeDataSource feature, default false
+		snapNamespace                            string
+		withreferenceGrants                      bool // set to use ReferenceGrant, default false
+		refGrantsrcNamespace                     string
+		referenceGrantFrom                       []gatewayv1beta1.ReferenceGrantFrom
+		referenceGrantTo                         []gatewayv1beta1.ReferenceGrantTo
 	}
 	testcases := map[string]testcase{
 		"provision with volume snapshot data source": {
@@ -4488,7 +4489,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			referenceGrantFrom:   []gatewayv1beta1.ReferenceGrantFrom{},
 			referenceGrantTo:     []gatewayv1beta1.ReferenceGrantTo{},
 		},
-		"provision with snapshot being deleted without finalizers should fail": {
+		"provision with snapshot being deleted without source-protection-finalizer should fail": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
@@ -4517,12 +4518,46 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					},
 				},
 			},
-			snapshotStatusReady:       true,
-			snapshotBeingDeleted:      true,
-			snapshotWithoutFinalizers: true,
-			expectErr:                 true,
+			snapshotStatusReady:                      true,
+			snapshotBeingDeleted:                     true,
+			snapshotWithoutSourceProtectionFinalizer: true,
+			expectErr:                                true,
 		},
-		"provision with snapshot being deleted with finalizers should proceed for cleanup": {
+		"provision with snapshot being deleted with different finalizer (not source-protection) should fail": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.VolumeResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:            true,
+			snapshotBeingDeleted:           true,
+			snapshotWithDifferentFinalizer: true,
+			expectErr:                      true,
+		},
+		"provision with snapshot being deleted with source-protection-finalizer should proceed for cleanup": {
 			volOpts: controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{
 					ReclaimPolicy: &deletePolicy,
@@ -4604,10 +4639,13 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			if tc.snapshotBeingDeleted {
 				deletionTime := metav1.Now()
 				snap.ObjectMeta.DeletionTimestamp = &deletionTime
-				// Add a finalizer to simulate that provisioning already started,
-				// unless the test explicitly wants to test without finalizers.
-				// In real scenarios, the external-snapshotter adds this finalizer.
-				if !tc.snapshotWithoutFinalizers {
+				// Set up finalizers based on what the test is checking:
+				// - snapshotWithDifferentFinalizer: add a different finalizer to verify we check for the specific source-protection one
+				// - snapshotWithoutSourceProtectionFinalizer: don't add any finalizers (simulates new provisioning attempt)
+				// - default: add the volumesnapshot-as-source-protection finalizer (simulates in-flight provisioning)
+				if tc.snapshotWithDifferentFinalizer {
+					snap.ObjectMeta.Finalizers = []string{"some-other-finalizer"}
+				} else if !tc.snapshotWithoutSourceProtectionFinalizer {
 					snap.ObjectMeta.Finalizers = []string{"snapshot.storage.kubernetes.io/volumesnapshot-as-source-protection"}
 				}
 			}
