@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -159,6 +160,7 @@ type nodeTopology struct {
 	nodeInformer    coreinformersv1.NodeInformer
 	csiNodeInformer storageinformersv1.CSINodeInformer
 	queue           workqueue.TypedRateLimitingInterface[string]
+	hasSynced       atomic.Bool
 
 	mutex sync.Mutex
 	// segments hold a list of all currently known topology segments.
@@ -205,19 +207,22 @@ func (nt *nodeTopology) RunWorker(ctx context.Context) {
 	klog.Info("Started node topology worker")
 	defer klog.Info("Shutting node topology worker")
 
+	if !cache.WaitForCacheSync(ctx.Done(),
+		nt.nodeInformer.Informer().HasSynced, nt.csiNodeInformer.Informer().HasSynced) {
+		return
+	}
+
+	go func() {
+		<-ctx.Done()
+		nt.queue.ShutDown()
+	}()
+	nt.queue.Add("") // Initial sync to ensure HasSynced() will become true.
 	for nt.processNextWorkItem(ctx) {
 	}
 }
 
 func (nt *nodeTopology) HasSynced() bool {
-	if nt.nodeInformer.Informer().HasSynced() &&
-		nt.csiNodeInformer.Informer().HasSynced() {
-		// Now that both informers are up-to-date, use that
-		// information to update our own view of the world.
-		nt.sync(context.Background())
-		return true
-	}
-	return false
+	return nt.hasSynced.Load()
 }
 
 func (nt *nodeTopology) processNextWorkItem(ctx context.Context) bool {
@@ -227,6 +232,7 @@ func (nt *nodeTopology) processNextWorkItem(ctx context.Context) bool {
 	}
 	defer nt.queue.Done(obj)
 	nt.sync(ctx)
+	nt.hasSynced.Store(true)
 	return true
 }
 
