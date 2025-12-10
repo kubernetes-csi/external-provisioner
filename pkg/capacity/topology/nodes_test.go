@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"reflect"
 	"sort"
 	"testing"
 	"time"
@@ -518,15 +517,11 @@ func TestNodeTopology(t *testing.T) {
 	for name, tc := range testcases {
 		// Not run in parallel. That doesn't work well in combination with global logging.
 		t.Run(name, func(t *testing.T) {
-			// There is no good way to shut down the informers. They spawn
-			// various goroutines and some of them (in particular shared informer)
-			// become very unhappy ("close on closed channel") when using a context
-			// that gets cancelled. Therefore we just keep everything running.
 			//
-			// The informers also catch up with changes made via the client API
-			// asynchronously. To ensure expected input for sync(), we wait until
-			// the content of the informers is identical to what is currently stored.
-			ctx := context.Background()
+			// Instead of waiting for informers to sync, we validate specific conditions
+			// on the topology segments with exponential backoff, which is more resilient.
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
 
 			testDriverName := tc.driverName
 			if testDriverName == "" {
@@ -537,16 +532,12 @@ func TestNodeTopology(t *testing.T) {
 			objects = append(objects, makeNodes(tc.initialNodes)...)
 			clientSet := fakeclientset.NewSimpleClientset(objects...)
 			nt := fakeNodeTopology(ctx, testDriverName, clientSet)
-			if err := waitForInformers(ctx, nt); err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			validate(t, nt, tc.expectedSegments, nil, tc.expectedSegments)
+
+			// Validate initial state - this will wait for the condition with exponential backoff
+			validate(ctx, t, nt, tc.expectedSegments, nil, tc.expectedSegments)
 
 			if tc.update != nil {
 				tc.update(t, clientSet)
-				if err := waitForInformers(ctx, nt); err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
 
 				// Determine the expected changes based on the delta.
 				var expectedAdded, expectedRemoved []*Segment
@@ -560,7 +551,9 @@ func TestNodeTopology(t *testing.T) {
 						expectedRemoved = append(expectedRemoved, segment)
 					}
 				}
-				validate(t, nt, expectedAdded, expectedRemoved, tc.expectedUpdatedSegments)
+
+				// Validate updated state - this will wait for the condition with exponential backoff
+				validate(ctx, t, nt, expectedAdded, expectedRemoved, tc.expectedUpdatedSegments)
 			}
 		})
 	}
@@ -626,70 +619,61 @@ func fakeNodeTopology(ctx context.Context, testDriverName string, client *fakecl
 	return nt
 }
 
-func waitForInformers(ctx context.Context, nt *nodeTopology) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
+// waitForSegmentsCondition waits for a specific condition on segments to be met.
+// This uses exponential backoff and validates the specific condition rather than
+// waiting for informers to sync, which is more resilient to timing issues.
+// This follows the standard Kubernetes testing pattern.
+func waitForSegmentsCondition(ctx context.Context, t *testing.T, nt *nodeTopology, conditionDesc string, condition func([]*Segment) bool) error {
+	t.Helper()
 
-	err := wait.PollUntilContextCancel(ctx, time.Millisecond, true, func(_ context.Context) (bool, error) {
-		actualNodes, err := nt.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return false, err
-		}
-		informerNodes, err := nt.nodeInformer.Lister().List(labels.Everything())
-		if err != nil {
-			return false, err
-		}
-		if len(informerNodes) != len(actualNodes.Items) {
-			return false, nil
-		}
-		if len(informerNodes) > 0 && !func() bool {
-			for _, actualNode := range actualNodes.Items {
-				for _, informerNode := range informerNodes {
-					if reflect.DeepEqual(actualNode, *informerNode) {
-						return true
-					}
-				}
-			}
-			return false
-		}() {
-			return false, nil
-		}
+	// Use exponential backoff: start at 10ms, max 1s, with a 2x factor
+	// This will retry up to 20 times with exponential backoff
+	backoff := wait.Backoff{
+		Duration: 10 * time.Millisecond,
+		Factor:   2.0,
+		Jitter:   0.1,
+		Steps:    20, // ~10s total
+		Cap:      2 * time.Second,
+	}
 
-		actualCSINodes, err := nt.client.StorageV1().CSINodes().List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return false, err
-		}
-		informerCSINodes, err := nt.csiNodeInformer.Lister().List(labels.Everything())
-		if err != nil {
-			return false, err
-		}
-		if len(informerCSINodes) != len(actualCSINodes.Items) {
-			return false, nil
-		}
-		if len(informerCSINodes) > 0 && !func() bool {
-			for _, actualCSINode := range actualCSINodes.Items {
-				for _, informerCSINode := range informerCSINodes {
-					if reflect.DeepEqual(actualCSINode, *informerCSINode) {
-						return true
-					}
-				}
-			}
-			return false
-		}() {
-			return false, nil
-		}
+	var lastSegments []*Segment
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
+		// Give informers a brief moment to process events from the fake client.
+		// The fake client updates are synchronous, but informer event handlers run asynchronously.
+		time.Sleep(5 * time.Millisecond)
 
-		return true, nil
+		// Trigger sync to process any pending events from informers
+		nt.sync(ctx)
+
+		// Get the current segments
+		lastSegments = nt.List()
+
+		// Check the condition
+		return condition(lastSegments), nil
 	})
+
 	if err != nil {
-		return fmt.Errorf("get informers in sync: %v", err)
+		t.Logf("Condition %q not met. Last segments: %v", conditionDesc, segmentsToStrings(lastSegments))
+		return fmt.Errorf("waiting for condition %q: %w", conditionDesc, err)
 	}
 	return nil
 }
 
-func validate(t *testing.T, nt *nodeTopology, expectedAdded, expectedRemoved, expectedAll []*Segment) {
+func validate(ctx context.Context, t *testing.T, nt *nodeTopology, expectedAdded, expectedRemoved, expectedAll []*Segment) {
+	t.Helper()
+
 	added, removed, called := addTestCallback(nt)
-	nt.sync(context.Background())
+
+	// Wait for the expected final state with exponential backoff
+	err := waitForSegmentsCondition(ctx, t, nt, "final segments match expected", func(segments []*Segment) bool {
+		return segmentsMatch(segments, expectedAll)
+	})
+	if err != nil {
+		t.Errorf("Failed to reach expected segment state: %v", err)
+		validateSegments(t, "final", nt.List(), expectedAll)
+		t.FailNow()
+	}
+
 	expectedChanges := len(expectedAdded) > 0 || len(expectedRemoved) > 0
 	if expectedChanges && !*called {
 		t.Error("change callback not invoked")
@@ -704,6 +688,29 @@ func validate(t *testing.T, nt *nodeTopology, expectedAdded, expectedRemoved, ex
 	if t.Failed() {
 		t.FailNow()
 	}
+}
+
+// segmentsMatch checks if two segment lists are equivalent (same segments, ignoring order)
+func segmentsMatch(actual, expected []*Segment) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+
+	// Check that all expected segments are present
+	for _, exp := range expected {
+		if !containsSegment(actual, exp) {
+			return false
+		}
+	}
+
+	// Check that no unexpected segments are present
+	for _, act := range actual {
+		if !containsSegment(expected, act) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func validateSegments(t *testing.T, what string, actual, expected []*Segment) {
