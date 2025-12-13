@@ -158,8 +158,11 @@ const (
 
 	snapshotNotBound = "snapshot %s not bound"
 
-	pvcCloneFinalizer                 = "provisioner.storage.kubernetes.io/cloning-protection"
-	snapshotSourceProtectionFinalizer = "snapshot.storage.kubernetes.io/volumesnapshot-as-source-protection"
+	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
+	// snapshotSourceProtectionFinalizer is managed by the external-provisioner to track
+	// in-progress provisioning operations. It's distinct from the external-snapshotter's own
+	// "volumesnapshot-as-source-protection" finalizer, which will be deprecated and removed in a future release.
+	snapshotSourceProtectionFinalizer = "provisioner.storage.kubernetes.io/volumesnapshot-as-source-protection"
 
 	annAllowVolumeModeChange = "snapshot.storage.kubernetes.io/allow-volume-mode-change"
 )
@@ -704,6 +707,13 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		}
 	}
 
+	if dataSource != nil && rc.snapshot {
+		err = p.setSnapshotFinalizer(ctx, dataSource)
+		if err != nil {
+			return nil, controller.ProvisioningNoChange, err
+		}
+	}
+
 	if p.supportsTopology() {
 		requirements, err := GenerateAccessibilityRequirements(
 			p.client,
@@ -1026,6 +1036,15 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	if p.supportsTopology() {
 		p.pvcNodeStore.Delete(claim.UID)
 	}
+
+	// Remove snapshot finalizer if this PVC was provisioned from a snapshot
+	if claim.Spec.DataSource != nil && claim.Spec.DataSource.Kind == snapshotKind {
+		if err := p.removeSnapshotFinalizer(ctx, claim.Namespace, claim.Spec.DataSource.Name); err != nil {
+			klog.Warningf("Failed to remove snapshot finalizer from %s/%s: %v", claim.Namespace, claim.Spec.DataSource.Name, err)
+			// Don't fail provisioning if we can't remove the finalizer - it will be cleaned up later
+		}
+	}
+
 	return pv, controller.ProvisioningFinished, nil
 }
 
@@ -1042,6 +1061,63 @@ func (p *csiProvisioner) setCloneFinalizer(ctx context.Context, dataSource *v1.O
 		return err
 	}
 
+	return nil
+}
+
+func (p *csiProvisioner) setSnapshotFinalizer(ctx context.Context, dataSource *v1.ObjectReference) error {
+	snapshot, err := p.snapshotClient.SnapshotV1().VolumeSnapshots(dataSource.Namespace).Get(ctx, dataSource.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	snapshotClone := snapshot.DeepCopy()
+	if !checkFinalizer(snapshotClone, snapshotSourceProtectionFinalizer) {
+		snapshotClone.Finalizers = append(snapshotClone.Finalizers, snapshotSourceProtectionFinalizer)
+		_, err := p.snapshotClient.SnapshotV1().VolumeSnapshots(snapshotClone.Namespace).Update(ctx, snapshotClone, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+		klog.V(3).Infof("Added finalizer %s to snapshot %s/%s", snapshotSourceProtectionFinalizer, snapshotClone.Namespace, snapshotClone.Name)
+	}
+
+	return nil
+}
+
+func (p *csiProvisioner) removeSnapshotFinalizer(ctx context.Context, namespace, name string) error {
+	snapshot, err := p.snapshotClient.SnapshotV1().VolumeSnapshots(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Snapshot already deleted, nothing to do
+			return nil
+		}
+		return err
+	}
+
+	if !checkFinalizer(snapshot, snapshotSourceProtectionFinalizer) {
+		// Finalizer not present, nothing to do
+		return nil
+	}
+
+	// Remove the finalizer
+	finalizers := make([]string, 0)
+	for _, finalizer := range snapshot.ObjectMeta.Finalizers {
+		if finalizer != snapshotSourceProtectionFinalizer {
+			finalizers = append(finalizers, finalizer)
+		}
+	}
+
+	snapshotClone := snapshot.DeepCopy()
+	snapshotClone.Finalizers = finalizers
+	_, err = p.snapshotClient.SnapshotV1().VolumeSnapshots(snapshotClone.Namespace).Update(ctx, snapshotClone, metav1.UpdateOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Snapshot was deleted while we were trying to update it, that's fine
+			return nil
+		}
+		return err
+	}
+
+	klog.V(3).Infof("Removed finalizer %s from snapshot %s/%s", snapshotSourceProtectionFinalizer, namespace, name)
 	return nil
 }
 
