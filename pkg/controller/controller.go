@@ -1071,14 +1071,22 @@ func (p *csiProvisioner) setSnapshotFinalizer(ctx context.Context, dataSource *v
 	}
 
 	snapshotClone := snapshot.DeepCopy()
-	if !checkFinalizer(snapshotClone, snapshotSourceProtectionFinalizer) {
-		snapshotClone.Finalizers = append(snapshotClone.Finalizers, snapshotSourceProtectionFinalizer)
-		_, err := p.snapshotClient.SnapshotV1().VolumeSnapshots(snapshotClone.Namespace).Update(ctx, snapshotClone, metav1.UpdateOptions{})
-		if err != nil {
-			return err
-		}
-		klog.V(3).Infof("Added finalizer %s to snapshot %s/%s", snapshotSourceProtectionFinalizer, snapshotClone.Namespace, snapshotClone.Name)
+	if checkFinalizer(snapshotClone, snapshotSourceProtectionFinalizer) {
+		return nil
 	}
+
+	snapshotClone.Finalizers = append(snapshotClone.Finalizers, snapshotSourceProtectionFinalizer)
+	_, err = p.snapshotClient.SnapshotV1().VolumeSnapshots(snapshotClone.Namespace).Update(ctx, snapshotClone, metav1.UpdateOptions{})
+	if err != nil {
+		// If we don't have permission to update VolumeSnapshots, log at info level and continue.
+		// This allows the provisioner to work without the new RBAC permissions for backwards compatibility.
+		if apierrors.IsForbidden(err) {
+			klog.V(3).Infof("Unable to add finalizer to snapshot %s/%s due to missing RBAC permissions (needs 'update' on volumesnapshots): %v. Provisioning will continue without snapshot protection. Please update RBAC to include 'update' verb for volumesnapshots.", snapshotClone.Namespace, snapshotClone.Name, err)
+			return nil
+		}
+		return err
+	}
+	klog.V(3).Infof("Added finalizer %s to snapshot %s/%s", snapshotSourceProtectionFinalizer, snapshotClone.Namespace, snapshotClone.Name)
 
 	return nil
 }
@@ -1112,6 +1120,12 @@ func (p *csiProvisioner) removeSnapshotFinalizer(ctx context.Context, namespace,
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// Snapshot was deleted while we were trying to update it, that's fine
+			return nil
+		}
+		// If we don't have permission to update VolumeSnapshots, log at info level and continue.
+		// This allows the provisioner to work without the new RBAC permissions for backwards compatibility.
+		if apierrors.IsForbidden(err) {
+			klog.V(3).Infof("Unable to remove finalizer from snapshot %s/%s due to missing RBAC permissions (needs 'update' on volumesnapshots): %v. The finalizer will remain on the snapshot. Please update RBAC to include 'update' verb for volumesnapshots.", namespace, name, err)
 			return nil
 		}
 		return err
