@@ -123,6 +123,7 @@ type HTTPRouteSpec struct {
 	// +optional
 	// +listType=atomic
 	// <gateway:experimental:validation:XValidation:message="Rule name must be unique within the route",rule="self.all(l1, !has(l1.name) || self.exists_one(l2, has(l2.name) && l1.name == l2.name))">
+	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=16
 	// +kubebuilder:default={{matches: {{path: {type: "PathPrefix", value: "/"}}}}}
 	// +kubebuilder:validation:XValidation:message="While 16 rules and 64 matches per rule are allowed, the total number of matches across all rules in a route must be less than 128",rule="(self.size() > 0 ? self[0].matches.size() : 0) + (self.size() > 1 ? self[1].matches.size() : 0) + (self.size() > 2 ? self[2].matches.size() : 0) + (self.size() > 3 ? self[3].matches.size() : 0) + (self.size() > 4 ? self[4].matches.size() : 0) + (self.size() > 5 ? self[5].matches.size() : 0) + (self.size() > 6 ? self[6].matches.size() : 0) + (self.size() > 7 ? self[7].matches.size() : 0) + (self.size() > 8 ? self[8].matches.size() : 0) + (self.size() > 9 ? self[9].matches.size() : 0) + (self.size() > 10 ? self[10].matches.size() : 0) + (self.size() > 11 ? self[11].matches.size() : 0) + (self.size() > 12 ? self[12].matches.size() : 0) + (self.size() > 13 ? self[13].matches.size() : 0) + (self.size() > 14 ? self[14].matches.size() : 0) + (self.size() > 15 ? self[15].matches.size() : 0) <= 128"
@@ -410,7 +411,7 @@ type HTTPRouteRetry struct {
 	// For example, setting the `rules[].retry.backoff` field to the value
 	// `100ms` will cause a backend request to first be retried approximately
 	// 100 milliseconds after timing out or receiving a response code configured
-	// to be retryable.
+	// to be retriable.
 	//
 	// An implementation MAY use an exponential or alternative backoff strategy
 	// for subsequent retry attempts, MAY cap the maximum backoff duration to
@@ -448,7 +449,7 @@ type HTTPRouteRetry struct {
 // HTTPRouteRetryStatusCode defines an HTTP response status code for
 // which a backend request should be retried.
 //
-// Implementations MUST support the following status codes as retryable:
+// Implementations MUST support the following status codes as retriable:
 //
 // * 500
 // * 502
@@ -621,10 +622,15 @@ type HTTPHeaderMatch struct {
 	Name HTTPHeaderName `json:"name"`
 
 	// Value is the value of HTTP Header to be matched.
+	// <gateway:experimental:description>
+	// Must consist of printable US-ASCII characters, optionally separated
+	// by single tabs or spaces. See: https://tools.ietf.org/html/rfc7230#section-3.2
+	// </gateway:experimental:description>
 	//
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=4096
 	// +required
+	// <gateway:experimental:validation:Pattern=`^[!-~]+([\t ]?[!-~]+)*$`>
 	Value string `json:"value"`
 }
 
@@ -1022,10 +1028,15 @@ type HTTPHeader struct {
 	Name HTTPHeaderName `json:"name"`
 
 	// Value is the value of HTTP Header to be matched.
+	// <gateway:experimental:description>
+	// Must consist of printable US-ASCII characters, optionally separated
+	// by single tabs or spaces. See: https://tools.ietf.org/html/rfc7230#section-3.2
+	// </gateway:experimental:description>
 	//
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=4096
 	// +required
+	// <gateway:experimental:validation:Pattern=`^[!-~]+([\t ]?[!-~]+)*$`>
 	Value string `json:"value"`
 }
 
@@ -1270,7 +1281,7 @@ type HTTPRequestRedirectFilter struct {
 	//
 	// +optional
 	// +kubebuilder:default=302
-	// +kubebuilder:validation:Enum=301;302
+	// +kubebuilder:validation:Enum=301;302;303;307;308
 	StatusCode *int `json:"statusCode,omitempty"`
 }
 
@@ -1429,7 +1440,7 @@ type HTTPCORSFilter struct {
 	// Valid values are any method defined by RFC9110, along with the special
 	// value `*`, which represents all HTTP methods are allowed.
 	//
-	// Method names are case sensitive, so these values are also case-sensitive.
+	// Method names are case-sensitive, so these values are also case-sensitive.
 	// (See https://www.rfc-editor.org/rfc/rfc2616#section-5.1.1)
 	//
 	// Multiple method names in the value of the `Access-Control-Allow-Methods`
@@ -1473,7 +1484,7 @@ type HTTPCORSFilter struct {
 	// AllowHeaders indicates which HTTP request headers are supported for
 	// accessing the requested resource.
 	//
-	// Header names are not case sensitive.
+	// Header names are not case-sensitive.
 	//
 	// Multiple header names in the value of the `Access-Control-Allow-Headers`
 	// response header are separated by a comma (",").
@@ -1532,7 +1543,7 @@ type HTTPCORSFilter struct {
 	// this additional header will be exposed as part of the response to the
 	// client.
 	//
-	// Header names are not case sensitive.
+	// Header names are not case-sensitive.
 	//
 	// Multiple header names in the value of the `Access-Control-Expose-Headers`
 	// response header are separated by a comma (",").
@@ -1564,7 +1575,7 @@ type HTTPCORSFilter struct {
 	MaxAge int32 `json:"maxAge,omitempty"`
 }
 
-// HTTPRouteExternalAuthProtcol specifies what protocol should be used
+// HTTPRouteExternalAuthProtocol specifies what protocol should be used
 // for communicating with an external authorization server.
 //
 // Valid values are supplied as constants below.
@@ -1671,7 +1682,7 @@ type GRPCAuthConfig struct {
 	//
 	// +optional
 	// +listType=set
-	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:MaxItems=64
 	AllowedRequestHeaders []string `json:"allowedHeaders,omitempty"`
 }
 
@@ -1719,7 +1730,7 @@ type HTTPAuthConfig struct {
 	//
 	// +optional
 	// +listType=set
-	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:MaxItems=64
 	AllowedRequestHeaders []string `json:"allowedHeaders,omitempty"`
 
 	// AllowedResponseHeaders specifies what headers from the authorization response
@@ -1730,7 +1741,7 @@ type HTTPAuthConfig struct {
 	//
 	// +optional
 	// +listType=set
-	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:MaxItems=64
 	AllowedResponseHeaders []string `json:"allowedResponseHeaders,omitempty"`
 }
 
@@ -1807,9 +1818,7 @@ type HTTPBackendRef struct {
 	//
 	// * The BackendTLSPolicy object is installed in the cluster, a BackendTLSPolicy
 	//   is present that refers to the Service, and the implementation is unable
-	//   to meet the requirement. At the time of writing, BackendTLSPolicy is
-	//   experimental, but once it becomes standard, this will become a MUST
-	//   requirement.
+	//   to meet the requirement.
 	//
 	// Support: Core for Kubernetes Service
 	//
@@ -1819,7 +1828,7 @@ type HTTPBackendRef struct {
 	//
 	// Support for Kubernetes Service appProtocol: Extended
 	//
-	// Support for BackendTLSPolicy: Experimental and ImplementationSpecific
+	// Support for BackendTLSPolicy: Extended
 	//
 	// +optional
 	BackendRef `json:",inline"`
