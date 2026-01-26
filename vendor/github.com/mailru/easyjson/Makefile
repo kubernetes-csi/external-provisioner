@@ -1,3 +1,6 @@
+VERSION := $(shell git describe --tags --always --dirty)
+COMMIT  := $(shell git rev-parse --short HEAD)
+
 all: test
 
 clean:
@@ -6,7 +9,8 @@ clean:
 	rm -rf benchmark/*_easyjson.go
 
 build:
-	go build -o ./bin/easyjson ./easyjson
+	go build -ldflags="-s -w -X 'main.Version=$(VERSION)' -X 'main.Commit=$(COMMIT)'" -o ./bin/easyjson ./easyjson
+
 
 generate: build
 	bin/easyjson -stubs \
