@@ -10,6 +10,7 @@
 
 - Add provisioner.storage.kubernetes.io/volumesnapshot-as-source-protection finalizer on VolumeSnapshot as Source. Add rbac rules to watch/update volumesnapshots. ([#1458](https://github.com/kubernetes-csi/external-provisioner/pull/1458), [@xing-yang](https://github.com/xing-yang))
 - Allow provisioning to proceed when snapshot is being deleted to prevent leaking volumes and snapshots. ([#1448](https://github.com/kubernetes-csi/external-provisioner/pull/1448), [@xing-yang](https://github.com/xing-yang))
+- Fixed a bug where retries could cause volumes to be provisioned in the wrong availability zone. ([#1473](https://github.com/kubernetes-csi/external-provisioner/pull/1473), [@torredil](https://github.com/torredil))
 - Fixed infinite retry loop during provisioning if node was deleted in the meantime. ([#1438](https://github.com/kubernetes-csi/external-provisioner/pull/1438), [@Fricounet](https://github.com/Fricounet))
 
 ## Dependencies
