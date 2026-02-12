@@ -467,6 +467,7 @@ func main() {
 	)
 
 	var capacityController *capacity.Controller
+	var topologyInformer topology.Informer
 	if *enableCapacity {
 		// Publishing storage capacity information uses its own client
 		// with separate rate limiting.
@@ -501,7 +502,6 @@ func main() {
 			klog.Infof("using %s/%s %s as owner of CSIStorageCapacity objects", controller.APIVersion, controller.Kind, controller.Name)
 		}
 
-		var topologyInformer topology.Informer
 		if nodeDeployment == nil {
 			topologyRateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[string](*retryIntervalStart, *retryIntervalMax)
 			topologyInformer = topology.NewNodeTopology(
@@ -521,7 +521,6 @@ func main() {
 			klog.Infof("producing CSIStorageCapacity objects with fixed topology segment %s", segment)
 			topologyInformer = topology.NewFixedNodeTopology(&segment)
 		}
-		go topologyInformer.RunWorker(ctx)
 
 		managedByID := "external-provisioner"
 		if *enableNodeDeployment {
@@ -680,9 +679,12 @@ func main() {
 
 		factory.Start(ctx.Done())
 		if factoryForNamespace != nil {
-			// Starting is enough, the capacity controller will
+			// Starting is enough, the capacityController and topologyInformer will
 			// wait for sync.
 			factoryForNamespace.Start(ctx.Done())
+		}
+		if topologyInformer != nil {
+			go topologyInformer.RunWorker(ctx)
 		}
 		cacheSyncResult := factory.WaitForCacheSync(ctx.Done())
 		for _, v := range cacheSyncResult {
