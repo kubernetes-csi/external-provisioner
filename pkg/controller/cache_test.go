@@ -165,3 +165,89 @@ func TestConcurrentAccessInInMemoryStore(t *testing.T) {
 
 	wg.Wait()
 }
+
+// TestUpdateNodeLabelsDeepCopy verifies that modifying the original map
+// after calling UpdateNodeLabels does not affect the cached data.
+func TestUpdateNodeLabelsDeepCopy(t *testing.T) {
+	store := NewInMemoryStore()
+	pvcUID := types.UID("test-pvc-uid")
+
+	labels := map[string]string{
+		"zone": "zone-a",
+		"rack": "rack-1",
+	}
+
+	store.UpdateNodeLabels(pvcUID, labels)
+
+	// Mutate the original map
+	labels["zone"] = "zone-b"
+	delete(labels, "rack")
+
+	cached, err := store.GetByPvcUID(pvcUID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cached.NodeLabels["zone"] != "zone-a" {
+		t.Errorf("expected zone-a, got %s", cached.NodeLabels["zone"])
+	}
+	if cached.NodeLabels["rack"] != "rack-1" {
+		t.Errorf("expected rack-1, got %s", cached.NodeLabels["rack"])
+	}
+}
+
+// TestUpdateTopologyKeysDeepCopy verifies that modifying the original slice
+// after calling UpdateTopologyKeys does not affect the cached data.
+func TestUpdateTopologyKeysDeepCopy(t *testing.T) {
+	store := NewInMemoryStore()
+	pvcUID := types.UID("test-pvc-uid")
+
+	keys := []string{"zone", "rack"}
+
+	store.UpdateTopologyKeys(pvcUID, keys)
+
+	// Mutate the original slice
+	keys[0] = "corrupted"
+	keys[1] = "also-corrupted"
+
+	cached, err := store.GetByPvcUID(pvcUID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := []string{"zone", "rack"}
+	if !reflect.DeepEqual(cached.TopologyKeys, expected) {
+		t.Errorf("expected %v, got %v", expected, cached.TopologyKeys)
+	}
+}
+
+// TestUpdateRequisiteTermsDeepCopy verifies that modifying the original slice
+// after calling UpdateRequisiteTerms does not affect the cached data.
+func TestUpdateRequisiteTermsDeepCopy(t *testing.T) {
+	store := NewInMemoryStore()
+	pvcUID := types.UID("test-pvc-uid")
+
+	terms := []topologyTerm{
+		{{Key: "zone", Value: "zone-a"}, {Key: "rack", Value: "rack-1"}},
+		{{Key: "zone", Value: "zone-b"}, {Key: "rack", Value: "rack-2"}},
+	}
+
+	store.UpdateRequisiteTerms(pvcUID, terms)
+
+	// Mutate the original slice (simulates what callers may do)
+	terms[0] = topologyTerm{}
+	terms[1][0].Value = "corrupted"
+
+	cached, err := store.GetByPvcUID(pvcUID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := []topologyTerm{
+		{{Key: "zone", Value: "zone-a"}, {Key: "rack", Value: "rack-1"}},
+		{{Key: "zone", Value: "zone-b"}, {Key: "rack", Value: "rack-2"}},
+	}
+	if !reflect.DeepEqual(cached.RequisiteTerms, expected) {
+		t.Errorf("expected %v, got %v", expected, cached.RequisiteTerms)
+	}
+}
