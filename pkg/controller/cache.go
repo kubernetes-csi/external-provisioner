@@ -99,11 +99,20 @@ func (s *InMemoryStore) GetByPvcUID(pvcUID types.UID) (*TopologyInfo, error) {
 func (s *InMemoryStore) UpdateNodeLabels(pvcUID types.UID, newLabels map[string]string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+
+	var labelsCopy map[string]string
+	if newLabels != nil {
+		labelsCopy = make(map[string]string, len(newLabels))
+		for k, v := range newLabels {
+			labelsCopy[k] = v
+		}
+	}
+
 	info, found := s.data[pvcUID]
 	if !found {
-		s.data[pvcUID] = &TopologyInfo{NodeLabels: newLabels}
+		s.data[pvcUID] = &TopologyInfo{NodeLabels: labelsCopy}
 	} else {
-		info.NodeLabels = newLabels
+		info.NodeLabels = labelsCopy
 	}
 }
 
@@ -111,11 +120,18 @@ func (s *InMemoryStore) UpdateNodeLabels(pvcUID types.UID, newLabels map[string]
 func (s *InMemoryStore) UpdateTopologyKeys(pvcUID types.UID, newKeys []string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+
+	var keysCopy []string
+	if newKeys != nil {
+		keysCopy = make([]string, len(newKeys))
+		copy(keysCopy, newKeys)
+	}
+
 	info, found := s.data[pvcUID]
 	if !found {
-		s.data[pvcUID] = &TopologyInfo{TopologyKeys: newKeys}
+		s.data[pvcUID] = &TopologyInfo{TopologyKeys: keysCopy}
 	} else {
-		info.TopologyKeys = newKeys
+		info.TopologyKeys = keysCopy
 	}
 }
 
@@ -123,10 +139,24 @@ func (s *InMemoryStore) UpdateTopologyKeys(pvcUID types.UID, newKeys []string) {
 func (s *InMemoryStore) UpdateRequisiteTerms(pvcUID types.UID, requisiteTerms []topologyTerm) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+
+	// Deep copy the slice to prevent aliasing, callers may modify the
+	// original slice after this call, which would corrupt our cached data
+	// if we stored the original reference.
+	var termsCopy []topologyTerm
+	if requisiteTerms != nil {
+		termsCopy = make([]topologyTerm, len(requisiteTerms))
+		for i, term := range requisiteTerms {
+			newTerm := make(topologyTerm, len(term))
+			copy(newTerm, term)
+			termsCopy[i] = newTerm
+		}
+	}
+
 	info, found := s.data[pvcUID]
 	if !found {
-		s.data[pvcUID] = &TopologyInfo{RequisiteTerms: requisiteTerms}
+		s.data[pvcUID] = &TopologyInfo{RequisiteTerms: termsCopy}
 	} else {
-		info.RequisiteTerms = requisiteTerms
+		info.RequisiteTerms = termsCopy
 	}
 }
