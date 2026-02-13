@@ -421,10 +421,7 @@ func main() {
 		controller.CreateProvisionedPVLimiter(workqueue.DefaultTypedControllerRateLimiter[string]()),
 		controller.ClaimsInformer(claimInformer),
 		controller.RetryIntervalMax(*retryIntervalMax),
-	}
-
-	if utilfeature.DefaultFeatureGate.Enabled(features.HonorPVReclaimPolicy) {
-		provisionerOptions = append(provisionerOptions, controller.AddFinalizer(true))
+		controller.AddFinalizer(true),
 	}
 
 	if supportsMigrationFromInTreePluginName != "" {
