@@ -550,7 +550,7 @@ func extractTopologyTerm(labels map[string]string, topologyKeys []string) (topol
 	for _, key := range topologyKeys {
 		v, ok := labels[key]
 		if !ok {
-			return nil, nil, true // isMissingKey = true
+			return nil, labels, true // isMissingKey = true
 		}
 		term = append(term, topologySegment{key, v})
 	}
@@ -562,7 +562,12 @@ func getTopologyFromNodeName(nodeName string, topologyKeys []string, nodeLister 
 	// Read from the cache first.
 	nodeLabels, err := getNodeLabelsFromCache(pvcNodeStore, pvcKeyForStore)
 	if err == nil && len(nodeLabels) > 0 {
-		return extractTopologyTerm(nodeLabels, topologyKeys)
+		selectedTopology, selectedNodeLabels, isMissingKey := extractTopologyTerm(nodeLabels, topologyKeys)
+		if !isMissingKey {
+			return selectedTopology, selectedNodeLabels, isMissingKey
+		}
+		// If there are missing keys, we fallback to getting the Node from API server.
+		// This is to account for eventual consistency delays where some topology labels are on the CSINode but not the Node.
 	}
 
 	// Get Node from API server.
