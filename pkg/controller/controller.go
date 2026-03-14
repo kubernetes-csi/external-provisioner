@@ -156,7 +156,10 @@ const (
 	annModifyControllerSecretRefName      = "volume.kubernetes.io/controller-modify-secret-name"
 	annModifyControllerSecretRefNamespace = "volume.kubernetes.io/controller-modify-secret-namespace"
 
-	snapshotNotBound = "snapshot %s not bound"
+	snapshotNotBound                  = "snapshot %s not bound"
+	errorGettingSnapshotContent       = "error getting snapshotcontent %s for snapshot %s"
+	snapshotContentNotBoundToSnapshot = "snapshotcontent %s for snapshot %s is bound to a different snapshot"
+	snapshotDifferentDriver           = "snapshotcontent %s for snapshot %s is not handled by CSI driver of StorageClass %s"
 
 	pvcCloneFinalizer = "provisioner.storage.kubernetes.io/cloning-protection"
 	// snapshotSourceProtectionFinalizer is managed by the external-provisioner to track
@@ -1309,17 +1312,17 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.Persis
 	snapContentObj, err := p.snapshotClient.SnapshotV1().VolumeSnapshotContents().Get(ctx, *snapshotObj.Status.BoundVolumeSnapshotContentName, metav1.GetOptions{})
 	if err != nil {
 		klog.Warningf("error getting snapshotcontent %s for snapshot %s/%s from api server: %s", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, err)
-		return nil, fmt.Errorf(snapshotNotBound, dataSource.Name)
+		return nil, fmt.Errorf(errorGettingSnapshotContent, *snapshotObj.Status.BoundVolumeSnapshotContentName, dataSource.Name)
 	}
 
 	if snapContentObj.Spec.VolumeSnapshotRef.UID != snapshotObj.UID || snapContentObj.Spec.VolumeSnapshotRef.Namespace != snapshotObj.Namespace || snapContentObj.Spec.VolumeSnapshotRef.Name != snapshotObj.Name {
 		klog.Warningf("snapshotcontent %s for snapshot %s/%s is bound to a different snapshot", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name)
-		return nil, fmt.Errorf(snapshotNotBound, dataSource.Name)
+		return nil, fmt.Errorf(snapshotContentNotBoundToSnapshot, *snapshotObj.Status.BoundVolumeSnapshotContentName, dataSource.Name)
 	}
 
 	if snapContentObj.Spec.Driver != sc.Provisioner {
 		klog.Warningf("snapshotcontent %s for snapshot %s/%s is handled by a different CSI driver than requested by StorageClass %s", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, sc.Name)
-		return nil, fmt.Errorf(snapshotNotBound, dataSource.Name)
+		return nil, fmt.Errorf(snapshotDifferentDriver, *snapshotObj.Status.BoundVolumeSnapshotContentName, dataSource.Name, sc.Name)
 	}
 
 	if snapshotObj.Status.ReadyToUse == nil || !*snapshotObj.Status.ReadyToUse {
