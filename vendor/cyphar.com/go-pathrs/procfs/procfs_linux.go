@@ -56,10 +56,11 @@ var (
 //     *before* you call wait(2)or any equivalent method that could reap
 //     zombies).
 func ProcPid(pid int) ProcBase {
-	if pid < 0 || pid >= 1<<31 {
+	if pid < 0 || uint64(pid) >= 1<<31 {
 		panic("invalid ProcBasePid value") // TODO: should this be an error?
 	}
-	return ProcBase{inner: libpathrs.ProcPid(uint32(pid))}
+	pid32 := uint32(pid) //nolint:gosec // G115 false positive <https://github.com/securego/gosec/issues/1212>
+	return ProcBase{inner: libpathrs.ProcPid(pid32)}
 }
 
 // ThreadCloser is a callback that needs to be called when you are done
