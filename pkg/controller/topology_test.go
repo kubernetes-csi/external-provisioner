@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -1792,6 +1793,136 @@ func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNodeTopologyLabelFallback(t *testing.T) {
+	// When the Node initially has incomplete topology labels, provisioning is expected to fail.
+	// Once those labels are added, provisioning should succeed.
+	topologyKeys := []string{
+		"com.example.csi/zone",
+		"com.example.csi/rack",
+		"com.example.csi/region",
+		"com.example.csi/compute-type",
+	}
+	incompleteNodeLabels := map[string]string{
+		"com.example.csi/zone":   "zone1",
+		"com.example.csi/rack":   "rackA",
+		"com.example.csi/region": "us-west",
+	}
+	completeNodeLabels := map[string]string{
+		"com.example.csi/zone":         "zone1",
+		"com.example.csi/rack":         "rackA",
+		"com.example.csi/region":       "us-west",
+		"com.example.csi/compute-type": "standard",
+	}
+
+	// originally the node has incomplete topology labels
+	node := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "test-node",
+			Labels: incompleteNodeLabels,
+		},
+	}
+	csiNode := &storagev1.CSINode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-node",
+		},
+		Spec: storagev1.CSINodeSpec{
+			Drivers: []storagev1.CSINodeDriver{
+				{
+					Name:         testDriverName,
+					NodeID:       "test-node",
+					TopologyKeys: topologyKeys,
+				},
+			},
+		},
+	}
+	pvc := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pvc",
+			Namespace: "default",
+			UID:       "test-pvc-uid",
+		},
+	}
+	kubeClient := fakeclientset.NewSimpleClientset(node, csiNode, pvc)
+	_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
+	defer close(stopChan)
+	pvcNodeStore := NewInMemoryStore()
+
+	t.Run("first provisioning attempt should fail because incomplete node labels", func(t *testing.T) {
+		_, err := GenerateAccessibilityRequirements(
+			kubeClient,
+			testDriverName,
+			pvc.UID,
+			pvc.Name,
+			nil,
+			"test-node",
+			false,
+			false,
+			csiNodeLister,
+			nodeLister,
+			pvcNodeStore,
+		)
+		if err == nil {
+			t.Fatal("expected error due to missing topology label, got nil")
+		}
+		expectedError := "topology labels from selected node"
+		if !strings.Contains(err.Error(), expectedError) {
+			t.Errorf("expected error containing %q, got: %v", expectedError, err)
+		}
+	})
+
+	// update the Node with the missing label
+	node.Labels = completeNodeLabels
+	_, err := kubeClient.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("failed to update node: %v", err)
+	}
+	_, csiNodeLister2, nodeLister2, _, _, stopChan2 := listers(kubeClient)
+	defer close(stopChan2)
+
+	t.Run("second provisioning attempt should succeed after labels added", func(t *testing.T) {
+		requirements, err := GenerateAccessibilityRequirements(
+			kubeClient,
+			testDriverName,
+			pvc.UID,
+			pvc.Name,
+			nil,
+			"test-node",
+			false,
+			false,
+			csiNodeLister2,
+			nodeLister2,
+			pvcNodeStore,
+		)
+		if err != nil {
+			t.Fatalf("expected success after fallback, got error: %v", err)
+		}
+		if requirements == nil {
+			t.Fatal("expected requirements to be generated, got nil")
+		}
+
+		expectedTopology := &csi.Topology{
+			Segments: map[string]string{
+				"com.example.csi/zone":         "zone1",
+				"com.example.csi/rack":         "rackA",
+				"com.example.csi/region":       "us-west",
+				"com.example.csi/compute-type": "standard",
+			},
+		}
+		if len(requirements.Requisite) != 1 {
+			t.Errorf("expected 1 requisite topology, got %d", len(requirements.Requisite))
+		} else if !cmp.Equal(requirements.Requisite[0], expectedTopology, protocmp.Transform()) {
+			t.Errorf("requisite topology mismatch.\nExpected: %v\nGot: %v",
+				expectedTopology, requirements.Requisite[0])
+		}
+		if len(requirements.Preferred) != 1 {
+			t.Errorf("expected 1 preferred topology, got %d", len(requirements.Preferred))
+		} else if !cmp.Equal(requirements.Preferred[0], expectedTopology, protocmp.Transform()) {
+			t.Errorf("preferred topology mismatch.\nExpected: %v\nGot: %v",
+				expectedTopology, requirements.Preferred[0])
+		}
+	})
 }
 
 func BenchmarkDedupAndSortZone(b *testing.B) {
