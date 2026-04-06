@@ -100,7 +100,7 @@ func InRootReadlink(rootFd uintptr, path string) (string, error) {
 	size := 128
 	for {
 		linkBuf := make([]byte, size)
-		n := C.pathrs_inroot_readlink(C.int(rootFd), cPath, C.cast_ptr(unsafe.Pointer(&linkBuf[0])), C.ulong(len(linkBuf)))
+		n := C.pathrs_inroot_readlink(C.int(rootFd), cPath, C.cast_ptr(unsafe.Pointer(&linkBuf[0])), C.size_t(len(linkBuf)))
 		switch {
 		case int(n) < C.__PATHRS_MAX_ERR_VALUE:
 			return "", fetchError(n)
@@ -301,7 +301,7 @@ func ProcReadlinkat(procRootFd int, base ProcBase, path string) (string, error) 
 		linkBuf := make([]byte, size)
 		n := C.pathrs_proc_readlinkat(
 			C.int(procRootFd), cBase, cPath,
-			C.cast_ptr(unsafe.Pointer(&linkBuf[0])), C.ulong(len(linkBuf)))
+			C.cast_ptr(unsafe.Pointer(&linkBuf[0])), C.size_t(len(linkBuf)))
 		switch {
 		case int(n) < C.__PATHRS_MAX_ERR_VALUE:
 			return "", fetchError(n)
