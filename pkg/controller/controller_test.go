@@ -56,7 +56,7 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	"github.com/kubernetes-csi/csi-test/v5/driver"
-	"github.com/kubernetes-csi/external-provisioner/v5/pkg/features"
+	"github.com/kubernetes-csi/external-provisioner/v6/pkg/features"
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	"github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned/fake"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"

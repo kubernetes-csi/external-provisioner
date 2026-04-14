@@ -31,7 +31,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/accessmodes"
-	"github.com/kubernetes-csi/external-provisioner/v5/pkg/features"
+	"github.com/kubernetes-csi/external-provisioner/v6/pkg/features"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
