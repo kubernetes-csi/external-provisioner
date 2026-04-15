@@ -27,8 +27,8 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-csi/external-provisioner/v5/pkg/capacity/topology"
-	"github.com/kubernetes-csi/external-provisioner/v5/pkg/features"
+	"github.com/kubernetes-csi/external-provisioner/v6/pkg/capacity/topology"
+	"github.com/kubernetes-csi/external-provisioner/v6/pkg/features"
 	"google.golang.org/grpc"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"

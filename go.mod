@@ -1,4 +1,4 @@
-module github.com/kubernetes-csi/external-provisioner/v5
+module github.com/kubernetes-csi/external-provisioner/v6
 
 go 1.25.7
 
