@@ -106,7 +106,8 @@ func createMockServer(t *testing.T, tmpdir string) (*gomock.Controller,
 	*driver.MockCSIDriver,
 	*driver.MockIdentityServer,
 	*driver.MockControllerServer,
-	csiConnection, error) {
+	csiConnection, error,
+) {
 	// Start the mock server
 	mockController := gomock.NewController(t)
 	controllerServer := driver.NewMockControllerServer(mockController)
@@ -427,7 +428,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 	defer driver.Stop()
 
 	var clientSetObjects []runtime.Object
-	clientSet := fakeclientset.NewSimpleClientset(clientSetObjects...)
+	clientSet := fakeclientset.NewClientset(clientSetObjects...)
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	var pvcNodeStore *InMemoryStore = nil
@@ -2597,7 +2598,7 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 	defer mockController.Finish()
 	defer driver.Stop()
 
-	clientSet := fakeclientset.NewSimpleClientset(tc.clientSetObjects...)
+	clientSet := fakeclientset.NewClientset(tc.clientSetObjects...)
 
 	pluginCaps, controllerCaps := provisionCapabilities()
 	var pvcNodeStore *InMemoryStore = nil
@@ -2770,7 +2771,7 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 		tc.volOpts.StorageClass = tc.volOpts.StorageClass.DeepCopy()
 		objects = append(objects, tc.volOpts.StorageClass)
 	}
-	clientSet := fakeclientset.NewSimpleClientset(objects...)
+	clientSet := fakeclientset.NewClientset(objects...)
 	informerFactory := informers.NewSharedInformerFactory(clientSet, 0)
 	claimInformer := informerFactory.Core().V1().PersistentVolumeClaims()
 	scInformer := informerFactory.Storage().V1().StorageClasses()
@@ -2803,15 +2804,15 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 
 	// Adding objects to the informer ensures that they are consistent with
 	// the fake storage without having to start the informers.
-	claimInformer.Informer().GetStore().Add(tc.volOpts.PVC)
+	_ = claimInformer.Informer().GetStore().Add(tc.volOpts.PVC)
 	if node != nil {
-		nodeInformer.Informer().GetStore().Add(node)
+		_ = nodeInformer.Informer().GetStore().Add(node)
 	}
 	if csiNode != nil {
-		csiNodeInformer.Informer().GetStore().Add(csiNode)
+		_ = csiNodeInformer.Informer().GetStore().Add(csiNode)
 	}
 	if tc.volOpts.StorageClass != nil {
-		scInformer.Informer().GetStore().Add(tc.volOpts.StorageClass)
+		_ = scInformer.Informer().GetStore().Add(tc.volOpts.StorageClass)
 	}
 
 	if testProvision {
@@ -4628,7 +4629,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 	defer driver.Stop()
 
 	doit := func(t *testing.T, tc testcase) {
-		var clientSet kubernetes.Interface = fakeclientset.NewSimpleClientset()
+		var clientSet kubernetes.Interface = fakeclientset.NewClientset()
 		client := &fake.Clientset{}
 
 		client.AddReactor("get", "volumesnapshots", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
@@ -4711,9 +4712,9 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		var gatewayClient *fakegateway.Clientset
 		if tc.withreferenceGrants {
 			referenceGrant := generateReferenceGrant(tc.refGrantsrcNamespace, tc.referenceGrantFrom, tc.referenceGrantTo)
-			gatewayClient = fakegateway.NewSimpleClientset(referenceGrant)
+			gatewayClient = fakegateway.NewClientset(referenceGrant)
 		} else {
-			gatewayClient = fakegateway.NewSimpleClientset()
+			gatewayClient = fakegateway.NewClientset()
 		}
 
 		if tc.xnsEnabled {
@@ -4913,7 +4914,7 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 				pluginCaps, controllerCaps = provisionCapabilities()
 			}
 
-			clientSet := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+			clientSet := fakeclientset.NewClientset(nodes, csiNodes)
 
 			scLister, csiNodeLister, nodeLister, claimLister, vaLister, stopChan := listers(clientSet)
 			var pvcNodeStore *InMemoryStore = nil
@@ -5012,7 +5013,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 
 					nodes := buildNodes(nodeLabels)
 					csiNodes := buildCSINodes(topologyKeys)
-					clientSet := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+					clientSet := fakeclientset.NewClientset(nodes, csiNodes)
 					scLister, csiNodeLister, nodeLister, claimLister, vaLister, stopChan := listers(clientSet)
 					var pvcNodeStore *InMemoryStore = nil
 					if SupportsTopology(pluginCaps) {
@@ -5091,7 +5092,7 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 	defer mockController.Finish()
 	defer driver.Stop()
 
-	clientSet := fakeclientset.NewSimpleClientset()
+	clientSet := fakeclientset.NewClientset()
 	pluginCaps, controllerCaps := provisionWithTopologyCapabilities()
 	var pvcNodeStore *InMemoryStore = nil
 	if SupportsTopology(pluginCaps) {
@@ -5737,7 +5738,7 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 	if tc.secrets != nil {
 		clientSetObjects = append(clientSetObjects, tc.secrets...)
 	}
-	clientSet = fakeclientset.NewSimpleClientset(clientSetObjects...)
+	clientSet = fakeclientset.NewClientset(clientSetObjects...)
 
 	informerFactory := informers.NewSharedInformerFactory(clientSet, 0)
 	claimInformer := informerFactory.Core().V1().PersistentVolumeClaims()
@@ -6803,16 +6804,16 @@ func TestProvisionFromPVC(t *testing.T) {
 			// Create a fake claim with block mode on our PVC DataSource
 			blockClaim := fakeClaim(blockModePVName, srcNamespace, "fake-block-claim-uid", requestedBytes, tc.clonePVName, v1.ClaimBound, &fakeSc1, "block")
 
-			clientSet = fakeclientset.NewSimpleClientset(claim, scNilClaim, pv, invalidClaim, filesystemClaim, blockClaim, unboundPV, anotherDriverPV, pvBoundToAnotherPVCUID, pvBoundToAnotherPVCNamespace, pvBoundToAnotherPVCName, lostClaim, pendingClaim, pvUsingFilesystemMode, blkModePV)
+			clientSet = fakeclientset.NewClientset(claim, scNilClaim, pv, invalidClaim, filesystemClaim, blockClaim, unboundPV, anotherDriverPV, pvBoundToAnotherPVCUID, pvBoundToAnotherPVCNamespace, pvBoundToAnotherPVCName, lostClaim, pendingClaim, pvUsingFilesystemMode, blkModePV)
 
 			var refGrantLister referenceGrantv1beta1.ReferenceGrantLister
 			var stopChan chan struct{}
 			var gatewayClient *fakegateway.Clientset
 			if tc.withreferenceGrants {
 				referenceGrant := generateReferenceGrant(tc.refGrantsrcNamespace, tc.referenceGrantFrom, tc.referenceGrantTo)
-				gatewayClient = fakegateway.NewSimpleClientset(referenceGrant)
+				gatewayClient = fakegateway.NewClientset(referenceGrant)
 			} else {
-				gatewayClient = fakegateway.NewSimpleClientset()
+				gatewayClient = fakegateway.NewClientset()
 			}
 			if tc.xnsEnabled {
 				gatewayFactory := gatewayInformers.NewSharedInformerFactory(gatewayClient, ResyncPeriodOfReferenceGrantInformer)
@@ -7013,7 +7014,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			mockTranslator := NewMockProvisionerCSITranslator(mockController)
 			defer mockController.Finish()
 			defer driver.Stop()
-			clientSet := fakeclientset.NewSimpleClientset()
+			clientSet := fakeclientset.NewClientset()
 			pluginCaps, controllerCaps := provisionCapabilities()
 			var pvcNodeStore *InMemoryStore = nil
 			if SupportsTopology(pluginCaps) {
@@ -7187,9 +7188,9 @@ func TestDeleteMigration(t *testing.T) {
 
 			var clientSet *fakeclientset.Clientset
 			if tc.sc != nil {
-				clientSet = fakeclientset.NewSimpleClientset(tc.sc)
+				clientSet = fakeclientset.NewClientset(tc.sc)
 			} else {
-				clientSet = fakeclientset.NewSimpleClientset()
+				clientSet = fakeclientset.NewClientset()
 			}
 
 			pluginCaps, controllerCaps := provisionCapabilities()

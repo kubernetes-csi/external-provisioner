@@ -530,7 +530,7 @@ func TestNodeTopology(t *testing.T) {
 
 			var objects []runtime.Object
 			objects = append(objects, makeNodes(tc.initialNodes)...)
-			clientSet := fakeclientset.NewSimpleClientset(objects...)
+			clientSet := fakeclientset.NewClientset(objects...)
 			nt := fakeNodeTopology(ctx, testDriverName, clientSet)
 
 			// Validate initial state - this will wait for the condition with exponential backoff
