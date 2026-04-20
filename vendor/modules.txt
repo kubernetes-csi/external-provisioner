@@ -727,7 +727,7 @@ gopkg.in/inf.v0
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# k8s.io/api v0.35.3
+# k8s.io/api v0.35.4
 ## explicit; go 1.25.0
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
@@ -789,12 +789,12 @@ k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
 k8s.io/api/storagemigration/v1beta1
-# k8s.io/apiextensions-apiserver v0.35.3
+# k8s.io/apiextensions-apiserver v0.35.4
 ## explicit; go 1.25.0
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/features
-# k8s.io/apimachinery v0.35.3
+# k8s.io/apimachinery v0.35.4
 ## explicit; go 1.25.0
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -869,7 +869,7 @@ k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/json
 k8s.io/apimachinery/third_party/forked/golang/netutil
 k8s.io/apimachinery/third_party/forked/golang/reflect
-# k8s.io/apiserver v0.35.3
+# k8s.io/apiserver v0.35.4
 ## explicit; go 1.25.0
 k8s.io/apiserver/pkg/admission
 k8s.io/apiserver/pkg/admission/configuration
@@ -1006,7 +1006,7 @@ k8s.io/apiserver/pkg/util/x509metrics
 k8s.io/apiserver/pkg/validation
 k8s.io/apiserver/pkg/warning
 k8s.io/apiserver/plugin/pkg/authenticator/token/webhook
-# k8s.io/client-go v0.35.3
+# k8s.io/client-go v0.35.4
 ## explicit; go 1.25.0
 k8s.io/client-go/applyconfigurations
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
@@ -1362,7 +1362,7 @@ k8s.io/client-go/util/keyutil
 k8s.io/client-go/util/retry
 k8s.io/client-go/util/watchlist
 k8s.io/client-go/util/workqueue
-# k8s.io/component-base v0.35.3
+# k8s.io/component-base v0.35.4
 ## explicit; go 1.25.0
 k8s.io/component-base/cli/flag
 k8s.io/component-base/compatibility
@@ -1389,7 +1389,7 @@ k8s.io/component-base/tracing
 k8s.io/component-base/tracing/api/v1
 k8s.io/component-base/version
 k8s.io/component-base/zpages/features
-# k8s.io/component-helpers v0.35.3
+# k8s.io/component-helpers v0.35.4
 ## explicit; go 1.25.0
 k8s.io/component-helpers/node/util/sysctl
 k8s.io/component-helpers/resource
@@ -1398,7 +1398,7 @@ k8s.io/component-helpers/scheduling/corev1/nodeaffinity
 # k8s.io/controller-manager v0.35.2 => k8s.io/controller-manager v0.35.2
 ## explicit; go 1.25.0
 k8s.io/controller-manager/pkg/features
-# k8s.io/csi-translation-lib v0.35.3
+# k8s.io/csi-translation-lib v0.35.4
 ## explicit; go 1.25.0
 k8s.io/csi-translation-lib
 k8s.io/csi-translation-lib/plugins
@@ -1442,7 +1442,7 @@ k8s.io/kubectl/pkg/util/podutils
 # k8s.io/kubelet v0.35.2 => k8s.io/kubelet v0.35.2
 ## explicit; go 1.25.0
 k8s.io/kubelet/pkg/apis
-# k8s.io/kubernetes v1.35.3
+# k8s.io/kubernetes v1.35.4
 ## explicit; go 1.25.0
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
@@ -1597,7 +1597,7 @@ sigs.k8s.io/randfill/bytesource
 sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller
 sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller/metrics
 sigs.k8s.io/sig-storage-lib-external-provisioner/v13/util
-# sigs.k8s.io/structured-merge-diff/v6 v6.3.2
+# sigs.k8s.io/structured-merge-diff/v6 v6.4.0
 ## explicit; go 1.23
 sigs.k8s.io/structured-merge-diff/v6/fieldpath
 sigs.k8s.io/structured-merge-diff/v6/merge
