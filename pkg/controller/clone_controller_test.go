@@ -17,8 +17,10 @@ import (
 	"k8s.io/client-go/util/workqueue"
 )
 
-var requestedBytes int64 = 1000
-var fakeSc1 = "fake-sc-1"
+var (
+	requestedBytes int64 = 1000
+	fakeSc1              = "fake-sc-1"
+)
 
 const (
 	srcName      = "clone-source-pvc"
@@ -112,7 +114,7 @@ func TestCloneFinalizerRemoval(t *testing.T) {
 			ctx := context.Background()
 
 			objects := append(tc.initialClaims, tc.cloneSource)
-			clientSet := fakeclientset.NewSimpleClientset(objects...)
+			clientSet := fakeclientset.NewClientset(objects...)
 			cloningProtector := fakeCloningProtector(clientSet, objects...)
 
 			// Simulate Delete behavior
@@ -138,7 +140,6 @@ func TestCloneFinalizerRemoval(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 // TestEnqueueClaimUpadate ensure that PVCs will be processed for finalizer removal only on deletionTimestamp being set on the resource
@@ -165,7 +166,7 @@ func TestEnqueueClaimUpadate(t *testing.T) {
 			ctx := context.Background()
 
 			objects := []runtime.Object{}
-			clientSet := fakeclientset.NewSimpleClientset(objects...)
+			clientSet := fakeclientset.NewClientset(objects...)
 			cloningProtector := fakeCloningProtector(clientSet, objects...)
 
 			// Simulate queue behavior
@@ -190,7 +191,7 @@ func fakeCloningProtector(client *fakeclientset.Clientset, objects ...runtime.Ob
 	claimQueue := workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[string]{Name: "claims"})
 
 	for _, claim := range objects {
-		claimInformer.GetStore().Add(claim)
+		_ = claimInformer.GetStore().Add(claim)
 	}
 
 	informerFactory.WaitForCacheSync(context.TODO().Done())

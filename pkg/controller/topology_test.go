@@ -406,7 +406,7 @@ func TestStatefulSetSpreading(t *testing.T) {
 	nodes := buildNodes(nodeLabels)
 	csiNodes := buildCSINodes(topologyKeys)
 
-	kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+	kubeClient := fakeclientset.NewClientset(nodes, csiNodes)
 
 	_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
 	defer close(stopChan)
@@ -1105,7 +1105,7 @@ func TestTopologyAggregation(t *testing.T) {
 								},
 							}
 
-							kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes, pvc)
+							kubeClient := fakeclientset.NewClientset(nodes, csiNodes, pvc)
 
 							_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
 							pvcNodeStore := NewInMemoryStore()
@@ -1443,7 +1443,7 @@ func TestPreferredTopologies(t *testing.T) {
 								},
 							}
 
-							kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes, pvc)
+							kubeClient := fakeclientset.NewClientset(nodes, csiNodes, pvc)
 							selectedNode := &nodes.Items[0]
 
 							_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
@@ -1714,7 +1714,7 @@ func TestProvisionWithDeletedNodeFromCache(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			nodes := buildNodes(nodeLabels)
 			csiNodes := buildCSINodes(topologyKeys)
-			kubeClient := fakeclientset.NewSimpleClientset(nodes, csiNodes)
+			kubeClient := fakeclientset.NewClientset(nodes, csiNodes)
 
 			_, csiNodeLister, nodeLister, _, _, stopChan := listers(kubeClient)
 			pvcNodeStore := NewInMemoryStore()

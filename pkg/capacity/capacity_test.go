@@ -1106,7 +1106,7 @@ func TestCapacityController(t *testing.T) {
 				})
 				initialObjects = append(initialObjects, csc)
 			}
-			clientSet := fakeclientset.NewSimpleClientset(initialObjects...)
+			clientSet := fakeclientset.NewClientset(initialObjects...)
 			clientSet.PrependReactor("create", "csistoragecapacities", cscCreateReactor)
 			clientSet.PrependReactor("update", "csistoragecapacities", updateCSIStorageCapacityReactor())
 			topo := tc.topology
@@ -1945,7 +1945,7 @@ func TestRefresh(t *testing.T) {
 
 			var objects []runtime.Object
 			objects = append(objects, makeSCs(tc.initialSCs)...)
-			clientSet := fakeclientset.NewSimpleClientset(objects...)
+			clientSet := fakeclientset.NewClientset(objects...)
 			clientSet.PrependReactor("create", "csistoragecapacities", createCSIStorageCapacityReactor())
 			clientSet.PrependReactor("update", "csistoragecapacities", updateCSIStorageCapacityReactor())
 			topo := tc.topology
