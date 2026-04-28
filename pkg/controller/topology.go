@@ -566,17 +566,17 @@ func getTopologyFromNodeName(nodeName string, topologyKeys []string, nodeLister 
 		if !isMissingKey {
 			return selectedTopology, selectedNodeLabels, isMissingKey
 		}
-		// If there are missing keys, we fallback to getting the Node from API server.
-		// This is to account for eventual consistency delays where some topology labels are on the CSINode but not the Node.
+		// If required topology keys are missing, refresh node labels from nodeLister
+		// to avoid using stale or incomplete entries from pvcNodeStore.
 	}
 
-	// Get Node from API server.
+	// Get Node from informer cache.
 	if nodeLister != nil {
 		node, err := nodeLister.Get(nodeName)
 		if err != nil {
 			// Any error, including NotFound, results in us not being
 			// able to determine topology. The cache was already checked.
-			return nil, nil, true
+			return nil, nodeLabels, true
 		}
 
 		// Add or update cache for the node.
