@@ -71,6 +71,11 @@ func IsVolumeAttributesClassV1Enabled(d discovery.DiscoveryInterface) (bool, err
 	return resourceExists(d, "storage.k8s.io/v1", "VolumeAttributesClass")
 }
 
+// IsVolumeSnapshotV1Available checks if the VolumeSnapshot v1 API is available on the cluster.
+func IsVolumeSnapshotV1Available(d discovery.DiscoveryInterface) (bool, error) {
+	return resourceExists(d, "snapshot.storage.k8s.io/v1", "VolumeSnapshot")
+}
+
 func resourceExists(d discovery.DiscoveryInterface, groupVersion, kind string) (bool, error) {
 	res, err := d.ServerResourcesForGroupVersion(groupVersion)
 	if err != nil {
