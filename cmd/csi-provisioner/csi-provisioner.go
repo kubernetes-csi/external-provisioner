@@ -78,15 +78,16 @@ import (
 )
 
 var (
-	master               = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
-	volumeNamePrefix     = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume.")
-	volumeNameUUIDLength = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
-	retryIntervalStart   = flag.Duration("retry-interval-start", time.Second, "Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to retry-interval-max.")
-	retryIntervalMax     = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
-	workerThreads        = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
-	finalizerThreads     = flag.Uint("cloning-protection-threads", 1, "Number of simultaneously running threads, handling cloning finalizer removal")
-	capacityThreads      = flag.Uint("capacity-threads", 1, "Number of simultaneously running threads, handling CSIStorageCapacity objects")
-	operationTimeout     = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for volume operation (creation, deletion, capacity queries)")
+	master                      = flag.String("master", "", "Master URL to build a client config from. Either this or kubeconfig needs to be set if the provisioner is being run out of cluster.")
+	volumeNamePrefix            = flag.String("volume-name-prefix", "pvc", "Prefix to apply to the name of a created volume.")
+	volumeNameUUIDLength        = flag.Int("volume-name-uuid-length", -1, "Truncates generated UUID of a created volume to this length. Defaults behavior is to NOT truncate.")
+	retryIntervalStart          = flag.Duration("retry-interval-start", time.Second, "Initial retry interval of failed provisioning or deletion. It doubles with each failure, up to retry-interval-max.")
+	retryIntervalMax            = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed provisioning or deletion.")
+	workerThreads               = flag.Uint("worker-threads", 100, "Number of provisioner worker threads, in other words nr. of simultaneous CSI calls.")
+	finalizerThreads            = flag.Uint("cloning-protection-threads", 1, "Number of simultaneously running threads, handling cloning finalizer removal")
+	snapshotOrphanSweepInterval = flag.Duration("snapshot-orphan-sweep-interval", 5*time.Minute, "How often to check for orphaned snapshot source-protection finalizers. Set to 0 to disable the sweep controller.")
+	capacityThreads             = flag.Uint("capacity-threads", 1, "Number of simultaneously running threads, handling CSIStorageCapacity objects")
+	operationTimeout            = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for volume operation (creation, deletion, capacity queries)")
 
 	strictTopology      = flag.Bool("strict-topology", false, "Late binding: pass only selected node topology to CreateVolume Request, unlike default behavior of passing aggregated cluster topologies that match with topology keys of the selected node.")
 	immediateTopology   = flag.Bool("immediate-topology", true, "Immediate binding: pass aggregated cluster topologies for all nodes where the CSI driver is available (enabled, the default) or no topology requirements (if disabled).")
@@ -635,6 +636,18 @@ func main() {
 		controllerCapabilities,
 	)
 
+	var csiSnapshotFinalizerController *ctrl.SnapshotFinalizerController
+	if *snapshotOrphanSweepInterval > 0 {
+		if volumeSnapshotAvailable, err := features.IsVolumeSnapshotV1Available(clientset.Discovery()); err == nil && volumeSnapshotAvailable {
+			csiSnapshotFinalizerController = ctrl.NewSnapshotFinalizerController(
+				snapClient,
+				claimLister,
+				controllerCapabilities,
+				*snapshotOrphanSweepInterval,
+			)
+		}
+	}
+
 	// handle SIGTERM and SIGINT by cancelling the context.
 	var (
 		terminate       func()          // called when all controllers are finished
@@ -701,6 +714,13 @@ func main() {
 					csiClaimController.Run(controllerCtx, int(*finalizerThreads), &wg)
 				}()
 			}
+			if csiSnapshotFinalizerController != nil {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					csiSnapshotFinalizerController.Run(controllerCtx, &wg)
+				}()
+			}
 			provisionController.ControllerWaitGroup(&wg)
 			provisionController.Run(controllerCtx)
 			wg.Wait()
@@ -711,6 +731,9 @@ func main() {
 			}
 			if csiClaimController != nil {
 				go csiClaimController.Run(ctx, int(*finalizerThreads), nil)
+			}
+			if csiSnapshotFinalizerController != nil {
+				go csiSnapshotFinalizerController.Run(ctx, nil)
 			}
 			provisionController.Run(ctx)
 		}
