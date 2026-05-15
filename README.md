@@ -75,6 +75,8 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 * `--cloning-protection-threads <num>`: Number of simultaneously running threads, handling cloning finalizer removal. Defaults to `1`.
 
+* `--snapshot-orphan-sweep-interval <duration>`: How often to check for orphaned snapshot source-protection finalizers. These finalizers can become stuck if the provisioner crashes during snapshot-based provisioning. Set to `0` to disable. Defaults to `5m`.
+
 * `--http-endpoint`: The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080` which corresponds to port 8080 on local host). The default is empty string, which means the server is disabled.
 
 * `--metrics-path`: The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.
