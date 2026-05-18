@@ -213,8 +213,8 @@ func (nt *nodeTopology) RunWorker(ctx context.Context) {
 	klog.Info("Started node topology worker")
 	defer klog.Info("Shutting node topology worker")
 
-	if !cache.WaitForCacheSync(ctx.Done(),
-		nt.nodeInformer.Informer().HasSynced, nt.csiNodeInformer.Informer().HasSynced) {
+	if !cache.WaitFor(ctx, "",
+		nt.nodeInformer.Informer().HasSyncedChecker(), nt.csiNodeInformer.Informer().HasSyncedChecker()) {
 		return
 	}
 
