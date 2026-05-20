@@ -867,6 +867,13 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 
 	result, state, err := p.prepareProvision(ctx, claim, options.StorageClass, options.SelectedNodeName)
 	if result == nil {
+		// prepareProvision may have added the snapshot finalizer before
+		// hitting a subsequent error. Clean it up when provisioning
+		// will not be retried (ProvisioningFinished / ProvisioningReschedule).
+		if state != controller.ProvisioningNoChange &&
+			state != controller.ProvisioningInBackground {
+			p.cleanupSnapshotFinalizer(ctx, claim)
+		}
 		return nil, state, err
 	}
 	req := result.req
@@ -905,6 +912,13 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		// Delete the entry in in memory cache if the error is final
 		if p.supportsTopology() && (state == controller.ProvisioningFinished || state == controller.ProvisioningReschedule) {
 			p.pvcNodeStore.Delete(claim.UID)
+		}
+		// Remove snapshot finalizer when CreateVolume definitively failed.
+		// Keep the finalizer for ProvisioningInBackground since
+		// CreateVolume may still be running and the snapshot needs
+		// protection.
+		if state != controller.ProvisioningInBackground {
+			p.cleanupSnapshotFinalizer(ctx, claim)
 		}
 		return nil, state, err
 	}
@@ -1041,12 +1055,7 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	}
 
 	// Remove snapshot finalizer if this PVC was provisioned from a snapshot
-	if claim.Spec.DataSource != nil && claim.Spec.DataSource.Kind == snapshotKind {
-		if err := p.removeSnapshotFinalizer(ctx, claim.Namespace, claim.Spec.DataSource.Name); err != nil {
-			klog.Warningf("Failed to remove snapshot finalizer from %s/%s: %v", claim.Namespace, claim.Spec.DataSource.Name, err)
-			// Don't fail provisioning if we can't remove the finalizer - it will be cleaned up later
-		}
-	}
+	p.cleanupSnapshotFinalizer(ctx, claim)
 
 	return pv, controller.ProvisioningFinished, nil
 }
@@ -1136,6 +1145,27 @@ func (p *csiProvisioner) removeSnapshotFinalizer(ctx context.Context, namespace,
 
 	klog.V(3).Infof("Removed finalizer %s from snapshot %s/%s", snapshotSourceProtectionFinalizer, namespace, name)
 	return nil
+}
+
+// cleanupSnapshotFinalizer removes the snapshot source-protection finalizer
+// if the PVC's data source is a VolumeSnapshot. Called on error paths where
+// provisioning will not be retried so the snapshot is not left with a
+// dangling finalizer that blocks deletion.
+func (p *csiProvisioner) cleanupSnapshotFinalizer(
+	ctx context.Context, claim *v1.PersistentVolumeClaim,
+) {
+	if claim.Spec.DataSource != nil &&
+		claim.Spec.DataSource.Kind == snapshotKind {
+		if err := p.removeSnapshotFinalizer(
+			ctx, claim.Namespace, claim.Spec.DataSource.Name,
+		); err != nil {
+			klog.Warningf(
+				"Failed to remove snapshot finalizer from %s/%s: %v",
+				claim.Namespace, claim.Spec.DataSource.Name, err,
+			)
+			// Don't fail provisioning if we can't remove the finalizer - it will be cleaned up later
+		}
+	}
 }
 
 func (p *csiProvisioner) supportsTopology() bool {

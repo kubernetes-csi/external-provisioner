@@ -2982,6 +2982,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		refGrantsrcNamespace                     string
 		referenceGrantFrom                       []gatewayv1beta1.ReferenceGrantFrom
 		referenceGrantTo                         []gatewayv1beta1.ReferenceGrantTo
+		expectSnapshotFinalizerRemoved           bool
 	}
 	testcases := map[string]testcase{
 		"provision with volume snapshot data source": {
@@ -4616,6 +4617,43 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			},
 			expectCSICall: true,
 		},
+		"snapshot finalizer removed when CreateVolume fails with InvalidArgument": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters:    map[string]string{},
+					Provisioner:   "test-driver",
+				},
+				PVName: "test-name",
+				PVC: &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						UID:         "testid",
+						Namespace:   "default",
+						Annotations: driverNameAnnotation,
+					},
+					Spec: v1.PersistentVolumeClaimSpec{
+						StorageClassName: &snapClassName,
+						Resources: v1.VolumeResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceName(v1.ResourceStorage): resource.MustParse(
+									strconv.FormatInt(requestedBytes, 10),
+								),
+							},
+						},
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						DataSource: &v1.TypedLocalObjectReference{
+							Name:     snapName,
+							Kind:     "VolumeSnapshot",
+							APIGroup: &apiGrp,
+						},
+					},
+				},
+			},
+			snapshotStatusReady:            true,
+			expectErr:                      true,
+			expectCSICall:                  true,
+			expectSnapshotFinalizerRemoved: true,
+		},
 	}
 
 	tmpdir := tempDir(t)
@@ -4631,10 +4669,16 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		var clientSet kubernetes.Interface = fakeclientset.NewSimpleClientset()
 		client := &fake.Clientset{}
 
+		var snapshotUpdates []*crdv1.VolumeSnapshot
+		var currentSnapshot *crdv1.VolumeSnapshot
+
 		client.AddReactor("get", "volumesnapshots", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
 			namespace := "default"
 			if tc.snapNamespace != "" {
 				namespace = tc.snapNamespace
+			}
+			if currentSnapshot != nil {
+				return true, currentSnapshot.DeepCopy(), nil
 			}
 			snap := newSnapshot(snapName, namespace, snapClassName, "snapcontent-snapuid", "snapuid", "claim", tc.snapshotStatusReady, nil, metaTimeNowUnix, resource.NewQuantity(requestedBytes, resource.BinarySI))
 			if tc.nilSnapshotStatus {
@@ -4659,6 +4703,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					snap.ObjectMeta.Finalizers = []string{"provisioner.storage.kubernetes.io/volumesnapshot-as-source-protection"}
 				}
 			}
+			currentSnapshot = snap.DeepCopy()
 			return true, snap, nil
 		})
 
@@ -4674,6 +4719,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			if !ok {
 				return false, nil, fmt.Errorf("expected VolumeSnapshot, got %T", updateAction.GetObject())
 			}
+			snapshotUpdates = append(snapshotUpdates, snap.DeepCopy())
+			currentSnapshot = snap.DeepCopy()
 			return true, snap, nil
 		})
 
@@ -4755,7 +4802,15 @@ func TestProvisionFromSnapshot(t *testing.T) {
 		// When the following if condition is met, it is a valid create volume from snapshot
 		// operation and CreateVolume is expected to be called.
 		if tc.expectCSICall {
-			if tc.notPopulated {
+			if tc.expectSnapshotFinalizerRemoved {
+				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(
+					nil,
+					status.Error(
+						codes.InvalidArgument,
+						"requested volume size must match source snapshot size",
+					),
+				).Times(1)
+			} else if tc.notPopulated {
 				out.Volume.ContentSource = nil
 				controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).Return(out, nil).Times(1)
 				controllerServer.EXPECT().DeleteVolume(gomock.Any(), utils.Protobuf(&csi.DeleteVolumeRequest{
@@ -4796,6 +4851,46 @@ func TestProvisionFromSnapshot(t *testing.T) {
 				if tc.expectedPVSpec.CSIPVS != nil {
 					if !reflect.DeepEqual(pv.Spec.PersistentVolumeSource.CSI, tc.expectedPVSpec.CSIPVS) {
 						t.Errorf("expected PV: %v, got: %v", tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
+					}
+				}
+			}
+		}
+
+		if tc.expectSnapshotFinalizerRemoved {
+			if err == nil {
+				t.Errorf("expected error for finalizer removal test, got none")
+			}
+			if len(snapshotUpdates) == 0 {
+				t.Errorf("expected snapshot updates during provisioning")
+			} else {
+				fin := snapshotSourceProtectionFinalizer
+				hasFinalizer := func(s *crdv1.VolumeSnapshot) bool {
+					for _, f := range s.Finalizers {
+						if f == fin {
+							return true
+						}
+					}
+					return false
+				}
+				if !hasFinalizer(snapshotUpdates[0]) {
+					t.Errorf(
+						"expected source protection finalizer on first snapshot update",
+					)
+				}
+				if len(snapshotUpdates) < 2 {
+					t.Errorf(
+						"expected at least 2 snapshot updates "+
+							"(add + remove finalizer), got %d",
+						len(snapshotUpdates),
+					)
+				} else {
+					last := snapshotUpdates[len(snapshotUpdates)-1]
+					if hasFinalizer(last) {
+						t.Errorf(
+							"expected finalizer removed in last update, "+
+								"still present after %d updates",
+							len(snapshotUpdates),
+						)
 					}
 				}
 			}
