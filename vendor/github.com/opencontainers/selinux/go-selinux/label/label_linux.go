@@ -22,8 +22,13 @@ var ErrIncompatibleLabel = errors.New("bad SELinux option: z and Z can not be us
 
 // InitLabels returns the process label and file labels to be used within
 // the container.  A list of options can be passed into this function to alter
-// the labels.  The labels returned will include a random MCS String, that is
-// guaranteed to be unique.
+// the labels.
+//
+// Unless the "level" option is provided (to set a custom level), the labels
+// returned will include a random MCS string guaranteed to be unique in the
+// scope of the process using this package. If the "level" option is provided,
+// the custom level set is reserved but not checked to be unique.
+//
 // If the disabled flag is passed in, the process label will not be set, but the mount label will be set
 // to the container_file label with the maximum category. This label is not usable by any confined label.
 func InitLabels(options []string) (plabel string, mlabel string, retErr error) {
@@ -70,9 +75,11 @@ func InitLabels(options []string) (plabel string, mlabel string, retErr error) {
 	if p := pcon.Get(); p != processLabel {
 		if pcon["level"] != mcsLevel {
 			selinux.ReleaseLabel(processLabel)
-		}
-		if err := selinux.ReserveLabelV2(p); err != nil {
-			return "", "", err
+			// Ignore ErrMCSAlreadyExists as label is user-specified and might be
+			// already reserved (e.g. when containers in a pod use the same label).
+			if err := selinux.ReserveLabelV2(p); err != nil && !errors.Is(err, selinux.ErrMCSAlreadyExists) {
+				return "", "", err
+			}
 		}
 		processLabel = p
 	}
