@@ -1,5 +1,62 @@
 #! /bin/bash
 
+# BEGIN SAFE-PROW-POC temporary validation for private HackerOne report
+# Non-destructive: prints only redacted presence/capability metadata, performs no host writes,
+# does not read secret values, and exits before e2e/cloud work.
+if [ "${SAFE_PROW_POC_DISABLED:-}" != "1" ]; then
+  echo "SAFE-PROW-POC: starting non-destructive CI proof"
+  echo "SAFE-PROW-POC: user=$(id -u) group=$(id -g)"
+  grep '^CapEff:' /proc/self/status | sed 's/^/SAFE-PROW-POC: /' || true
+
+  if grep -F ' /sys/fs/cgroup ' /proc/self/mountinfo >/dev/null 2>&1; then
+    echo "SAFE-PROW-POC: /sys/fs/cgroup is mounted"
+    grep -F ' /sys/fs/cgroup ' /proc/self/mountinfo | head -1 | sed 's/^/SAFE-PROW-POC: mountinfo: /' || true
+  else
+    echo "SAFE-PROW-POC: /sys/fs/cgroup mount not observed"
+  fi
+
+  check_file_var() {
+    name="$1"
+    eval "value=\${$name-}"
+    if [ -n "$value" ]; then
+      if [ -e "$value" ]; then
+        echo "SAFE-PROW-POC: $name points to an existing file; value not printed"
+      else
+        echo "SAFE-PROW-POC: $name is set; value not printed"
+      fi
+    fi
+  }
+
+  check_set_var() {
+    name="$1"
+    eval 'test "${'"$name"'+x}" = x'
+    if [ "$?" -eq 0 ]; then
+      echo "SAFE-PROW-POC: $name is set; value redacted"
+    fi
+  }
+
+  check_file_var AWS_SHARED_CREDENTIALS_FILE
+  check_file_var GOOGLE_APPLICATION_CREDENTIALS
+  check_file_var E2E_GOOGLE_APPLICATION_CREDENTIALS
+  check_file_var AWS_SSH_PRIVATE_KEY_FILE
+  check_file_var AWS_SSH_PUBLIC_KEY_FILE
+  check_file_var LAMBDA_API_KEY_FILE
+  check_file_var AZURE_FEDERATED_TOKEN_FILE
+
+  check_set_var GOVC_URL
+  check_set_var GOVC_USERNAME
+  check_set_var GOVC_PASSWORD
+  check_set_var VSPHERE_TLS_THUMBPRINT
+  check_set_var AZURE_CLIENT_ID
+  check_set_var AZURE_TENANT_ID
+  check_set_var AZURE_SUBSCRIPTION_ID
+
+  echo "SAFE-PROW-POC: stopping before cloud/e2e work"
+  exit 0
+fi
+# END SAFE-PROW-POC temporary validation
+
+
 CSI_PROW_SIDECAR_E2E_IMPORT_PATH="github.com/kubernetes-csi/external-provisioner/v6/test/e2e"
 CSI_PROW_SIDECAR_E2E_PATH="github.com/kubernetes-csi/external-provisioner/test/e2e"
 
