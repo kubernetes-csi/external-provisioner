@@ -435,7 +435,7 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 		pvcNodeStore = NewInMemoryStore()
 	}
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test",
-		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
+		5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false, pvcNodeStore, NamespaceMetadataConfig{})
 
 	// Requested PVC with requestedBytes storage
 	deletePolicy := v1.PersistentVolumeReclaimDelete
@@ -878,6 +878,7 @@ type provisioningTestcase struct {
 	expectState               controller.ProvisioningState
 	expectCreateVolDo         func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest)
 	withExtraMetadata         bool
+	namespaceMetadata         NamespaceMetadataConfig
 	skipCreateVolume          bool
 	deploymentNode            string // fake distributed provisioning with this node as host
 	immediateBinding          bool   // enable immediate binding support for distributed provisioning
@@ -1189,6 +1190,77 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 				}
 			},
 			expectState: controller.ProvisioningFinished,
+		},
+		"normal provision with namespace metadata": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+				},
+				PVName: "test-name",
+				PVC:    createFakePVC(requestedBytes),
+			},
+			namespaceMetadata: NamespaceMetadataConfig{
+				Labels:      []string{"example.com/tier"},
+				Annotations: []string{"example.com/account-id", "example.com/absent"},
+			},
+			clientSetObjects: []runtime.Object{
+				&v1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        "fake-ns",
+						Labels:      map[string]string{"example.com/tier": "gold"},
+						Annotations: map[string]string{"example.com/account-id": "acct-123"},
+					},
+				},
+			},
+			expectedPVSpec: &pvSpec{
+				Name:          "test-testi",
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext3",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectCreateVolDo: func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest) {
+				expectedParams := map[string]string{
+					"fstype": "ext3",
+					namespaceLabelsParameterPrefix + "example.com/tier":            "gold",
+					namespaceAnnotationsParameterPrefix + "example.com/account-id": "acct-123",
+					// "example.com/absent" is configured but not present on the namespace, so it is not injected
+				}
+				if fmt.Sprintf("%v", req.Parameters) != fmt.Sprintf("%v", expectedParams) {
+					t.Errorf("Unexpected parameters: %v", req.Parameters)
+				}
+			},
+			expectState: controller.ProvisioningFinished,
+		},
+		"namespace metadata with missing namespace fails": {
+			volOpts: controller.ProvisionOptions{
+				StorageClass: &storagev1.StorageClass{
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+				},
+				PVName: "test-name",
+				PVC:    createFakePVC(requestedBytes),
+			},
+			namespaceMetadata: NamespaceMetadataConfig{
+				Annotations: []string{"example.com/account-id"},
+			},
+			// no Namespace object in clientSetObjects, so the lookup fails and provisioning is retried
+			expectErr:        true,
+			skipCreateVolume: true,
+			expectState:      controller.ProvisioningNoChange,
 		},
 		"multiple fsType provision": {
 			volOpts: controller.ProvisionOptions{
@@ -2609,7 +2681,7 @@ func runFSTypeProvisionTest(t *testing.T, k string, tc provisioningFSTypeTestcas
 		myDefaultfsType = ""
 	}
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, myDefaultfsType, nil, false, false, pvcNodeStore)
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, myDefaultfsType, nil, false, false, pvcNodeStore, NamespaceMetadataConfig{})
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: requestedBytes,
@@ -2799,7 +2871,7 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 	}
 	mycontrollerPublishReadOnly := tc.controllerPublishReadOnly
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(), claimInformer.Lister(), nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment, mycontrollerPublishReadOnly, false, pvcNodeStore)
+		nil, provisionDriverName, pluginCaps, controllerCaps, supportsMigrationFromInTreePluginName, false, true, csitrans.New(), scInformer.Lister(), csiNodeInformer.Lister(), nodeInformer.Lister(), claimInformer.Lister(), nil, nil, tc.withExtraMetadata, defaultfsType, nodeDeployment, mycontrollerPublishReadOnly, false, pvcNodeStore, tc.namespaceMetadata)
 
 	// Adding objects to the informer ensures that they are consistent with
 	// the fake storage without having to start the informers.
@@ -4739,7 +4811,7 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			pvcNodeStore = NewInMemoryStore()
 		}
 		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-			client, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, refGrantLister, false, defaultfsType, nil, true, true, pvcNodeStore)
+			client, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, refGrantLister, false, defaultfsType, nil, true, true, pvcNodeStore, NamespaceMetadataConfig{})
 
 		out := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
@@ -4923,7 +4995,7 @@ func TestProvisionWithTopologyEnabled(t *testing.T) {
 			defer close(stopChan)
 
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
+				csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, nil, false, defaultfsType, nil, true, false, pvcNodeStore, NamespaceMetadataConfig{})
 
 			pv, _, err := csiProvisioner.Provision(context.Background(), controller.ProvisionOptions{
 				StorageClass: &storagev1.StorageClass{},
@@ -5021,7 +5093,7 @@ func TestProvisionErrorHandling(t *testing.T) {
 					defer close(stopChan)
 
 					csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-						csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
+						csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, csiNodeLister, nodeLister, claimLister, vaLister, nil, false, defaultfsType, nil, true, false, pvcNodeStore, NamespaceMetadataConfig{})
 
 					options := controller.ProvisionOptions{
 						StorageClass: &storagev1.StorageClass{},
@@ -5098,7 +5170,7 @@ func TestProvisionWithTopologyDisabled(t *testing.T) {
 		pvcNodeStore = NewInMemoryStore()
 	}
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false, pvcNodeStore, NamespaceMetadataConfig{})
 
 	out := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -5794,7 +5866,7 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 	}
 	scLister, _, _, _, vaLister, _ := listers(clientSet)
 	csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5,
-		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, nil, nil, nil, vaLister, nil, false, defaultfsType, nodeDeployment, true, false, pvcNodeStore)
+		csiConn.conn, nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), scLister, nil, nil, nil, vaLister, nil, false, defaultfsType, nodeDeployment, true, false, pvcNodeStore, NamespaceMetadataConfig{})
 
 	err = csiProvisioner.Delete(context.Background(), tc.persistentVolume)
 	if tc.expectErr && err == nil {
@@ -6883,7 +6955,7 @@ func TestProvisionFromPVC(t *testing.T) {
 
 			// Phase: execute the test
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
-				nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, claimLister, nil, refGrantLister, false, defaultfsType, nil, true, false, pvcNodeStore)
+				nil, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, claimLister, nil, refGrantLister, false, defaultfsType, nil, true, false, pvcNodeStore, NamespaceMetadataConfig{})
 
 			pv, _, err = csiProvisioner.Provision(context.Background(), tc.volOpts)
 			if tc.expectErr && err == nil {
@@ -7021,7 +7093,7 @@ func TestProvisionWithMigration(t *testing.T) {
 			}
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps,
-				inTreePluginName, false, true, mockTranslator, nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
+				inTreePluginName, false, true, mockTranslator, nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, false, pvcNodeStore, NamespaceMetadataConfig{})
 
 			// Set up return values (AnyTimes to avoid overfitting on implementation)
 
@@ -7201,7 +7273,7 @@ func TestDeleteMigration(t *testing.T) {
 			defer close(stopCh)
 			csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner",
 				"test", 5, csiConn.conn, nil, driverName, pluginCaps, controllerCaps, inTreePluginName,
-				false, true, mockTranslator, scLister, nil, nil, nil, vaLister, nil, false, defaultfsType, nil, true, false, pvcNodeStore)
+				false, true, mockTranslator, scLister, nil, nil, nil, vaLister, nil, false, defaultfsType, nil, true, false, pvcNodeStore, NamespaceMetadataConfig{})
 
 			// Set mock return values (AnyTimes to avoid overfitting on implementation details)
 			mockTranslator.EXPECT().IsPVMigratable(gomock.Any()).Return(tc.expectTranslation).AnyTimes()
