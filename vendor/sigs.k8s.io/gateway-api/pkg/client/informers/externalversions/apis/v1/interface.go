@@ -38,8 +38,12 @@ type Interface interface {
 	ListenerSets() ListenerSetInformer
 	// ReferenceGrants returns a ReferenceGrantInformer.
 	ReferenceGrants() ReferenceGrantInformer
+	// TCPRoutes returns a TCPRouteInformer.
+	TCPRoutes() TCPRouteInformer
 	// TLSRoutes returns a TLSRouteInformer.
 	TLSRoutes() TLSRouteInformer
+	// UDPRoutes returns a UDPRouteInformer.
+	UDPRoutes() UDPRouteInformer
 }
 
 type version struct {
@@ -88,7 +92,17 @@ func (v *version) ReferenceGrants() ReferenceGrantInformer {
 	return &referenceGrantInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
+// TCPRoutes returns a TCPRouteInformer.
+func (v *version) TCPRoutes() TCPRouteInformer {
+	return &tCPRouteInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
 // TLSRoutes returns a TLSRouteInformer.
 func (v *version) TLSRoutes() TLSRouteInformer {
 	return &tLSRouteInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// UDPRoutes returns a UDPRouteInformer.
+func (v *version) UDPRoutes() UDPRouteInformer {
+	return &uDPRouteInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }

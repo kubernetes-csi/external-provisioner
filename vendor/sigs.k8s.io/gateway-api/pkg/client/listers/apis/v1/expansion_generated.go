@@ -70,6 +70,14 @@ type ReferenceGrantListerExpansion interface{}
 // ReferenceGrantNamespaceLister.
 type ReferenceGrantNamespaceListerExpansion interface{}
 
+// TCPRouteListerExpansion allows custom methods to be added to
+// TCPRouteLister.
+type TCPRouteListerExpansion interface{}
+
+// TCPRouteNamespaceListerExpansion allows custom methods to be added to
+// TCPRouteNamespaceLister.
+type TCPRouteNamespaceListerExpansion interface{}
+
 // TLSRouteListerExpansion allows custom methods to be added to
 // TLSRouteLister.
 type TLSRouteListerExpansion interface{}
@@ -77,3 +85,11 @@ type TLSRouteListerExpansion interface{}
 // TLSRouteNamespaceListerExpansion allows custom methods to be added to
 // TLSRouteNamespaceLister.
 type TLSRouteNamespaceListerExpansion interface{}
+
+// UDPRouteListerExpansion allows custom methods to be added to
+// UDPRouteLister.
+type UDPRouteListerExpansion interface{}
+
+// UDPRouteNamespaceListerExpansion allows custom methods to be added to
+// UDPRouteNamespaceLister.
+type UDPRouteNamespaceListerExpansion interface{}
