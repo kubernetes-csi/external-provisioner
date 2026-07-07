@@ -212,6 +212,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apisv1.SubjectAltNameApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("SupportedFeature"):
 		return &apisv1.SupportedFeatureApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("TCPRoute"):
+		return &apisv1.TCPRouteApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("TCPRouteRule"):
+		return &apisv1.TCPRouteRuleApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("TCPRouteSpec"):
+		return &apisv1.TCPRouteSpecApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("TCPRouteStatus"):
+		return &apisv1.TCPRouteStatusApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("TLSConfig"):
 		return &apisv1.TLSConfigApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("TLSPortConfig"):
@@ -224,6 +232,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apisv1.TLSRouteSpecApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("TLSRouteStatus"):
 		return &apisv1.TLSRouteStatusApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("UDPRoute"):
+		return &apisv1.UDPRouteApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("UDPRouteRule"):
+		return &apisv1.UDPRouteRuleApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("UDPRouteSpec"):
+		return &apisv1.UDPRouteSpecApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("UDPRouteStatus"):
+		return &apisv1.UDPRouteStatusApplyConfiguration{}
 
 		// Group=gateway.networking.k8s.io, Version=v1alpha2
 	case v1alpha2.SchemeGroupVersion.WithKind("GRPCRoute"):
@@ -272,10 +288,22 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apisv1beta1.ReferenceGrantApplyConfiguration{}
 
 		// Group=gateway.networking.x-k8s.io, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithKind("BackendAncestorStatus"):
+		return &apisxv1alpha1.BackendAncestorStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("BackendPort"):
+		return &apisxv1alpha1.BackendPortApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("BackendSpec"):
+		return &apisxv1alpha1.BackendSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("BackendStatus"):
+		return &apisxv1alpha1.BackendStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("BackendTLS"):
+		return &apisxv1alpha1.BackendTLSApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BackendTrafficPolicySpec"):
 		return &apisxv1alpha1.BackendTrafficPolicySpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BudgetDetails"):
 		return &apisxv1alpha1.BudgetDetailsApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ExternalHostnameBackend"):
+		return &apisxv1alpha1.ExternalHostnameBackendApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("MeshSpec"):
 		return &apisxv1alpha1.MeshSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("MeshStatus"):
@@ -284,6 +312,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apisxv1alpha1.RequestRateApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RetryConstraint"):
 		return &apisxv1alpha1.RetryConstraintApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("XBackend"):
+		return &apisxv1alpha1.XBackendApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("XBackendTrafficPolicy"):
 		return &apisxv1alpha1.XBackendTrafficPolicyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("XMesh"):

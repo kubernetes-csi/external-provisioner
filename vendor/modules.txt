@@ -1422,7 +1422,7 @@ k8s.io/klog/v2/internal/sloghandler
 k8s.io/klog/v2/internal/verbosity
 k8s.io/klog/v2/ktesting
 k8s.io/klog/v2/textlogger
-# k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a
+# k8s.io/kube-openapi v0.0.0-20260501160325-927ab1f70cd6
 ## explicit; go 1.23.0
 k8s.io/kube-openapi/pkg/builder
 k8s.io/kube-openapi/pkg/builder3
@@ -1531,7 +1531,7 @@ k8s.io/streaming/pkg/httpstream
 k8s.io/streaming/pkg/httpstream/spdy
 k8s.io/streaming/pkg/httpstream/wsstream
 k8s.io/streaming/pkg/runtime
-# k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
+# k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
 ## explicit; go 1.23
 k8s.io/utils/buffer
 k8s.io/utils/clock
@@ -1563,8 +1563,8 @@ sigs.k8s.io/controller-runtime/pkg/client/interceptor
 sigs.k8s.io/controller-runtime/pkg/internal/field/selector
 sigs.k8s.io/controller-runtime/pkg/internal/objectutil
 sigs.k8s.io/controller-runtime/pkg/log
-# sigs.k8s.io/gateway-api v1.5.1
-## explicit; go 1.25.0
+# sigs.k8s.io/gateway-api v1.6.0
+## explicit; go 1.26.0
 sigs.k8s.io/gateway-api/apis/v1
 sigs.k8s.io/gateway-api/apis/v1alpha2
 sigs.k8s.io/gateway-api/apis/v1alpha3

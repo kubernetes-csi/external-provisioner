@@ -56,8 +56,16 @@ func (c *FakeGatewayV1) ReferenceGrants(namespace string) v1.ReferenceGrantInter
 	return newFakeReferenceGrants(c, namespace)
 }
 
+func (c *FakeGatewayV1) TCPRoutes(namespace string) v1.TCPRouteInterface {
+	return newFakeTCPRoutes(c, namespace)
+}
+
 func (c *FakeGatewayV1) TLSRoutes(namespace string) v1.TLSRouteInterface {
 	return newFakeTLSRoutes(c, namespace)
+}
+
+func (c *FakeGatewayV1) UDPRoutes(namespace string) v1.UDPRouteInterface {
+	return newFakeUDPRoutes(c, namespace)
 }
 
 // RESTClient returns a RESTClient that is used to communicate
