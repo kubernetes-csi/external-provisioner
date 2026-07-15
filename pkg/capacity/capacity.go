@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -368,6 +369,10 @@ func (c *Controller) onTopologyChanges(added []*topology.Segment, removed []*top
 			continue
 		}
 		for _, segment := range added {
+			if !segmentCompatibleWithStorageClass(segment, sc) {
+				klog.V(5).Infof("Capacity Controller: skipping segment %s for storage class %s, not compatible with its allowed topologies", segment.SimpleString(), sc.Name)
+				continue
+			}
 			c.addWorkItem(segment, sc)
 		}
 		for _, segment := range removed {
@@ -393,8 +398,67 @@ func (c *Controller) onSCAddOrUpdate(sc *storagev1.StorageClass) {
 	c.capacitiesLock.Lock()
 	defer c.capacitiesLock.Unlock()
 	for _, segment := range segments {
+		if !segmentCompatibleWithStorageClass(segment, sc) {
+			// Remove instead of merely skipping: the allowed topologies
+			// may have been changed in an update, in which case some
+			// existing items might have become obsolete.
+			klog.V(5).Infof("Capacity Controller: segment %s is not compatible with the allowed topologies of storage class %s", segment.SimpleString(), sc.Name)
+			c.removeWorkItem(segment, sc)
+			continue
+		}
 		c.addWorkItem(segment, sc)
 	}
+}
+
+// segmentCompatibleWithStorageClass determines whether the storage class
+// might be usable in the given topology segment. Combinations that are
+// ruled out by the storage class's allowed topologies don't need a
+// CSIStorageCapacity object.
+//
+// The check is intentionally conservative and only filters out combinations
+// which are provably impossible: a segment is considered incompatible with a
+// topology selector term only if the term contains a requirement for one of
+// the segment's keys which does not allow the segment's value. Requirements
+// for label keys that are not part of the segment cannot be checked here
+// (the CSI driver's topology keys are not necessarily the same as the node
+// label keys used in the allowed topologies) and therefore are assumed to
+// match.
+func segmentCompatibleWithStorageClass(segment *topology.Segment, sc *storagev1.StorageClass) bool {
+	if len(sc.AllowedTopologies) == 0 {
+		// No restrictions.
+		return true
+	}
+	// The terms are ORed, so one compatible term is enough.
+	for _, term := range sc.AllowedTopologies {
+		if segmentCompatibleWithTerm(segment, term) {
+			return true
+		}
+	}
+	return false
+}
+
+func segmentCompatibleWithTerm(segment *topology.Segment, term v1.TopologySelectorTerm) bool {
+	// The requirements within a term are ANDed, so one conflicting
+	// requirement rules out the term.
+	for _, req := range term.MatchLabelExpressions {
+		value, found := segmentValue(segment, req.Key)
+		if !found {
+			continue
+		}
+		if !slices.Contains(req.Values, value) {
+			return false
+		}
+	}
+	return true
+}
+
+func segmentValue(segment *topology.Segment, key string) (string, bool) {
+	for _, entry := range *segment {
+		if entry.Key == key {
+			return entry.Value, true
+		}
+	}
+	return "", false
 }
 
 // onSCDelete is called for delete events by the storage class listener.
