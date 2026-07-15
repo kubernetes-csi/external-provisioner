@@ -4,10 +4,10 @@ go 1.26.0
 
 require (
 	github.com/container-storage-interface/spec v1.12.0
-	github.com/golang/mock v1.6.0
+	github.com/golang/mock v1.6.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.24.0
-	github.com/kubernetes-csi/csi-test/v5 v5.4.0
+	github.com/kubernetes-csi/csi-test/v5 v5.5.0
 	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.6.0
 	github.com/miekg/dns v1.1.72 // indirect
 	github.com/prometheus/client_golang v1.23.2
@@ -32,6 +32,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
+	go.uber.org/mock v0.5.2
 	k8s.io/kubernetes v1.36.2
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v13 v13.0.0
 )
@@ -143,7 +144,7 @@ require (
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.36.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
