@@ -92,7 +92,10 @@ var (
 	strictTopology      = flag.Bool("strict-topology", false, "Late binding: pass only selected node topology to CreateVolume Request, unlike default behavior of passing aggregated cluster topologies that match with topology keys of the selected node.")
 	immediateTopology   = flag.Bool("immediate-topology", true, "Immediate binding: pass aggregated cluster topologies for all nodes where the CSI driver is available (enabled, the default) or no topology requirements (if disabled).")
 	extraCreateMetadata = flag.Bool("extra-create-metadata", false, "If set, add pv/pvc metadata to plugin create requests as parameters.")
-	enableProfile       = flag.Bool("enable-pprof", false, "Enable pprof profiling on the TCP network address specified by --http-endpoint. The HTTP path is `/debug/pprof/`.")
+
+	extraCreateMetadataNamespaceLabels      = flag.StringSlice("extra-create-metadata-namespace-labels", nil, "A list of PVC-namespace label keys whose values are added to plugin create requests as parameters under the csi.storage.k8s.io/namespace/labels/ prefix. Requires get access to namespaces. Works independently of --extra-create-metadata.")
+	extraCreateMetadataNamespaceAnnotations = flag.StringSlice("extra-create-metadata-namespace-annotations", nil, "A list of PVC-namespace annotation keys whose values are added to plugin create requests as parameters under the csi.storage.k8s.io/namespace/annotations/ prefix. Requires get access to namespaces. Works independently of --extra-create-metadata.")
+	enableProfile                           = flag.Bool("enable-pprof", false, "Enable pprof profiling on the TCP network address specified by --http-endpoint. The HTTP path is `/debug/pprof/`.")
 
 	defaultFSType = flag.String("default-fstype", "", "The default filesystem type of the volume to provision when fstype is unspecified in the StorageClass. If the default is not set and fstype is unset in the StorageClass, then no fstype will be set")
 
@@ -447,6 +450,10 @@ func main() {
 		*controllerPublishReadOnly,
 		*preventVolumeModeConversion,
 		pvcNodeStore,
+		ctrl.NamespaceMetadataConfig{
+			Labels:      *extraCreateMetadataNamespaceLabels,
+			Annotations: *extraCreateMetadataNamespaceAnnotations,
+		},
 	)
 
 	var capacityController *capacity.Controller
