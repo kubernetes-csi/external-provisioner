@@ -1448,7 +1448,7 @@ k8s.io/kubectl/pkg/util/podutils
 # k8s.io/kubelet v0.35.2 => k8s.io/kubelet v0.36.1
 ## explicit; go 1.26.0
 k8s.io/kubelet/pkg/apis
-# k8s.io/kubernetes v1.36.2
+# k8s.io/kubernetes v1.36.3
 ## explicit; go 1.26.0
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
@@ -1560,7 +1560,7 @@ sigs.k8s.io/controller-runtime/pkg/client/interceptor
 sigs.k8s.io/controller-runtime/pkg/internal/field/selector
 sigs.k8s.io/controller-runtime/pkg/internal/objectutil
 sigs.k8s.io/controller-runtime/pkg/log
-# sigs.k8s.io/gateway-api v1.6.0
+# sigs.k8s.io/gateway-api v1.6.1
 ## explicit; go 1.26.0
 sigs.k8s.io/gateway-api/apis/v1
 sigs.k8s.io/gateway-api/apis/v1alpha2

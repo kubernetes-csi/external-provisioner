@@ -24,7 +24,7 @@ require (
 	k8s.io/csi-translation-lib v0.36.1
 	k8s.io/klog/v2 v2.140.0
 	sigs.k8s.io/controller-runtime v0.24.1
-	sigs.k8s.io/gateway-api v1.6.0
+	sigs.k8s.io/gateway-api v1.6.1
 )
 
 require (
@@ -33,7 +33,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
 	go.uber.org/mock v0.5.2
-	k8s.io/kubernetes v1.36.2
+	k8s.io/kubernetes v1.36.3
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v13 v13.0.0
 )
 
