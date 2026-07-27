@@ -1083,6 +1083,184 @@ func TestCapacityController(t *testing.T) {
 			},
 			expectedTotalProcessed: 1,
 		},
+		"allowed topologies filter segments": {
+			topology: topology.NewMock(&layer0, &layer0other),
+			storage: mockCapacity{
+				capacity: map[string]any{
+					// This matches layer0.
+					"foo": "1Gi",
+					// This matches layer0other.
+					"bar": "2Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+					allowedTopologies: []v1.TopologySelectorTerm{
+						{
+							MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+								{Key: "layer0", Values: []string{"foo"}},
+							},
+						},
+					},
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					uid:              "CSISC-UID-1",
+					resourceVersion:  csiscRev + "0",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+				},
+			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
+		},
+		"allowed topologies with different label keys": {
+			topology: topology.NewMock(&layer0),
+			storage: mockCapacity{
+				capacity: map[string]any{
+					// This matches layer0.
+					"foo": "1Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+					// The label key is not one of the topology segment
+					// keys, so it cannot be used for filtering.
+					allowedTopologies: []v1.TopologySelectorTerm{
+						{
+							MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+								{Key: "some-node-label", Values: []string{"some-value"}},
+							},
+						},
+					},
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					uid:              "CSISC-UID-1",
+					resourceVersion:  csiscRev + "0",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+				},
+			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
+		},
+		"allowed topologies filter added segment": {
+			topology: topology.NewMock(&layer0),
+			storage: mockCapacity{
+				capacity: map[string]any{
+					// This matches layer0.
+					"foo": "1Gi",
+					// This matches layer0other.
+					"bar": "2Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+					allowedTopologies: []v1.TopologySelectorTerm{
+						{
+							MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+								{Key: "layer0", Values: []string{"foo"}},
+							},
+						},
+					},
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					uid:              "CSISC-UID-1",
+					resourceVersion:  csiscRev + "0",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+				},
+			},
+			topologyChange: func(ctx context.Context, topo *topology.Mock, expected []testCapacity) []testCapacity {
+				// The new segment is not compatible with the allowed
+				// topologies of the storage class, so nothing changes.
+				topo.Modify([]*topology.Segment{&layer0other} /* added */, nil /* removed */)
+				return expected
+			},
+			expectedObjectsPrepared: objects{
+				goal: 1,
+			},
+			expectedTotalProcessed: 1,
+		},
+		"allowed topologies changed in update": {
+			topology: topology.NewMock(&layer0, &layer0other),
+			storage: mockCapacity{
+				capacity: map[string]any{
+					// This matches layer0.
+					"foo": "1Gi",
+					// This matches layer0other.
+					"bar": "2Gi",
+				},
+			},
+			initialSCs: []testSC{
+				{
+					name:       "other-sc",
+					driverName: driverName,
+				},
+			},
+			expectedCapacities: []testCapacity{
+				{
+					resourceVersion:  csiscRev + "0",
+					segment:          layer0,
+					storageClassName: "other-sc",
+					quantity:         "1Gi",
+				},
+				{
+					resourceVersion:  csiscRev + "0",
+					segment:          layer0other,
+					storageClassName: "other-sc",
+					quantity:         "2Gi",
+				},
+			},
+			modify: func(ctx context.Context, clientSet *fakeclientset.Clientset, expected []testCapacity) ([]testCapacity, error) {
+				// Restricting the allowed topologies must remove the
+				// capacity object for the other segment.
+				sc, err := clientSet.StorageV1().StorageClasses().Get(ctx, "other-sc", metav1.GetOptions{})
+				if err != nil {
+					return nil, err
+				}
+				sc.AllowedTopologies = []v1.TopologySelectorTerm{
+					{
+						MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+							{Key: "layer0", Values: []string{"foo"}},
+						},
+					},
+				}
+				if _, err := clientSet.StorageV1().StorageClasses().Update(ctx, sc, metav1.UpdateOptions{}); err != nil {
+					return nil, err
+				}
+				return []testCapacity{
+					{
+						resourceVersion:  csiscRev + "0",
+						segment:          layer0,
+						storageClassName: "other-sc",
+						quantity:         "1Gi",
+					},
+				}, nil
+			},
+			expectedObjectsPrepared: objects{
+				goal: 2,
+			},
+			expectedTotalProcessed: 1,
+		},
 	}
 
 	for name, tc := range testcases {
@@ -1655,10 +1833,11 @@ func makeCapacity(in testCapacity) *storagev1.CSIStorageCapacity {
 }
 
 type testSC struct {
-	name             string
-	driverName       string
-	parameters       map[string]string
-	immediateBinding bool
+	name              string
+	driverName        string
+	parameters        map[string]string
+	immediateBinding  bool
+	allowedTopologies []v1.TopologySelectorTerm
 }
 
 func makeSC(in testSC) *storagev1.StorageClass {
@@ -1673,6 +1852,7 @@ func makeSC(in testSC) *storagev1.StorageClass {
 		Provisioner:       in.driverName,
 		Parameters:        in.parameters,
 		VolumeBindingMode: &volumeBinding,
+		AllowedTopologies: in.allowedTopologies,
 	}
 }
 
@@ -1681,6 +1861,131 @@ func makeSCs(in []testSC) (items []runtime.Object) {
 		items = append(items, makeSC(item))
 	}
 	return
+}
+
+func TestSegmentCompatibleWithStorageClass(t *testing.T) {
+	testcases := map[string]struct {
+		segment           topology.Segment
+		allowedTopologies []v1.TopologySelectorTerm
+		expectCompatible  bool
+	}{
+		"no allowed topologies": {
+			segment:          layer0,
+			expectCompatible: true,
+		},
+		"matching value": {
+			segment: layer0,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "layer0", Values: []string{"foo"}},
+					},
+				},
+			},
+			expectCompatible: true,
+		},
+		"conflicting value": {
+			segment: layer0,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "layer0", Values: []string{"bar"}},
+					},
+				},
+			},
+			expectCompatible: false,
+		},
+		"different label key": {
+			segment: layer0,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "some-node-label", Values: []string{"some-value"}},
+					},
+				},
+			},
+			expectCompatible: true,
+		},
+		"conflict beats unknown key in same term": {
+			segment: layer0,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "some-node-label", Values: []string{"some-value"}},
+						{Key: "layer0", Values: []string{"bar"}},
+					},
+				},
+			},
+			expectCompatible: false,
+		},
+		"terms are ORed": {
+			segment: layer0,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "layer0", Values: []string{"bar"}},
+					},
+				},
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "layer0", Values: []string{"foo"}},
+					},
+				},
+			},
+			expectCompatible: true,
+		},
+		"multiple values": {
+			segment: layer0,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "layer0", Values: []string{"bar", "foo"}},
+					},
+				},
+			},
+			expectCompatible: true,
+		},
+		"deep segment matches": {
+			segment: deep,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "layer0", Values: []string{"foo"}},
+						{Key: "layer2", Values: []string{"A"}},
+					},
+				},
+			},
+			expectCompatible: true,
+		},
+		"deep segment conflicts": {
+			segment: deep,
+			allowedTopologies: []v1.TopologySelectorTerm{
+				{
+					MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+						{Key: "layer0", Values: []string{"foo"}},
+						{Key: "layer2", Values: []string{"B"}},
+					},
+				},
+			},
+			expectCompatible: false,
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			sc := &storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-sc",
+				},
+				Provisioner:       driverName,
+				AllowedTopologies: tc.allowedTopologies,
+			}
+			compatible := segmentCompatibleWithStorageClass(&tc.segment, sc)
+			if compatible != tc.expectCompatible {
+				t.Errorf("expected compatible %v, got %v", tc.expectCompatible, compatible)
+			}
+		})
+	}
 }
 
 func TestTermToSegment(t *testing.T) {
