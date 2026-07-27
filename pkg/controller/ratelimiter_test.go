@@ -32,6 +32,5 @@ func TestRateLimiter(t *testing.T) {
 		if backoff > maxDelay || backoff < 0 {
 			t.Errorf("expected value > 0, < %s, got %s", maxDelay, backoff)
 		}
-		rd.Forget(1)
 	}
 }
