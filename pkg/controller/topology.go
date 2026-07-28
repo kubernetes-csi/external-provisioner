@@ -471,7 +471,17 @@ func flatten(allowedTopologies []v1.TopologySelectorTerm) []topologyTerm {
 	for _, selectorTerm := range allowedTopologies { // OR
 
 		var oldTerms []topologyTerm
+		unsatisfiable := false
 		for _, selectorExpression := range selectorTerm.MatchLabelExpressions { // AND
+
+			if len(selectorExpression.Values) == 0 {
+				// An expression matching no values makes the whole ANDed term
+				// unsatisfiable, so it contributes no topologyTerm. (Not reachable
+				// via StorageClass.AllowedTopologies, which the API validates to
+				// require Values, but reachable via a snapshot's NodeAffinity CRD.)
+				unsatisfiable = true
+				break
+			}
 
 			var newTerms []topologyTerm
 			for _, v := range selectorExpression.Values { // OR
@@ -491,6 +501,10 @@ func flatten(allowedTopologies []v1.TopologySelectorTerm) []topologyTerm {
 			}
 
 			oldTerms = newTerms
+		}
+
+		if unsatisfiable {
+			continue
 		}
 
 		// Concatenate all OR'd terms.
@@ -688,6 +702,109 @@ func toCSITopology(terms []topologyTerm) []*csi.Topology {
 			segs[k.Key] = k.Value
 		}
 		out = append(out, &csi.Topology{Segments: segs})
+	}
+	return out
+}
+
+// intersectSnapshotTopology computes the intersection of the StorageClass's
+// AllowedTopologies and a snapshot's NodeAffinity (both expressed as
+// []v1.TopologySelectorTerm) and returns it as []v1.TopologySelectorTerm.
+//
+// The result is passed as the allowedTopologies argument to
+// GenerateAccessibilityRequirements for Immediate volume binding, so that the
+// snapshot's accessible topology is reconciled with the cluster the same way an
+// explicit StorageClass.AllowedTopologies would be (aggregation, preferred
+// ordering, etc.) rather than bypassing that logic.
+//
+// Semantics:
+//   - Each input is an OR of terms; within a term, label expressions are ANDed
+//     and a label expression's values are ORed. We flatten both inputs to the
+//     same disjunctive-normal-form (a list of fully-specified topologyTerms),
+//     then AND every (StorageClass, snapshot) term pair by merging their
+//     segments: keys present in only one side are additive (e.g. a region-only
+//     StorageClass term and a zone-only snapshot term merge into a region+zone
+//     term), and a pair only conflicts when it sets the same key to different
+//     values. The provisioner has no topology hierarchy knowledge, so a merged
+//     term that is physically impossible (e.g. a zone in a different region) is
+//     still emitted and left for the driver to reject.
+//   - If the snapshot has no NodeAffinity, the StorageClass terms are returned
+//     unchanged (no additional constraint from the snapshot).
+//   - If the StorageClass has no AllowedTopologies, the snapshot terms are
+//     returned (the snapshot is the only constraint).
+//   - An empty AllowedTopologies/NodeAffinity list means "no restriction", but a
+//     non-empty list that flattens to zero terms (e.g. an empty or unsatisfiable
+//     term) means "matches nothing" and yields an empty result.
+//   - An empty result means the two constraints are incompatible; callers
+//     should treat this as a fatal provisioning error.
+func intersectSnapshotTopology(scTopology, snapTopology []v1.TopologySelectorTerm) []v1.TopologySelectorTerm {
+	scTerms := flatten(scTopology)
+	snapTerms := flatten(snapTopology)
+
+	// An empty input list means "no restriction" (pass the other side through);
+	// a non-empty list that flattens to no terms means "matches nothing" and
+	// makes the intersection empty.
+	if len(snapTopology) == 0 {
+		return topologyTermsToSelectorTerms(scTerms)
+	}
+	if len(scTopology) == 0 {
+		return topologyTermsToSelectorTerms(snapTerms)
+	}
+	if len(snapTerms) == 0 || len(scTerms) == 0 {
+		return nil
+	}
+
+	var intersected []topologyTerm
+	for _, scTerm := range scTerms {
+		for _, snapTerm := range snapTerms {
+			// AND the two terms: merge their segments by key. A key set to
+			// different values on each side is a real conflict and drops the
+			// pair; keys unique to one side are additive.
+			segments := make(map[string]string, len(scTerm)+len(snapTerm))
+			for _, segment := range scTerm {
+				segments[segment.Key] = segment.Value
+			}
+			compatible := true
+			for _, segment := range snapTerm {
+				if value, ok := segments[segment.Key]; ok && value != segment.Value {
+					compatible = false
+					break
+				}
+				segments[segment.Key] = segment.Value
+			}
+			if !compatible {
+				continue
+			}
+			merged := make(topologyTerm, 0, len(segments))
+			for key, value := range segments {
+				merged = append(merged, topologySegment{Key: key, Value: value})
+			}
+			merged.sort()
+			intersected = append(intersected, merged)
+		}
+	}
+
+	slices.SortFunc(intersected, topologyTerm.compare)
+	intersected = slices.CompactFunc(intersected, slices.Equal)
+	return topologyTermsToSelectorTerms(intersected)
+}
+
+// topologyTermsToSelectorTerms converts flattened topologyTerms back into
+// []v1.TopologySelectorTerm: each topologyTerm becomes one term with one
+// single-value MatchLabelExpression per segment.
+func topologyTermsToSelectorTerms(terms []topologyTerm) []v1.TopologySelectorTerm {
+	if len(terms) == 0 {
+		return nil
+	}
+	out := make([]v1.TopologySelectorTerm, 0, len(terms))
+	for _, t := range terms {
+		exprs := make([]v1.TopologySelectorLabelRequirement, 0, len(t))
+		for _, seg := range t {
+			exprs = append(exprs, v1.TopologySelectorLabelRequirement{
+				Key:    seg.Key,
+				Values: []string{seg.Value},
+			})
+		}
+		out = append(out, v1.TopologySelectorTerm{MatchLabelExpressions: exprs})
 	}
 	return out
 }
