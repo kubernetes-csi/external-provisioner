@@ -143,12 +143,12 @@ github.com/kubernetes-csi/csi-lib-utils v0.24.0 h1:hpL5ecxtr07/DNIF9Qn/gbNG/ZlgM
 github.com/kubernetes-csi/csi-lib-utils v0.24.0/go.mod h1:JbvkvtWghDcVZnwQoSi6Np9ITwqN7+sqLiSsM9y4kRE=
 github.com/kubernetes-csi/csi-test/v5 v5.5.0 h1:21NYP33XXfzsAGwFuFHJUIf60hY08B4ANLj819++f98=
 github.com/kubernetes-csi/csi-test/v5 v5.5.0/go.mod h1:5ZyneETi47SniZuPA9e8fIL6TTkkKv8/+jkaF0IHqKY=
-github.com/kubernetes-csi/external-snapshotter/client/v8 v8.6.0 h1:FtGewu2k6HWw6evLGXY8JqUZ9eHpti1kd3e4amj+ilA=
-github.com/kubernetes-csi/external-snapshotter/client/v8 v8.6.0/go.mod h1:Vxl89NySJ45J+ah3NTMan/KJXW+NpcGHE2Tw0GSw53k=
 github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/maruel/natural v1.1.1 h1:Hja7XhhmvEFhcByqDoHz9QZbkWey+COd9xWfCfn1ioo=
 github.com/maruel/natural v1.1.1/go.mod h1:v+Rfd79xlw1AgVBjbO0BEQmptqb5HvL/k9GRHB7ZKEg=
+github.com/mdzraf/external-snapshotter/client/v8 v8.4.1-0.20260730192112-9610545fc807 h1:kTDQx+0mPvxfxU4A9uE3ZhMSSumuzwTXgy6/9jsjwWs=
+github.com/mdzraf/external-snapshotter/client/v8 v8.4.1-0.20260730192112-9610545fc807/go.mod h1:Vxl89NySJ45J+ah3NTMan/KJXW+NpcGHE2Tw0GSw53k=
 github.com/mfridman/tparse v0.18.0 h1:wh6dzOKaIwkUGyKgOntDW4liXSo37qg5AXbIhkMV3vE=
 github.com/mfridman/tparse v0.18.0/go.mod h1:gEvqZTuCgEhPbYk/2lS3Kcxg1GmTxxU7kTC8DvP0i/A=
 github.com/miekg/dns v1.1.72 h1:vhmr+TF2A3tuoGNkLDFK9zi36F2LS+hKTRW0Uf8kbzI=
