@@ -695,12 +695,14 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		},
 	}
 
+	var snapshotNodeAffinity []v1.TopologySelectorTerm
 	if dataSource != nil && (rc.clone || rc.snapshot) {
-		volumeContentSource, err := p.getVolumeContentSource(ctx, claim, sc, dataSource)
+		volumeContentSource, nodeAffinity, err := p.getVolumeContentSource(ctx, claim, sc, dataSource)
 		if err != nil {
 			return nil, controller.ProvisioningNoChange, fmt.Errorf("error getting handle for DataSource Type %s by Name %s: %v", dataSource.Kind, dataSource.Name, err)
 		}
 		req.VolumeContentSource = volumeContentSource
+		snapshotNodeAffinity = nodeAffinity
 	}
 
 	if dataSource != nil && rc.clone {
@@ -737,6 +739,19 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 			return nil, controller.ProvisioningNoChange, fmt.Errorf("error generating accessibility requirements: %v", err)
 		}
 		req.AccessibilityRequirements = requirements
+
+		if utilfeature.DefaultFeatureGate.Enabled(features.VolumeSnapshotTopology) &&
+			rc.snapshot && selectedNodeName == "" && len(snapshotNodeAffinity) > 0 {
+			intersected := intersectSnapshotTopology(sc.AllowedTopologies, snapshotNodeAffinity)
+			if len(intersected) == 0 {
+				return nil, controller.ProvisioningFinished, fmt.Errorf("no compatible topology: snapshot %s NodeAffinity does not intersect StorageClass %s AllowedTopologies, so the volume cannot be provisioned where the snapshot is accessible", dataSource.Name, sc.Name)
+			}
+			req.AccessibilityRequirements = &csi.TopologyRequirement{
+				Requisite: intersected,
+				Preferred: intersected,
+			}
+			klog.V(2).Infof("prepareProvision: constrained snapshot-sourced PVC %s to %d topology terms from the intersection of snapshot NodeAffinity and StorageClass.AllowedTopologies", claim.Name, len(intersected))
+		}
 	}
 
 	// Resolve provision secret credentials.
@@ -1181,15 +1196,18 @@ func removePrefixedParameters(param map[string]string) (map[string]string, error
 // currently we provide Snapshot and PVC, the default case allows the provisioner to still create a volume
 // so that an external controller can act upon it.   Additional DataSource types can be added here with
 // an appropriate implementation function
-func (p *csiProvisioner) getVolumeContentSource(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass, dataSource *v1.ObjectReference) (*csi.VolumeContentSource, error) {
+// getVolumeContentSource returns the CSI VolumeContentSource and, for snapshot
+// sources, the bound VolumeSnapshotContent's Spec.NodeAffinity (nil otherwise).
+func (p *csiProvisioner) getVolumeContentSource(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass, dataSource *v1.ObjectReference) (*csi.VolumeContentSource, []v1.TopologySelectorTerm, error) {
 	switch dataSource.Kind {
 	case snapshotKind:
 		return p.getSnapshotSource(ctx, claim, sc, dataSource)
 	case pvcKind:
-		return p.getPVCSource(ctx, claim, sc, dataSource)
+		src, err := p.getPVCSource(ctx, claim, sc, dataSource)
+		return src, nil, err
 	default:
 		// For now we shouldn't pass other things to this function, but treat it as a noop and extend as needed
-		return nil, nil
+		return nil, nil, nil
 	}
 }
 
@@ -1285,11 +1303,13 @@ func (p *csiProvisioner) getPVCSource(ctx context.Context, claim *v1.PersistentV
 }
 
 // getSnapshotSource verifies DataSource.Kind of type VolumeSnapshot, making sure that the requested Snapshot is available/ready
-// returns the VolumeContentSource for the requested snapshot
-func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass, dataSource *v1.ObjectReference) (*csi.VolumeContentSource, error) {
+// returns the VolumeContentSource for the requested snapshot, along with the
+// bound VolumeSnapshotContent's Spec.NodeAffinity so callers don't
+// need to re-fetch the snapshot and its content.
+func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.PersistentVolumeClaim, sc *storagev1.StorageClass, dataSource *v1.ObjectReference) (*csi.VolumeContentSource, []v1.TopologySelectorTerm, error) {
 	snapshotObj, err := p.snapshotClient.SnapshotV1().VolumeSnapshots(dataSource.Namespace).Get(ctx, dataSource.Name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting snapshot %s from api server: %v", dataSource.Name, err)
+		return nil, nil, fmt.Errorf("error getting snapshot %s from api server: %v", dataSource.Name, err)
 	}
 
 	if snapshotObj.ObjectMeta.DeletionTimestamp != nil {
@@ -1299,40 +1319,40 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.Persis
 		// so we should continue to prevent resource leaks.
 		// If the finalizer doesn't exist, this is a new provisioning attempt and should be rejected.
 		if !checkFinalizer(snapshotObj, snapshotSourceProtectionFinalizer) {
-			return nil, fmt.Errorf("snapshot %s is being deleted", dataSource.Name)
+			return nil, nil, fmt.Errorf("snapshot %s is being deleted", dataSource.Name)
 		}
 		klog.V(3).Infof("Snapshot %s/%s is being deleted but has volumesnapshot-as-source-protection finalizer, allowing provisioning to continue", dataSource.Namespace, dataSource.Name)
 	}
 	klog.V(5).Infof("VolumeSnapshot %+v", snapshotObj)
 
 	if snapshotObj.Status == nil || snapshotObj.Status.BoundVolumeSnapshotContentName == nil {
-		return nil, fmt.Errorf(snapshotNotBound, dataSource.Name)
+		return nil, nil, fmt.Errorf(snapshotNotBound, dataSource.Name)
 	}
 
 	snapContentObj, err := p.snapshotClient.SnapshotV1().VolumeSnapshotContents().Get(ctx, *snapshotObj.Status.BoundVolumeSnapshotContentName, metav1.GetOptions{})
 	if err != nil {
 		klog.Warningf("error getting snapshotcontent %s for snapshot %s/%s from api server: %s", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, err)
-		return nil, fmt.Errorf(errorGettingSnapshotContent, *snapshotObj.Status.BoundVolumeSnapshotContentName, dataSource.Name)
+		return nil, nil, fmt.Errorf(errorGettingSnapshotContent, *snapshotObj.Status.BoundVolumeSnapshotContentName, dataSource.Name)
 	}
 
 	if snapContentObj.Spec.VolumeSnapshotRef.UID != snapshotObj.UID || snapContentObj.Spec.VolumeSnapshotRef.Namespace != snapshotObj.Namespace || snapContentObj.Spec.VolumeSnapshotRef.Name != snapshotObj.Name {
 		klog.Warningf("snapshotcontent %s for snapshot %s/%s is bound to a different snapshot", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name)
-		return nil, fmt.Errorf(snapshotContentNotBoundToSnapshot, *snapshotObj.Status.BoundVolumeSnapshotContentName, dataSource.Name)
+		return nil, nil, fmt.Errorf(snapshotContentNotBoundToSnapshot, *snapshotObj.Status.BoundVolumeSnapshotContentName, dataSource.Name)
 	}
 
 	if snapContentObj.Spec.Driver != sc.Provisioner {
 		klog.Warningf("snapshotcontent %s for snapshot %s/%s is handled by a different CSI driver than requested by StorageClass %s", *snapshotObj.Status.BoundVolumeSnapshotContentName, snapshotObj.Namespace, snapshotObj.Name, sc.Name)
-		return nil, fmt.Errorf(snapshotDifferentDriver, *snapshotObj.Status.BoundVolumeSnapshotContentName, dataSource.Name, sc.Name)
+		return nil, nil, fmt.Errorf(snapshotDifferentDriver, *snapshotObj.Status.BoundVolumeSnapshotContentName, dataSource.Name, sc.Name)
 	}
 
 	if snapshotObj.Status.ReadyToUse == nil || !*snapshotObj.Status.ReadyToUse {
-		return nil, fmt.Errorf("snapshot %s is not Ready", dataSource.Name)
+		return nil, nil, fmt.Errorf("snapshot %s is not Ready", dataSource.Name)
 	}
 
 	klog.V(5).Infof("VolumeSnapshotContent %+v", snapContentObj)
 
 	if snapContentObj.Status == nil || snapContentObj.Status.SnapshotHandle == nil {
-		return nil, fmt.Errorf("snapshot handle %s is not available", dataSource.Name)
+		return nil, nil, fmt.Errorf("snapshot handle %s is not available", dataSource.Name)
 	}
 
 	snapshotSource := csi.VolumeContentSource_Snapshot{
@@ -1345,14 +1365,14 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.Persis
 	if snapshotObj.Status.RestoreSize != nil {
 		capacity, exists := claim.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
 		if !exists {
-			return nil, fmt.Errorf("error getting capacity for PVC %s when creating snapshot %s", claim.Name, snapshotObj.Name)
+			return nil, nil, fmt.Errorf("error getting capacity for PVC %s when creating snapshot %s", claim.Name, snapshotObj.Name)
 		}
 		volSizeBytes := capacity.Value()
 		klog.V(5).Infof("Requested volume size is %d and snapshot size is %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
 		// When restoring volume from a snapshot, the volume size should
 		// be equal to or larger than its snapshot size.
 		if int64(volSizeBytes) < int64(snapshotObj.Status.RestoreSize.Value()) {
-			return nil, fmt.Errorf("requested volume size %d is less than the size %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
+			return nil, nil, fmt.Errorf("requested volume size %d is less than the size %d for the source snapshot %s", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
 		}
 		if int64(volSizeBytes) > int64(snapshotObj.Status.RestoreSize.Value()) {
 			klog.Warningf("requested volume size %d is greater than the size %d for the source snapshot %s. Volume plugin needs to handle volume expansion.", int64(volSizeBytes), int64(snapshotObj.Status.RestoreSize.Value()), snapshotObj.Name)
@@ -1365,16 +1385,16 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.Persis
 			// Verify if this volume is allowed to alter its mode.
 			allowVolumeModeChange, ok := snapContentObj.Annotations[annAllowVolumeModeChange]
 			if !ok {
-				return nil, fmt.Errorf("requested volume %s/%s modifies the mode of the source volume but does not have permission to do so. "+
+				return nil, nil, fmt.Errorf("requested volume %s/%s modifies the mode of the source volume but does not have permission to do so. "+
 					"%s annotation is not present on snapshotcontent %s", claim.Namespace, claim.Name, annAllowVolumeModeChange, snapContentObj.Name)
 			}
 			allowVolumeModeChangeBool, err := strconv.ParseBool(allowVolumeModeChange)
 			if err != nil {
-				return nil, fmt.Errorf("requested volume %s/%s modifies the mode of the source volume but does not have permission to do so. "+
+				return nil, nil, fmt.Errorf("requested volume %s/%s modifies the mode of the source volume but does not have permission to do so. "+
 					"failed to convert %s annotation value to boolean with error: %v", claim.Namespace, claim.Name, annAllowVolumeModeChange, err)
 			}
 			if !allowVolumeModeChangeBool {
-				return nil, fmt.Errorf("requested volume %s/%s modifies the mode of the source volume but does not have permission to do so. "+
+				return nil, nil, fmt.Errorf("requested volume %s/%s modifies the mode of the source volume but does not have permission to do so. "+
 					"%s is set to false on snapshotcontent %s", claim.Namespace, claim.Name, annAllowVolumeModeChange, snapContentObj.Name)
 			}
 		}
@@ -1384,7 +1404,7 @@ func (p *csiProvisioner) getSnapshotSource(ctx context.Context, claim *v1.Persis
 		Type: &snapshotSource,
 	}
 
-	return volumeContentSource, nil
+	return volumeContentSource, snapContentObj.Spec.NodeAffinity, nil
 }
 
 func (p *csiProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume) error {
