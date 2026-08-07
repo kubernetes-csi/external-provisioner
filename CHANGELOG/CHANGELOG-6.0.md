@@ -1,3 +1,26 @@
+# Release notes for 6.0.2
+
+[Documentation](https://kubernetes-csi.github.io)
+
+# Changelog since 6.0.1
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Add controller to clean up orphaned snapshot source-protection finalizers that can block snapshot deletion after provisioner crashes or PVC deletions. ([#1522](https://github.com/kubernetes-csi/external-provisioner/pull/1522), [@ConnorJC3](https://github.com/ConnorJC3))
+
+## Dependencies
+
+### Added
+_Nothing has changed._
+
+### Changed
+_Nothing has changed._
+
+### Removed
+_Nothing has changed._
+
 # Release notes for 6.0.1
 
 [Documentation](https://kubernetes-csi.github.io)
