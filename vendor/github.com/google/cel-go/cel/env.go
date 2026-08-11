@@ -17,7 +17,10 @@ package cel
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/google/cel-go/checker"
@@ -46,6 +49,10 @@ type Source = common.Source
 type Ast struct {
 	source Source
 	impl   *celast.AST
+	// loadErr captures an error detected while loading the AST (e.g. an over-deep AST ingested via
+	// ParsedExprToAst / CheckedExprToAst) so it can be surfaced when the Ast is checked or planned
+	// instead of recursing into the checker or planner on adversarially deep input.
+	loadErr error
 }
 
 // NativeRep converts the AST to a Go-native representation.
@@ -139,12 +146,29 @@ type Env struct {
 	provider        types.Provider
 	features        map[int]bool
 	appliedFeatures map[int]bool
+	limits          map[limitID]int
 	libraries       map[string]SingletonLibrary
 	validators      []ASTValidator
 	costOptions     []checker.CostOption
 
-	funcBindOnce     sync.Once
-	functionBindings []*functions.Overload
+	// Flags for copy-on-write behavior with env.Extend.
+	funcsShared           bool
+	featuresShared        bool
+	appliedFeaturesShared bool
+	limitsShared          bool
+	libsShared            bool
+
+	parent *Env
+
+	// sharedDispatcher caches a dispatcher populated with the env's function
+	// bindings, built once and reused across every Program() constructed from
+	// this env. It is read-only after construction; each Program layers a thin
+	// child over it for per-program Functions(). Extended envs reuse the parent's
+	// dispatcher if functions are unchanged.
+	sharedDispatcher interpreter.Dispatcher
+	dispOnce         sync.Once
+	hasAsync         bool
+	dispErr          error
 
 	// Internal parser representation
 	prsr     *parser.Parser
@@ -179,6 +203,16 @@ func (e *Env) ToConfig(name string) (*env.Config, error) {
 	}
 	for _, typeName := range e.Container.AliasSet() {
 		conf.AddImports(env.NewImport(typeName))
+	}
+
+	// Serialize features
+	for featID, enabled := range e.features {
+		featName, found := featureNameByID(featID)
+		if !found {
+			// If the feature isn't named, it isn't intended to be publicly exposed
+			continue
+		}
+		conf.AddFeatures(env.NewFeature(featName, enabled))
 	}
 
 	libOverloads := map[string][]string{}
@@ -241,7 +275,7 @@ func (e *Env) ToConfig(name string) (*env.Config, error) {
 		fields := e.contextProto.Fields()
 		for i := 0; i < fields.Len(); i++ {
 			field := fields.Get(i)
-			variable, err := fieldToVariable(field)
+			variable, err := fieldToVariable(field, e.HasFeature(featureJSONFieldNames))
 			if err != nil {
 				return nil, fmt.Errorf("could not serialize context field variable %q, reason: %w", field.FullName(), err)
 			}
@@ -276,15 +310,44 @@ func (e *Env) ToConfig(name string) (*env.Config, error) {
 		}
 	}
 
-	// Serialize features
-	for featID, enabled := range e.features {
-		featName, found := featureNameByID(featID)
-		if !found {
-			// If the feature isn't named, it isn't intended to be publicly exposed
+	for id, val := range e.limits {
+		limitName, found := limitNameByID(id)
+		if !found || val == 0 {
+			// skip if explicitly defaulted or not supported in config
 			continue
 		}
-		conf.AddFeatures(env.NewFeature(featName, enabled))
+		conf.AddLimits(env.NewLimit(limitName, val))
 	}
+
+	// Sort repeated fields in config where reasonable to make the export
+	// stable.
+	slices.SortFunc(conf.Imports, func(a *env.Import, b *env.Import) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	slices.SortFunc(conf.Extensions, func(a *env.Extension, b *env.Extension) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	slices.SortFunc(conf.Variables, func(a *env.Variable, b *env.Variable) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	slices.SortFunc(conf.Functions, func(a *env.Function, b *env.Function) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	slices.SortFunc(conf.Validators, func(a *env.Validator, b *env.Validator) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	slices.SortFunc(conf.Features, func(a *env.Feature, b *env.Feature) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	slices.SortFunc(conf.Limits, func(a *env.Limit, b *env.Limit) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 
 	return conf, nil
 }
@@ -324,19 +387,19 @@ func NewCustomEnv(opts ...EnvOption) (*Env, error) {
 		return nil, err
 	}
 	return (&Env{
-		variables:        []*decls.VariableDecl{},
-		functions:        map[string]*decls.FunctionDecl{},
-		functionBindings: []*functions.Overload{},
-		macros:           []parser.Macro{},
-		Container:        containers.DefaultContainer,
-		adapter:          registry,
-		provider:         registry,
-		features:         map[int]bool{},
-		appliedFeatures:  map[int]bool{},
-		libraries:        map[string]SingletonLibrary{},
-		validators:       []ASTValidator{},
-		progOpts:         []ProgramOption{},
-		costOptions:      []checker.CostOption{},
+		variables:       []*decls.VariableDecl{},
+		functions:       map[string]*decls.FunctionDecl{},
+		macros:          []parser.Macro{},
+		Container:       containers.DefaultContainer,
+		adapter:         registry,
+		provider:        registry,
+		features:        map[int]bool{},
+		appliedFeatures: map[int]bool{},
+		limits:          map[limitID]int{},
+		libraries:       map[string]SingletonLibrary{},
+		validators:      []ASTValidator{},
+		progOpts:        []ProgramOption{},
+		costOptions:     []checker.CostOption{},
 	}).configure(opts)
 }
 
@@ -352,6 +415,20 @@ func NewCustomEnv(opts ...EnvOption) (*Env, error) {
 // It is possible to have both non-nil Ast and Issues values returned from this call: however,
 // the mere presence of an Ast does not imply that it is valid for use.
 func (e *Env) Check(ast *Ast) (*Ast, *Issues) {
+	// Surface any error recorded while the Ast was loaded (e.g. an over-deep AST rejected by
+	// ParsedExprToAst / CheckedExprToAst) before recursing into the type checker on it.
+	if ast != nil && ast.loadErr != nil {
+		errs := common.NewErrors(ast.Source())
+		errs.ReportErrorString(common.NoLocation, ast.loadErr.Error())
+		return nil, NewIssuesWithSourceInfo(errs, ast.NativeRep().SourceInfo())
+	}
+	if nodeLimit := e.configuredExpressionNodeLimit(); nodeLimit > 0 && ast != nil && ast.NativeRep() != nil {
+		if count := celast.NodeCount(ast.NativeRep()); count > nodeLimit {
+			errs := common.NewErrors(ast.Source())
+			errs.ReportErrorString(common.NoLocation, fmt.Sprintf("expression node count exceeds limit: count %d, limit %d", count, nodeLimit))
+			return nil, NewIssuesWithSourceInfo(errs, ast.NativeRep().SourceInfo())
+		}
+	}
 	// Construct the internal checker env, erroring if there is an issue adding the declarations.
 	chk, err := e.initChecker()
 	if err != nil {
@@ -393,6 +470,24 @@ func (e *Env) Check(ast *Ast) (*Ast, *Issues) {
 	return ast, nil
 }
 
+// configuredExpressionSizeLimit returns the effective expression size code point limit.
+// A zero value means "use the parser default".
+func (e *Env) configuredExpressionSizeLimit() int {
+	if l := e.limits[limitCodePointSize]; l != 0 {
+		return l
+	}
+	return 100_000
+}
+
+// configuredExpressionNodeLimit returns the effective expression node limit.
+// A zero value means "use default".
+func (e *Env) configuredExpressionNodeLimit() int {
+	if l := e.limits[limitExpressionNodeCount]; l != 0 {
+		return l
+	}
+	return 100_000
+}
+
 // Compile combines the Parse and Check phases CEL program compilation to produce an Ast and
 // associated issues.
 //
@@ -402,7 +497,11 @@ func (e *Env) Check(ast *Ast) (*Ast, *Issues) {
 //
 // Note, for parse-only uses of CEL use Parse.
 func (e *Env) Compile(txt string) (*Ast, *Issues) {
-	return e.CompileSource(common.NewTextSource(txt))
+	src, err := common.NewTextSourceWithLimit(txt, e.configuredExpressionSizeLimit())
+	if err != nil {
+		return nil, ErrorAsIssues(err)
+	}
+	return e.CompileSource(src)
 }
 
 // CompileSource combines the Parse and Check phases CEL program compilation to produce an Ast and
@@ -433,34 +532,17 @@ func (e *Env) CompileSource(src Source) (*Ast, *Issues) {
 // TypeProvider are immutable, or that their underlying implementations are based on the
 // ref.TypeRegistry which provides a Copy method which will be invoked by this method.
 func (e *Env) Extend(opts ...EnvOption) (*Env, error) {
-	chk, chkErr := e.getCheckerOrError()
-	if chkErr != nil {
+	if _, chkErr := e.getCheckerOrError(); chkErr != nil {
 		return nil, chkErr
 	}
 
-	prsrOptsCopy := make([]parser.Option, len(e.prsrOpts))
-	copy(prsrOptsCopy, e.prsrOpts)
-
-	// The type-checker is configured with Declarations. The declarations may either be provided
-	// as options which have not yet been validated, or may come from a previous checker instance
-	// whose types have already been validated.
-	chkOptsCopy := make([]checker.Option, len(e.chkOpts))
-	copy(chkOptsCopy, e.chkOpts)
-
-	// Copy the declarations if needed.
-	if chk != nil {
-		// If the type-checker has already been instantiated, then the e.declarations have been
-		// validated within the chk instance.
-		chkOptsCopy = append(chkOptsCopy, checker.ValidatedDeclarations(chk))
-	}
-	varsCopy := make([]*decls.VariableDecl, len(e.variables))
-	copy(varsCopy, e.variables)
-
-	// Copy macros and program options
-	macsCopy := make([]parser.Macro, len(e.macros))
-	progOptsCopy := make([]ProgramOption, len(e.progOpts))
-	copy(macsCopy, e.macros)
-	copy(progOptsCopy, e.progOpts)
+	prsrOptsCopy := slices.Clone(e.prsrOpts)
+	chkOptsCopy := slices.Clone(e.chkOpts)
+	varsCopy := slices.Clone(e.variables)
+	macsCopy := slices.Clone(e.macros)
+	progOptsCopy := slices.Clone(e.progOpts)
+	validatorsCopy := slices.Clone(e.validators)
+	costOptsCopy := slices.Clone(e.costOptions)
 
 	// Copy the adapter / provider if they appear to be mutable.
 	adapter := e.adapter
@@ -489,45 +571,67 @@ func (e *Env) Extend(opts ...EnvOption) (*Env, error) {
 		adapter = adapterReg.Copy()
 	}
 
-	featuresCopy := make(map[int]bool, len(e.features))
-	for k, v := range e.features {
-		featuresCopy[k] = v
-	}
-	appliedFeaturesCopy := make(map[int]bool, len(e.appliedFeatures))
-	for k, v := range e.appliedFeatures {
-		appliedFeaturesCopy[k] = v
-	}
-	funcsCopy := make(map[string]*decls.FunctionDecl, len(e.functions))
-	for k, v := range e.functions {
-		funcsCopy[k] = v
-	}
-	libsCopy := make(map[string]SingletonLibrary, len(e.libraries))
-	for k, v := range e.libraries {
-		libsCopy[k] = v
-	}
-	validatorsCopy := make([]ASTValidator, len(e.validators))
-	copy(validatorsCopy, e.validators)
-	costOptsCopy := make([]checker.CostOption, len(e.costOptions))
-	copy(costOptsCopy, e.costOptions)
-
 	ext := &Env{
+		parent:          e,
 		Container:       e.Container,
 		variables:       varsCopy,
-		functions:       funcsCopy,
+		functions:       e.functions,
 		macros:          macsCopy,
 		contextProto:    e.contextProto,
 		progOpts:        progOptsCopy,
 		adapter:         adapter,
-		features:        featuresCopy,
-		appliedFeatures: appliedFeaturesCopy,
-		libraries:       libsCopy,
+		features:        e.features,
+		limits:          e.limits,
+		appliedFeatures: e.appliedFeatures,
+		libraries:       e.libraries,
 		validators:      validatorsCopy,
 		provider:        provider,
 		chkOpts:         chkOptsCopy,
 		prsrOpts:        prsrOptsCopy,
 		costOptions:     costOptsCopy,
+		// Copy-on-write flags.
+		funcsShared:           true,
+		featuresShared:        true,
+		limitsShared:          true,
+		appliedFeaturesShared: true,
+		libsShared:            true,
 	}
 	return ext.configure(opts)
+}
+
+func (e *Env) ensureMutableFunctions() {
+	if e.funcsShared {
+		e.functions = maps.Clone(e.functions)
+		e.funcsShared = false
+	}
+}
+
+func (e *Env) ensureMutableLibraries() {
+	if e.libsShared {
+		e.libraries = maps.Clone(e.libraries)
+		e.libsShared = false
+	}
+}
+
+func (e *Env) ensureMutableFeatures() {
+	if e.featuresShared {
+		e.features = maps.Clone(e.features)
+		e.featuresShared = false
+	}
+}
+
+func (e *Env) ensureMutableAppliedFeatures() {
+	if e.appliedFeaturesShared {
+		e.appliedFeatures = maps.Clone(e.appliedFeatures)
+		e.appliedFeaturesShared = false
+	}
+}
+
+func (e *Env) ensureMutableLimits() {
+	if e.limitsShared {
+		e.limits = maps.Clone(e.limits)
+		e.limitsShared = false
+	}
 }
 
 // HasFeature checks whether the environment enables the given feature
@@ -560,25 +664,17 @@ func (e *Env) HasFunction(functionName string) bool {
 
 // Functions returns a shallow copy of the Functions, keyed by function name, that have been configured in the environment.
 func (e *Env) Functions() map[string]*decls.FunctionDecl {
-	shallowCopy := make(map[string]*decls.FunctionDecl, len(e.functions))
-	for nm, fn := range e.functions {
-		shallowCopy[nm] = fn
-	}
-	return shallowCopy
+	return maps.Clone(e.functions)
 }
 
 // Variables returns a shallow copy of the variables associated with the environment.
 func (e *Env) Variables() []*decls.VariableDecl {
-	shallowCopy := make([]*decls.VariableDecl, len(e.variables))
-	copy(shallowCopy, e.variables)
-	return shallowCopy
+	return slices.Clone(e.variables)
 }
 
 // Macros returns a shallow copy of macros associated with the environment.
 func (e *Env) Macros() []Macro {
-	shallowCopy := make([]Macro, len(e.macros))
-	copy(shallowCopy, e.macros)
-	return shallowCopy
+	return slices.Clone(e.macros)
 }
 
 // HasValidator returns whether a specific ASTValidator has been configured in the environment.
@@ -591,9 +687,9 @@ func (e *Env) HasValidator(name string) bool {
 	return false
 }
 
-// Validators returns the set of ASTValidators configured on the environment.
+// Validators returns a shallow copy of the set of ASTValidators configured on the environment.
 func (e *Env) Validators() []ASTValidator {
-	return e.validators[:]
+	return slices.Clone(e.validators)
 }
 
 // Parse parses the input expression value `txt` to a Ast and/or a set of Issues.
@@ -601,7 +697,10 @@ func (e *Env) Validators() []ASTValidator {
 // This form of Parse creates a Source value for the input `txt` and forwards to the
 // ParseSource method.
 func (e *Env) Parse(txt string) (*Ast, *Issues) {
-	src := common.NewTextSource(txt)
+	src, err := common.NewTextSourceWithLimit(txt, e.configuredExpressionSizeLimit())
+	if err != nil {
+		return nil, ErrorAsIssues(err)
+	}
 	return e.ParseSource(src)
 }
 
@@ -622,6 +721,12 @@ func (e *Env) ParseSource(src Source) (*Ast, *Issues) {
 
 // Program generates an evaluable instance of the Ast within the environment (Env).
 func (e *Env) Program(ast *Ast, opts ...ProgramOption) (Program, error) {
+	// Surface any error recorded while the Ast was loaded (e.g. an over-deep AST rejected by
+	// ParsedExprToAst / CheckedExprToAst) rather than recursing into the planner on it. This is a
+	// cheap field read; the depth traversal itself runs once at conversion time, not here.
+	if ast != nil && ast.loadErr != nil {
+		return nil, ast.loadErr
+	}
 	return e.PlanProgram(ast.NativeRep(), opts...)
 }
 
@@ -636,6 +741,41 @@ func (e *Env) PlanProgram(a *celast.AST, opts ...ProgramOption) (Program, error)
 		optSet = mergedOpts
 	}
 	return newProgram(e, a, optSet)
+}
+
+func (e *Env) initDispatcher() (interpreter.Dispatcher, bool, error) {
+	e.dispOnce.Do(func() {
+		if e.parent != nil && e.funcsShared {
+			// The dispatcher setup is skipped when the child has mutated the function set.
+			// As the child function set contains a copy of all parent function declarations
+			// by virtue of copy on write semantics.
+			d, hasAsync, err := e.parent.initDispatcher()
+			e.sharedDispatcher = d
+			e.hasAsync = hasAsync
+			e.dispErr = err
+			return
+		}
+		hasAsync := false
+		var bindings []*functions.Overload
+		for _, fn := range e.functions {
+			bs, err := fn.Bindings()
+			if err != nil {
+				e.dispErr = err
+				return
+			}
+			for _, b := range bs {
+				if b.Async != nil {
+					hasAsync = true
+				}
+			}
+			bindings = append(bindings, bs...)
+		}
+		d := interpreter.NewDispatcher()
+		e.dispErr = d.Add(bindings...)
+		e.sharedDispatcher = d
+		e.hasAsync = hasAsync
+	})
+	return e.sharedDispatcher, e.hasAsync, e.dispErr
 }
 
 // CELTypeAdapter returns the `types.Adapter` configured for the environment.
@@ -763,6 +903,7 @@ func (e *Env) configure(opts []EnvOption) (*Env, error) {
 	// If the default UTC timezone has been disabled, configure the legacy overloads
 	if utcTime, isSet := e.features[featureDefaultUTCTimeZone]; isSet && !utcTime {
 		if !e.appliedFeatures[featureDefaultUTCTimeZone] {
+			e.ensureMutableAppliedFeatures()
 			e.appliedFeatures[featureDefaultUTCTimeZone] = true
 			e, err = Lib(timeLegacyLibrary{})(e)
 			if err != nil {
@@ -785,9 +926,33 @@ func (e *Env) configure(opts []EnvOption) (*Env, error) {
 	if e.HasFeature(featureIdentEscapeSyntax) {
 		prsrOpts = append(prsrOpts, parser.EnableIdentEscapeSyntax(true))
 	}
+	if l := e.limits[limitParseErrorRecovery]; l != 0 {
+		prsrOpts = append(prsrOpts, parser.ErrorRecoveryLimit(l))
+	}
+	if l := e.limits[limitCodePointSize]; l != 0 {
+		prsrOpts = append(prsrOpts, parser.ExpressionSizeCodePointLimit(l))
+	}
+	if l := e.limits[limitParseRecursionDepth]; l != 0 {
+		prsrOpts = append(prsrOpts, parser.MaxRecursionDepth(l))
+	}
+	if l := e.limits[limitExpressionNodeCount]; l != 0 {
+		prsrOpts = append(prsrOpts, parser.MaxExpressionNodeCount(l))
+	}
 	e.prsr, err = parser.NewParser(prsrOpts...)
 	if err != nil {
 		return nil, err
+	}
+
+	// Enable JSON field names is using a proto-based *types.Registry
+	if e.HasFeature(featureJSONFieldNames) {
+		reg, isReg := e.provider.(*types.Registry)
+		if !isReg {
+			return nil, fmt.Errorf("JSONFieldNames() option is only compatible with *types.Registry providers")
+		}
+		err := reg.WithJSONFieldNames(true)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Ensure that the checker init happens eagerly rather than lazily.
@@ -808,6 +973,17 @@ func (e *Env) initChecker() (*checker.Env, error) {
 		chkOpts = append(chkOpts,
 			checker.CrossTypeNumericComparisons(
 				e.HasFeature(featureCrossTypeNumericComparisons)))
+		chkOpts = append(chkOpts,
+			checker.JSONFieldNames(e.HasFeature(featureJSONFieldNames)))
+
+		if e.parent != nil && e.funcsShared {
+			parentChk, err := e.parent.initChecker()
+			if err != nil {
+				e.setCheckerOrError(nil, err)
+				return
+			}
+			chkOpts = append(chkOpts, checker.ValidatedDeclarations(parentChk))
+		}
 
 		ce, err := checker.NewEnv(e.Container, e.provider, chkOpts...)
 		if err != nil {
@@ -821,14 +997,16 @@ func (e *Env) initChecker() (*checker.Env, error) {
 			return
 		}
 		// Add the function declarations which are derived from the FunctionDecl instances.
-		for _, fn := range e.functions {
-			if fn.IsDeclarationDisabled() {
-				continue
-			}
-			err = ce.AddFunctions(fn)
-			if err != nil {
-				e.setCheckerOrError(nil, err)
-				return
+		if e.parent == nil || !e.funcsShared {
+			for _, fn := range e.functions {
+				if fn.IsDeclarationDisabled() {
+					continue
+				}
+				err = ce.AddFunctions(fn)
+				if err != nil {
+					e.setCheckerOrError(nil, err)
+					return
+				}
 			}
 		}
 		// Add function declarations here separately.
@@ -875,6 +1053,16 @@ type Error = common.Error
 type Issues struct {
 	errs *common.Errors
 	info *celast.SourceInfo
+}
+
+// ErrorAsIssues wraps a Golang error into a CEL common error and issue set.
+//
+// This is a convenience method for early returning from an expression validation call path due to
+// internal state or configuration which is unrelated to the source being validated.
+func ErrorAsIssues(err error) *Issues {
+	errs := common.NewErrors(common.NewTextSource(""))
+	errs.ReportErrorString(common.NoLocation, err.Error())
+	return NewIssues(errs)
 }
 
 // NewIssues returns an Issues struct from a common.Errors object.
@@ -985,9 +1173,10 @@ func (p *interopCELTypeProvider) FindStructFieldType(structType, fieldName strin
 			return nil, false
 		}
 		return &types.FieldType{
-			Type:    t,
-			IsSet:   ft.IsSet,
-			GetFrom: ft.GetFrom,
+			Type:        t,
+			IsSet:       ft.IsSet,
+			GetFrom:     ft.GetFrom,
+			IsJSONField: ft.IsJSONField,
 		}, true
 	}
 	return nil, false
