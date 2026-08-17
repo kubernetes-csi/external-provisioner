@@ -692,6 +692,61 @@ func toCSITopology(terms []topologyTerm) []*csi.Topology {
 	return out
 }
 
+// intersectSnapshotTopology computes the intersection of the StorageClass's
+// AllowedTopologies and a snapshot's NodeAffinity (both expressed as
+// []v1.TopologySelectorTerm), returning the result as CSI Topology terms
+// suitable for CreateVolumeRequest.AccessibilityRequirements.Preferred /
+// Requisite.
+//
+// Used for Immediate volume binding where there is no
+// scheduler step to reconcile the snapshot's topology with
+// the StorageClass.
+//
+// Semantics:
+//   - Each input is an OR of terms; within a term, label expressions are ANDed
+//     and a label expression's values are ORed. We flatten both inputs to the
+//     same disjunctive-normal-form (a list of fully-specified topologyTerms),
+//     then keep the flattened StorageClass terms that are a superset of (i.e.
+//     satisfy) at least one flattened snapshot term.
+//   - If the snapshot has no NodeAffinity, the StorageClass terms are returned
+//     unchanged (no additional constraint from the snapshot).
+//   - If the StorageClass has no AllowedTopologies, the snapshot terms are
+//     returned (the snapshot is the only constraint).
+//   - A nil, empty result means the two constraints are incompatible; callers
+//     should treat this as a fatal provisioning error.
+func intersectSnapshotTopology(scTopology, snapTopology []v1.TopologySelectorTerm) []*csi.Topology {
+	scTerms := flatten(scTopology)
+	snapTerms := flatten(snapTopology)
+
+	if len(snapTerms) == 0 {
+		return toCSITopology(scTerms)
+	}
+	if len(scTerms) == 0 {
+		return toCSITopology(snapTerms)
+	}
+
+	var intersected []topologyTerm
+	for _, snapTerm := range snapTerms {
+		for _, scTerm := range scTerms {
+			// snapTerm.subset(scTerm) is true when every segment in the
+			// snapshot term is present in the StorageClass term, i.e. the
+			// StorageClass term provisions into a topology the snapshot is
+			// accessible from. Keep the more-specific StorageClass term.
+			if snapTerm.subset(scTerm) {
+				intersected = append(intersected, scTerm)
+			} else if scTerm.subset(snapTerm) {
+				// The snapshot term is more specific (e.g. SC allows a whole
+				// region, snapshot pins a zone within it). Keep the snapshot term.
+				intersected = append(intersected, snapTerm)
+			}
+		}
+	}
+
+	slices.SortFunc(intersected, topologyTerm.compare)
+	intersected = slices.CompactFunc(intersected, slices.Equal)
+	return toCSITopology(intersected)
+}
+
 // identical to logic in getPVCNameHashAndIndexOffset in pkg/volume/util/util.go in-tree
 // [https://github.com/kubernetes/kubernetes/blob/master/pkg/volume/util/util.go]
 func getPVCNameHashAndIndexOffset(pvcName string) (hash uint32, index uint32) {

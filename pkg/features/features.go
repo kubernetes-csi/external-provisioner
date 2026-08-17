@@ -51,6 +51,16 @@ const (
 	//
 	// Releases leader election lease on sigterm / sigint.
 	ReleaseLeaderElectionOnExit featuregate.Feature = "ReleaseLeaderElectionOnExit"
+
+	// owner: @mdzraf
+	// alpha: v1.37
+	//
+	// For PVCs that reference a VolumeSnapshot data source with Immediate
+	// volume binding, intersects the snapshot's NodeAffinity (from
+	// VolumeSnapshotContent.Spec) with StorageClass.AllowedTopologies when
+	// building CreateVolume AccessibilityRequirements, so the volume is
+	// provisioned in a topology where the snapshot is accessible.
+	VolumeSnapshotTopology featuregate.Feature = "VolumeSnapshotTopology"
 )
 
 func init() {
@@ -64,6 +74,7 @@ var defaultKubernetesFeatureGates = map[featuregate.Feature]featuregate.FeatureS
 	CrossNamespaceVolumeDataSource: {Default: false, PreRelease: featuregate.Alpha},
 	VolumeAttributesClass:          {Default: true, PreRelease: featuregate.GA},
 	ReleaseLeaderElectionOnExit:    {Default: false, PreRelease: featuregate.Alpha},
+	VolumeSnapshotTopology:         {Default: false, PreRelease: featuregate.Alpha},
 }
 
 // IsVolumeAttributesClassV1Enabled checks if the VolumeAttributesClass v1 API is enabled.

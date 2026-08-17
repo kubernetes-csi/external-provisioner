@@ -214,3 +214,8 @@ replace k8s.io/cri-streaming => k8s.io/cri-streaming v0.36.1
 replace k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.36.1
 
 replace k8s.io/streaming => k8s.io/streaming v0.36.1
+
+// TODO(KEP-5943): points at the fork carrying VolumeSnapshotContent.Spec.NodeAffinity.
+// Drop this replace and depend on an official external-snapshotter client release
+// once the snapshot-topology change merges upstream and a client version is tagged.
+replace github.com/kubernetes-csi/external-snapshotter/client/v8 => github.com/mdzraf/external-snapshotter/client/v8 v8.4.1-0.20260730192112-9610545fc807
