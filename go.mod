@@ -33,7 +33,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
 	go.uber.org/mock v0.6.0
-	k8s.io/kubernetes v1.36.3
+	k8s.io/kubernetes v1.36.4
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v13 v13.0.0
 )
 
