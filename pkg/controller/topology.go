@@ -692,6 +692,88 @@ func toCSITopology(terms []topologyTerm) []*csi.Topology {
 	return out
 }
 
+// intersectSnapshotTopology computes the intersection of the StorageClass's
+// AllowedTopologies and a snapshot's NodeAffinity (both expressed as
+// []v1.TopologySelectorTerm) and returns it as []v1.TopologySelectorTerm.
+//
+// The result is passed as the allowedTopologies argument to
+// GenerateAccessibilityRequirements for Immediate volume binding, so that the
+// snapshot's accessible topology is reconciled with the cluster the same way an
+// explicit StorageClass.AllowedTopologies would be (aggregation, preferred
+// ordering, etc.) rather than bypassing that logic.
+//
+// Semantics:
+//   - Each input is an OR of terms; within a term, label expressions are ANDed
+//     and a label expression's values are ORed. We flatten both inputs to the
+//     same disjunctive-normal-form (a list of fully-specified topologyTerms),
+//     then for each (StorageClass, snapshot) term pair where one is a subset of
+//     the other, keep the more-specific term: the StorageClass term when the
+//     snapshot term is a subset of it, or the snapshot term when it is a subset
+//     of the StorageClass term (e.g. the StorageClass allows a whole region and
+//     the snapshot pins a zone within it). Terms are compared by exact
+//     (key, value) segments; a pair where neither is a subset of the other
+//     (including disjoint topology keys) contributes nothing, matching how the
+//     regular volume path treats topology segments as opaque per-driver keys.
+//   - If the snapshot has no NodeAffinity, the StorageClass terms are returned
+//     unchanged (no additional constraint from the snapshot).
+//   - If the StorageClass has no AllowedTopologies, the snapshot terms are
+//     returned (the snapshot is the only constraint).
+//   - An empty result means the two constraints are incompatible; callers
+//     should treat this as a fatal provisioning error.
+func intersectSnapshotTopology(scTopology, snapTopology []v1.TopologySelectorTerm) []v1.TopologySelectorTerm {
+	scTerms := flatten(scTopology)
+	snapTerms := flatten(snapTopology)
+
+	if len(snapTerms) == 0 {
+		return topologyTermsToSelectorTerms(scTerms)
+	}
+	if len(scTerms) == 0 {
+		return topologyTermsToSelectorTerms(snapTerms)
+	}
+
+	var intersected []topologyTerm
+	for _, snapTerm := range snapTerms {
+		for _, scTerm := range scTerms {
+			// snapTerm.subset(scTerm) is true when every segment in the
+			// snapshot term is present in the StorageClass term, i.e. the
+			// StorageClass term provisions into a topology the snapshot is
+			// accessible from. Keep the more-specific StorageClass term.
+			if snapTerm.subset(scTerm) {
+				intersected = append(intersected, scTerm)
+			} else if scTerm.subset(snapTerm) {
+				// The snapshot term is more specific (e.g. SC allows a whole
+				// region, snapshot pins a zone within it). Keep the snapshot term.
+				intersected = append(intersected, snapTerm)
+			}
+		}
+	}
+
+	slices.SortFunc(intersected, topologyTerm.compare)
+	intersected = slices.CompactFunc(intersected, slices.Equal)
+	return topologyTermsToSelectorTerms(intersected)
+}
+
+// topologyTermsToSelectorTerms converts flattened topologyTerms back into
+// []v1.TopologySelectorTerm: each topologyTerm becomes one term with one
+// single-value MatchLabelExpression per segment.
+func topologyTermsToSelectorTerms(terms []topologyTerm) []v1.TopologySelectorTerm {
+	if len(terms) == 0 {
+		return nil
+	}
+	out := make([]v1.TopologySelectorTerm, 0, len(terms))
+	for _, t := range terms {
+		exprs := make([]v1.TopologySelectorLabelRequirement, 0, len(t))
+		for _, seg := range t {
+			exprs = append(exprs, v1.TopologySelectorLabelRequirement{
+				Key:    seg.Key,
+				Values: []string{seg.Value},
+			})
+		}
+		out = append(out, v1.TopologySelectorTerm{MatchLabelExpressions: exprs})
+	}
+	return out
+}
+
 // identical to logic in getPVCNameHashAndIndexOffset in pkg/volume/util/util.go in-tree
 // [https://github.com/kubernetes/kubernetes/blob/master/pkg/volume/util/util.go]
 func getPVCNameHashAndIndexOffset(pvcName string) (hash uint32, index uint32) {

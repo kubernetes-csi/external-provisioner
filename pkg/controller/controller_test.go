@@ -4809,6 +4809,177 @@ func TestProvisionFromSnapshot(t *testing.T) {
 	}
 }
 
+// TestProvisionFromSnapshotWithTopology covers the VolumeSnapshotTopology
+// feature-gated path in prepareProvision: for Immediate binding (empty
+// selectedNodeName), the snapshot's VolumeSnapshotContent.Spec.NodeAffinity is
+// intersected with StorageClass.AllowedTopologies and used as the CreateVolume
+// AccessibilityRequirements, failing fast when the intersection is empty.
+func TestProvisionFromSnapshotWithTopology(t *testing.T) {
+	apiGrp := "snapshot.storage.k8s.io"
+	var requestedBytes int64 = 1000
+	snapName := "test-snapshot"
+	snapClassName := "test-snapclass"
+	timeNow := time.Now().UnixNano()
+	metaTimeNowUnix := &metav1.Time{Time: time.Unix(0, timeNow)}
+	deletePolicy := v1.PersistentVolumeReclaimDelete
+
+	zoneKey := "topology.kubernetes.io/zone"
+	// snapshot is usable from 2a and 2b.
+	snapshotNodeAffinity := []v1.TopologySelectorTerm{{
+		MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+			{Key: zoneKey, Values: []string{"us-east-1a", "us-east-1b"}},
+		},
+	}}
+
+	newSnapshotSC := func(allowed []v1.TopologySelectorTerm) *storagev1.StorageClass {
+		return &storagev1.StorageClass{
+			ReclaimPolicy:     &deletePolicy,
+			Parameters:        map[string]string{},
+			Provisioner:       "test-driver",
+			AllowedTopologies: allowed,
+		}
+	}
+	newSnapshotPVC := func() *v1.PersistentVolumeClaim {
+		return &v1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{UID: "testid", Annotations: driverNameAnnotation},
+			Spec: v1.PersistentVolumeClaimSpec{
+				StorageClassName: &snapClassName,
+				Resources: v1.VolumeResourceRequirements{
+					Requests: v1.ResourceList{
+						v1.ResourceName(v1.ResourceStorage): resource.MustParse(strconv.FormatInt(requestedBytes, 10)),
+					},
+				},
+				AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+				DataSource: &v1.TypedLocalObjectReference{
+					Name:     snapName,
+					Kind:     "VolumeSnapshot",
+					APIGroup: &apiGrp,
+				},
+			},
+		}
+	}
+
+	type testcase struct {
+		gateEnabled       bool
+		scAllowed         []v1.TopologySelectorTerm
+		expectErr         bool
+		expectCSICall     bool
+		expectedRequisite []*csi.Topology // AccessibilityRequirements.Requisite expected on CreateVolume
+	}
+	testcases := map[string]testcase{
+		"gate on, overlapping topologies constrains CreateVolume to the intersection": {
+			gateEnabled: true,
+			scAllowed: []v1.TopologySelectorTerm{{
+				MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+					{Key: zoneKey, Values: []string{"us-east-1a"}},
+				},
+			}},
+			expectCSICall:     true,
+			expectedRequisite: []*csi.Topology{{Segments: map[string]string{zoneKey: "us-east-1a"}}},
+		},
+		"gate on, disjoint topologies fails fast without CreateVolume": {
+			gateEnabled: true,
+			scAllowed: []v1.TopologySelectorTerm{{
+				MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+					{Key: zoneKey, Values: []string{"us-east-1c"}},
+				},
+			}},
+			expectErr:     true,
+			expectCSICall: false,
+		},
+		"gate off, snapshot NodeAffinity is ignored": {
+			gateEnabled: false,
+			scAllowed: []v1.TopologySelectorTerm{{
+				MatchLabelExpressions: []v1.TopologySelectorLabelRequirement{
+					{Key: zoneKey, Values: []string{"us-east-1c"}},
+				},
+			}},
+			expectCSICall: true,
+		},
+	}
+
+	tmpdir := tempDir(t)
+	defer os.RemoveAll(tmpdir)
+	mockController, driver, _, controllerServer, csiConn, err := createMockServer(t, tmpdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mockController.Finish()
+	defer driver.Stop()
+
+	doit := func(t *testing.T, tc testcase) {
+		utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeSnapshotTopology, tc.gateEnabled)
+
+		var clientSet kubernetes.Interface = fakeclientset.NewSimpleClientset()
+		client := &fake.Clientset{}
+
+		client.AddReactor("get", "volumesnapshots", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+			snap := newSnapshot(snapName, "default", snapClassName, "snapcontent-snapuid", "snapuid", "claim", true, nil, metaTimeNowUnix, resource.NewQuantity(requestedBytes, resource.BinarySI))
+			return true, snap, nil
+		})
+		client.AddReactor("update", "volumesnapshots", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+			return true, action.(k8stesting.UpdateAction).GetObject(), nil
+		})
+		client.AddReactor("get", "volumesnapshotcontents", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+			content := newContent("snapcontent-snapuid", "default", snapClassName, "sid", "snapuid", snapName, &requestedBytes, &timeNow)
+			content.Spec.NodeAffinity = snapshotNodeAffinity
+			return true, content, nil
+		})
+
+		// Topology-capable caps so p.supportsTopology() is true (required to
+		// reach the intersection path).
+		pluginCaps, controllerCaps := provisionWithTopologyCapabilities()
+		controllerCaps[csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT] = true
+		pvcNodeStore := NewInMemoryStore()
+		csiProvisioner := NewCSIProvisioner(clientSet, 5*time.Second, "test-provisioner", "test", 5, csiConn.conn,
+			client, driverName, pluginCaps, controllerCaps, "", false, true, csitrans.New(), nil, nil, nil, nil, nil, nil, false, defaultfsType, nil, true, true, pvcNodeStore)
+
+		out := &csi.CreateVolumeResponse{
+			Volume: &csi.Volume{
+				CapacityBytes: requestedBytes,
+				VolumeId:      "test-volume-id",
+				ContentSource: &csi.VolumeContentSource{
+					Type: &csi.VolumeContentSource_Snapshot{
+						Snapshot: &csi.VolumeContentSource_SnapshotSource{SnapshotId: "sid"},
+					},
+				},
+			},
+		}
+		if tc.expectCSICall {
+			controllerServer.EXPECT().CreateVolume(gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+					if tc.expectedRequisite != nil {
+						if req.GetAccessibilityRequirements() == nil {
+							t.Errorf("expected AccessibilityRequirements to be set")
+						} else if !reflect.DeepEqual(req.GetAccessibilityRequirements().GetRequisite(), tc.expectedRequisite) {
+							t.Errorf("expected Requisite %v, got %v", tc.expectedRequisite, req.GetAccessibilityRequirements().GetRequisite())
+						}
+					}
+					return out, nil
+				}).Times(1)
+		}
+
+		opts := controller.ProvisionOptions{
+			StorageClass: newSnapshotSC(tc.scAllowed),
+			PVName:       "test-name",
+			PVC:          newSnapshotPVC(),
+		}
+		_, _, err := csiProvisioner.Provision(context.Background(), opts)
+		if tc.expectErr && err == nil {
+			t.Errorf("expected error, got none")
+		}
+		if !tc.expectErr && err != nil {
+			t.Errorf("got unexpected error: %v", err)
+		}
+	}
+
+	for k, tc := range testcases {
+		t.Run(k, func(t *testing.T) {
+			doit(t, tc)
+		})
+	}
+}
+
 // TestProvisionWithTopology is a basic test of provisioner integration with topology functions.
 func TestProvisionWithTopologyEnabled(t *testing.T) {
 	utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.Topology, true)
