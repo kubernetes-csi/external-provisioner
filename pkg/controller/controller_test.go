@@ -5216,7 +5216,8 @@ func TestDelete(t *testing.T) {
 						},
 					},
 					ClaimRef: &v1.ObjectReference{
-						Name: "sc-name",
+						Namespace: "pvc-namespace",
+						Name:      "pvc-name",
 					},
 					StorageClassName: "sc-name",
 				},
@@ -5226,7 +5227,8 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNameKey:      "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNamespaceKey: "${pvc.namespace}",
 				},
 			},
 			volumeAttachment: &storagev1.VolumeAttachment{
@@ -5257,7 +5259,8 @@ func TestDelete(t *testing.T) {
 						},
 					},
 					ClaimRef: &v1.ObjectReference{
-						Name: "sc-name",
+						Namespace: "pvc-namespace",
+						Name:      "pvc-name",
 					},
 					StorageClassName: "sc-name",
 				},
@@ -5267,7 +5270,8 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNameKey:      "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNamespaceKey: "${pvc.namespace}",
 				},
 			},
 			volumeAttachment: &storagev1.VolumeAttachment{
@@ -5298,7 +5302,8 @@ func TestDelete(t *testing.T) {
 						},
 					},
 					ClaimRef: &v1.ObjectReference{
-						Name: "sc-name",
+						Namespace: "pvc-namespace",
+						Name:      "pvc-name",
 					},
 					StorageClassName: "sc-name",
 				},
@@ -5308,7 +5313,8 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNameKey:      "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNamespaceKey: "${pvc.namespace}",
 				},
 			},
 			volumeAttachment: &storagev1.VolumeAttachment{
@@ -5736,6 +5742,9 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 	}
 	if tc.secrets != nil {
 		clientSetObjects = append(clientSetObjects, tc.secrets...)
+	}
+	if tc.volumeAttachment != nil {
+		clientSetObjects = append(clientSetObjects, tc.volumeAttachment)
 	}
 	clientSet = fakeclientset.NewSimpleClientset(clientSetObjects...)
 
