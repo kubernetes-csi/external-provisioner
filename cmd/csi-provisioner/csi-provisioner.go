@@ -88,10 +88,11 @@ var (
 	capacityThreads             = flag.Uint("capacity-threads", 1, "Number of simultaneously running threads, handling CSIStorageCapacity objects")
 	operationTimeout            = flag.Duration("timeout", 10*time.Second, "Timeout for waiting for volume operation (creation, deletion, capacity queries)")
 
-	strictTopology      = flag.Bool("strict-topology", false, "Late binding: pass only selected node topology to CreateVolume Request, unlike default behavior of passing aggregated cluster topologies that match with topology keys of the selected node.")
-	immediateTopology   = flag.Bool("immediate-topology", true, "Immediate binding: pass aggregated cluster topologies for all nodes where the CSI driver is available (enabled, the default) or no topology requirements (if disabled).")
-	extraCreateMetadata = flag.Bool("extra-create-metadata", false, "If set, add pv/pvc metadata to plugin create requests as parameters.")
-	enableProfile       = flag.Bool("enable-pprof", false, "Enable pprof profiling on the TCP network address specified by --http-endpoint. The HTTP path is `/debug/pprof/`.")
+	strictTopology         = flag.Bool("strict-topology", false, "Late binding: pass only selected node topology to CreateVolume Request, unlike default behavior of passing aggregated cluster topologies that match with topology keys of the selected node.")
+	immediateTopology      = flag.Bool("immediate-topology", true, "Immediate binding: pass aggregated cluster topologies for all nodes where the CSI driver is available (enabled, the default) or no topology requirements (if disabled).")
+	extraCreateMetadata    = flag.Bool("extra-create-metadata", false, "If set, add pv/pvc metadata to plugin create requests as parameters.")
+	watchVolumeAttachments = flag.Bool("watch-volumeattachments", false, "Watch VolumeAttachments to prevent deleting attached volumes even when the driver does not support PUBLISH_UNPUBLISH_VOLUME. Requires list/watch permission for VolumeAttachments.")
+	enableProfile          = flag.Bool("enable-pprof", false, "Enable pprof profiling on the TCP network address specified by --http-endpoint. The HTTP path is `/debug/pprof/`.")
 
 	defaultFSType = flag.String("default-fstype", "", "The default filesystem type of the volume to provision when fstype is unspecified in the StorageClass. If the default is not set and fstype is unset in the StorageClass, then no fstype will be set")
 
@@ -309,13 +310,7 @@ func main() {
 	scLister := factory.Storage().V1().StorageClasses().Lister()
 	claimLister := factory.Core().V1().PersistentVolumeClaims().Lister()
 
-	var vaLister storagelistersv1.VolumeAttachmentLister
-	if controllerCapabilities[csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME] {
-		klog.Info("CSI driver supports PUBLISH_UNPUBLISH_VOLUME, watching VolumeAttachments")
-		vaLister = factory.Storage().V1().VolumeAttachments().Lister()
-	} else {
-		klog.Info("CSI driver does not support PUBLISH_UNPUBLISH_VOLUME, not watching VolumeAttachments")
-	}
+	vaLister := volumeAttachmentLister(factory, controllerCapabilities[csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME], *watchVolumeAttachments)
 
 	var nodeDeployment *ctrl.NodeDeployment
 	if *enableNodeDeployment {
