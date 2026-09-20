@@ -6891,13 +6891,22 @@ func TestProvisionFromPVC(t *testing.T) {
 			}
 
 			if tc.volOpts.PVC.Spec.DataSourceRef != nil || tc.volOpts.PVC.Spec.DataSource != nil {
-				var claim *v1.PersistentVolumeClaim
+				// Provision updates the API object synchronously, but informer delivery is
+				// asynchronous. Assert the write without racing the claimLister cache.
+				sourceNamespace, sourceName := tc.volOpts.PVC.Namespace, ""
 				if tc.volOpts.PVC.Spec.DataSourceRef != nil {
-					claim, _ = claimLister.PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(tc.volOpts.PVC.Spec.DataSourceRef.Name)
+					sourceName = tc.volOpts.PVC.Spec.DataSourceRef.Name
+					if tc.volOpts.PVC.Spec.DataSourceRef.Namespace != nil {
+						sourceNamespace = *tc.volOpts.PVC.Spec.DataSourceRef.Namespace
+					}
 				} else if tc.volOpts.PVC.Spec.DataSource != nil {
-					claim, _ = claimLister.PersistentVolumeClaims(tc.volOpts.PVC.Namespace).Get(tc.volOpts.PVC.Spec.DataSource.Name)
+					sourceName = tc.volOpts.PVC.Spec.DataSource.Name
 				}
-				if claim != nil {
+				claim, claimErr := clientSet.CoreV1().PersistentVolumeClaims(sourceNamespace).Get(context.Background(), sourceName, metav1.GetOptions{})
+				if claimErr != nil && tc.expectFinalizers {
+					t.Errorf("Get clone source PVC %s/%s: %v", sourceNamespace, sourceName, claimErr)
+				}
+				if claimErr == nil {
 					set := checkFinalizer(claim, pvcCloneFinalizer)
 					if tc.expectFinalizers && !set {
 						t.Errorf("Claim %s does not have clone protection finalizer set", claim.Name)
