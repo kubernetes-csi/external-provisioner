@@ -150,8 +150,8 @@ When `Topology` feature is enabled* and the driver specifies `VOLUME_ACCESSIBILI
 Yes | Yes | Irrelevant | Irrelevant | `Requisite` = `Preferred` = Selected node topology
 Yes | No  | No  | Irrelevant | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` with selected node topology as first element
 Yes | No  | Yes | Irrelevant | `Requisite` = Allowed topologies<br>`Preferred` = `Requisite` with selected node topology as first element
-No | Irrelevant | Yes | Irrelevant | `Requisite` = Allowed topologies<br>`Preferred` = `Requisite` with randomly selected node topology as first element
-No | Irrelevant | No  | Yes | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` with randomly selected node topology as first element
+No | Irrelevant | Yes | Irrelevant | `Requisite` = Allowed topologies<br>`Preferred` = `Requisite` rotated so that the entry selected by a hash of the PVC name comes first
+No | Irrelevant | No  | Yes | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` rotated so that the entry selected by a hash of the PVC name comes first
 No | Irrelevant | No  | No  | `Requisite` and `Preferred` both nil
 
 *) `Topology` feature gate is enabled by default since v5.0.
