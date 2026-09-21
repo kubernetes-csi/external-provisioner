@@ -56,6 +56,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	ref "k8s.io/client-go/tools/reference"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	klog "k8s.io/klog/v2"
 	"sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller/metrics"
@@ -1350,6 +1351,10 @@ func (ctrl *ProvisionController) updateProvisionStats(claim *v1.PersistentVolume
 
 func (ctrl *ProvisionController) updateDeleteStats(volume *v1.PersistentVolume, err error, startTime time.Time) {
 	class := volume.Spec.StorageClassName
+	if _, ok := err.(*VolumeInUseError); ok {
+		// Deletion was postponed, not failed. Nothing to record.
+		return
+	}
 	if err != nil {
 		ctrl.metrics.PersistentVolumeDeleteFailedTotal.WithLabelValues(class).Inc()
 	} else {
@@ -1391,24 +1396,34 @@ func (ctrl *ProvisionController) rescheduleProvisioning(ctx context.Context, cla
 		return nil
 	}
 
-	// The claim from method args can be pointing to watcher cache. We must not
-	// modify these, therefore create a copy.
-	newClaim := claim.DeepCopy()
-	delete(newClaim.Annotations, annSelectedNode)
-	// Try to update the PVC object
-	if _, err := ctrl.client.CoreV1().PersistentVolumeClaims(newClaim.Namespace).Update(ctx, newClaim, metav1.UpdateOptions{}); err != nil {
+	var newClaim *v1.PersistentVolumeClaim
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		freshClaim, err := ctrl.client.CoreV1().PersistentVolumeClaims(claim.Namespace).Get(ctx, claim.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if _, ok := freshClaim.Annotations[annSelectedNode]; !ok {
+			return nil // already removed, nothing to do
+		}
+		delete(freshClaim.Annotations, annSelectedNode)
+		newClaim, err = ctrl.client.CoreV1().PersistentVolumeClaims(freshClaim.Namespace).Update(ctx, freshClaim, metav1.UpdateOptions{})
+		return err
+	})
+	if err != nil {
 		return fmt.Errorf("delete annotation 'annSelectedNode' for PersistentVolumeClaim %q: %v", klog.KObj(newClaim), err)
 	}
 
 	// Save updated claim into informer cache to avoid operations on old claim.
-	if err := ctrl.claimInformer.GetStore().Update(newClaim); err != nil {
-		// This shouldn't happen because it is a local
-		// operation. The only situation in which Update fails
-		// is when the object is invalid, which isn't the case
-		// here
-		// (https://github.com/kubernetes/client-go/blob/eb0bad8167df60e402297b26e2cee1bddffde108/tools/cache/store.go#L154-L162).
-		// Log the error and hope that a regular cache update will resolve it.
-		klog.FromContext(ctx).Info("Update claim informer cache for PersistentVolumeClaim", "PVC", klog.KObj(newClaim), "err", err)
+	if newClaim != nil {
+		if err := ctrl.claimInformer.GetStore().Update(newClaim); err != nil {
+			// This shouldn't happen because it is a local
+			// operation. The only situation in which Update fails
+			// is when the object is invalid, which isn't the case
+			// here
+			// (https://github.com/kubernetes/client-go/blob/eb0bad8167df60e402297b26e2cee1bddffde108/tools/cache/store.go#L154-L162).
+			// Log the error and hope that a regular cache update will resolve it.
+			klog.FromContext(ctx).Info("Update claim informer cache for PersistentVolumeClaim", "PVC", klog.KObj(newClaim), "err", err)
+		}
 	}
 
 	return nil
@@ -1628,6 +1643,12 @@ func (ctrl *ProvisionController) deleteVolumeOperation(ctx context.Context, volu
 			// Delete ignored, do nothing and hope another provisioner will delete it.
 			logger.V(4).Info("Volume deletion ignored", "reason", ierr)
 			return nil
+		}
+		if inUseErr, ok := err.(*VolumeInUseError); ok {
+			// Volume is still in use, retry later without treating it as a failure.
+			logger.V(4).Info("Volume deletion postponed", "reason", inUseErr.Reason)
+			ctrl.eventRecorder.Event(volume, v1.EventTypeNormal, "VolumeDelete", err.Error())
+			return err
 		}
 		// Delete failed, emit an event.
 		logger.Error(err, "Volume deletion failed")

@@ -33,7 +33,7 @@ require (
 	github.com/onsi/gomega v1.43.0
 	go.uber.org/mock v0.6.0
 	k8s.io/kubernetes v1.36.3
-	sigs.k8s.io/sig-storage-lib-external-provisioner/v13 v13.0.0
+	sigs.k8s.io/sig-storage-lib-external-provisioner/v13 v13.0.1-0.20260921115003-61da83e8bab1
 )
 
 require (

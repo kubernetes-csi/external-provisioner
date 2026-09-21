@@ -1619,8 +1619,8 @@ sigs.k8s.io/json/internal/golang/encoding/json
 ## explicit; go 1.18
 sigs.k8s.io/randfill
 sigs.k8s.io/randfill/bytesource
-# sigs.k8s.io/sig-storage-lib-external-provisioner/v13 v13.0.0
-## explicit; go 1.24.0
+# sigs.k8s.io/sig-storage-lib-external-provisioner/v13 v13.0.1-0.20260921115003-61da83e8bab1
+## explicit; go 1.26.0
 sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller
 sigs.k8s.io/sig-storage-lib-external-provisioner/v13/controller/metrics
 sigs.k8s.io/sig-storage-lib-external-provisioner/v13/util
