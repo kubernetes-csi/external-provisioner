@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -365,9 +366,35 @@ func distinctTopologyKeySets(csiNodes []*storagev1.CSINode, driverName string) [
 	return keySets
 }
 
+// registeredTopologyKeys maps a node name to the topology keys that the driver
+// has registered on that node.
+//
+// Nodes where the driver is not present, or where it has not registered any
+// topology key, are left out of the map: the driver has not reported any
+// topology for them.
+func registeredTopologyKeys(csiNodes []*storagev1.CSINode, driverName string) map[string]sets.Set[string] {
+	registered := make(map[string]sets.Set[string])
+	for _, csiNode := range csiNodes {
+		keys := getTopologyKeys(csiNode, driverName)
+		if len(keys) == 0 {
+			continue
+		}
+		registered[csiNode.Name] = sets.New(keys...)
+	}
+	return registered
+}
+
 // aggregateTopologiesForKeys returns one topology term per node carrying all of
 // the given topology keys.
-func aggregateTopologiesForKeys(topologyKeys []string, nodeLister corelisters.NodeLister) ([]topologyTerm, error) {
+//
+// When registered is not nil, only nodes whose registered topology keys cover
+// topologyKeys are considered. Topology labels are often present on nodes
+// independently of the driver, but a CO may only specify topology that the
+// driver supports, so a node whose driver did not report these keys, or did not
+// report any topology keys, must not be reported under them even if it carries
+// the labels. A nil registered disables the check and selects nodes by their
+// labels alone.
+func aggregateTopologiesForKeys(topologyKeys []string, nodeLister corelisters.NodeLister, registered map[string]sets.Set[string]) ([]topologyTerm, error) {
 	selector, err := buildTopologyKeySelector(topologyKeys)
 	if err != nil {
 		return nil, err
@@ -379,6 +406,11 @@ func aggregateTopologiesForKeys(topologyKeys []string, nodeLister corelisters.No
 
 	var terms []topologyTerm
 	for _, node := range nodes {
+		if registered != nil {
+			if keys, ok := registered[node.Name]; !ok || !keys.HasAll(topologyKeys...) {
+				continue
+			}
+		}
 		term, _ := getTopologyFromNode(node, topologyKeys)
 		if len(term) > 0 {
 			terms = append(terms, term)
@@ -427,9 +459,14 @@ func aggregateTopologies(
 		// keys from the nodes that do report them. Aggregate each reported key
 		// set on its own instead and combine the results, so that the requisite
 		// topology describes every granularity the cluster offers.
+		//
+		// Each pass is limited to the nodes whose own registration covers that
+		// key set, so that a node is only ever reported under a topology the
+		// driver actually registered for it.
+		registered := registeredTopologyKeys(csiNodes, driverName)
 		terms = nil
 		for _, topologyKeys := range keySets {
-			keyTerms, err := aggregateTopologiesForKeys(topologyKeys, nodeLister)
+			keyTerms, err := aggregateTopologiesForKeys(topologyKeys, nodeLister, registered)
 			if err != nil {
 				return nil, err
 			}
@@ -470,7 +507,11 @@ func aggregateTopologies(
 	terms, err := getRequisiteTermsFromCache(pvcNodeStore, pvcKeyForStore)
 	if err != nil || len(terms) == 0 {
 		// Not in the in memory cache.
-		terms, err = aggregateTopologiesForKeys(topologyKeys, nodeLister)
+		//
+		// Only one key set is in play here, the selected node's own, so there
+		// is no cross-contamination between key sets to guard against and the
+		// CSINode list this would need is not fetched on this path.
+		terms, err = aggregateTopologiesForKeys(topologyKeys, nodeLister, nil)
 		if err != nil {
 			return nil, err
 		}
