@@ -474,55 +474,55 @@ func TestCreateDriverReturnsInvalidCapacityDuringProvision(t *testing.T) {
 
 func provisionCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
 	return rpc.PluginCapabilitySet{
-			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
-		}, rpc.ControllerCapabilitySet{
-			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
-		}
+		csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
+	}, rpc.ControllerCapabilitySet{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
+	}
 }
 
 func provisionWithSingleNodeMultiWriterCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
 	return rpc.PluginCapabilitySet{
-			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
-		}, rpc.ControllerCapabilitySet{
-			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:     true,
-			csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER: true,
-		}
+		csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
+	}, rpc.ControllerCapabilitySet{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:     true,
+		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER: true,
+	}
 }
 
 func provisionFromSnapshotCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
 	return rpc.PluginCapabilitySet{
-			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
-		}, rpc.ControllerCapabilitySet{
-			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:   true,
-			csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: true,
-		}
+		csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
+	}, rpc.ControllerCapabilitySet{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME:   true,
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: true,
+	}
 }
 
 func provisionWithTopologyCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
 	return rpc.PluginCapabilitySet{
-			csi.PluginCapability_Service_CONTROLLER_SERVICE:               true,
-			csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS: true,
-		}, rpc.ControllerCapabilitySet{
-			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
-		}
+		csi.PluginCapability_Service_CONTROLLER_SERVICE:               true,
+		csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS: true,
+	}, rpc.ControllerCapabilitySet{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
+	}
 }
 
 func provisionFromPVCCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
 	return rpc.PluginCapabilitySet{
-			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
-		}, rpc.ControllerCapabilitySet{
-			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
-			csi.ControllerServiceCapability_RPC_CLONE_VOLUME:         true,
-		}
+		csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
+	}, rpc.ControllerCapabilitySet{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
+		csi.ControllerServiceCapability_RPC_CLONE_VOLUME:         true,
+	}
 }
 
 func provisionWithVACCapabilities() (rpc.PluginCapabilitySet, rpc.ControllerCapabilitySet) {
 	return rpc.PluginCapabilitySet{
-			csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
-		}, rpc.ControllerCapabilitySet{
-			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
-			csi.ControllerServiceCapability_RPC_MODIFY_VOLUME:        true,
-		}
+		csi.PluginCapability_Service_CONTROLLER_SERVICE: true,
+	}, rpc.ControllerCapabilitySet{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME: true,
+		csi.ControllerServiceCapability_RPC_MODIFY_VOLUME:        true,
+	}
 }
 
 var fakeSCName = "fake-test-sc"
