@@ -936,24 +936,100 @@ func TestTopologyAggregation(t *testing.T) {
 				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
 			},
 		},
-		//"different keys across cluster": {
-		//	nodeLabels: []map[string]string{
-		//		{ "com.example.csi/zone": "zone1" },
-		//		{ "com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA" },
-		//		{ "com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA" },
-		//	},
-		//	topologyKeys: []map[string][]string{
-		//		{ testDriverName: []string{ "com.example.csi/zone" } },
-		//		{ testDriverName: []string{ "com.example.csi/zone", "com.example.csi/rack" } },
-		//		{ testDriverName: []string{ "com.example.csi/zone", "com.example.csi/rack" } },
-		//	},
-		//	expectedRequisite: &csi.TopologyRequirement{
-		//		Requisite: []*csi.Topology{
-		//			{ Segments: map[string]string{ "com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA" } },
-		//		},
-		//	},
-		//	// TODO (verult) mock Rand
-		//},
+		// Nodes report different topology keys for the same driver. Each
+		// reported key set is aggregated on its own, so the finer granularity
+		// is not erased and the node reporting only the coarser key set is not
+		// dropped.
+		"different keys across cluster": {
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
+				{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/rack"}},
+			},
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone1", "com.example.csi/rack": "rackA"}},
+			},
+		},
+		// The node reporting only the coarser key set is in a topology of its
+		// own, so its contribution to the requisite terms is unambiguous.
+		"different keys across cluster: node reporting fewer keys is not dropped": {
+			nodeLabels: []map[string]string{
+				{"com.example.csi/region": "us-east"},
+				{"com.example.csi/region": "us-west", "com.example.csi/zone": "zone1"},
+				{"com.example.csi/region": "us-west", "com.example.csi/zone": "zone2"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/region"}},
+				{testDriverName: []string{"com.example.csi/region", "com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/region", "com.example.csi/zone"}},
+			},
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/region": "us-east"}},
+				{Segments: map[string]string{"com.example.csi/region": "us-west"}},
+				{Segments: map[string]string{"com.example.csi/region": "us-west", "com.example.csi/zone": "zone1"}},
+				{Segments: map[string]string{"com.example.csi/region": "us-west", "com.example.csi/zone": "zone2"}},
+			},
+		},
+		// Key sets that have no key in common are still each aggregated, rather
+		// than one of them being picked over the other.
+		"disjoint keys across cluster": {
+			nodeLabels: []map[string]string{
+				{"com.example.csi/region": "us-east"},
+				{"com.example.csi/zone": "zone1"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/region"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/region": "us-east"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
+			},
+		},
+		// Topology labels can exist on nodes the driver did not register them
+		// on. Each key set must only report the nodes whose own registration
+		// covers it, otherwise the requisite terms advertise placements the
+		// driver cannot serve: here the first node's zone and the second
+		// node's region were never registered.
+		"disjoint keys across cluster, both labels on every node": {
+			nodeLabels: []map[string]string{
+				{"com.example.csi/region": "us-east", "com.example.csi/zone": "zone1"},
+				{"com.example.csi/region": "us-west", "com.example.csi/zone": "zone2"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/region"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/region": "us-east"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone2"}},
+			},
+		},
+		// A node registering a finer key set still contributes to the coarser
+		// key set's aggregation, because its registration covers those keys.
+		// The reverse does not hold: the node registering only the coarser set
+		// is left out of the finer aggregation even though it carries both
+		// labels, so its zone never appears.
+		"finer registration contributes to the coarser key set": {
+			nodeLabels: []map[string]string{
+				{"com.example.csi/region": "us-east", "com.example.csi/zone": "zone1"},
+				{"com.example.csi/region": "us-east", "com.example.csi/zone": "zone2"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/region"}},
+				{testDriverName: []string{"com.example.csi/region", "com.example.csi/zone"}},
+			},
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/region": "us-east"}},
+				{Segments: map[string]string{"com.example.csi/region": "us-east", "com.example.csi/zone": "zone2"}},
+			},
+		},
 		"selected node: different keys across cluster": {
 			hasSelectedNode: true,
 			nodeLabels: []map[string]string{
@@ -1165,6 +1241,154 @@ func TestTopologyAggregation(t *testing.T) {
 						})
 					}
 				})
+			}
+		})
+	}
+}
+
+func TestDistinctTopologyKeySets(t *testing.T) {
+	testcases := map[string]struct {
+		topologyKeys []map[string][]string
+		expected     [][]string
+	}{
+		"no CSINodes": {
+			topologyKeys: nil,
+			expected:     nil,
+		},
+		"driver has not registered any topology key": {
+			topologyKeys: []map[string][]string{
+				{testDriverName: nil},
+				{testDriverName: nil},
+			},
+			expected: nil,
+		},
+		"same key set on every node": {
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/region", "com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/region", "com.example.csi/zone"}},
+			},
+			expected: [][]string{
+				{"com.example.csi/region", "com.example.csi/zone"},
+			},
+		},
+		"same key set reported in a different order": {
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/region", "com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/region"}},
+			},
+			expected: [][]string{
+				{"com.example.csi/region", "com.example.csi/zone"},
+			},
+		},
+		"different key sets across cluster": {
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/region", "com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/region"}},
+				{testDriverName: []string{"com.example.csi/region", "com.example.csi/zone"}},
+			},
+			expected: [][]string{
+				{"com.example.csi/region"},
+				{"com.example.csi/region", "com.example.csi/zone"},
+			},
+		},
+		"nodes without registered keys are skipped": {
+			topologyKeys: []map[string][]string{
+				{testDriverName: nil},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expected: [][]string{
+				{"com.example.csi/zone"},
+			},
+		},
+		"disjoint key sets": {
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/region"}},
+			},
+			expected: [][]string{
+				{"com.example.csi/region"},
+				{"com.example.csi/zone"},
+			},
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			csiNodeList := buildCSINodes(tc.topologyKeys)
+			csiNodes := make([]*storagev1.CSINode, 0, len(csiNodeList.Items))
+			for i := range csiNodeList.Items {
+				csiNodes = append(csiNodes, &csiNodeList.Items[i])
+			}
+
+			actual := distinctTopologyKeySets(csiNodes, testDriverName)
+			if diff := cmp.Diff(tc.expected, actual); diff != "" {
+				t.Errorf("unexpected topology key sets (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestRegisteredTopologyKeys(t *testing.T) {
+	testcases := map[string]struct {
+		topologyKeys []map[string][]string
+		expected     map[string]sets.Set[string]
+	}{
+		"no CSINodes": {
+			topologyKeys: nil,
+			expected:     map[string]sets.Set[string]{},
+		},
+		"driver registered on every node": {
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expected: map[string]sets.Set[string]{
+				"node-0": sets.New("com.example.csi/zone"),
+				"node-1": sets.New("com.example.csi/zone"),
+			},
+		},
+		"nodes without registered keys are omitted": {
+			topologyKeys: []map[string][]string{
+				{testDriverName: nil},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expected: map[string]sets.Set[string]{
+				"node-1": sets.New("com.example.csi/zone"),
+			},
+		},
+		"different key sets are recorded per node": {
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/region"}},
+				{testDriverName: []string{"com.example.csi/region", "com.example.csi/zone"}},
+			},
+			expected: map[string]sets.Set[string]{
+				"node-0": sets.New("com.example.csi/region"),
+				"node-1": sets.New("com.example.csi/region", "com.example.csi/zone"),
+			},
+		},
+		"key order does not matter": {
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/region", "com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/zone", "com.example.csi/region"}},
+			},
+			expected: map[string]sets.Set[string]{
+				"node-0": sets.New("com.example.csi/region", "com.example.csi/zone"),
+				"node-1": sets.New("com.example.csi/region", "com.example.csi/zone"),
+			},
+		},
+	}
+
+	for name, tc := range testcases {
+		t.Run(name, func(t *testing.T) {
+			csiNodeList := buildCSINodes(tc.topologyKeys)
+			csiNodes := make([]*storagev1.CSINode, 0, len(csiNodeList.Items))
+			for i := range csiNodeList.Items {
+				csiNodes = append(csiNodes, &csiNodeList.Items[i])
+			}
+
+			actual := registeredTopologyKeys(csiNodes, testDriverName)
+			if diff := cmp.Diff(tc.expected, actual); diff != "" {
+				t.Errorf("unexpected registered topology keys (-want +got):\n%s", diff)
 			}
 		})
 	}

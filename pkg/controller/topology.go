@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -148,18 +149,23 @@ func topologyKeysLookup(
 //
 // 1) selectedNode is not set (immediate binding):
 //
-//	In this case, we list all CSINode objects to find a Node that
-//	the driver has registered topology keys with.
-//
-//	Once we get the list of CSINode objects, we find one that has
-//	topology keys registered. If none are found, then we assume
+//	In this case, we list all CSINode objects to find the topology
+//	keys that the driver has registered across the cluster. If no
+//	CSINode object has any topology key registered, then we assume
 //	that the driver has not started on any node yet, and we error
 //	and retry.
 //
-//	If at least one CSINode object is found with topology keys,
-//	then we continue and use that for assembling the topology
-//	requirement. The available topologies will be limited to the
-//	Nodes that the driver has registered with.
+//	Nodes do not have to report the same topology keys for a driver:
+//	part of the cluster may report a finer granularity than the rest.
+//	Every distinct key set that the driver reports is therefore
+//	aggregated separately and the results are combined, so the
+//	requisite topology describes each granularity the cluster offers.
+//	As a consequence, the resulting requisite terms are not guaranteed
+//	to all use the same topology keys. Since requisite is a list the
+//	driver selects from, a driver that reports several granularities
+//	can pick the entry that suits the volume being created. The
+//	available topologies are limited to the Nodes that the driver has
+//	registered with.
 //
 // 2) selectedNode is set (delayed binding):
 //
@@ -325,6 +331,93 @@ func getSelectedCSINode(
 	return selectedCSINode, nil
 }
 
+// distinctTopologyKeySets returns the deduplicated topology key sets that the
+// driver has registered across the given CSINodes. Each key set is sorted, and
+// the key sets themselves are returned in a deterministic order.
+//
+// CSINodes where the driver is not present, or where it has not registered any
+// topology key yet (for example while the driver is still rolling out), are
+// skipped rather than treated as an empty key set.
+//
+// Most clusters register an identical key set on every node, in which case the
+// single registered key set is returned. More than one key set is returned only
+// when nodes genuinely report a different topology granularity for the same
+// driver.
+func distinctTopologyKeySets(csiNodes []*storagev1.CSINode, driverName string) [][]string {
+	seen := make(map[string]bool)
+	var keySets [][]string
+	for _, csiNode := range csiNodes {
+		keys := getTopologyKeys(csiNode, driverName)
+		if len(keys) == 0 {
+			continue
+		}
+		sortedKeys := slices.Clone(keys)
+		slices.Sort(sortedKeys)
+		id := strings.Join(sortedKeys, "\x00")
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		keySets = append(keySets, sortedKeys)
+	}
+	slices.SortFunc(keySets, func(a, b []string) int {
+		return slices.Compare(a, b)
+	})
+	return keySets
+}
+
+// registeredTopologyKeys maps a node name to the topology keys that the driver
+// has registered on that node.
+//
+// Nodes where the driver is not present, or where it has not registered any
+// topology key yet, are left out of the map entirely, so that callers can tell
+// "registered a different key set" apart from "has not registered anything
+// yet".
+func registeredTopologyKeys(csiNodes []*storagev1.CSINode, driverName string) map[string]sets.Set[string] {
+	registered := make(map[string]sets.Set[string])
+	for _, csiNode := range csiNodes {
+		keys := getTopologyKeys(csiNode, driverName)
+		if len(keys) == 0 {
+			continue
+		}
+		registered[csiNode.Name] = sets.New(keys...)
+	}
+	return registered
+}
+
+// aggregateTopologiesForKeys returns one topology term per node carrying all of
+// the given topology keys.
+//
+// A node that has registered topology keys which do not cover topologyKeys is
+// skipped: topology labels are often present cluster-wide independently of the
+// driver, and reporting a topology that the driver did not register on a node
+// would advertise placements it cannot serve. Nodes that have not registered
+// any topology key yet are still included, so that a driver which has not
+// finished rolling out does not shrink the aggregated topology. Passing a nil
+// map disables the check.
+func aggregateTopologiesForKeys(topologyKeys []string, nodeLister corelisters.NodeLister, registered map[string]sets.Set[string]) ([]topologyTerm, error) {
+	selector, err := buildTopologyKeySelector(topologyKeys)
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := nodeLister.List(selector)
+	if err != nil {
+		return nil, fmt.Errorf("error listing nodes: %v", err)
+	}
+
+	var terms []topologyTerm
+	for _, node := range nodes {
+		if keys, ok := registered[node.Name]; ok && !keys.HasAll(topologyKeys...) {
+			continue
+		}
+		term, _ := getTopologyFromNode(node, topologyKeys)
+		if len(term) > 0 {
+			terms = append(terms, term)
+		}
+	}
+	return terms, nil
+}
+
 // aggregateTopologies returns all the supported topology values in the cluster that
 // match the driver's topology keys.
 func aggregateTopologies(
@@ -335,96 +428,99 @@ func aggregateTopologies(
 	nodeLister corelisters.NodeLister,
 	pvcKeyForStore types.UID,
 	pvcNodeStore TopologyProvider) ([]topologyTerm, error) {
-	// 1. Determine topologyKeys to use for aggregation
-	var topologyKeys []string
-	var err error
 	if len(selectedNodeName) == 0 {
-		// Immediate binding
-		// Read from cache first to make sure retry with the same arguments
-		topologyKeys, err = getTopologyKeysFromCache(pvcNodeStore, pvcKeyForStore)
-		if err != nil || len(topologyKeys) == 0 {
-			// Not in the in memory cache. Find from csiNodes.
-			csiNodes, err := csiNodeLister.List(labels.Everything())
-			if err != nil {
-				// Require CSINode beta feature on K8s apiserver to be enabled.
-				// We don't want to fallback and provision in the wrong topology if there's some temporary
-				// error with the API server.
-				return nil, fmt.Errorf("error listing CSINodes: %v", err)
-			}
-			rand.Shuffle(len(csiNodes), func(i, j int) {
-				csiNodes[i], csiNodes[j] = csiNodes[j], csiNodes[i]
-			})
-			// Pick the first node with topology keys
-			for _, csiNode := range csiNodes {
-				keys := getTopologyKeys(csiNode, driverName)
-				if len(keys) > 0 {
-					topologyKeys = keys
-					// Store in cache for next time.
-					pvcNodeStore.UpdateTopologyKeys(pvcKeyForStore, topologyKeys)
-					break
-				}
-			}
+		// Immediate binding. The result is fully determined by the state of the
+		// cluster, so the cached requisite terms are the only memo needed here.
+		terms, err := getRequisiteTermsFromCache(pvcNodeStore, pvcKeyForStore)
+		if err == nil && len(terms) > 0 {
+			return terms, nil
 		}
 
-		if len(topologyKeys) == 0 {
+		csiNodes, err := csiNodeLister.List(labels.Everything())
+		if err != nil {
+			// Require CSINode beta feature on K8s apiserver to be enabled.
+			// We don't want to fallback and provision in the wrong topology if there's some temporary
+			// error with the API server.
+			return nil, fmt.Errorf("error listing CSINodes: %v", err)
+		}
+
+		keySets := distinctTopologyKeySets(csiNodes, driverName)
+		if len(keySets) == 0 {
 			// The driver supports topology but no nodes have registered any topology keys.
 			// This is possible if nodes have not been upgraded to use the beta CSINode feature.
 			klog.Warningf("No topology keys found on any node")
 			return nil, nil
 		}
-	} else {
-		// Delayed binding; use topology key from selected node
-		topologyKeys = selectedNodeTopologyKeys
-		if len(topologyKeys) == 0 {
-			// The scheduler selected a node with no topology information.
-			// This can happen if:
-			//
-			// * the node driver is not deployed on all nodes.
-			// * the node driver is being restarted and has not re-registered yet. This should be
-			//   temporary and a retry should eventually succeed.
-			//
-			// Returning an error in provisioning will cause the scheduler to retry and potentially
-			// (but not guaranteed) pick a different node.
-			return nil, fmt.Errorf("no topology key found on CSINode %s", selectedNodeName)
+
+		// Nodes are not required to report the same topology keys for a driver.
+		// Aggregating a single key set across the whole cluster would either
+		// drop the nodes that do not report the finer keys, or erase the finer
+		// keys from the nodes that do report them. Aggregate each reported key
+		// set on its own instead and combine the results, so that the requisite
+		// topology describes every granularity the cluster offers.
+		//
+		// Each pass is limited to the nodes whose own registration covers that
+		// key set, so that a node is only ever reported under a topology the
+		// driver actually registered for it.
+		registered := registeredTopologyKeys(csiNodes, driverName)
+		terms = nil
+		for _, topologyKeys := range keySets {
+			keyTerms, err := aggregateTopologiesForKeys(topologyKeys, nodeLister, registered)
+			if err != nil {
+				return nil, err
+			}
+			terms = append(terms, keyTerms...)
 		}
 
-		// Even though selectedNode is set, we still need to aggregate topology values across
-		// all nodes in order to find additional topologies for the volume types that can span
-		// multiple topology values.
-		//
-		// TODO (#221): allow drivers to limit the number of topology values that are returned
-		// If the driver specifies 1, then we can optimize here to only return the selected node's
-		// topology instead of aggregating across all Nodes.
+		if len(terms) == 0 {
+			// This means that a CSINode was found with topologyKeys, but we couldn't find
+			// the topology labels on any nodes.
+			return nil, fmt.Errorf("topologyKeys %v were not found on any nodes", keySets)
+		}
+		pvcNodeStore.UpdateRequisiteTerms(pvcKeyForStore, terms)
+		return terms, nil
 	}
 
-	// 2. Find all nodes with the topology keys and extract the topology values
-	selector, err := buildTopologyKeySelector(topologyKeys)
-	if err != nil {
-		return nil, err
+	// Delayed binding; use topology key from selected node
+	topologyKeys := selectedNodeTopologyKeys
+	if len(topologyKeys) == 0 {
+		// The scheduler selected a node with no topology information.
+		// This can happen if:
+		//
+		// * the node driver is not deployed on all nodes.
+		// * the node driver is being restarted and has not re-registered yet. This should be
+		//   temporary and a retry should eventually succeed.
+		//
+		// Returning an error in provisioning will cause the scheduler to retry and potentially
+		// (but not guaranteed) pick a different node.
+		return nil, fmt.Errorf("no topology key found on CSINode %s", selectedNodeName)
 	}
-	var terms []topologyTerm
-	terms, err = getRequisiteTermsFromCache(pvcNodeStore, pvcKeyForStore)
+
+	// Even though selectedNode is set, we still need to aggregate topology values across
+	// all nodes in order to find additional topologies for the volume types that can span
+	// multiple topology values.
+	//
+	// TODO (#221): allow drivers to limit the number of topology values that are returned
+	// If the driver specifies 1, then we can optimize here to only return the selected node's
+	// topology instead of aggregating across all Nodes.
+	terms, err := getRequisiteTermsFromCache(pvcNodeStore, pvcKeyForStore)
 	if err != nil || len(terms) == 0 {
 		// Not in the in memory cache.
-		nodes, err := nodeLister.List(selector)
+		//
+		// Only one key set is in play here, the selected node's own, so there
+		// is no cross-contamination between key sets to guard against and the
+		// CSINode list this would need is not fetched on this path.
+		terms, err = aggregateTopologiesForKeys(topologyKeys, nodeLister, nil)
 		if err != nil {
-			return nil, fmt.Errorf("error listing nodes: %v", err)
-		}
-
-		for _, node := range nodes {
-			term, _ := getTopologyFromNode(node, topologyKeys)
-			if len(term) > 0 {
-				terms = append(terms, term)
-			}
+			return nil, err
 		}
 
 		if len(terms) == 0 {
 			// This means that a CSINode was found with topologyKeys, but we couldn't find
 			// the topology labels on any nodes.
 			return nil, fmt.Errorf("topologyKeys %v were not found on any nodes", topologyKeys)
-		} else {
-			pvcNodeStore.UpdateRequisiteTerms(pvcKeyForStore, terms)
 		}
+		pvcNodeStore.UpdateRequisiteTerms(pvcKeyForStore, terms)
 	}
 
 	return terms, nil

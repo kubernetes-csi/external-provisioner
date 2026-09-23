@@ -150,12 +150,14 @@ When `Topology` feature is enabled* and the driver specifies `VOLUME_ACCESSIBILI
 Yes | Yes | Irrelevant | Irrelevant | `Requisite` = `Preferred` = Selected node topology
 Yes | No  | No  | Irrelevant | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` with selected node topology as first element
 Yes | No  | Yes | Irrelevant | `Requisite` = Allowed topologies<br>`Preferred` = `Requisite` with selected node topology as first element
-No | Irrelevant | Yes | Irrelevant | `Requisite` = Allowed topologies<br>`Preferred` = `Requisite` with randomly selected node topology as first element
-No | Irrelevant | No  | Yes | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` with randomly selected node topology as first element
+No | Irrelevant | Yes | Irrelevant | `Requisite` = Allowed topologies<br>`Preferred` = `Requisite` rotated so that the entry selected by a hash of the PVC name comes first
+No | Irrelevant | No  | Yes | `Requisite` = Aggregated cluster topology<br>`Preferred` = `Requisite` rotated so that the entry selected by a hash of the PVC name comes first
 No | Irrelevant | No  | No  | `Requisite` and `Preferred` both nil
 
 *) `Topology` feature gate is enabled by default since v5.0.
 <!-- TODO: remove the feature gate in the next release - remove the whole column in the table above. -->
+
+Aggregated cluster topology is computed from the topology keys that the driver has registered in the `CSINode` objects. Nodes are not required to register the same topology keys: a driver may report a finer granularity on part of the cluster than on the rest, for example `region` on some nodes and `region` plus `zone` on others. Every distinct registered key set is aggregated separately and the results are combined, so `Requisite` describes each granularity the cluster offers and no node is excluded because it reports fewer keys than another. As a result, the entries in `Requisite` are not guaranteed to all use the same topology keys. `Requisite` is a list the driver selects from, so a driver that registers several granularities should pick the entry that suits the volume it is creating, and report the topology the volume was actually created in through `CreateVolumeResponse.accessible_topology`. `Preferred` for immediate binding is a rotation of `Requisite` used to spread StatefulSet volumes, so it contains the same mix of key sets in rotated order: its first entry is not guaranteed to use any particular key set, and a driver should scan it for an entry it can satisfy rather than assuming the first one fits. Clusters where every node registers the same topology keys are unaffected and get a single key set as before.
 
 When enabling topology support in a CSI driver that had it disabled, please make sure the topology is first enabled in the driver's node DaemonSet and topology labels are populated on all nodes. The topology can be then updated in the driver's Deployment and its external-provisioner sidecar.
 
