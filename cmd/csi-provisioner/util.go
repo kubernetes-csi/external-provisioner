@@ -19,7 +19,23 @@ package main
 import (
 	"fmt"
 	"hash/fnv"
+
+	"k8s.io/client-go/informers"
+	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
+	"k8s.io/klog/v2"
 )
+
+// volumeAttachmentLister registers the informer before the shared factory is
+// started and synchronized. Opting in extends the existing deletion guard to
+// drivers which use Kubernetes VolumeAttachments without controller publishing.
+func volumeAttachmentLister(factory informers.SharedInformerFactory, supportsPublish, watchAttachments bool) storagelistersv1.VolumeAttachmentLister {
+	if supportsPublish || watchAttachments {
+		klog.Infof("Watching VolumeAttachments (PUBLISH_UNPUBLISH_VOLUME=%t, --watch-volumeattachments=%t)", supportsPublish, watchAttachments)
+		return factory.Storage().V1().VolumeAttachments().Lister()
+	}
+	klog.Info("CSI driver does not support PUBLISH_UNPUBLISH_VOLUME, not watching VolumeAttachments")
+	return nil
+}
 
 // getNameWithMaxLength returns a name given a base ("deployment-5") and a suffix ("deploy")
 // It will first attempt to join them with a dash. If the resulting name is longer
