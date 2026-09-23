@@ -1537,7 +1537,9 @@ func (p *csiProvisioner) canDeleteVolume(volume *v1.PersistentVolume) error {
 
 	for _, va := range vaList {
 		if va.Spec.Source.PersistentVolumeName != nil && *va.Spec.Source.PersistentVolumeName == volume.Name {
-			return fmt.Errorf("persistentvolume %s is still attached to node %s", volume.Name, va.Spec.NodeName)
+			return &controller.VolumeInUseError{
+				Reason: fmt.Sprintf("persistentvolume %s is still attached to node %s, waiting for detach", volume.Name, va.Spec.NodeName),
+			}
 		}
 	}
 

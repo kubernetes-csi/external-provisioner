@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -5138,6 +5139,7 @@ type deleteTestcase struct {
 	expectedProvisionerSecret *expectedSecret
 	deploymentNode            string // fake distributed provisioning with this node as host
 	expectErr                 bool
+	expectInUseErr            bool
 }
 
 func getDefaultProvisinerSecrets() []runtime.Object {
@@ -5216,7 +5218,8 @@ func TestDelete(t *testing.T) {
 						},
 					},
 					ClaimRef: &v1.ObjectReference{
-						Name: "sc-name",
+						Namespace: "pvc-namespace",
+						Name:      "pvc-name",
 					},
 					StorageClassName: "sc-name",
 				},
@@ -5226,7 +5229,8 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNameKey:      "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNamespaceKey: "${pvc.namespace}",
 				},
 			},
 			volumeAttachment: &storagev1.VolumeAttachment{
@@ -5243,7 +5247,8 @@ func TestDelete(t *testing.T) {
 					Attached: true,
 				},
 			},
-			expectErr: true,
+			expectErr:      true,
+			expectInUseErr: true,
 		},
 		"fail - delete when volumeattachment exists but not attached to node": {
 			persistentVolume: &v1.PersistentVolume{
@@ -5257,7 +5262,8 @@ func TestDelete(t *testing.T) {
 						},
 					},
 					ClaimRef: &v1.ObjectReference{
-						Name: "sc-name",
+						Namespace: "pvc-namespace",
+						Name:      "pvc-name",
 					},
 					StorageClassName: "sc-name",
 				},
@@ -5267,7 +5273,8 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNameKey:      "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNamespaceKey: "${pvc.namespace}",
 				},
 			},
 			volumeAttachment: &storagev1.VolumeAttachment{
@@ -5284,7 +5291,8 @@ func TestDelete(t *testing.T) {
 					Attached: false,
 				},
 			},
-			expectErr: true,
+			expectErr:      true,
+			expectInUseErr: true,
 		},
 		"fail - delete when volumeattachment exists with deletionTimestamp set": {
 			persistentVolume: &v1.PersistentVolume{
@@ -5298,7 +5306,8 @@ func TestDelete(t *testing.T) {
 						},
 					},
 					ClaimRef: &v1.ObjectReference{
-						Name: "sc-name",
+						Namespace: "pvc-namespace",
+						Name:      "pvc-name",
 					},
 					StorageClassName: "sc-name",
 				},
@@ -5308,7 +5317,8 @@ func TestDelete(t *testing.T) {
 					Name: "sc-name",
 				},
 				Parameters: map[string]string{
-					prefixedProvisionerSecretNameKey: "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNameKey:      "static-${pv.name}-${pvc.namespace}-${pvc.name}",
+					prefixedProvisionerSecretNamespaceKey: "${pvc.namespace}",
 				},
 			},
 			volumeAttachment: &storagev1.VolumeAttachment{
@@ -5323,7 +5333,8 @@ func TestDelete(t *testing.T) {
 					NodeName: "node",
 				},
 			},
-			expectErr: true,
+			expectErr:      true,
+			expectInUseErr: true,
 		},
 		"simple - valid case": {
 			persistentVolume: &v1.PersistentVolume{
@@ -5737,6 +5748,9 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 	if tc.secrets != nil {
 		clientSetObjects = append(clientSetObjects, tc.secrets...)
 	}
+	if tc.volumeAttachment != nil {
+		clientSetObjects = append(clientSetObjects, tc.volumeAttachment)
+	}
 	clientSet = fakeclientset.NewSimpleClientset(clientSetObjects...)
 
 	informerFactory := informers.NewSharedInformerFactory(clientSet, 0)
@@ -5802,6 +5816,10 @@ func runDeleteTest(t *testing.T, k string, tc deleteTestcase) {
 	}
 	if !tc.expectErr && err != nil {
 		t.Errorf("test %q: got error: %v", k, err)
+	}
+	var inUseErr *controller.VolumeInUseError
+	if errors.As(err, &inUseErr) != tc.expectInUseErr {
+		t.Errorf("test %q: expected VolumeInUseError=%v, got error: %v", k, tc.expectInUseErr, err)
 	}
 }
 

@@ -43,7 +43,7 @@ func New(subsystem string) Metrics {
 			prometheus.CounterOpts{
 				Subsystem: subsystem,
 				Name:      "persistentvolumeclaim_provision_total",
-				Help:      "Total number of persistent volumes provisioned succesfully. Broken down by storage class name and source of the claim.",
+				Help:      "Total number of persistent volumes provisioned successfully. Broken down by storage class name and source of the claim.",
 			},
 			[]string{"class", "source"},
 		),
@@ -68,7 +68,7 @@ func New(subsystem string) Metrics {
 			prometheus.CounterOpts{
 				Subsystem: subsystem,
 				Name:      "persistentvolume_delete_total",
-				Help:      "Total number of persistent volumes deleted succesfully. Broken down by storage class name.",
+				Help:      "Total number of persistent volumes deleted successfully. Broken down by storage class name.",
 			},
 			[]string{"class"},
 		),
