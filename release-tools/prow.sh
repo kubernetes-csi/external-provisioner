@@ -246,10 +246,6 @@ configvar CSI_PROW_SANITY_SERVICE "hostpath-service" "Kubernetes TCP service nam
 configvar CSI_PROW_SANITY_POD "csi-hostpathplugin-0" "Kubernetes pod with CSI driver"
 configvar CSI_PROW_SANITY_CONTAINER "hostpath" "Kubernetes container with CSI driver"
 
-# The version of dep to use for 'make test-vendor'. Ignored if the project doesn't
-# use dep. Only binary releases of dep are supported (https://github.com/golang/dep/releases).
-configvar CSI_PROW_DEP_VERSION v0.5.4 "golang dep version to be used for vendor checking"
-
 # Each job can run one or more of the following tests, identified by
 # a single word:
 # - unit testing
@@ -466,15 +462,6 @@ install_ginkgo () {
         return
     fi
     run_with_go "${CSI_PROW_GO_VERSION_GINKGO}" env GOBIN="${CSI_PROW_BIN}" go install "github.com/onsi/ginkgo/ginkgo@${CSI_PROW_GINKGO_VERSION}" || die "building ginkgo failed"
-}
-
-# Ensure that we have the desired version of dep.
-install_dep () {
-    if dep version 2>/dev/null | grep -q "version:.*${CSI_PROW_DEP_VERSION}$"; then
-        return
-    fi
-    run curl --fail --location -o "${CSI_PROW_WORK}/bin/dep" "https://github.com/golang/dep/releases/download/${CSI_PROW_DEP_VERSION}/dep-linux-amd64" &&
-        chmod u+x "${CSI_PROW_WORK}/bin/dep"
 }
 
 # This checks out a repo ("https://github.com/kubernetes/kubernetes")
