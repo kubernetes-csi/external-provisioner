@@ -170,7 +170,10 @@ func topologyKeysLookup(
 // 2) selectedNode is set (delayed binding):
 //
 //	We will get the topology from the CSINode object for the selectedNode
-//	and error if we can't (and retry).
+//	and error if we can't (and retry). Unless strict topology is
+//	enabled, the selected node's topology keys are also aggregated
+//	across the other Nodes that the driver has registered those keys
+//	with.
 func GenerateAccessibilityRequirements(
 	kubeClient kubernetes.Interface,
 	driverName string,
@@ -387,13 +390,12 @@ func registeredTopologyKeys(csiNodes []*storagev1.CSINode, driverName string) ma
 // aggregateTopologiesForKeys returns one topology term per node carrying all of
 // the given topology keys.
 //
-// When registered is not nil, only nodes whose registered topology keys cover
-// topologyKeys are considered. Topology labels are often present on nodes
-// independently of the driver, but a CO may only specify topology that the
-// driver supports, so a node whose driver did not report these keys, or did not
-// report any topology keys, must not be reported under them even if it carries
-// the labels. A nil registered disables the check and selects nodes by their
-// labels alone.
+// Only nodes whose registered topology keys, as returned by
+// registeredTopologyKeys, cover topologyKeys are considered. Topology labels are
+// often present on nodes independently of the driver, but a CO may only specify
+// topology that the driver supports, so a node whose driver did not report these
+// keys, or did not report any topology keys, must not be reported under them
+// even if it carries the labels.
 func aggregateTopologiesForKeys(topologyKeys []string, nodeLister corelisters.NodeLister, registered map[string]sets.Set[string]) ([]topologyTerm, error) {
 	selector, err := buildTopologyKeySelector(topologyKeys)
 	if err != nil {
@@ -406,10 +408,8 @@ func aggregateTopologiesForKeys(topologyKeys []string, nodeLister corelisters.No
 
 	var terms []topologyTerm
 	for _, node := range nodes {
-		if registered != nil {
-			if keys, ok := registered[node.Name]; !ok || !keys.HasAll(topologyKeys...) {
-				continue
-			}
+		if keys, ok := registered[node.Name]; !ok || !keys.HasAll(topologyKeys...) {
+			continue
 		}
 		term, _ := getTopologyFromNode(node, topologyKeys)
 		if len(term) > 0 {
@@ -508,10 +508,14 @@ func aggregateTopologies(
 	if err != nil || len(terms) == 0 {
 		// Not in the in memory cache.
 		//
-		// Only one key set is in play here, the selected node's own, so there
-		// is no cross-contamination between key sets to guard against and the
-		// CSINode list this would need is not fetched on this path.
-		terms, err = aggregateTopologiesForKeys(topologyKeys, nodeLister, nil)
+		// Only the selected node's key set is aggregated, and only across the
+		// nodes whose own registration covers it, so that no node is reported
+		// under topology its driver did not register.
+		csiNodes, err := csiNodeLister.List(labels.Everything())
+		if err != nil {
+			return nil, fmt.Errorf("error listing CSINodes: %v", err)
+		}
+		terms, err = aggregateTopologiesForKeys(topologyKeys, nodeLister, registeredTopologyKeys(csiNodes, driverName))
 		if err != nil {
 			return nil, err
 		}

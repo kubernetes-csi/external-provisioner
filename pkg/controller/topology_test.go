@@ -1065,6 +1065,68 @@ func TestTopologyAggregation(t *testing.T) {
 				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
 			},
 		},
+		// With a selected node, the topology of the other nodes is aggregated
+		// under the selected node's keys, but only for nodes whose driver
+		// registered them: the second node carries the label but its driver
+		// reported no topology keys. Strict topology passes only the selected
+		// node's topology.
+		"selected node: labeled node whose driver reported no topology keys is not included": {
+			hasSelectedNode: true,
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi/zone": "zone2"},
+				{"com.example.csi/zone": "zone3"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: nil},
+				{testDriverName: []string{"com.example.csi/zone"}},
+			},
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
+				{Segments: map[string]string{"com.example.csi/zone": "zone3"}},
+			},
+			expectedStrictRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
+			},
+		},
+		"selected node: labeled node without the driver registered is not included": {
+			hasSelectedNode: true,
+			nodeLabels: []map[string]string{
+				{"com.example.csi/zone": "zone1"},
+				{"com.example.csi/zone": "zone2"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{}, // no driver registered on this node
+			},
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/zone": "zone1"}},
+			},
+		},
+		// The second node carries the selected node's key but registered a
+		// different key set, so it is left out. The third registered a finer
+		// key set that covers the selected node's key, so it is included.
+		"selected node: node that registered different keys is not included": {
+			hasSelectedNode: true,
+			nodeLabels: []map[string]string{
+				{"com.example.csi/region": "us-east"},
+				{"com.example.csi/region": "us-west", "com.example.csi/zone": "zone1"},
+				{"com.example.csi/region": "us-central", "com.example.csi/zone": "zone2"},
+			},
+			topologyKeys: []map[string][]string{
+				{testDriverName: []string{"com.example.csi/region"}},
+				{testDriverName: []string{"com.example.csi/zone"}},
+				{testDriverName: []string{"com.example.csi/region", "com.example.csi/zone"}},
+			},
+			expectedRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/region": "us-east"}},
+				{Segments: map[string]string{"com.example.csi/region": "us-central"}},
+			},
+			expectedStrictRequisite: []*csi.Topology{
+				{Segments: map[string]string{"com.example.csi/region": "us-east"}},
+			},
+		},
 		"random node: no nodes": {
 			nodeLabels: nil,
 			topologyKeys: []map[string][]string{
