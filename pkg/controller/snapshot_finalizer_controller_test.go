@@ -9,14 +9,13 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/watch"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	snapshotfake "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned/fake"
+	snapinformers "github.com/kubernetes-csi/external-snapshotter/client/v8/informers/externalversions"
 )
 
 func newFakeClaimLister(pvcs ...*v1.PersistentVolumeClaim) corelisters.PersistentVolumeClaimLister {
@@ -32,31 +31,22 @@ func fakeSnapshotFinalizerController(snapClient *snapshotfake.Clientset, claimLi
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: true,
 	}
 
-	ctrl := NewSnapshotFinalizerController(
+	snapshotInformer := newFakeSnapshotInformer(snapshots...)
+	return NewSnapshotFinalizerController(
 		snapClient,
+		snapshotInformer,
 		claimLister,
 		controllerCapabilities,
 		5*time.Minute,
 	)
+}
 
-	// Replace the informer with one pre-populated with test data.
-	snapshotInformer := cache.NewSharedInformer(
-		&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return &crdv1.VolumeSnapshotList{}, nil
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return watch.NewFake(), nil
-			},
-		},
-		&crdv1.VolumeSnapshot{},
-		0,
-	)
+func newFakeSnapshotInformer(snapshots ...*crdv1.VolumeSnapshot) cache.SharedIndexInformer {
+	snapshotInformer := snapinformers.NewSharedInformerFactory(snapshotfake.NewSimpleClientset(), 0).Snapshot().V1().VolumeSnapshots().Informer()
 	for _, s := range snapshots {
 		snapshotInformer.GetStore().Add(s)
 	}
-	ctrl.snapshotInformer = snapshotInformer
-	return ctrl
+	return snapshotInformer
 }
 
 func TestSyncSnapshot_RemoveFinalizerWhenNoPendingPVC(t *testing.T) {
@@ -229,9 +219,19 @@ func TestSyncSnapshot_MultiplePVCs(t *testing.T) {
 }
 
 func TestNewSnapshotFinalizerController_NilSnapshotClient(t *testing.T) {
-	ctrl := NewSnapshotFinalizerController(nil, newFakeClaimLister(), nil, 5*time.Minute)
+	ctrl := NewSnapshotFinalizerController(nil, newFakeSnapshotInformer(), newFakeClaimLister(), nil, 5*time.Minute)
 	if ctrl != nil {
 		t.Error("expected nil controller when snapshotClient is nil")
+	}
+}
+
+func TestNewSnapshotFinalizerController_NilSnapshotInformer(t *testing.T) {
+	capabilities := rpc.ControllerCapabilitySet{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: true,
+	}
+	ctrl := NewSnapshotFinalizerController(snapshotfake.NewSimpleClientset(), nil, newFakeClaimLister(), capabilities, 5*time.Minute)
+	if ctrl != nil {
+		t.Error("expected nil controller when snapshotInformer is nil")
 	}
 }
 
@@ -241,6 +241,7 @@ func TestNewSnapshotFinalizerController_NoSnapshotCapability(t *testing.T) {
 	}
 	ctrl := NewSnapshotFinalizerController(
 		snapshotfake.NewSimpleClientset(),
+		newFakeSnapshotInformer(),
 		newFakeClaimLister(),
 		capabilities,
 		5*time.Minute,
