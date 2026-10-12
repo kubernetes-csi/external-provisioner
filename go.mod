@@ -23,7 +23,7 @@ require (
 	k8s.io/csi-translation-lib v0.36.1
 	k8s.io/klog/v2 v2.140.0
 	sigs.k8s.io/controller-runtime v0.25.2
-	sigs.k8s.io/gateway-api v1.6.2
+	sigs.k8s.io/gateway-api v1.6.3
 )
 
 require (
