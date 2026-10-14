@@ -12,11 +12,9 @@ import (
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/watch"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -45,32 +43,22 @@ type SnapshotFinalizerController struct {
 
 // NewSnapshotFinalizerController creates a new controller for removing orphaned
 // snapshot source-protection finalizers after provisioning completes or fails.
-// Returns nil if the snapshot client is nil or the driver lacks snapshot capability.
+// snapshotInformer is shared with other consumers and must be started by the
+// caller. Returns nil if the snapshot client or informer is nil or the driver
+// lacks snapshot capability.
 func NewSnapshotFinalizerController(
 	snapshotClient snapclientset.Interface,
+	snapshotInformer cache.SharedInformer,
 	claimLister corelisters.PersistentVolumeClaimLister,
 	controllerCapabilities rpc.ControllerCapabilitySet,
 	sweepInterval time.Duration,
 ) *SnapshotFinalizerController {
-	if snapshotClient == nil {
+	if snapshotClient == nil || snapshotInformer == nil {
 		return nil
 	}
 	if !controllerCapabilities[csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT] {
 		return nil
 	}
-
-	snapshotInformer := cache.NewSharedInformer(
-		&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return snapshotClient.SnapshotV1().VolumeSnapshots("").List(context.Background(), options)
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return snapshotClient.SnapshotV1().VolumeSnapshots("").Watch(context.Background(), options)
-			},
-		},
-		&crdv1.VolumeSnapshot{},
-		10*time.Minute,
-	)
 
 	return &SnapshotFinalizerController{
 		snapshotClient:   snapshotClient,
@@ -84,17 +72,6 @@ func NewSnapshotFinalizerController(
 func (c *SnapshotFinalizerController) Run(ctx context.Context, wg *sync.WaitGroup) {
 	klog.Info("Starting SnapshotFinalizerProtection controller")
 	defer utilruntime.HandleCrash()
-
-	// Preflight: verify we have list/watch permissions on VolumeSnapshots.
-	// These are optional RBAC verbs, so exit gracefully if forbidden.
-	if _, err := c.snapshotClient.SnapshotV1().VolumeSnapshots("").List(ctx, metav1.ListOptions{Limit: 1}); err != nil {
-		if apierrs.IsForbidden(err) {
-			klog.V(3).Infof("SnapshotFinalizerProtection: disabled, missing list permission on volumesnapshots: %v", err)
-			return
-		}
-	}
-
-	go c.snapshotInformer.Run(ctx.Done())
 
 	if !cache.WaitForCacheSync(ctx.Done(), c.snapshotInformer.HasSynced) {
 		klog.Error("SnapshotFinalizerProtection: failed to sync informer caches")

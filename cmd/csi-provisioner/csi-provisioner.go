@@ -35,6 +35,7 @@ import (
 	flag "github.com/spf13/pflag"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -47,6 +48,7 @@ import (
 	listersv1 "k8s.io/client-go/listers/core/v1"
 	storagelistersv1 "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
 	utilflag "k8s.io/component-base/cli/flag"
@@ -71,6 +73,8 @@ import (
 	"github.com/kubernetes-csi/external-provisioner/v6/pkg/features"
 	"github.com/kubernetes-csi/external-provisioner/v6/pkg/owner"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned"
+	snapinformers "github.com/kubernetes-csi/external-snapshotter/client/v8/informers/externalversions"
+	snaplisters "github.com/kubernetes-csi/external-snapshotter/client/v8/listers/volumesnapshot/v1"
 	gatewayclientset "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned"
 	gatewayInformers "sigs.k8s.io/gateway-api/pkg/client/informers/externalversions"
 	referenceGrantv1beta1 "sigs.k8s.io/gateway-api/pkg/client/listers/apis/v1beta1"
@@ -389,6 +393,51 @@ func main() {
 		referenceGrantLister = referenceGrants.Lister()
 	}
 
+	// The orphaned finalizer sweep and the node deployment snapshot topology
+	// check share one snapshot informer factory, so VolumeSnapshots are only
+	// watched once. Only the informers requested from the factory are started.
+	var snapshotLister snaplisters.VolumeSnapshotLister
+	var snapshotContentLister snaplisters.VolumeSnapshotContentLister
+	var snapshotInformer cache.SharedIndexInformer
+	var snapshotFactory snapinformers.SharedInformerFactory
+	supportsSnapshots := controllerCapabilities[csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT]
+	wantFinalizerSweep := *snapshotOrphanSweepInterval > 0 && supportsSnapshots
+	wantSnapshotTopology := *enableNodeDeployment &&
+		utilfeature.DefaultFeatureGate.Enabled(features.VolumeSnapshotTopology) &&
+		supportsSnapshots
+	if wantFinalizerSweep || wantSnapshotTopology {
+		volumeSnapshotAvailable, err := features.IsVolumeSnapshotV1Available(clientset.Discovery())
+		switch {
+		case err != nil:
+			klog.Warningf("Failed to check for VolumeSnapshot v1 API, snapshot informers are disabled: %v", err)
+		case !volumeSnapshotAvailable:
+			klog.Info("VolumeSnapshot v1 API is not available, snapshot informers are disabled")
+		default:
+			// Verify we have list/watch permissions on snapshot objects.
+			// These are optional RBAC verbs, so exit gracefully if forbidden.
+			_, err = snapClient.SnapshotV1().VolumeSnapshots("").List(ctx, metav1.ListOptions{Limit: 1})
+			canListSnapshots := !apierrors.IsForbidden(err)
+			_, err = snapClient.SnapshotV1().VolumeSnapshotContents().List(ctx, metav1.ListOptions{Limit: 1})
+			canListContents := !apierrors.IsForbidden(err)
+			snapshotFactory = snapinformers.NewSharedInformerFactory(snapClient, ctrl.ResyncPeriodOfSnapshotInformer)
+			if wantFinalizerSweep {
+				if canListSnapshots {
+					snapshotInformer = snapshotFactory.Snapshot().V1().VolumeSnapshots().Informer()
+				} else {
+					klog.V(3).Info("SnapshotFinalizerProtection: disabled, missing list permission on volumesnapshots")
+				}
+			}
+			if wantSnapshotTopology {
+				if canListSnapshots && canListContents {
+					snapshotLister = snapshotFactory.Snapshot().V1().VolumeSnapshots().Lister()
+					snapshotContentLister = snapshotFactory.Snapshot().V1().VolumeSnapshotContents().Lister()
+				} else {
+					klog.Warning("Missing list permission on volumesnapshots or volumesnapshotcontents, snapshot topology will not be checked before node selection")
+				}
+			}
+		}
+	}
+
 	// -------------------------------
 	// PersistentVolumeClaims informer
 	genericRateLimiter := workqueue.NewTypedItemExponentialFailureRateLimiter[string](*retryIntervalStart, *retryIntervalMax)
@@ -440,6 +489,8 @@ func main() {
 		claimLister,
 		vaLister,
 		referenceGrantLister,
+		snapshotLister,
+		snapshotContentLister,
 		*extraCreateMetadata,
 		*defaultFSType,
 		nodeDeployment,
@@ -610,15 +661,14 @@ func main() {
 	)
 
 	var csiSnapshotFinalizerController *ctrl.SnapshotFinalizerController
-	if *snapshotOrphanSweepInterval > 0 {
-		if volumeSnapshotAvailable, err := features.IsVolumeSnapshotV1Available(clientset.Discovery()); err == nil && volumeSnapshotAvailable {
-			csiSnapshotFinalizerController = ctrl.NewSnapshotFinalizerController(
-				snapClient,
-				claimLister,
-				controllerCapabilities,
-				*snapshotOrphanSweepInterval,
-			)
-		}
+	if snapshotInformer != nil {
+		csiSnapshotFinalizerController = ctrl.NewSnapshotFinalizerController(
+			snapClient,
+			snapshotInformer,
+			claimLister,
+			controllerCapabilities,
+			*snapshotOrphanSweepInterval,
+		)
 	}
 
 	// handle SIGTERM and SIGINT by cancelling the context.
@@ -659,6 +709,15 @@ func main() {
 		for _, v := range cacheSyncResult {
 			if !v {
 				klog.Fatalf("Failed to sync Informers!")
+			}
+		}
+
+		if snapshotFactory != nil {
+			snapshotFactory.Start(ctx.Done())
+			for _, v := range snapshotFactory.WaitForCacheSync(ctx.Done()) {
+				if !v {
+					klog.Fatalf("Failed to sync Informers for snapshots!")
+				}
 			}
 		}
 
