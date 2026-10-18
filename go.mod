@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/container-storage-interface/spec v1.13.0
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/kubernetes-csi/csi-lib-utils v0.25.0
+	github.com/kubernetes-csi/csi-lib-utils v0.25.1-0.20261005110441-76e421af0a18
 	github.com/kubernetes-csi/csi-test/v5 v5.6.0
 	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.6.0
 	github.com/miekg/dns v1.1.73 // indirect
