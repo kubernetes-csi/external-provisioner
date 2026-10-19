@@ -141,8 +141,8 @@ github.com/kubernetes-csi/csi-lib-utils v0.25.0 h1:uPfcPBYpJ8NyGAzQLo+JWvTHAy3OM
 github.com/kubernetes-csi/csi-lib-utils v0.25.0/go.mod h1:Ks9h3Iy9opBbBZyMbS85MOBxGYXbjPKYbeI2/flMhL8=
 github.com/kubernetes-csi/csi-test/v5 v5.6.0 h1:fQgB/CRoqTEAtlHwfD0Y785LjQJ/OxNGUE7AHw68VLg=
 github.com/kubernetes-csi/csi-test/v5 v5.6.0/go.mod h1:IXPOop3n6Mlco/6/3nGrE+MTOx3uXiIQVDJh3KBt/DI=
-github.com/kubernetes-csi/external-snapshotter/client/v8 v8.6.0 h1:FtGewu2k6HWw6evLGXY8JqUZ9eHpti1kd3e4amj+ilA=
-github.com/kubernetes-csi/external-snapshotter/client/v8 v8.6.0/go.mod h1:Vxl89NySJ45J+ah3NTMan/KJXW+NpcGHE2Tw0GSw53k=
+github.com/kubernetes-csi/external-snapshotter/client/v8 v8.7.0 h1:HVaSUeRRHPu49aSiL8eXOjS9Re9G6pM0NzdTGI7mM14=
+github.com/kubernetes-csi/external-snapshotter/client/v8 v8.7.0/go.mod h1:DexNTSbOZELjTVUO7li3hP8cX3Di7lXy9+dwI6TW2TU=
 github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/maruel/natural v1.1.1 h1:Hja7XhhmvEFhcByqDoHz9QZbkWey+COd9xWfCfn1ioo=
