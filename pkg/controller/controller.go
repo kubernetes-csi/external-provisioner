@@ -127,6 +127,11 @@ const (
 	pvcNamespaceKey = "csi.storage.k8s.io/pvc/namespace"
 	pvNameKey       = "csi.storage.k8s.io/pv/name"
 
+	// PVC namespace label/annotation values, when configured, are sent to drivers on
+	// create requests as parameters under these prefixes, optional.
+	namespaceLabelsParameterPrefix      = "csi.storage.k8s.io/namespace/labels/"
+	namespaceAnnotationsParameterPrefix = "csi.storage.k8s.io/namespace/annotations/"
+
 	snapshotKind     = "VolumeSnapshot"
 	snapshotAPIGroup = snapapi.GroupName       // "snapshot.storage.k8s.io"
 	pvcKind          = "PersistentVolumeClaim" // Native types don't require an API group
@@ -297,6 +302,7 @@ type csiProvisioner struct {
 	vaLister                              storagelistersv1.VolumeAttachmentLister
 	referenceGrantLister                  referenceGrantv1beta1.ReferenceGrantLister
 	extraCreateMetadata                   bool
+	namespaceMetadata                     NamespaceMetadataConfig
 	eventRecorder                         record.EventRecorder
 	nodeDeployment                        *internalNodeDeployment
 	controllerPublishReadOnly             bool
@@ -358,6 +364,15 @@ func GetNodeInfo(conn *grpc.ClientConn, timeout time.Duration) (*csi.NodeGetInfo
 //
 // vaLister is optional and only needed when VolumeAttachments are
 // meant to be checked before deleting a volume.
+// NamespaceMetadataConfig lists the PVC-namespace label and annotation keys whose
+// values are forwarded to the driver as CreateVolume parameters (under the
+// csi.storage.k8s.io/namespace/labels/ and csi.storage.k8s.io/namespace/annotations/
+// prefixes respectively).
+type NamespaceMetadataConfig struct {
+	Labels      []string
+	Annotations []string
+}
+
 func NewCSIProvisioner(client kubernetes.Interface,
 	connectionTimeout time.Duration,
 	identity string,
@@ -384,6 +399,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	controllerPublishReadOnly bool,
 	preventVolumeModeConversion bool,
 	pvcNodeStore TopologyProvider,
+	namespaceMetadata NamespaceMetadataConfig,
 ) controller.Provisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
@@ -416,6 +432,7 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		vaLister:                              vaLister,
 		referenceGrantLister:                  referenceGrantLister,
 		extraCreateMetadata:                   extraCreateMetadata,
+		namespaceMetadata:                     namespaceMetadata,
 		eventRecorder:                         eventRecorder,
 		controllerPublishReadOnly:             controllerPublishReadOnly,
 		preventVolumeModeConversion:           preventVolumeModeConversion,
@@ -795,6 +812,26 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 		req.Parameters[pvcNameKey] = claim.GetName()
 		req.Parameters[pvcNamespaceKey] = claim.GetNamespace()
 		req.Parameters[pvNameKey] = pvName
+	}
+
+	// add configured PVC-namespace label/annotation values to the request for use by
+	// the plugin, so drivers can consume namespace metadata without namespace access
+	// of their own. Independent of extraCreateMetadata.
+	if len(p.namespaceMetadata.Labels) > 0 || len(p.namespaceMetadata.Annotations) > 0 {
+		namespace, err := p.client.CoreV1().Namespaces().Get(ctx, claim.GetNamespace(), metav1.GetOptions{})
+		if err != nil {
+			return nil, controller.ProvisioningNoChange, fmt.Errorf("failed to get namespace %q for create metadata: %v", claim.GetNamespace(), err)
+		}
+		for _, key := range p.namespaceMetadata.Labels {
+			if value, ok := namespace.Labels[key]; ok {
+				req.Parameters[namespaceLabelsParameterPrefix+key] = value
+			}
+		}
+		for _, key := range p.namespaceMetadata.Annotations {
+			if value, ok := namespace.Annotations[key]; ok {
+				req.Parameters[namespaceAnnotationsParameterPrefix+key] = value
+			}
+		}
 	}
 
 	deletionAnnSecrets := new(annotatedSecretParams)
