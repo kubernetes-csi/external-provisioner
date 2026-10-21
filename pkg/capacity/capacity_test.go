@@ -1387,18 +1387,6 @@ func (r *rateLimitingQueue) Add(item QueueKey) {
 	if slices.Contains(r.items, item) {
 		return
 	}
-	for _, existing := range r.items {
-		if existing.item != nil && item.item != nil {
-			if *existing.item == *item.item {
-				return
-			}
-		}
-		if existing.capacity != nil && item.capacity != nil {
-			if existing.capacity.UID == item.capacity.UID {
-				return
-			}
-		}
-	}
 	r.items = append(r.items, item)
 }
 func (r *rateLimitingQueue) Len() int {
@@ -1989,11 +1977,52 @@ func TestRefresh(t *testing.T) {
 	}
 }
 
+func TestRefreshDeduplicatesWorkItems(t *testing.T) {
+	t.Parallel()
+
+	queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[QueueKey]())
+	t.Cleanup(queue.ShutDown)
+	item := WorkItem{segment: &layer0, storageClassName: "test-sc"}
+	c := &Controller{
+		queue: queue,
+		capacities: map[WorkItem]*storagev1.CSIStorageCapacity{
+			item: nil,
+		},
+	}
+	affinity := v1.VolumeNodeAffinity{
+		Required: &v1.NodeSelector{
+			NodeSelectorTerms: []v1.NodeSelectorTerm{{
+				MatchExpressions: []v1.NodeSelectorRequirement{{
+					Key:      "layer0",
+					Operator: v1.NodeSelectorOpIn,
+					Values:   []string{"foo"},
+				}},
+			}},
+		},
+	}
+	refresh := func() {
+		c.refreshSC(item.storageClassName)
+		c.refreshTopology(affinity)
+		c.pollCapacities()
+	}
+
+	refresh()
+	require.Equal(t, 1, queue.Len(), "refresh triggers should share one queued work item")
+
+	pending, shutdown := queue.Get()
+	require.False(t, shutdown)
+	refresh()
+	require.Zero(t, queue.Len(), "refreshes must not process the same item concurrently")
+
+	queue.Done(pending)
+	require.Equal(t, 1, queue.Len(), "refreshes during processing should queue one follow-up")
+}
+
 func itemsAsSortedStringSlice(queue *rateLimitingQueue) []string {
 	var content []string
 	for _, item := range queue.allItems() {
 		switch {
-		case item.item != nil:
+		case item.item.storageClassName != "":
 			content = append(content, fmt.Sprintf("%s, %v", item.item.storageClassName, *item.item.segment))
 		case item.capacity != nil:
 			content = append(content, fmt.Sprintf("csc for %s, %v", item.capacity.StorageClassName, item.capacity.NodeTopology))

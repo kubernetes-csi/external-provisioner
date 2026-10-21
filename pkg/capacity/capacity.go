@@ -60,7 +60,7 @@ const (
 //
 // The controller maintains a set of topology segments (= NodeSelector
 // pointers). Work items are a combination of such a pointer and a
-// pointer to a storage class. These keys are mapped to the
+// storage class name. These keys are mapped to the
 // corresponding CSIStorageCapacity object, if one exists.
 //
 // When processing a work item, the controller first checks whether
@@ -114,7 +114,8 @@ func (w WorkItem) equals(capacity *storagev1.CSIStorageCapacity) bool {
 
 type QueueKey struct {
 	// item is for sync/create/update of a CSIStorageCapacity object.
-	item *WorkItem
+	// A non-empty storageClassName distinguishes these items from deletions.
+	item WorkItem
 	// capacity is for deleting an obsolete CSIStorageCapacity object.
 	capacity *storagev1.CSIStorageCapacity
 }
@@ -424,7 +425,7 @@ func (c *Controller) refreshTopology(nodeAffinity v1.VolumeNodeAffinity) {
 		for item := range c.capacities {
 			if item.segment.Compare(segment) == 0 {
 				klog.V(5).Infof("Capacity Controller: skipping refresh: enqueuing %+v because of the topology", item)
-				c.queue.Add(QueueKey{item: &item})
+				c.queue.Add(QueueKey{item: item})
 			}
 		}
 	}
@@ -459,7 +460,7 @@ func (c *Controller) refreshSC(storageClassName string) {
 	for item := range c.capacities {
 		if item.storageClassName == storageClassName {
 			klog.V(5).Infof("Capacity Controller: enqueuing %+v because of the storage class", item)
-			c.queue.Add(QueueKey{item: &item})
+			c.queue.Add(QueueKey{item: item})
 		}
 	}
 }
@@ -480,7 +481,7 @@ func (c *Controller) addWorkItem(segment *topology.Segment, sc *storagev1.Storag
 	// ... and then tell our workers to update
 	// or create that capacity object.
 	klog.V(5).Infof("Capacity Controller: enqueuing %+v", item)
-	c.queue.Add(QueueKey{item: &item})
+	c.queue.Add(QueueKey{item: item})
 }
 
 // removeWorkItem ensures that the item gets removed from c.capacities. It
@@ -518,7 +519,7 @@ func (c *Controller) pollCapacities() {
 
 	for item := range c.capacities {
 		klog.V(5).Infof("Capacity Controller: enqueuing %+v for periodic update", item)
-		c.queue.Add(QueueKey{item: &item})
+		c.queue.Add(QueueKey{item: item})
 	}
 }
 
@@ -538,8 +539,8 @@ func (c *Controller) processNextWorkItem(ctx context.Context) bool {
 		defer c.queue.Done(obj)
 
 		switch {
-		case obj.item != nil:
-			return c.syncCapacity(ctx, *obj.item)
+		case obj.item.storageClassName != "":
+			return c.syncCapacity(ctx, obj.item)
 		case obj.capacity != nil:
 			return c.deleteCapacity(ctx, obj.capacity)
 		default:
@@ -694,7 +695,7 @@ func (c *Controller) onCAddOrUpdate(_ context.Context, capacity *storagev1.CSISt
 			if capacity2 != nil && capacity2.UID == capacity.UID {
 				c.capacities[item] = nil
 				klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s owner was modified by someone, enqueueing %v for re-creation", capacity.Name, item)
-				c.queue.Add(QueueKey{item: &item})
+				c.queue.Add(QueueKey{item: item})
 			}
 		}
 		return
@@ -734,7 +735,7 @@ func (c *Controller) onCDelete(_ context.Context, capacity *storagev1.CSIStorage
 			// Re-create it...
 			klog.V(5).Infof("Capacity Controller: CSIStorageCapacity %s was removed by someone, enqueue %v for re-creation", capacity.Name, item)
 			c.capacities[item] = nil
-			c.queue.Add(QueueKey{item: &item})
+			c.queue.Add(QueueKey{item: item})
 			return
 		}
 	}
