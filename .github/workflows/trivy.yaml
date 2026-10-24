@@ -1,0 +1,46 @@
+name: Trivy vulnerability scanner
+on:
+  push:
+    branches:
+      - master
+  schedule:
+    - cron: '0 0 * * *'  # Run daily at midnight UTC
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Parse go version from release-tools/prow.sh
+        run: |
+          GO_VERSION=$(cat release-tools/prow.sh  | grep "configvar CSI_PROW_GO_VERSION_BUILD" | awk '{print $3}' | sed 's/"//g')
+          echo "Using go from release-tools: $GO_VERSION"
+          echo "$GO_VERSION" >> '.go-version'
+
+      - name: Install go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .go-version
+
+      - name: Build an image from Dockerfile
+        run: |
+          make
+          docker build -t test/external-provisioner:latest -f Dockerfile --output=type=docker --label revision=latest .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        env:
+          # Fall back to another registry if a DB mirror is rate-limited or unavailable.
+          TRIVY_DB_REPOSITORY: "mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2"
+        with:
+          image-ref: 'test/external-provisioner:latest'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN'
