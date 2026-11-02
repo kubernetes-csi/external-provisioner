@@ -35,18 +35,20 @@ import (
 // to SectionName are actually needed. In all other cases,
 // LocalPolicyTargetReference should be used.
 type LocalPolicyTargetReferenceWithSectionNameApplyConfiguration struct {
-	LocalPolicyTargetReferenceApplyConfiguration `json:",inline"`
+	LocalPolicyTargetReferenceApplyConfiguration `json:""`
 	// SectionName is the name of a section within the target resource. When
 	// unspecified, this targetRef targets the entire resource. In the following
 	// resources, SectionName is interpreted as the following:
 	//
 	// * Gateway: Listener name
+	// * ListenerSet: Listener name
 	// * HTTPRoute: HTTPRouteRule name
 	// * Service: Port name
 	//
 	// If a SectionName is specified, but does not exist on the targeted object,
 	// the Policy must fail to attach, and the policy implementation should record
 	// a `ResolvedRefs` or similar Condition in the Policy's status.
+	//
 	SectionName *apisv1.SectionName `json:"sectionName,omitempty"`
 }
 

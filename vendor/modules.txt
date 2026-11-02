@@ -732,7 +732,7 @@ gopkg.in/evanphx/json-patch.v4
 # gopkg.in/inf.v0 v0.9.1
 ## explicit
 gopkg.in/inf.v0
-# k8s.io/api v0.37.0 => k8s.io/api v0.36.1
+# k8s.io/api v0.37.1 => k8s.io/api v0.36.1
 ## explicit; go 1.26.0
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
@@ -804,7 +804,7 @@ k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme
 k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1beta1
 k8s.io/apiextensions-apiserver/pkg/features
-# k8s.io/apimachinery v0.37.0 => k8s.io/apimachinery v0.36.1
+# k8s.io/apimachinery v0.37.1 => k8s.io/apimachinery v0.36.1
 ## explicit; go 1.26.0
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -1025,7 +1025,7 @@ k8s.io/apiserver/pkg/util/x509metrics
 k8s.io/apiserver/pkg/validation
 k8s.io/apiserver/pkg/warning
 k8s.io/apiserver/plugin/pkg/authenticator/token/webhook
-# k8s.io/client-go v0.37.0 => k8s.io/client-go v0.36.1
+# k8s.io/client-go v0.37.1 => k8s.io/client-go v0.36.1
 ## explicit; go 1.26.0
 k8s.io/client-go/applyconfigurations
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
@@ -1575,8 +1575,8 @@ sigs.k8s.io/controller-runtime/pkg/internal/field/selector
 sigs.k8s.io/controller-runtime/pkg/internal/objectutil
 sigs.k8s.io/controller-runtime/pkg/log
 sigs.k8s.io/controller-runtime/pkg/metrics
-# sigs.k8s.io/gateway-api v1.6.3
-## explicit; go 1.26.0
+# sigs.k8s.io/gateway-api v1.7.0
+## explicit; go 1.27.0
 sigs.k8s.io/gateway-api/apis/v1
 sigs.k8s.io/gateway-api/apis/v1alpha2
 sigs.k8s.io/gateway-api/apis/v1alpha3
