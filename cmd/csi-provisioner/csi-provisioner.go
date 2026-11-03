@@ -611,14 +611,13 @@ func main() {
 
 	var csiSnapshotFinalizerController *ctrl.SnapshotFinalizerController
 	if *snapshotOrphanSweepInterval > 0 {
-		if volumeSnapshotAvailable, err := features.IsVolumeSnapshotV1Available(clientset.Discovery()); err == nil && volumeSnapshotAvailable {
-			csiSnapshotFinalizerController = ctrl.NewSnapshotFinalizerController(
-				snapClient,
-				claimLister,
-				controllerCapabilities,
-				*snapshotOrphanSweepInterval,
-			)
-		}
+		csiSnapshotFinalizerController = ctrl.NewSnapshotFinalizerController(
+			snapClient,
+			clientset.Discovery(),
+			claimLister,
+			controllerCapabilities,
+			*snapshotOrphanSweepInterval,
+		)
 	}
 
 	// handle SIGTERM and SIGINT by cancelling the context.

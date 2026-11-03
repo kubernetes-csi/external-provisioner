@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/discovery"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -37,17 +38,23 @@ import (
 //   - PVC deletion while provisioning is still in progress
 type SnapshotFinalizerController struct {
 	snapshotClient   snapclientset.Interface
+	discoveryClient  discovery.DiscoveryInterface
 	snapshotInformer cache.SharedInformer
 	claimLister      corelisters.PersistentVolumeClaimLister
 
 	resyncInterval time.Duration
+	// apiCheckBackoff paces retries of the VolumeSnapshot v1 API availability
+	// check when the API server returns errors.
+	apiCheckBackoff wait.Backoff
 }
 
 // NewSnapshotFinalizerController creates a new controller for removing orphaned
 // snapshot source-protection finalizers after provisioning completes or fails.
 // Returns nil if the snapshot client is nil or the driver lacks snapshot capability.
+// Whether the cluster serves the VolumeSnapshot v1 API is checked in Run.
 func NewSnapshotFinalizerController(
 	snapshotClient snapclientset.Interface,
+	discoveryClient discovery.DiscoveryInterface,
 	claimLister corelisters.PersistentVolumeClaimLister,
 	controllerCapabilities rpc.ControllerCapabilitySet,
 	sweepInterval time.Duration,
@@ -74,16 +81,54 @@ func NewSnapshotFinalizerController(
 
 	return &SnapshotFinalizerController{
 		snapshotClient:   snapshotClient,
+		discoveryClient:  discoveryClient,
 		snapshotInformer: snapshotInformer,
 		claimLister:      claimLister,
 		resyncInterval:   sweepInterval,
+		// 11 attempts over about 17 minutes before giving up.
+		apiCheckBackoff: wait.Backoff{
+			Duration: time.Second,
+			Factor:   2,
+			Jitter:   0.1,
+			Steps:    11,
+		},
 	}
+}
+
+// waitForSnapshotAPI reports whether the VolumeSnapshot v1 API is served,
+// retrying discovery errors with backoff. It returns false when the API is not
+// served, the retries are exhausted, or ctx is cancelled.
+func (c *SnapshotFinalizerController) waitForSnapshotAPI(ctx context.Context) bool {
+	var available bool
+	var lastErr error
+	err := wait.ExponentialBackoffWithContext(ctx, c.apiCheckBackoff, func(ctx context.Context) (bool, error) {
+		available, lastErr = features.IsVolumeSnapshotV1Available(c.discoveryClient)
+		if lastErr != nil {
+			klog.Warningf("SnapshotFinalizerProtection: failed to check VolumeSnapshot v1 API availability: %v", lastErr)
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil {
+		if ctx.Err() == nil {
+			klog.Errorf("SnapshotFinalizerProtection: disabled, giving up checking VolumeSnapshot v1 API availability: %v", lastErr)
+		}
+		return false
+	}
+	if !available {
+		klog.Info("SnapshotFinalizerProtection: disabled, VolumeSnapshot v1 API is not served by the cluster")
+	}
+	return available
 }
 
 // Run starts the controller's periodic sweep loop.
 func (c *SnapshotFinalizerController) Run(ctx context.Context, wg *sync.WaitGroup) {
 	klog.Info("Starting SnapshotFinalizerProtection controller")
 	defer utilruntime.HandleCrash()
+
+	if !c.waitForSnapshotAPI(ctx) {
+		return
+	}
 
 	// Preflight: verify we have list/watch permissions on VolumeSnapshots.
 	// These are optional RBAC verbs, so exit gracefully if forbidden.
