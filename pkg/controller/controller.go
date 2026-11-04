@@ -41,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	_ "k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -298,6 +299,7 @@ type csiProvisioner struct {
 	referenceGrantLister                  referenceGrantv1beta1.ReferenceGrantLister
 	extraCreateMetadata                   bool
 	eventRecorder                         record.EventRecorder
+	secretCache                           *secretCache
 	nodeDeployment                        *internalNodeDeployment
 	controllerPublishReadOnly             bool
 	preventVolumeModeConversion           bool
@@ -384,6 +386,8 @@ func NewCSIProvisioner(client kubernetes.Interface,
 	controllerPublishReadOnly bool,
 	preventVolumeModeConversion bool,
 	pvcNodeStore TopologyProvider,
+	secretCacheTTL time.Duration,
+	secretCacheMaxEntries int,
 ) controller.Provisioner {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartLogging(klog.Infof)
@@ -420,6 +424,9 @@ func NewCSIProvisioner(client kubernetes.Interface,
 		controllerPublishReadOnly:             controllerPublishReadOnly,
 		preventVolumeModeConversion:           preventVolumeModeConversion,
 		pvcNodeStore:                          pvcNodeStore,
+	}
+	if secretCacheTTL > 0 {
+		provisioner.secretCache = newSecretCache(secretCacheTTL, secretCacheMaxEntries)
 	}
 	if nodeDeployment != nil {
 		provisioner.nodeDeployment = &internalNodeDeployment{
@@ -744,7 +751,7 @@ func (p *csiProvisioner) prepareProvision(ctx context.Context, claim *v1.Persist
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
-	provisionerCredentials, err := getCredentials(ctx, p.client, provisionerSecretRef)
+	provisionerCredentials, err := p.getCredentials(ctx, provisionerSecretRef)
 	if err != nil {
 		return nil, controller.ProvisioningNoChange, err
 	}
@@ -1463,7 +1470,7 @@ func (p *csiProvisioner) handleSecretsForDeletion(ctx context.Context, volume *v
 			provisionerSecretRef := &v1.SecretReference{}
 			provisionerSecretRef.Name = annDeletionSecretName
 			provisionerSecretRef.Namespace = annDeletionSecretNamespace
-			credentials, err := getCredentials(ctx, p.client, provisionerSecretRef)
+			credentials, err := p.getCredentials(ctx, provisionerSecretRef)
 			if err != nil {
 				// Continue with deletion, as the secret may have already been deleted.
 				klog.Errorf("failed to get credentials for volume %s: %s", volume.Name, err.Error())
@@ -1510,7 +1517,7 @@ func (p *csiProvisioner) getSecretsFromSC(ctx context.Context, volume *v1.Persis
 				return fmt.Errorf("failed to get secretreference for volume %s: %v", volume.Name, err)
 			}
 
-			credentials, err := getCredentials(ctx, p.client, provisionerSecretRef)
+			credentials, err := p.getCredentials(ctx, provisionerSecretRef)
 			if err != nil {
 				// Continue with deletion, as the secret may have already been deleted.
 				klog.Errorf("Failed to get credentials for volume %s: %s", volume.Name, err.Error())
@@ -1999,6 +2006,16 @@ func resolveTemplate(template string, params map[string]string) (string, error) 
 		return "", fmt.Errorf("invalid tokens: %q", missingParams.List())
 	}
 	return resolved, nil
+}
+
+func (p *csiProvisioner) getCredentials(ctx context.Context, ref *v1.SecretReference) (map[string]string, error) {
+	if ref == nil || p.secretCache == nil {
+		return getCredentials(ctx, p.client, ref)
+	}
+	key := types.NamespacedName{Namespace: ref.Namespace, Name: ref.Name}
+	return p.secretCache.get(key, func() (map[string]string, error) {
+		return getCredentials(ctx, p.client, ref)
+	})
 }
 
 func getCredentials(ctx context.Context, k8s kubernetes.Interface, ref *v1.SecretReference) (map[string]string, error) {

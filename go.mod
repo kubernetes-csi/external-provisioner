@@ -32,6 +32,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	go.uber.org/mock v0.6.0
+	golang.org/x/sync v0.24.0
 	k8s.io/kubernetes v1.36.3
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v13 v13.1.0
 )
@@ -122,7 +123,6 @@ require (
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
