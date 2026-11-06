@@ -82,6 +82,8 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 * `--extra-create-metadata`: Enables the injection of extra PVC and PV metadata as parameters when calling `CreateVolume` on the driver (keys: "csi.storage.k8s.io/pvc/name", "csi.storage.k8s.io/pvc/namespace", "csi.storage.k8s.io/pv/name")
 
+* `--watch-volumeattachments`: Watch `VolumeAttachment` objects and defer `DeleteVolume` while an attachment references the PV, even if the driver does not advertise `PUBLISH_UNPUBLISH_VOLUME`. Defaults to `false`; drivers advertising that capability always watch attachments regardless of this flag. This is useful for drivers deployed with `CSIDriver.spec.attachRequired: true` and an external-attacher using the trivial handler. Requires cluster-wide `list` and `watch` permissions for `volumeattachments.storage.k8s.io` (included in the example RBAC). Informer synchronization must complete before provisioning starts. An attachment still blocks deletion when `status.attached` is false or a deletion timestamp is set; deletion can proceed after the attachment object is removed. This flag does not create attachments or add controller publish/unpublish support to the driver. It cannot protect mounts that have no corresponding attachment, and stale attachments can delay reclamation until they are resolved.
+
 * `controller-publish-readonly`: This option enables PV to be marked as readonly at controller publish volume call if PVC accessmode has been set to ROX. Defaults to `false`.
 
 * `--enable-pprof`: Enable pprof profiling on the TCP network address specified by `--http-endpoint`. The HTTP path is `/debug/pprof/`.
