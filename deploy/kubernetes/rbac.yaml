@@ -57,7 +57,8 @@ rules:
     resources: ["nodes"]
     verbs: ["get", "list", "watch"]
   # Access to volumeattachments is only needed when the CSI driver
-  # has the PUBLISH_UNPUBLISH_VOLUME controller capability.
+  # has the PUBLISH_UNPUBLISH_VOLUME controller capability or the
+  # --watch-volumeattachments flag is enabled.
   # In that case, external-provisioner will watch volumeattachments
   # to determine when it is safe to delete a volume.
   - apiGroups: ["storage.k8s.io"]
