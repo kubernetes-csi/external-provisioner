@@ -93,6 +93,9 @@ var (
 	extraCreateMetadata = flag.Bool("extra-create-metadata", false, "If set, add pv/pvc metadata to plugin create requests as parameters.")
 	enableProfile       = flag.Bool("enable-pprof", false, "Enable pprof profiling on the TCP network address specified by --http-endpoint. The HTTP path is `/debug/pprof/`.")
 
+	secretCacheTTL        = flag.Duration("secret-cache-ttl", 0, "How long the data of the Secrets holding provisioner credentials is cached. Rotated or deleted Secrets are noticed only after this time. 0 disables the cache, every CreateVolume and DeleteVolume then reads its Secret from the API server.")
+	secretCacheMaxEntries = flag.Int("secret-cache-max-entries", 128, "Maximum number of Secrets held by the cache enabled with --secret-cache-ttl. Secrets read while the cache is full are not cached.")
+
 	defaultFSType = flag.String("default-fstype", "", "The default filesystem type of the volume to provision when fstype is unspecified in the StorageClass. If the default is not set and fstype is unset in the StorageClass, then no fstype will be set")
 
 	kubeAPICapacityQPS   = flag.Float32("kube-api-capacity-qps", 1, "QPS to use for storage capacity updates while communicating with the kubernetes apiserver. Defaults to 1.0.")
@@ -135,6 +138,13 @@ func main() {
 	if err := logsapi.ValidateAndApply(c, fg); err != nil {
 		klog.ErrorS(err, "LoggingConfiguration is invalid")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
+
+	if *secretCacheTTL < 0 {
+		klog.Fatal("--secret-cache-ttl must not be negative")
+	}
+	if *secretCacheTTL > 0 && *secretCacheMaxEntries < 1 {
+		klog.Fatal("--secret-cache-max-entries must be at least 1 when --secret-cache-ttl is set")
 	}
 
 	ctx := context.Background()
@@ -446,6 +456,8 @@ func main() {
 		*controllerPublishReadOnly,
 		*preventVolumeModeConversion,
 		pvcNodeStore,
+		*secretCacheTTL,
+		*secretCacheMaxEntries,
 	)
 
 	var capacityController *capacity.Controller

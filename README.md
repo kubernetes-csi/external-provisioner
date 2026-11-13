@@ -72,6 +72,10 @@ Note that the external-provisioner does not scale with more replicas. Only one e
 
 * `--kube-api-burst <num>`: The number of requests to the Kubernetes API server, exceeding the QPS, that can be sent at any given time. Defaults to `10`.
 
+* `--secret-cache-ttl <duration>`: How long the data of the Secrets holding provisioner credentials is cached, so that many volumes sharing one Secret do not each read it from the API server. A rotated or deleted Secret is noticed only after this time. Defaults to `0`, which disables the cache.
+
+* `--secret-cache-max-entries <num>`: Maximum number of Secrets held by the cache. Secrets read while the cache is full are not cached. Defaults to `128`.
+
 * `--cloning-protection-threads <num>`: Number of simultaneously running threads, handling cloning finalizer removal. Defaults to `1`.
 
 * `--snapshot-orphan-sweep-interval <duration>`: How often to check for orphaned snapshot source-protection finalizers. These finalizers can become stuck if the provisioner crashes during snapshot-based provisioning. Set to `0` to disable. Defaults to `5m`.
