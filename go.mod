@@ -1,38 +1,33 @@
 module github.com/kubernetes-csi/external-provisioner/v6
 
-go 1.26.0
+go 1.27.0
 
 require (
 	github.com/container-storage-interface/spec v1.13.0
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/go-logr/logr v1.4.4
+	github.com/google/go-cmp v0.7.0
 	github.com/kubernetes-csi/csi-lib-utils v0.25.0
 	github.com/kubernetes-csi/csi-test/v5 v5.6.0
 	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.7.0
-	github.com/miekg/dns v1.1.73 // indirect
+	github.com/onsi/ginkgo/v2 v2.34.0
+	github.com/onsi/gomega v1.44.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/spf13/pflag v1.1.0
 	github.com/stretchr/testify v1.12.1
+	go.uber.org/mock v0.6.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
-	k8s.io/api v0.37.0
-	k8s.io/apimachinery v0.37.0
+	k8s.io/api v0.37.1
+	k8s.io/apimachinery v0.37.1
 	k8s.io/apiserver v0.37.0
-	k8s.io/client-go v0.37.0
+	k8s.io/client-go v0.37.1
 	k8s.io/component-base v0.37.0
 	k8s.io/component-helpers v0.36.1
 	k8s.io/csi-translation-lib v0.36.1
 	k8s.io/klog/v2 v2.140.0
-	sigs.k8s.io/controller-runtime v0.25.2
-	sigs.k8s.io/gateway-api v1.6.3
-)
-
-require (
-	github.com/go-logr/logr v1.4.4
-	github.com/google/go-cmp v0.7.0
-	github.com/onsi/ginkgo/v2 v2.34.0
-	github.com/onsi/gomega v1.44.0
-	go.uber.org/mock v0.6.0
 	k8s.io/kubernetes v1.36.3
+	sigs.k8s.io/controller-runtime v0.25.2
+	sigs.k8s.io/gateway-api v1.7.0
 	sigs.k8s.io/sig-storage-lib-external-provisioner/v13 v13.1.0
 )
 
@@ -77,6 +72,7 @@ require (
 	github.com/google/cel-go v0.31.0 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/pprof v0.0.0-20260402051712-545e8a4df936 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4 // indirect
@@ -84,6 +80,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
+	github.com/miekg/dns v1.1.73 // indirect
 	github.com/moby/spdystream v0.5.1 // indirect
 	github.com/moby/sys/mountinfo v0.7.3 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
