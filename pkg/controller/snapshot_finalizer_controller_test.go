@@ -2,17 +2,22 @@ package controller
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	v1 "k8s.io/api/core/v1"
+	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
+	discoveryfake "k8s.io/client-go/discovery/fake"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 
 	crdv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
@@ -27,15 +32,37 @@ func newFakeClaimLister(pvcs ...*v1.PersistentVolumeClaim) corelisters.Persisten
 	return corelisters.NewPersistentVolumeClaimLister(indexer)
 }
 
-func fakeSnapshotFinalizerController(snapClient *snapshotfake.Clientset, claimLister corelisters.PersistentVolumeClaimLister, snapshots ...*crdv1.VolumeSnapshot) *SnapshotFinalizerController {
-	controllerCapabilities := rpc.ControllerCapabilitySet{
-		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: true,
-	}
+// fakeSnapshotDiscovery fails the first `failures` discovery calls with HTTP 429,
+// then reports whether snapshot.storage.k8s.io/v1 VolumeSnapshot is served.
+type fakeSnapshotDiscovery struct {
+	*discoveryfake.FakeDiscovery
+	calls int
+}
 
+func newFakeSnapshotDiscovery(served bool, failures int) *fakeSnapshotDiscovery {
+	d := &fakeSnapshotDiscovery{FakeDiscovery: &discoveryfake.FakeDiscovery{Fake: &k8stesting.Fake{}}}
+	if served {
+		d.Resources = []*metav1.APIResourceList{{
+			GroupVersion: "snapshot.storage.k8s.io/v1",
+			APIResources: []metav1.APIResource{{Kind: "VolumeSnapshot"}},
+		}}
+	}
+	d.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
+		d.calls++
+		if d.calls <= failures {
+			return true, nil, apierrs.NewTooManyRequests("too many requests", 1)
+		}
+		return false, nil, nil
+	})
+	return d
+}
+
+func fakeSnapshotFinalizerController(snapClient *snapshotfake.Clientset, claimLister corelisters.PersistentVolumeClaimLister, snapshots ...*crdv1.VolumeSnapshot) *SnapshotFinalizerController {
 	ctrl := NewSnapshotFinalizerController(
 		snapClient,
+		newFakeSnapshotDiscovery(true, 0),
 		claimLister,
-		controllerCapabilities,
+		snapshotCapabilities(),
 		5*time.Minute,
 	)
 
@@ -229,7 +256,7 @@ func TestSyncSnapshot_MultiplePVCs(t *testing.T) {
 }
 
 func TestNewSnapshotFinalizerController_NilSnapshotClient(t *testing.T) {
-	ctrl := NewSnapshotFinalizerController(nil, newFakeClaimLister(), nil, 5*time.Minute)
+	ctrl := NewSnapshotFinalizerController(nil, newFakeSnapshotDiscovery(true, 0), newFakeClaimLister(), nil, 5*time.Minute)
 	if ctrl != nil {
 		t.Error("expected nil controller when snapshotClient is nil")
 	}
@@ -241,6 +268,7 @@ func TestNewSnapshotFinalizerController_NoSnapshotCapability(t *testing.T) {
 	}
 	ctrl := NewSnapshotFinalizerController(
 		snapshotfake.NewSimpleClientset(),
+		newFakeSnapshotDiscovery(true, 0),
 		newFakeClaimLister(),
 		capabilities,
 		5*time.Minute,
@@ -463,4 +491,56 @@ func TestSyncSnapshot_DataSourceRefPending(t *testing.T) {
 	if !checkFinalizer(updated, snapshotSourceProtectionFinalizer) {
 		t.Error("expected finalizer to still be present when DataSourceRef PVC is Pending")
 	}
+}
+
+func TestWaitForSnapshotAPI(t *testing.T) {
+	tests := []struct {
+		name      string
+		served    bool
+		failures  int
+		want      bool
+		wantCalls int
+	}{
+		{name: "served", served: true, want: true, wantCalls: 1},
+		{name: "not served", served: false, want: false, wantCalls: 1},
+		{name: "transient errors then served", served: true, failures: 3, want: true, wantCalls: 4},
+		{name: "persistent errors give up", served: true, failures: 100, want: false, wantCalls: 5},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			disc := newFakeSnapshotDiscovery(tc.served, tc.failures)
+			c := NewSnapshotFinalizerController(snapshotfake.NewSimpleClientset(), disc, newFakeClaimLister(), snapshotCapabilities(), time.Minute)
+			c.apiCheckBackoff = wait.Backoff{Duration: time.Millisecond, Factor: 1, Steps: 5}
+
+			if got := c.waitForSnapshotAPI(context.Background()); got != tc.want {
+				t.Errorf("waitForSnapshotAPI() = %v, want %v", got, tc.want)
+			}
+			if disc.calls != tc.wantCalls {
+				t.Errorf("discovery calls = %d, want %d", disc.calls, tc.wantCalls)
+			}
+		})
+	}
+}
+
+func TestRun_SnapshotAPINotServed(t *testing.T) {
+	snapClient := snapshotfake.NewSimpleClientset()
+	c := NewSnapshotFinalizerController(snapClient, newFakeSnapshotDiscovery(false, 0), newFakeClaimLister(), snapshotCapabilities(), time.Minute)
+
+	done := make(chan struct{})
+	go func() {
+		c.Run(context.Background(), &sync.WaitGroup{})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return when the VolumeSnapshot v1 API is not served")
+	}
+	if actions := snapClient.Actions(); len(actions) != 0 {
+		t.Errorf("expected no VolumeSnapshot API calls, got %v", actions)
+	}
+}
+
+func snapshotCapabilities() rpc.ControllerCapabilitySet {
+	return rpc.ControllerCapabilitySet{csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT: true}
 }
