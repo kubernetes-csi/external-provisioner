@@ -1041,9 +1041,10 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 	}
 
 	// Remove snapshot finalizer if this PVC was provisioned from a snapshot
-	if claim.Spec.DataSource != nil && claim.Spec.DataSource.Kind == snapshotKind {
-		if err := p.removeSnapshotFinalizer(ctx, claim.Namespace, claim.Spec.DataSource.Name); err != nil {
-			klog.Warningf("Failed to remove snapshot finalizer from %s/%s: %v", claim.Namespace, claim.Spec.DataSource.Name, err)
+	if isSnapshotSourcePVC(claim) {
+		snapNamespace, snapName := snapshotNameFromPVC(claim)
+		if err := p.removeSnapshotFinalizer(ctx, snapNamespace, snapName); err != nil {
+			klog.Warningf("Failed to remove snapshot finalizer from %s/%s: %v", snapNamespace, snapName, err)
 			// Don't fail provisioning if we can't remove the finalizer - it will be cleaned up later
 		}
 	}

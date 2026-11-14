@@ -4631,6 +4631,8 @@ func TestProvisionFromSnapshot(t *testing.T) {
 	doit := func(t *testing.T, tc testcase) {
 		var clientSet kubernetes.Interface = fakeclientset.NewSimpleClientset()
 		client := &fake.Clientset{}
+		// The last snapshot that the provisioner updated. Later gets return its finalizers.
+		var updatedSnapshot *crdv1.VolumeSnapshot
 
 		client.AddReactor("get", "volumesnapshots", func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
 			namespace := "default"
@@ -4660,6 +4662,9 @@ func TestProvisionFromSnapshot(t *testing.T) {
 					snap.ObjectMeta.Finalizers = []string{"provisioner.storage.kubernetes.io/volumesnapshot-as-source-protection"}
 				}
 			}
+			if updatedSnapshot != nil {
+				snap.ObjectMeta.Finalizers = updatedSnapshot.Finalizers
+			}
 			return true, snap, nil
 		})
 
@@ -4675,6 +4680,10 @@ func TestProvisionFromSnapshot(t *testing.T) {
 			if !ok {
 				return false, nil, fmt.Errorf("expected VolumeSnapshot, got %T", updateAction.GetObject())
 			}
+			if updateAction.GetNamespace() != snap.Namespace || snap.Name != snapName {
+				return true, nil, fmt.Errorf("unexpected update of snapshot %s/%s in namespace %q", snap.Namespace, snap.Name, updateAction.GetNamespace())
+			}
+			updatedSnapshot = snap
 			return true, snap, nil
 		})
 
@@ -4799,6 +4808,27 @@ func TestProvisionFromSnapshot(t *testing.T) {
 						t.Errorf("expected PV: %v, got: %v", tc.expectedPVSpec.CSIPVS, pv.Spec.PersistentVolumeSource.CSI)
 					}
 				}
+			}
+		}
+
+		if !tc.expectErr && err == nil {
+			snapNamespace := tc.volOpts.PVC.Namespace
+			if tc.snapNamespace != "" {
+				snapNamespace = tc.snapNamespace
+			}
+			for _, action := range client.Actions() {
+				getAction, ok := action.(k8stesting.GetAction)
+				if ok && action.Matches("get", "volumesnapshots") &&
+					(getAction.GetNamespace() != snapNamespace || getAction.GetName() != snapName) {
+					t.Errorf("expected snapshot get of %s/%s, got %s/%s", snapNamespace, snapName, getAction.GetNamespace(), getAction.GetName())
+				}
+			}
+			snap, getErr := client.SnapshotV1().VolumeSnapshots(snapNamespace).Get(context.Background(), snapName, metav1.GetOptions{})
+			if getErr != nil {
+				t.Fatalf("failed to get snapshot: %v", getErr)
+			}
+			if checkFinalizer(snap, snapshotSourceProtectionFinalizer) {
+				t.Errorf("expected finalizer %s to be removed from the snapshot", snapshotSourceProtectionFinalizer)
 			}
 		}
 	}
