@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
@@ -462,5 +464,49 @@ func TestSyncSnapshot_DataSourceRefPending(t *testing.T) {
 	}
 	if !checkFinalizer(updated, snapshotSourceProtectionFinalizer) {
 		t.Error("expected finalizer to still be present when DataSourceRef PVC is Pending")
+	}
+}
+
+// errorClaimLister is a PersistentVolumeClaimLister whose List always fails,
+// used to simulate a transient error while enumerating PVCs during a sweep.
+type errorClaimLister struct {
+	err error
+}
+
+func (e errorClaimLister) List(labels.Selector) ([]*v1.PersistentVolumeClaim, error) {
+	return nil, e.err
+}
+
+func (e errorClaimLister) PersistentVolumeClaims(string) corelisters.PersistentVolumeClaimNamespaceLister {
+	return nil
+}
+
+// When the PVCs cannot be listed, the set of in-use snapshots is unknown. The
+// sweep must keep the source-protection finalizers in place instead of treating
+// the empty result as "nothing references this snapshot" and removing them.
+func TestSweepOrphanedFinalizers_KeepFinalizerOnPVCListError(t *testing.T) {
+	snapshotName := "test-snapshot"
+	namespace := "default"
+
+	snapshot := &crdv1.VolumeSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       snapshotName,
+			Namespace:  namespace,
+			Finalizers: []string{snapshotSourceProtectionFinalizer},
+		},
+	}
+
+	snapClient := snapshotfake.NewSimpleClientset(snapshot)
+	claimLister := errorClaimLister{err: errors.New("boom")}
+	ctrl := fakeSnapshotFinalizerController(snapClient, claimLister, snapshot)
+
+	ctrl.sweepOrphanedFinalizers(context.Background())
+
+	updated, err := snapClient.SnapshotV1().VolumeSnapshots(namespace).Get(context.Background(), snapshotName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("failed to get snapshot: %v", err)
+	}
+	if !checkFinalizer(updated, snapshotSourceProtectionFinalizer) {
+		t.Error("expected finalizer to be kept when PVCs cannot be listed")
 	}
 }

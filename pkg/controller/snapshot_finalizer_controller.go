@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -125,7 +126,15 @@ func (c *SnapshotFinalizerController) sweepOrphanedFinalizers(ctx context.Contex
 
 	// Build an index of snapshots that have at least one Pending PVC referencing
 	// them. This makes the per-snapshot check O(1) instead of scanning all PVCs.
-	pendingSnapshots := c.buildPendingSnapshotIndex()
+	pendingSnapshots, err := c.buildPendingSnapshotIndex()
+	if err != nil {
+		// Without a reliable list of the PVCs that still reference snapshots we
+		// cannot tell which finalizers are orphaned. Treating the empty result
+		// as "nothing is pending" would strip source protection from snapshots
+		// that are still in use, so skip this sweep and retry on the next one.
+		klog.V(3).Infof("SnapshotFinalizerProtection: skipping sweep: %v", err)
+		return
+	}
 
 	for _, obj := range snapshots {
 		if ctx.Err() != nil {
@@ -148,12 +157,13 @@ func (c *SnapshotFinalizerController) sweepOrphanedFinalizers(ctx context.Contex
 
 // buildPendingSnapshotIndex returns a set of "namespace/name" keys for snapshots
 // that are currently referenced by at least one PVC whose provisioning has not
-// yet completed (Phase is Pending or empty).
-func (c *SnapshotFinalizerController) buildPendingSnapshotIndex() sets.Set[string] {
+// yet completed (Phase is Pending or empty). It returns an error if the PVCs
+// cannot be listed, so that callers do not mistake an incomplete view of the
+// cluster for "no PVC references anything".
+func (c *SnapshotFinalizerController) buildPendingSnapshotIndex() (sets.Set[string], error) {
 	allPVCs, err := c.claimLister.List(labels.Everything())
 	if err != nil {
-		klog.V(3).Infof("SnapshotFinalizerProtection: failed to list PVCs: %v", err)
-		return nil
+		return nil, fmt.Errorf("failed to list PVCs: %w", err)
 	}
 
 	pending := sets.New[string]()
@@ -167,7 +177,7 @@ func (c *SnapshotFinalizerController) buildPendingSnapshotIndex() sets.Set[strin
 		snapNs, snapName := snapshotNameFromPVC(pvc)
 		pending.Insert(snapNs + "/" + snapName)
 	}
-	return pending
+	return pending, nil
 }
 
 // removeSnapshotFinalizer removes the provisioner's source-protection finalizer
