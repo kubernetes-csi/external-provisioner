@@ -17,10 +17,59 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 )
+
+func TestVolumeAttachmentLister(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		supportsPublish bool
+		watch           bool
+		wantLister      bool
+	}{
+		{"default without controller publishing", false, false, false},
+		{"opt in without controller publishing", false, true, true},
+		{"publishing cannot be opted out", true, false, true},
+		{"publishing with explicit watch", true, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := fake.NewSimpleClientset(&storagev1.VolumeAttachment{ObjectMeta: metav1.ObjectMeta{Name: "existing-attachment"}})
+			factory := informers.NewSharedInformerFactory(client, 0)
+			lister := volumeAttachmentLister(factory, tc.supportsPublish, tc.watch)
+			if (lister != nil) != tc.wantLister {
+				t.Fatalf("lister present = %t, want %t", lister != nil, tc.wantLister)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			factory.Start(ctx.Done())
+			for _, synced := range factory.WaitForCacheSync(ctx.Done()) {
+				if !synced {
+					t.Fatal("attachment informer failed to sync")
+				}
+			}
+			if lister == nil {
+				if len(client.Actions()) != 0 {
+					t.Fatalf("default non-publishing driver made API requests: %v", client.Actions())
+				}
+				return
+			}
+			attachments, err := lister.List(labels.Everything())
+			if err != nil || len(attachments) != 1 || attachments[0].Name != "existing-attachment" {
+				t.Fatalf("existing attachment was not loaded at startup: %v, %v", attachments, err)
+			}
+		})
+	}
+}
 
 const (
 	externalProvisioner = "external-provisioner"
