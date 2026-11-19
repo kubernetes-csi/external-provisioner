@@ -880,6 +880,7 @@ type provisioningTestcase struct {
 	expectCreateVolDo         func(t *testing.T, ctx context.Context, req *csi.CreateVolumeRequest)
 	withExtraMetadata         bool
 	skipCreateVolume          bool
+	deploymentVolumeLabels    map[string]string
 	deploymentNode            string // fake distributed provisioning with this node as host
 	immediateBinding          bool   // enable immediate binding support for distributed provisioning
 	expectSelectedNode        string // a specific selected-node of the PVC in the apiserver after the test, same as before if empty
@@ -904,6 +905,7 @@ type provisioningFSTypeTestcase struct {
 type pvSpec struct {
 	Name                      string
 	Annotations               map[string]string
+	Labels                    map[string]string
 	ReclaimPolicy             v1.PersistentVolumeReclaimPolicy
 	AccessModes               []v1.PersistentVolumeAccessMode
 	MountOptions              []string
@@ -2140,6 +2142,51 @@ func provisionTestcases() (int64, map[string]provisioningTestcase) {
 			},
 			expectState: controller.ProvisioningFinished,
 		},
+		"distributed, right node selected, with volume labels": {
+			deploymentNode: "foo",
+			deploymentVolumeLabels: map[string]string{
+				"csi.storage.k8s.io/drivername": "test-driver",
+				"csi.storage.k8s.io/managed-by": "external-provisioner-foo",
+			},
+			volOpts: controller.ProvisionOptions{
+				SelectedNodeName: nodeFoo.Name,
+				StorageClass: &storagev1.StorageClass{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fakeSCName,
+					},
+					ReclaimPolicy: &deletePolicy,
+					Parameters: map[string]string{
+						"fstype": "ext3",
+					},
+				},
+				PVName: "test-name",
+				PVC: func() *v1.PersistentVolumeClaim {
+					claim := createFakePVC(requestedBytes)
+					claim.Annotations[annSelectedNode] = nodeFoo.Name
+					return claim
+				}(),
+			},
+			expectedPVSpec: &pvSpec{
+				Name: "test-testi",
+				Labels: map[string]string{
+					"csi.storage.k8s.io/drivername": "test-driver",
+					"csi.storage.k8s.io/managed-by": "external-provisioner-foo",
+				},
+				ReclaimPolicy: v1.PersistentVolumeReclaimDelete,
+				Capacity: v1.ResourceList{
+					v1.ResourceName(v1.ResourceStorage): bytesToQuantity(requestedBytes),
+				},
+				CSIPVS: &v1.CSIPersistentVolumeSource{
+					Driver:       "test-driver",
+					VolumeHandle: "test-volume-id",
+					FSType:       "ext3",
+					VolumeAttributes: map[string]string{
+						"storage.kubernetes.io/csiProvisionerIdentity": "test-provisioner",
+					},
+				},
+			},
+			expectState: controller.ProvisioningFinished,
+		},
 		"distributed, no node selected": {
 			deploymentNode: "foo",
 			volOpts: controller.ProvisionOptions{
@@ -2784,6 +2831,7 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 			NodeName:         tc.deploymentNode,
 			ClaimInformer:    claimInformer,
 			ImmediateBinding: tc.immediateBinding,
+			VolumeLabels:     tc.deploymentVolumeLabels,
 		}
 	}
 
@@ -2838,6 +2886,10 @@ func runProvisionTest(t *testing.T, tc provisioningTestcase, requestedBytes int6
 
 			if tc.expectedPVSpec.Annotations != nil && !reflect.DeepEqual(pv.Annotations, tc.expectedPVSpec.Annotations) {
 				t.Errorf("expected PV annotations: %v, got: %v", tc.expectedPVSpec.Annotations, pv.Annotations)
+			}
+
+			if !reflect.DeepEqual(pv.Labels, tc.expectedPVSpec.Labels) {
+				t.Errorf("expected PV labels: %v, got: %v", tc.expectedPVSpec.Labels, pv.Labels)
 			}
 
 			if pv.Spec.PersistentVolumeReclaimPolicy != tc.expectedPVSpec.ReclaimPolicy {

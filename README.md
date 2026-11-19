@@ -110,6 +110,8 @@ See the [storage capacity section](#capacity-support) below for details.
 
 * `--node-deployment-max-delay`: Determines how long the external-provisioner sleeps at most before trying to own a PVC with immediate binding. Defaults to 60 seconds.
 
+* `--node-deployment-pv-label-filter`: Labels each PV with the external-provisioner instance that created it and watches only PVs with its own labels instead of all PVs in the cluster. Requires `--node-deployment`. Off by default. Existing PVs must be labeled before enabling it, see [Watching only PVs of the own node](#watching-only-pvs-of-the-own-node).
+
 #### Other recognized arguments
 * `--feature-gates <gates>`: A set of comma separated `<feature-name>=<true|false>` pairs that describe feature gates for alpha/experimental features. See [list of features](#feature-status) or `--help` output for list of recognized features. Example: `--feature-gates Topology=true` to enable Topology feature that's disabled by default.
 
@@ -417,6 +419,65 @@ provisioning with `--node-deployment-immediate-binding=false` and
 instead implement a custom policy in a separate controller which sets
 the "selected node" annotation to trigger local provisioning on the
 desired node.
+
+#### Watching only PVs of the own node
+
+By default, each external-provisioner instance watches all PVs in the
+cluster, although it only deletes volumes on its own node. With many
+nodes and PVs, this puts load on the apiserver and on each instance, in particular when all instances
+restart at once during a DaemonSet rollout. A field selector cannot
+restrict a PV watch to one node, so
+`--node-deployment-pv-label-filter` uses labels instead:
+
+- Each instance adds two labels to every PV that it creates:
+  `csi.storage.k8s.io/drivername` with the driver name and
+  `csi.storage.k8s.io/managed-by` with `external-provisioner-<node name>`.
+  These are the same labels that identify the CSIStorageCapacity
+  objects of the instance. For node names longer than 42 characters,
+  the `managed-by` value is shortened with a hash to stay within the
+  63 character limit for label values. Each instance logs its labels
+  at startup ("labeling new PVs and watching only PVs with labels ...").
+- Each instance watches only PVs with its own labels.
+
+An instance does not see PVs without its labels, so it neither
+deletes them when they get released nor removes its finalizer from
+them. This affects PVs created before the flag was enabled, PVs
+created by instances that still ran without the flag during the
+rollout, and statically provisioned PVs. Label those PVs before
+enabling the flag and again after the rollout. For example, for a
+driver that uses the node name as value of its topology key and node
+names of at most 42 characters:
+
+```sh
+DRIVER=hostpath.csi.k8s.io
+TOPOLOGY_KEY=topology.hostpath.csi/node
+kubectl get pv -o json |
+  jq -r --arg driver "$DRIVER" --arg key "$TOPOLOGY_KEY" '
+    .items[]
+    | select(.spec.csi.driver == $driver)
+    | select(.metadata.labels["csi.storage.k8s.io/managed-by"] == null)
+    | ([.spec.nodeAffinity.required.nodeSelectorTerms[]?.matchExpressions[]?
+        | select(.key == $key) | .values[0]] | first) as $node
+    | select($node != null)
+    | .metadata.name + " " + $node' |
+  while read -r pv node; do
+    kubectl label pv "$pv" \
+      "csi.storage.k8s.io/drivername=$DRIVER" \
+      "csi.storage.k8s.io/managed-by=external-provisioner-$node"
+  done
+```
+
+The node of a PV comes from the node affinity that the provisioner
+generated from the topology returned by the CSI driver. A PV does not
+record the "selected node" of its PVC, so the node affinity is the
+only node information that is also available for released PVs whose
+PVC is gone. The script skips PVs without node affinity and PVs whose
+node affinity does not use `TOPOLOGY_KEY`. Label those PVs by hand,
+otherwise the provisioner ignores them. For the same reason, do not
+remove or change the two labels while the flag is enabled.
+
+Disabling the flag again is safe: instances then watch all PVs and
+ignore the labels.
 
 ### Deleting local volumes after a node failure or removal
 

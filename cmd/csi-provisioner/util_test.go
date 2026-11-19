@@ -17,9 +17,17 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
+
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/validation"
+	fakeclientset "k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 const (
@@ -84,5 +92,96 @@ func TestGetNameWithMaxLength(t *testing.T) {
 				t.Errorf("Expected: %s, does not match result: %s", expected, res)
 			}
 		})
+	}
+}
+
+func TestNodeDeploymentPVLabels(t *testing.T) {
+	testcases := map[string]struct {
+		nodeName string
+		expected labels.Set
+	}{
+		"short node name": {
+			nodeName: "node01",
+			expected: labels.Set{
+				"csi.storage.k8s.io/drivername": "hostpath.csi.k8s.io",
+				"csi.storage.k8s.io/managed-by": "external-provisioner-node01",
+			},
+		},
+		"long node name": {
+			nodeName: fmt.Sprintf("node%s", strings.Repeat("a", 63)),
+			expected: labels.Set{
+				"csi.storage.k8s.io/drivername": "hostpath.csi.k8s.io",
+				"csi.storage.k8s.io/managed-by": fmt.Sprintf("%s-%s", externalProvisioner, "df38e37f"),
+			},
+		},
+	}
+
+	for name, c := range testcases {
+		t.Run(name, func(t *testing.T) {
+			managedByID := getNameWithMaxLength(externalProvisioner, c.nodeName, validation.DNS1035LabelMaxLength)
+			res := nodeDeploymentPVLabels("hostpath.csi.k8s.io", managedByID)
+			if !labels.Equals(res, c.expected) {
+				t.Errorf("Expected: %v, does not match result: %v", c.expected, res)
+			}
+			for key, value := range res {
+				if errs := validation.IsValidLabelValue(value); len(errs) > 0 {
+					t.Errorf("Invalid value %q for label %q: %v", value, key, errs)
+				}
+			}
+		})
+	}
+}
+
+func TestNewLabelFilteredInformerFactory(t *testing.T) {
+	pvLabels := nodeDeploymentPVLabels("hostpath.csi.k8s.io", "external-provisioner-node01")
+	newPV := func(name string, objLabels map[string]string) *v1.PersistentVolume {
+		return &v1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   name,
+				Labels: objLabels,
+			},
+		}
+	}
+	client := fakeclientset.NewSimpleClientset(
+		newPV("own", pvLabels),
+		newPV("other-node", nodeDeploymentPVLabels("hostpath.csi.k8s.io", "external-provisioner-node02")),
+		newPV("other-driver", nodeDeploymentPVLabels("other.csi.k8s.io", "external-provisioner-node01")),
+		newPV("unlabeled", nil),
+	)
+
+	factory := newLabelFilteredInformerFactory(client, 0, pvLabels)
+	pvInformer := factory.Core().V1().PersistentVolumes()
+	pvLister := pvInformer.Lister()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	factory.Start(ctx.Done())
+	for informerType, synced := range factory.WaitForCacheSync(ctx.Done()) {
+		if !synced {
+			t.Fatalf("Informer %v did not sync", informerType)
+		}
+	}
+
+	pvs, err := pvLister.List(labels.Everything())
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if len(pvs) != 1 || pvs[0].Name != "own" {
+		t.Errorf("Expected only PV %q, got: %v", "own", pvs)
+	}
+
+	expectedSelector := "csi.storage.k8s.io/drivername=hostpath.csi.k8s.io,csi.storage.k8s.io/managed-by=external-provisioner-node01"
+	listed := false
+	for _, action := range client.Actions() {
+		if !action.Matches("list", "persistentvolumes") {
+			continue
+		}
+		listed = true
+		selector := action.(k8stesting.ListAction).GetListRestrictions().Labels.String()
+		if selector != expectedSelector {
+			t.Errorf("Expected label selector %q, got: %q", expectedSelector, selector)
+		}
+	}
+	if !listed {
+		t.Error("PersistentVolumes were not listed")
 	}
 }

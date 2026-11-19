@@ -107,6 +107,7 @@ var (
 	nodeDeploymentImmediateBinding = flag.Bool("node-deployment-immediate-binding", true, "Determines whether immediate binding is supported when deployed on each node.")
 	nodeDeploymentBaseDelay        = flag.Duration("node-deployment-base-delay", 20*time.Second, "Determines how long the external-provisioner sleeps initially before trying to own a PVC with immediate binding.")
 	nodeDeploymentMaxDelay         = flag.Duration("node-deployment-max-delay", 60*time.Second, "Determines how long the external-provisioner sleeps at most before trying to own a PVC with immediate binding.")
+	nodeDeploymentPVLabelFilter    = flag.Bool("node-deployment-pv-label-filter", false, "Labels each PV with the external-provisioner instance that created it and only watches PVs with that label, instead of all PVs in the cluster. Requires --node-deployment. Existing PVs must be labeled before enabling it.")
 	controllerPublishReadOnly      = flag.Bool("controller-publish-readonly", false, "This option enables PV to be marked as readonly at controller publish volume call if PVC accessmode has been set to ROX.")
 
 	preventVolumeModeConversion = flag.Bool("prevent-volume-mode-conversion", true, "Prevents an unauthorised user from modifying the volume mode when creating a PVC from an existing VolumeSnapshot.")
@@ -146,6 +147,9 @@ func main() {
 	node := os.Getenv("NODE_NAME")
 	if *enableNodeDeployment && node == "" {
 		klog.Fatal("The NODE_NAME environment variable must be set when using --enable-node-deployment.")
+	}
+	if *nodeDeploymentPVLabelFilter && !*enableNodeDeployment {
+		klog.Fatal("--node-deployment-pv-label-filter requires --node-deployment.")
 	}
 
 	if standardflags.Configuration.ShowVersion {
@@ -300,6 +304,11 @@ func main() {
 		identity = identity + "-" + node
 	}
 
+	managedByID := "external-provisioner"
+	if *enableNodeDeployment {
+		managedByID = getNameWithMaxLength(managedByID, node, validation.DNS1035LabelMaxLength)
+	}
+
 	factory := informers.NewSharedInformerFactory(clientset, ctrl.ResyncPeriodOfCsiNodeInformer)
 	var factoryForNamespace informers.SharedInformerFactory // usually nil, only used for CSIStorageCapacity
 
@@ -318,6 +327,7 @@ func main() {
 	}
 
 	var nodeDeployment *ctrl.NodeDeployment
+	var pvFactory informers.SharedInformerFactory // only used for --node-deployment-pv-label-filter
 	if *enableNodeDeployment {
 		nodeDeployment = &ctrl.NodeDeployment{
 			NodeName:         node,
@@ -325,6 +335,15 @@ func main() {
 			ImmediateBinding: *nodeDeploymentImmediateBinding,
 			BaseDelay:        *nodeDeploymentBaseDelay,
 			MaxDelay:         *nodeDeploymentMaxDelay,
+		}
+		if *nodeDeploymentPVLabelFilter {
+			// Without a custom informer, the provisioner library watches all PVs in the
+			// cluster in each instance. Each instance only needs the PVs that it created
+			// itself, so it labels those and only watches PVs with its own labels.
+			pvLabels := nodeDeploymentPVLabels(provisionerName, managedByID)
+			nodeDeployment.VolumeLabels = pvLabels
+			pvFactory = newLabelFilteredInformerFactory(clientset, controller.DefaultResyncPeriod, pvLabels)
+			klog.Infof("labeling new PVs and watching only PVs with labels %s", pvLabels)
 		}
 		nodeInfo, err := ctrl.GetNodeInfo(grpcClient, *operationTimeout)
 		if err != nil {
@@ -407,6 +426,9 @@ func main() {
 		controller.ClaimsInformer(claimInformer),
 		controller.RetryIntervalMax(*retryIntervalMax),
 		controller.AddFinalizer(true),
+	}
+	if pvFactory != nil {
+		provisionerOptions = append(provisionerOptions, controller.VolumesInformer(pvFactory.Core().V1().PersistentVolumes().Informer()))
 	}
 
 	if supportsMigrationFromInTreePluginName != "" {
@@ -502,11 +524,6 @@ func main() {
 			}
 			klog.Infof("producing CSIStorageCapacity objects with fixed topology segment %s", segment)
 			topologyInformer = topology.NewFixedNodeTopology(&segment)
-		}
-
-		managedByID := "external-provisioner"
-		if *enableNodeDeployment {
-			managedByID = getNameWithMaxLength(managedByID, node, validation.DNS1035LabelMaxLength)
 		}
 
 		// We only need objects from our own namespace. The normal factory would give
@@ -647,6 +664,9 @@ func main() {
 	run := func(ctx context.Context) {
 
 		factory.Start(ctx.Done())
+		if pvFactory != nil {
+			pvFactory.Start(ctx.Done())
+		}
 		if factoryForNamespace != nil {
 			// Starting is enough, the capacityController and topologyInformer will
 			// wait for sync.
@@ -659,6 +679,14 @@ func main() {
 		for _, v := range cacheSyncResult {
 			if !v {
 				klog.Fatalf("Failed to sync Informers!")
+			}
+		}
+
+		if pvFactory != nil {
+			for _, v := range pvFactory.WaitForCacheSync(ctx.Done()) {
+				if !v {
+					klog.Fatalf("Failed to sync PersistentVolume informer!")
+				}
 			}
 		}
 
