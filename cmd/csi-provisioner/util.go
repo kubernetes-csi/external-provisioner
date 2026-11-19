@@ -19,7 +19,36 @@ package main
 import (
 	"fmt"
 	"hash/fnv"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+
+	"github.com/kubernetes-csi/external-provisioner/v6/pkg/capacity"
 )
+
+// nodeDeploymentPVLabels returns the labels that identify the PVs created by
+// the external-provisioner instance with the given managed-by ID. They are the
+// same labels that identify the CSIStorageCapacity objects of that instance.
+func nodeDeploymentPVLabels(driverName, managedByID string) labels.Set {
+	return labels.Set{
+		capacity.DriverNameLabel: driverName,
+		capacity.ManagedByLabel:  managedByID,
+	}
+}
+
+// newLabelFilteredInformerFactory returns an informer factory whose informers
+// only list and watch objects with all of the given labels.
+func newLabelFilteredInformerFactory(client kubernetes.Interface, resync time.Duration, set labels.Set) informers.SharedInformerFactory {
+	return informers.NewSharedInformerFactoryWithOptions(client,
+		resync,
+		informers.WithTweakListOptions(func(lo *metav1.ListOptions) {
+			lo.LabelSelector = set.AsSelector().String()
+		}),
+	)
+}
 
 // getNameWithMaxLength returns a name given a base ("deployment-5") and a suffix ("deploy")
 // It will first attempt to join them with a dash. If the resulting name is longer

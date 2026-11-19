@@ -266,6 +266,9 @@ type NodeDeployment struct {
 	BaseDelay time.Duration
 	// MaxDelay is the maximum for the initial wait time.
 	MaxDelay time.Duration
+	// VolumeLabels are added to each PV created by this instance. They allow
+	// watching only those PVs instead of all PVs in the cluster.
+	VolumeLabels map[string]string
 }
 
 type internalNodeDeployment struct {
@@ -994,6 +997,13 @@ func (p *csiProvisioner) Provision(ctx context.Context, options controller.Provi
 		klog.V(5).Infof("createVolumeOperation: set annotation [%s/%s] on pv [%s].", annModifyControllerSecretRefNamespace, annModifyControllerSecretRefName, pv.Name)
 		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annModifyControllerSecretRefName, result.provModifySecrets.name)
 		metav1.SetMetaDataAnnotation(&pv.ObjectMeta, annModifyControllerSecretRefNamespace, result.provModifySecrets.namespace)
+	}
+
+	if p.nodeDeployment != nil && len(p.nodeDeployment.VolumeLabels) > 0 {
+		if pv.Labels == nil {
+			pv.Labels = map[string]string{}
+		}
+		maps.Copy(pv.Labels, p.nodeDeployment.VolumeLabels)
 	}
 
 	if options.StorageClass.ReclaimPolicy != nil {
