@@ -34,7 +34,7 @@ import (
 // BackendTLSPolicy provides a way to configure how a Gateway
 // connects to a Backend via TLS.
 type BackendTLSPolicyApplyConfiguration struct {
-	metav1.TypeMetaApplyConfiguration    `json:",inline"`
+	metav1.TypeMetaApplyConfiguration    `json:""`
 	*metav1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	// Spec defines the desired state of BackendTLSPolicy.
 	Spec *BackendTLSPolicySpecApplyConfiguration `json:"spec,omitempty"`
