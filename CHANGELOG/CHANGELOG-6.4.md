@@ -1,3 +1,37 @@
+# Release notes for v6.4.1
+
+[Documentation](https://kubernetes-csi.github.io)
+
+## Changes by Kind
+
+### Bug or Regression
+
+- Build with Go 1.26.11 to fix CVE-2026-97054. ([#1621](https://github.com/kubernetes-csi/external-provisioner/pull/1621), [@jsafrane](https://github.com/jsafrane))
+- Update golang.org/x/net to v0.62.0 and go.opentelemetry.io/otel to v1.47.0 to fix CVE-2026-78663 (CRITICAL), CVE-2026-78659, CVE-2026-78660, CVE-2026-78669, CVE-2026-97032, CVE-2026-78661 and CVE-2026-97045 and CVE-2026-128085. ([#1622](https://github.com/kubernetes-csi/external-provisioner/pull/1622), [@grant-he](https://github.com/grant-he))
+
+## Dependencies
+
+### Added
+- go.opentelemetry.io/otel/log: v1.47.0
+
+### Changed
+- go.opentelemetry.io/otel/metric: v1.46.0 → v1.47.0
+- go.opentelemetry.io/otel/sdk/metric: v1.46.0 → v1.47.0
+- go.opentelemetry.io/otel/sdk: v1.46.0 → v1.47.0
+- go.opentelemetry.io/otel/trace: v1.46.0 → v1.47.0
+- go.opentelemetry.io/otel: v1.46.0 → v1.47.0
+- golang.org/x/crypto: v0.57.0 → v0.58.0
+- golang.org/x/net: v0.59.0 → v0.62.0
+- golang.org/x/sync: v0.23.0 → v0.24.0
+- golang.org/x/sys: v0.48.0 → v0.49.0
+- golang.org/x/telemetry: 4bcc4b2 → ed294f9
+- golang.org/x/term: v0.46.0 → v0.47.0
+- golang.org/x/text: v0.42.0 → v0.43.0
+- golang.org/x/tools: v0.50.0 → v0.51.0
+
+### Removed
+_Nothing has changed._
+
 # Release notes for 6.4.0
 
 [Documentation](https://kubernetes-csi.github.io)
