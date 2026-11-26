@@ -96,8 +96,10 @@ func NewSnapshotFinalizerController(
 }
 
 // waitForSnapshotAPI reports whether the VolumeSnapshot v1 API is served,
-// retrying discovery errors with backoff. It returns false when the API is not
-// served, the retries are exhausted, or ctx is cancelled.
+// retrying discovery errors with backoff. While the API is not served it
+// checks again every sweep interval, because the provisioner starts adding
+// the finalizer as soon as the snapshot CRDs are installed. It returns false
+// when the retries are exhausted or ctx is cancelled.
 func (c *SnapshotFinalizerController) waitForSnapshotAPI(ctx context.Context) bool {
 	var available bool
 	var lastErr error
@@ -115,10 +117,23 @@ func (c *SnapshotFinalizerController) waitForSnapshotAPI(ctx context.Context) bo
 		}
 		return false
 	}
-	if !available {
-		klog.Info("SnapshotFinalizerProtection: disabled, VolumeSnapshot v1 API is not served by the cluster")
+	if available {
+		return true
 	}
-	return available
+	klog.Infof("SnapshotFinalizerProtection: VolumeSnapshot v1 API is not served by the cluster, checking again every %v", c.resyncInterval)
+	err = wait.PollUntilContextCancel(ctx, c.resyncInterval, false, func(ctx context.Context) (bool, error) {
+		served, err := features.IsVolumeSnapshotV1Available(c.discoveryClient)
+		if err != nil {
+			klog.Warningf("SnapshotFinalizerProtection: failed to check VolumeSnapshot v1 API availability: %v", err)
+			return false, nil
+		}
+		return served, nil
+	})
+	if err != nil {
+		return false
+	}
+	klog.Info("SnapshotFinalizerProtection: VolumeSnapshot v1 API is now served")
+	return true
 }
 
 // Run starts the controller's periodic sweep loop.

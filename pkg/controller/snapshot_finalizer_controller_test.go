@@ -57,6 +57,24 @@ func newFakeSnapshotDiscovery(served bool, failures int) *fakeSnapshotDiscovery 
 	return d
 }
 
+// newLateSnapshotDiscovery reports snapshot.storage.k8s.io/v1 as not served for
+// the first `notServed` discovery calls, then as served, like CRDs installed
+// after the provisioner started.
+func newLateSnapshotDiscovery(notServed int) *fakeSnapshotDiscovery {
+	d := &fakeSnapshotDiscovery{FakeDiscovery: &discoveryfake.FakeDiscovery{Fake: &k8stesting.Fake{}}}
+	d.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
+		d.calls++
+		if d.calls > notServed {
+			d.Resources = []*metav1.APIResourceList{{
+				GroupVersion: "snapshot.storage.k8s.io/v1",
+				APIResources: []metav1.APIResource{{Kind: "VolumeSnapshot"}},
+			}}
+		}
+		return false, nil, nil
+	})
+	return d
+}
+
 func fakeSnapshotFinalizerController(snapClient *snapshotfake.Clientset, claimLister corelisters.PersistentVolumeClaimLister, snapshots ...*crdv1.VolumeSnapshot) *SnapshotFinalizerController {
 	ctrl := NewSnapshotFinalizerController(
 		snapClient,
@@ -502,7 +520,6 @@ func TestWaitForSnapshotAPI(t *testing.T) {
 		wantCalls int
 	}{
 		{name: "served", served: true, want: true, wantCalls: 1},
-		{name: "not served", served: false, want: false, wantCalls: 1},
 		{name: "transient errors then served", served: true, failures: 3, want: true, wantCalls: 4},
 		{name: "persistent errors give up", served: true, failures: 100, want: false, wantCalls: 5},
 	}
@@ -522,19 +539,45 @@ func TestWaitForSnapshotAPI(t *testing.T) {
 	}
 }
 
+func TestWaitForSnapshotAPI_ServedLater(t *testing.T) {
+	disc := newLateSnapshotDiscovery(2)
+	c := NewSnapshotFinalizerController(snapshotfake.NewSimpleClientset(), disc, newFakeClaimLister(), snapshotCapabilities(), time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if !c.waitForSnapshotAPI(ctx) {
+		t.Fatal("waitForSnapshotAPI() = false, want true once the VolumeSnapshot v1 API is served")
+	}
+	if disc.calls != 3 {
+		t.Errorf("discovery calls = %d, want 3", disc.calls)
+	}
+}
+
 func TestRun_SnapshotAPINotServed(t *testing.T) {
 	snapClient := snapshotfake.NewSimpleClientset()
-	c := NewSnapshotFinalizerController(snapClient, newFakeSnapshotDiscovery(false, 0), newFakeClaimLister(), snapshotCapabilities(), time.Minute)
+	disc := newFakeSnapshotDiscovery(false, 0)
+	c := NewSnapshotFinalizerController(snapClient, disc, newFakeClaimLister(), snapshotCapabilities(), time.Millisecond)
 
+	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		c.Run(context.Background(), &sync.WaitGroup{})
+		c.Run(ctx, &sync.WaitGroup{})
 		close(done)
 	}()
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-done:
+		t.Fatal("Run returned while the VolumeSnapshot v1 API is not served, want it to keep checking")
+	default:
+	}
+	cancel()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not return when the VolumeSnapshot v1 API is not served")
+		t.Fatal("Run did not return after the context was cancelled")
+	}
+	if disc.calls < 2 {
+		t.Errorf("discovery calls = %d, want the check repeated", disc.calls)
 	}
 	if actions := snapClient.Actions(); len(actions) != 0 {
 		t.Errorf("expected no VolumeSnapshot API calls, got %v", actions)
